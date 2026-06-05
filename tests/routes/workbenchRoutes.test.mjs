@@ -115,6 +115,13 @@ test('logged in users see compact workbench list layout', async () => {
   assert.match(response.text, /submit_initiation/);
   assert.match(response.text, /draft/);
   assert.match(response.text, /left-nav/);
+  assert.match(response.text, /System/);
+  assert.match(response.text, /href="\/system\/users"/);
+  assert.match(response.text, /Users/);
+  assert.match(response.text, /href="\/system\/roles"/);
+  assert.match(response.text, /Roles/);
+  assert.match(response.text, /href="\/system\/approval-settings"/);
+  assert.match(response.text, /Approval Settings/);
   assert.match(response.text, /class="state-strip"/);
   assert.match(response.text, /class="workbench-list"/);
   assert.match(response.text, /class="list-section"/);

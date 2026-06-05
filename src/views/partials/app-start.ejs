@@ -123,6 +123,16 @@
         gap: 4px;
       }
 
+      .nav-section {
+        margin: 16px 0 6px;
+        padding: 0 10px;
+        color: #6b7280;
+        font-size: 11px;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+      }
+
       .nav-link {
         display: block;
         padding: 9px 10px;
@@ -333,6 +343,10 @@
           <a class="<%= navClass('opportunities') %>" href="/opportunities">Opportunities</a>
           <a class="<%= navClass('customers') %>" href="/customers">Customers</a>
           <a class="<%= navClass('contacts') %>" href="/contacts">Contacts</a>
+          <div class="nav-section">System</div>
+          <a class="<%= navClass('system-users') %>" href="/system/users">Users</a>
+          <a class="<%= navClass('system-roles') %>" href="/system/roles">Roles</a>
+          <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings">Approval Settings</a>
         </nav>
         <form class="logout-form" method="post" action="/logout">
           <button class="logout-button" type="submit">Logout</button>
