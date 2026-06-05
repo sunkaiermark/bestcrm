@@ -101,3 +101,15 @@ test('attachment repository finds one attachment by id', async () => {
   assert.match(queryTarget.queries[0].sql, /WHERE a\.id = \$1/);
   assert.deepEqual(queryTarget.queries[0].params, [55]);
 });
+
+test('attachment repository deletes attachment metadata by id', async () => {
+  const queryTarget = createFakeQueryTarget([]);
+  const repository = createAttachmentRepository(queryTarget);
+
+  const result = await repository.deleteById(55);
+
+  assert.equal(result.rowCount, 0);
+  assert.match(queryTarget.queries[0].sql, /DELETE FROM attachments/);
+  assert.match(queryTarget.queries[0].sql, /WHERE id = \$1/);
+  assert.deepEqual(queryTarget.queries[0].params, [55]);
+});

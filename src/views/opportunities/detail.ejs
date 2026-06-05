@@ -12,6 +12,7 @@
   const technicalSolutionAttachments = orderedAttachments.filter((attachment) => attachment.category === 'technical_solution');
   const commercialQuoteAttachments = orderedAttachments.filter((attachment) => attachment.category === 'commercial_quote');
   const contractAttachments = orderedAttachments.filter((attachment) => attachment.category === 'contract');
+  const canDeleteRequirementMaterials = ['draft', 'initiation_rejected'].includes(opportunity.status);
 %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
         <header class="page-header">
@@ -94,8 +95,15 @@
                         <td><%= attachment.uploaderDisplayName %></td>
                         <td><%= attachment.uploadedAt || '' %></td>
                         <td>
-                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
-                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
+                          <div class="inline-actions">
+                            <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
+                            <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
+                            <% if (canDeleteRequirementMaterials) { %>
+                              <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/delete">
+                                <button class="danger-action" type="submit">Delete</button>
+                              </form>
+                            <% } %>
+                          </div>
                         </td>
                       </tr>
                     <% } %>

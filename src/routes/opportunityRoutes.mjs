@@ -1,9 +1,11 @@
 import { Router } from 'express';
 import { mkdirSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import multer from 'multer';
 import { ROLES, hasRole } from '../domain/roles.mjs';
+import { STATUSES } from '../domain/statuses.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { canViewOpportunity, createOpportunityDraft } from '../services/opportunityService.mjs';
@@ -35,6 +37,16 @@ const attachmentCategories = new Set([
   'commercial_quote',
   'contract',
   'other'
+]);
+
+const requirementMaterialCategories = new Set([
+  'requirement',
+  'other'
+]);
+
+const requirementMaterialDeleteStatuses = new Set([
+  STATUSES.DRAFT,
+  STATUSES.INITIATION_REJECTED
 ]);
 
 const attachmentRequirementsByAction = new Map([
@@ -379,6 +391,11 @@ function inlineDisposition(filename) {
   return `inline; filename="${safeFilename}"`;
 }
 
+function canDeleteRequirementMaterial(opportunity, attachment) {
+  return requirementMaterialCategories.has(attachment.category)
+    && requirementMaterialDeleteStatuses.has(opportunity.status);
+}
+
 export function opportunityRoutes({
   customerRepository,
   contactRepository,
@@ -501,6 +518,34 @@ export function opportunityRoutes({
         uploadedBy: req.currentUser.id
       });
       res.redirect(`/opportunities/${req.opportunity.id}`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/attachments/:attachmentId/delete', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      if (!opportunity) {
+        return;
+      }
+      const attachment = await attachmentRepository.findById(req.params.attachmentId);
+      if (!attachment || attachment.opportunityId !== opportunity.id) {
+        res.status(404).send('Attachment not found');
+        return;
+      }
+      if (!canDeleteRequirementMaterial(opportunity, attachment)) {
+        res.status(403).send('Requirement material cannot be deleted after initiation submission');
+        return;
+      }
+      const filePath = resolveStoredPath(uploadDir, attachment.storedPath);
+      if (!filePath) {
+        res.status(404).send('Attachment not found');
+        return;
+      }
+      await attachmentRepository.deleteById(attachment.id);
+      await rm(filePath, { force: true });
+      res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
       next(error);
     }

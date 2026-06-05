@@ -147,6 +147,9 @@ async function createLoggedInAgent(extraOptions = {}) {
         uploadedAttachments.push(input);
         return { id: 56, uploadedAt: '2026-06-05T12:30:00.000Z', ...input };
       },
+      async deleteById() {
+        throw new Error('not used');
+      },
       async findById() {
         return null;
       }
@@ -477,6 +480,146 @@ test('opportunity detail shows upload forms in each business material panel', as
   assert.match(detail.text, /Technical Solution[\s\S]*name="category" value="technical_solution"/);
   assert.match(detail.text, /Commercial Quote[\s\S]*name="category" value="commercial_quote"/);
   assert.match(detail.text, /Commercial Contract[\s\S]*name="category" value="contract"/);
+});
+
+test('draft opportunity shows delete action for requirement material attachments', async () => {
+  const attachment = {
+    id: 55,
+    opportunityId: 30,
+    category: 'requirement',
+    originalName: 'requirement-spec.pdf',
+    storedPath: '2026/06/requirement-spec.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 2048,
+    uploadedBy: 7,
+    uploaderDisplayName: 'Sales One',
+    uploadedAt: '2026-06-05T09:00:00.000Z'
+  };
+  const { agent } = await createLoggedInAgent({
+    attachmentRepository: {
+      async listByOpportunity() {
+        return [attachment];
+      },
+      async createAttachment() {
+        throw new Error('not used');
+      },
+      async deleteById() {
+        throw new Error('not used');
+      },
+      async findById() {
+        return attachment;
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Requirement Materials[\s\S]*requirement-spec\.pdf[\s\S]*\/opportunities\/30\/attachments\/55\/delete/);
+  assert.match(detail.text, /Requirement Materials[\s\S]*Delete/);
+});
+
+test('submitted opportunity hides and blocks requirement material deletion', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-delete-locked-'));
+  try {
+    await writeFile(path.join(uploadDir, 'requirement.txt'), 'locked requirement', 'utf8');
+    let deleteCalled = false;
+    const attachment = {
+      id: 55,
+      opportunityId: 30,
+      category: 'requirement',
+      originalName: 'requirement.txt',
+      storedPath: 'requirement.txt',
+      mimeType: 'text/plain',
+      fileSize: 18,
+      uploadedBy: 7,
+      uploaderDisplayName: 'Sales One',
+      uploadedAt: '2026-06-05T09:00:00.000Z'
+    };
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      opportunityRepository: {
+        async getOpportunityDetail() {
+          return opportunityDetail({ status: STATUSES.INITIATION_PENDING });
+        }
+      },
+      attachmentRepository: {
+        async listByOpportunity() {
+          return [attachment];
+        },
+        async createAttachment() {
+          throw new Error('not used');
+        },
+        async deleteById() {
+          deleteCalled = true;
+          throw new Error('should not delete locked attachment');
+        },
+        async findById() {
+          return attachment;
+        }
+      }
+    });
+
+    const detail = await agent.get('/opportunities/30');
+
+    assert.equal(detail.status, 200);
+    assert.doesNotMatch(detail.text, /\/opportunities\/30\/attachments\/55\/delete/);
+
+    const response = await agent.post('/opportunities/30/attachments/55/delete').type('form').send();
+
+    assert.equal(response.status, 403);
+    assert.equal(deleteCalled, false);
+    assert.equal(existsSync(path.join(uploadDir, 'requirement.txt')), true);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('draft opportunity deletes requirement material metadata and stored file', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-delete-requirement-'));
+  try {
+    await writeFile(path.join(uploadDir, 'requirement.txt'), 'draft requirement', 'utf8');
+    const deletedIds = [];
+    const attachment = {
+      id: 55,
+      opportunityId: 30,
+      category: 'requirement',
+      originalName: 'requirement.txt',
+      storedPath: 'requirement.txt',
+      mimeType: 'text/plain',
+      fileSize: 17,
+      uploadedBy: 7,
+      uploaderDisplayName: 'Sales One',
+      uploadedAt: '2026-06-05T09:00:00.000Z'
+    };
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      attachmentRepository: {
+        async listByOpportunity() {
+          return [attachment];
+        },
+        async createAttachment() {
+          throw new Error('not used');
+        },
+        async deleteById(id) {
+          deletedIds.push(Number(id));
+          return { rowCount: 1 };
+        },
+        async findById() {
+          return attachment;
+        }
+      }
+    });
+
+    const response = await agent.post('/opportunities/30/attachments/55/delete').type('form').send();
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/opportunities/30');
+    assert.deepEqual(deletedIds, [55]);
+    assert.equal(existsSync(path.join(uploadDir, 'requirement.txt')), false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
 });
 
 test('page form uploads attachment metadata and stores file', async () => {

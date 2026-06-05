@@ -131,6 +131,9 @@ const emptyAttachmentRepository = {
   async createAttachment() {
     throw new Error('Attachment repository is not configured');
   },
+  async deleteById() {
+    throw new Error('Attachment repository is not configured');
+  },
   async findById() {
     return null;
   }

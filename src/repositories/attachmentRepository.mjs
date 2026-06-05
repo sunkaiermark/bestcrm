@@ -85,6 +85,13 @@ export function createAttachmentRepository(queryTarget) {
         LIMIT 1
       `, [id]);
       return mapAttachmentRow(result.rows[0]);
+    },
+
+    async deleteById(id) {
+      return queryTarget.query(`
+        DELETE FROM attachments
+        WHERE id = $1
+      `, [id]);
     }
   };
 }
