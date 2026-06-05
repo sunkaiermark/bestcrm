@@ -64,6 +64,18 @@ function createMaterialRepositories(before, attachments = []) {
     async listByOpportunity(opportunityId) {
       repositories.calls.push(['listAttachments', opportunityId]);
       return attachments;
+    },
+    async bindUnlinkedToTechnicalSolution(input) {
+      repositories.calls.push(['bindTechnicalSolutionAttachments', input]);
+      return { rowCount: 1 };
+    },
+    async bindUnlinkedToCommercialQuote(input) {
+      repositories.calls.push(['bindCommercialQuoteAttachments', input]);
+      return { rowCount: 1 };
+    },
+    async bindUnlinkedToContractApproval(input) {
+      repositories.calls.push(['bindContractAttachments', input]);
+      return { rowCount: 1 };
     }
   };
   repositories.commercialQuoteRepository = {
@@ -371,6 +383,7 @@ test('submit technical solution stores a pending version before manager approval
       implementationPlan: 'Prepare drawings and installation sequence',
       submittedBy: 3
     }],
+    ['bindTechnicalSolutionAttachments', { opportunityId: 10, technicalSolutionId: 201 }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
@@ -563,6 +576,7 @@ test('submit commercial quote stores quote details when requirements are complet
         subtotal: 2000
       }]
     }],
+    ['bindCommercialQuoteAttachments', { opportunityId: 10, commercialQuoteId: 200 }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
@@ -702,6 +716,7 @@ test('submit contract approval creates approval record for legal reviewer', asyn
     ['listAttachments', 10],
     ['updateOpportunity', 10, { status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS }],
     ['createContractApproval', { opportunityId: 10, reviewerUserId: 6, submittedBy: 1 }],
+    ['bindContractAttachments', { opportunityId: 10, contractApprovalId: 90 }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.SUBMIT_CONTRACT_APPROVAL,

@@ -136,6 +136,15 @@ const emptyAttachmentRepository = {
   async deleteById() {
     throw new Error('Attachment repository is not configured');
   },
+  async bindUnlinkedToTechnicalSolution() {
+    throw new Error('Attachment repository is not configured');
+  },
+  async bindUnlinkedToCommercialQuote() {
+    throw new Error('Attachment repository is not configured');
+  },
+  async bindUnlinkedToContractApproval() {
+    throw new Error('Attachment repository is not configured');
+  },
   async findById() {
     return null;
   }

@@ -10,6 +10,7 @@ const requirementUpdatesMigrationPath = new URL('../../src/db/migrations/006_req
 const technicalSolutionVersionsMigrationPath = new URL('../../src/db/migrations/007_technical_solution_versions.sql', import.meta.url);
 const commercialQuoteVersionsMigrationPath = new URL('../../src/db/migrations/008_commercial_quote_versions.sql', import.meta.url);
 const contractVersionsMigrationPath = new URL('../../src/db/migrations/009_contract_versions.sql', import.meta.url);
+const attachmentVersionLinksMigrationPath = new URL('../../src/db/migrations/010_attachment_version_links.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -101,4 +102,16 @@ test('contract versions migration adds version number fields', async () => {
   assert.match(sql, /ADD COLUMN IF NOT EXISTS version_no integer/);
   assert.match(sql, /ROW_NUMBER\(\) OVER/);
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS contract_approvals_opportunity_version_idx/);
+});
+
+test('attachment version links migration adds version foreign keys', async () => {
+  const sql = await readFile(attachmentVersionLinksMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE attachments/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS technical_solution_id bigint REFERENCES technical_solutions\(id\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS commercial_quote_id bigint REFERENCES commercial_quotes\(id\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS contract_approval_id bigint REFERENCES contract_approvals\(id\)/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS attachments_technical_solution_idx/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS attachments_commercial_quote_idx/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS attachments_contract_approval_idx/);
 });

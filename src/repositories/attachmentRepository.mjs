@@ -1,3 +1,7 @@
+function numberOrNull(value) {
+  return value === null || value === undefined ? null : Number(value);
+}
+
 function mapAttachmentRow(row) {
   if (!row) {
     return null;
@@ -12,6 +16,9 @@ function mapAttachmentRow(row) {
     fileSize: Number(row.file_size),
     uploadedBy: Number(row.uploaded_by),
     uploaderDisplayName: row.uploader_display_name || '',
+    technicalSolutionId: numberOrNull(row.technical_solution_id),
+    commercialQuoteId: numberOrNull(row.commercial_quote_id),
+    contractApprovalId: numberOrNull(row.contract_approval_id),
     uploadedAt: row.uploaded_at
   };
 }
@@ -27,6 +34,9 @@ const attachmentSelect = `
     a.file_size,
     a.uploaded_by,
     uploader.display_name AS uploader_display_name,
+    a.technical_solution_id,
+    a.commercial_quote_id,
+    a.contract_approval_id,
     a.uploaded_at
   FROM attachments a
   LEFT JOIN users uploader ON uploader.id = a.uploaded_by
@@ -65,6 +75,9 @@ export function createAttachmentRepository(queryTarget) {
         mimeType: input.mimeType,
         fileSize: input.fileSize,
         uploadedBy: input.uploadedBy,
+        technicalSolutionId: null,
+        commercialQuoteId: null,
+        contractApprovalId: null,
         uploadedAt: result.rows[0].uploaded_at
       };
     },
@@ -92,6 +105,36 @@ export function createAttachmentRepository(queryTarget) {
         DELETE FROM attachments
         WHERE id = $1
       `, [id]);
+    },
+
+    async bindUnlinkedToTechnicalSolution({ opportunityId, technicalSolutionId }) {
+      return queryTarget.query(`
+        UPDATE attachments
+        SET technical_solution_id = $2
+        WHERE opportunity_id = $1
+          AND category = 'technical_solution'
+          AND technical_solution_id IS NULL
+      `, [opportunityId, technicalSolutionId]);
+    },
+
+    async bindUnlinkedToCommercialQuote({ opportunityId, commercialQuoteId }) {
+      return queryTarget.query(`
+        UPDATE attachments
+        SET commercial_quote_id = $2
+        WHERE opportunity_id = $1
+          AND category = 'commercial_quote'
+          AND commercial_quote_id IS NULL
+      `, [opportunityId, commercialQuoteId]);
+    },
+
+    async bindUnlinkedToContractApproval({ opportunityId, contractApprovalId }) {
+      return queryTarget.query(`
+        UPDATE attachments
+        SET contract_approval_id = $2
+        WHERE opportunity_id = $1
+          AND category = 'contract'
+          AND contract_approval_id IS NULL
+      `, [opportunityId, contractApprovalId]);
     }
   };
 }
