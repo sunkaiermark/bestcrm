@@ -11,10 +11,10 @@ The system is not a personal browser prototype. It is a company web application 
 The first version implements the core pre-contract opportunity workflow:
 
 1. Salesperson creates an opportunity and submits it for department approval.
-2. Department owner approves or rejects the initiation request.
-3. Department owner assigns a quotation engineer after approval.
+2. Department manager approves or rejects the initiation request.
+3. Department manager assigns a quotation engineer after approval.
 4. Quotation engineer submits technical solution materials.
-5. Technical owner approves or rejects the technical solution.
+5. Technical manager approves or rejects the technical solution.
 6. Quotation engineer submits commercial quotation details.
 7. Commercial manager approves or rejects the quotation.
 8. Salesperson records customer negotiation result.
@@ -66,9 +66,9 @@ This architecture keeps the first version small enough to build and operate, whi
 The first version supports these roles:
 
 - Salesperson
-- Department Owner
+- Department Manager
 - Quotation Engineer
-- Technical Owner
+- Technical Manager
 - Commercial Manager
 - Legal Reviewer
 - Finance Reviewer
@@ -92,7 +92,7 @@ Salesperson can:
 - Record customer result after quotation approval
 - Submit contract approval after winning a project
 
-Department Owner can:
+Department Manager can:
 
 - Approve or reject opportunity initiation
 - Assign quotation engineer after approval
@@ -106,7 +106,7 @@ Quotation Engineer can:
 - Create commercial quotation details
 - Edit rejected commercial quotations
 
-Technical Owner can:
+Technical Manager can:
 
 - Approve or reject technical solutions
 
@@ -176,7 +176,7 @@ Next state:
 
 ### 2. Department Approval and Assignment
 
-Department Owner actions:
+Department Manager actions:
 
 - Reject initiation with reason
 - Approve initiation and assign quotation engineer
@@ -219,7 +219,7 @@ Next state:
 
 ### 4. Technical Approval
 
-Technical Owner actions:
+Technical Manager actions:
 
 - Reject technical solution with reason
 - Approve technical solution
@@ -382,9 +382,9 @@ Final approval sends the opportunity to:
 - expected_bid_date
 - status
 - salesperson_id
-- department_owner_id
+- department_manager_id
 - quotation_engineer_id
-- technical_owner_id
+- technical_manager_id
 - commercial_manager_id
 - final_deal_amount
 - lost_reason
@@ -585,10 +585,10 @@ The first version is acceptable when:
 - A user can log in with internal username and password.
 - An administrator can create users and assign roles.
 - A salesperson can create an opportunity and submit initiation.
-- A department owner can approve or reject initiation.
-- A department owner can assign a quotation engineer.
+- A department manager can approve or reject initiation.
+- A department manager can assign a quotation engineer.
 - A quotation engineer can submit a technical solution and upload attachments.
-- A technical owner can approve or reject the technical solution.
+- A technical manager can approve or reject the technical solution.
 - A quotation engineer can submit a commercial quote with line items.
 - A commercial manager can approve or reject the commercial quote.
 - A salesperson can mark the opportunity as lost and archive it.
