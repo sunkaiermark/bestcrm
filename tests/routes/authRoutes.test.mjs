@@ -25,6 +25,7 @@ test('login page renders username and password form', async () => {
   assert.match(response.text, /BESTCRM/);
   assert.match(response.text, /class="login-shell"/);
   assert.match(response.text, /class="login-card"/);
+  assert.match(response.text, /font:\s*14px\/1\.4 "Roboto", "Microsoft YaHei", Arial, Helvetica, sans-serif;/);
   assert.match(response.text, /class="form-field"/);
   assert.match(response.text, /class="login-button"/);
   assert.match(response.text, /name="username"/);
