@@ -5,6 +5,7 @@ import { readFile } from 'node:fs/promises';
 const schemaPath = new URL('../../src/db/migrations/001_initial_schema.sql', import.meta.url);
 const opportunityNumberMigrationPath = new URL('../../src/db/migrations/003_opportunity_number_sequence.sql', import.meta.url);
 const opportunityNumberMaxMigrationPath = new URL('../../src/db/migrations/004_opportunity_number_maxvalue.sql', import.meta.url);
+const rolesMetadataMigrationPath = new URL('../../src/db/migrations/005_roles_metadata.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -45,4 +46,12 @@ test('opportunity number sequence is capped at six digits', async () => {
 
   assert.match(sql, /ALTER SEQUENCE opportunity_no_seq/);
   assert.match(sql, /MAXVALUE 999999/);
+});
+
+test('roles metadata migration adds role descriptions and active flag', async () => {
+  const sql = await readFile(rolesMetadataMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE roles/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS description text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true/);
 });

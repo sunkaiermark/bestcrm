@@ -1,19 +1,10 @@
 import { createPool } from './pool.mjs';
+import { ROLE_DETAILS } from '../domain/systemCatalog.mjs';
 import { ROLES } from '../domain/roles.mjs';
 import { hashPassword } from '../services/authService.mjs';
 import { isMainModule } from '../utils/moduleEntry.mjs';
 
-export const ROLE_SEEDS = Object.freeze([
-  { code: ROLES.SALESPERSON, name: 'Sales' },
-  { code: ROLES.SALES_MANAGER, name: 'Sales Manager' },
-  { code: ROLES.QUOTATION_ENGINEER, name: 'Quotation Engineer' },
-  { code: ROLES.TECHNICAL_MANAGER, name: 'Technical Manager' },
-  { code: ROLES.COMMERCIAL_MANAGER, name: 'Commercial Manager' },
-  { code: ROLES.LEGAL_REVIEWER, name: 'Legal Reviewer' },
-  { code: ROLES.FINANCE_REVIEWER, name: 'Finance Reviewer' },
-  { code: ROLES.GENERAL_MANAGER, name: 'General Manager' },
-  { code: ROLES.ADMINISTRATOR, name: 'Administrator' }
-]);
+export const ROLE_SEEDS = Object.freeze(ROLE_DETAILS.map(({ code, name, description }) => ({ code, name, description })));
 
 export const INTERNAL_TEST_ACCOUNTS = Object.freeze([
   {
@@ -64,11 +55,14 @@ const defaultPassword = 'ChangeMe123!';
 
 async function upsertRole(pool, role) {
   const result = await pool.query(`
-    INSERT INTO roles (code, name)
-    VALUES ($1, $2)
-    ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
+    INSERT INTO roles (code, name, description, is_active)
+    VALUES ($1, $2, $3, true)
+    ON CONFLICT (code) DO UPDATE SET
+      name = EXCLUDED.name,
+      description = EXCLUDED.description,
+      is_active = true
     RETURNING id
-  `, [role.code, role.name]);
+  `, [role.code, role.name, role.description]);
   return Number(result.rows[0].id);
 }
 

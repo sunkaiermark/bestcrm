@@ -23,6 +23,27 @@ async function createSystemAgent(options = {}) {
     isActive: true,
     roles: [ROLES.SALES_MANAGER]
   };
+  const role = {
+    id: 21,
+    code: 'service_manager',
+    name: 'Service Manager',
+    description: 'Coordinates service work.',
+    isActive: true
+  };
+  const salesRole = {
+    id: 22,
+    code: ROLES.SALESPERSON,
+    name: 'Sales',
+    description: 'Creates opportunities.',
+    isActive: true
+  };
+  const technicalRole = {
+    id: 23,
+    code: ROLES.TECHNICAL_MANAGER,
+    name: 'Technical Manager',
+    description: 'Approves technical solutions.',
+    isActive: true
+  };
   const calls = [];
   const app = createApp({
     sessionSecret: 'test-secret',
@@ -52,6 +73,29 @@ async function createSystemAgent(options = {}) {
       },
       async deactivateUser(id) {
         calls.push({ method: 'deactivateUser', id: Number(id) });
+        return { id: Number(id) };
+      }
+    },
+    roleRepository: {
+      async listRoles() {
+        return [role];
+      },
+      async listActiveRoles() {
+        return [role, salesRole, technicalRole];
+      },
+      async findById(id) {
+        return Number(id) === role.id ? role : null;
+      },
+      async createRole(input) {
+        calls.push({ method: 'createRole', input });
+        return { id: 22 };
+      },
+      async updateRole(id, input) {
+        calls.push({ method: 'updateRole', id: Number(id), input });
+        return { id: Number(id) };
+      },
+      async deactivateRole(id) {
+        calls.push({ method: 'deactivateRole', id: Number(id) });
         return { id: Number(id) };
       }
     }
@@ -94,8 +138,8 @@ test('logged in users can view system user role and approval setting details', a
   assert.equal(roles.status, 200);
   assertSystemSidebar(roles.text, '/system/roles');
   assert.match(roles.text, /System Roles/);
-  assert.match(roles.text, /Quotation Engineer/);
-  assert.match(roles.text, /technical_manager/);
+  assert.match(roles.text, /Service Manager/);
+  assert.match(roles.text, /service_manager/);
 
   const approvals = await agent.get('/system/approval-settings');
   assert.equal(approvals.status, 200);
@@ -116,7 +160,7 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.match(newForm.text, /New User/);
   assert.match(newForm.text, /name="username"/);
   assert.match(newForm.text, /name="password"/);
-  assert.match(newForm.text, /value="salesperson"/);
+  assert.match(newForm.text, /value="service_manager"/);
 
   const created = await agent.post('/system/users').type('form').send({
     username: 'new_user',
@@ -181,6 +225,85 @@ test('non administrators cannot manage system users', async () => {
     () => agent.get('/system/users/11/edit'),
     () => agent.post('/system/users/11').type('form').send({ displayName: 'x' }),
     () => agent.post('/system/users/11/delete').type('form').send()
+  ]) {
+    const response = await requestCall();
+    assert.equal(response.status, 403);
+    assert.match(response.text, /Forbidden/);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test('administrator can add edit and deactivate system roles', async () => {
+  const { agent, calls } = await createSystemAgent();
+
+  const newForm = await agent.get('/system/roles/new');
+  assert.equal(newForm.status, 200);
+  assertSystemSidebar(newForm.text, '/system/roles');
+  assert.match(newForm.text, /New Role/);
+  assert.match(newForm.text, /name="code"/);
+  assert.match(newForm.text, /name="description"/);
+
+  const created = await agent.post('/system/roles').type('form').send({
+    code: 'service_manager',
+    name: 'Service Manager',
+    description: 'Coordinates service work.',
+    isActive: 'on'
+  });
+  assert.equal(created.status, 302);
+  assert.equal(created.headers.location, '/system/roles');
+  assert.deepEqual(calls[0], {
+    method: 'createRole',
+    input: {
+      code: 'service_manager',
+      name: 'Service Manager',
+      description: 'Coordinates service work.',
+      isActive: true
+    }
+  });
+
+  const editForm = await agent.get('/system/roles/21/edit');
+  assert.equal(editForm.status, 200);
+  assertSystemSidebar(editForm.text, '/system/roles');
+  assert.match(editForm.text, /Edit Role/);
+  assert.match(editForm.text, /service_manager/);
+  assert.match(editForm.text, /name="name"/);
+  assert.doesNotMatch(editForm.text, /name="code"/);
+
+  const updated = await agent.post('/system/roles/21').type('form').send({
+    name: 'Updated Service Manager',
+    description: 'Updated role description.'
+  });
+  assert.equal(updated.status, 302);
+  assert.equal(updated.headers.location, '/system/roles');
+  assert.deepEqual(calls[1], {
+    method: 'updateRole',
+    id: 21,
+    input: {
+      name: 'Updated Service Manager',
+      description: 'Updated role description.',
+      isActive: false
+    }
+  });
+
+  const deleted = await agent.post('/system/roles/21/delete').type('form').send();
+  assert.equal(deleted.status, 302);
+  assert.equal(deleted.headers.location, '/system/roles');
+  assert.deepEqual(calls[2], { method: 'deactivateRole', id: 21 });
+});
+
+test('non administrators cannot manage system roles', async () => {
+  const { agent, calls } = await createSystemAgent({
+    username: 'sales01',
+    displayName: 'Sales User',
+    roles: [ROLES.SALESPERSON]
+  });
+
+  for (const requestCall of [
+    () => agent.get('/system/roles/new'),
+    () => agent.post('/system/roles').type('form').send({ code: 'x' }),
+    () => agent.get('/system/roles/21/edit'),
+    () => agent.post('/system/roles/21').type('form').send({ name: 'x' }),
+    () => agent.post('/system/roles/21/delete').type('form').send()
   ]) {
     const response = await requestCall();
     assert.equal(response.status, 403);

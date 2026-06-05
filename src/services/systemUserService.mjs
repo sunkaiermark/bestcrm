@@ -12,10 +12,18 @@ function checkbox(value) {
   return value === true || value === 'true' || value === 'on' || value === '1';
 }
 
-function normalizeRoles(value) {
+function allowedRoleSet(allowedRoleCodes) {
+  if (Array.isArray(allowedRoleCodes)) {
+    return new Set(allowedRoleCodes);
+  }
+  return roleCodes;
+}
+
+function normalizeRolesWithAllowedCodes(value, allowedRoleCodes) {
+  const allowedCodes = allowedRoleSet(allowedRoleCodes);
   const roles = Array.isArray(value) ? value : [value];
   const normalized = roles.map(text).filter(Boolean);
-  if (!normalized.length || normalized.some((role) => !roleCodes.has(role))) {
+  if (!normalized.length || normalized.some((role) => !allowedCodes.has(role))) {
     throw new Error('Invalid role');
   }
   return [...new Set(normalized)];
@@ -25,21 +33,21 @@ function requireAdmin(actor) {
   requireRole(actor, ROLES.ADMINISTRATOR);
 }
 
-export function normalizeSystemUserInput(input) {
+export function normalizeSystemUserInput(input, options = {}) {
   return {
     displayName: text(input.displayName),
     email: text(input.email),
     phone: text(input.phone),
     isActive: checkbox(input.isActive),
-    roles: normalizeRoles(input.roles)
+    roles: normalizeRolesWithAllowedCodes(input.roles, options.allowedRoleCodes)
   };
 }
 
-export async function createSystemUser(userRepository, actor, input) {
+export async function createSystemUser(userRepository, actor, input, options = {}) {
   requireAdmin(actor);
   const username = text(input.username);
   const password = String(input.password || '');
-  const base = normalizeSystemUserInput(input);
+  const base = normalizeSystemUserInput(input, options);
   if (!username || !base.displayName || !password) {
     throw new Error('Missing required user fields');
   }
@@ -50,9 +58,9 @@ export async function createSystemUser(userRepository, actor, input) {
   });
 }
 
-export async function updateSystemUser(userRepository, actor, userId, input) {
+export async function updateSystemUser(userRepository, actor, userId, input, options = {}) {
   requireAdmin(actor);
-  const base = normalizeSystemUserInput(input);
+  const base = normalizeSystemUserInput(input, options);
   if (!base.displayName) {
     throw new Error('Missing required user fields');
   }

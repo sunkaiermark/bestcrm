@@ -12,6 +12,7 @@ import { createContractApprovalRepository } from './repositories/contractApprova
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
+import { createRoleRepository } from './repositories/roleRepository.mjs';
 import { createTodoRepository } from './repositories/todoRepository.mjs';
 import { createUserRepository } from './repositories/userRepository.mjs';
 import { createWorkbenchRepository } from './repositories/workbenchRepository.mjs';
@@ -47,6 +48,27 @@ const emptyUserRepository = {
   },
   async listUsersByRole() {
     return [];
+  }
+};
+
+const emptyRoleRepository = {
+  async listRoles() {
+    return [];
+  },
+  async listActiveRoles() {
+    return [];
+  },
+  async findById() {
+    return null;
+  },
+  async createRole() {
+    throw new Error('Role repository is not configured');
+  },
+  async updateRole() {
+    throw new Error('Role repository is not configured');
+  },
+  async deactivateRole() {
+    throw new Error('Role repository is not configured');
   }
 };
 
@@ -178,6 +200,7 @@ export function createApp(options = {}) {
   const shouldCreatePool = !options.userRepository && config.databaseUrl;
   const pool = options.pool || (shouldCreatePool ? createPool(config) : null);
   const userRepository = options.userRepository || (pool ? createUserRepository(pool) : emptyUserRepository);
+  const roleRepository = options.roleRepository || (pool ? createRoleRepository(pool) : emptyRoleRepository);
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
   const contactRepository = options.contactRepository || (pool ? createContactRepository(pool) : emptyContactRepository);
   const attachmentRepository = options.attachmentRepository || (pool ? createAttachmentRepository(pool) : emptyAttachmentRepository);
@@ -213,7 +236,7 @@ export function createApp(options = {}) {
   });
   app.use(authRoutes(userRepository));
   app.use(workbenchRoutes({ workbenchRepository }));
-  app.use(systemRoutes({ userRepository }));
+  app.use(systemRoutes({ userRepository, roleRepository }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
   app.use(opportunityRoutes({

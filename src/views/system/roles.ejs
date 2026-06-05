@@ -4,6 +4,9 @@
             <h1>System Roles</h1>
             <div class="muted">Role definitions used by opportunity workflow permissions.</div>
           </div>
+          <% if (canManageRoles) { %>
+            <a class="quick-action" href="/system/roles/new">New role</a>
+          <% } %>
         </header>
 
         <section class="list-section">
@@ -13,7 +16,11 @@
                 <tr>
                   <th>Role</th>
                   <th>Code</th>
-                  <th>Workflow responsibility</th>
+                  <th>Description</th>
+                  <th>Status</th>
+                  <% if (canManageRoles) { %>
+                    <th>Actions</th>
+                  <% } %>
                 </tr>
               </thead>
               <tbody>
@@ -21,7 +28,20 @@
                   <tr>
                     <td><%= role.name %></td>
                     <td><%= role.code %></td>
-                    <td><%= role.description %></td>
+                    <td><%= role.description || '-' %></td>
+                    <td><span class="status"><%= role.isActive ? 'active' : 'inactive' %></span></td>
+                    <% if (canManageRoles) { %>
+                      <td>
+                        <div class="inline-actions">
+                          <a class="secondary-action" href="/system/roles/<%= role.id %>/edit">Edit</a>
+                          <% if (role.isActive) { %>
+                            <form method="post" action="/system/roles/<%= role.id %>/delete">
+                              <button class="danger-action" type="submit">Delete</button>
+                            </form>
+                          <% } %>
+                        </div>
+                      </td>
+                    <% } %>
                   </tr>
                 <% } %>
               </tbody>
