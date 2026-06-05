@@ -125,7 +125,7 @@ export function createOpportunityRepository(queryTarget) {
           status,
           salesperson_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES (COALESCE($1, nextval('opportunity_no_seq')::text), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING *
       `, [
         input.opportunityNo,

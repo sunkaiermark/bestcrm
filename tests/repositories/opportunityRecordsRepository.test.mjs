@@ -120,3 +120,41 @@ test('opportunity repository creates draft opportunity rows', async () => {
     7
   ]);
 });
+
+test('opportunity repository generates six digit opportunity numbers from sequence', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    ...opportunityRow,
+    opportunity_no: '800000'
+  }]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  const opportunity = await repository.createOpportunity({
+    opportunityNo: null,
+    title: 'Factory upgrade',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Upgrade production line',
+    estimatedAmount: 120000.50,
+    projectType: 'automation',
+    deliveryCycle: '45 days',
+    expectedBidDate: '2026-07-10',
+    status: STATUSES.DRAFT,
+    salespersonId: 7
+  });
+
+  assert.equal(opportunity.opportunityNo, '800000');
+  assert.match(queryTarget.queries[0].sql, /COALESCE\(\$1, nextval\('opportunity_no_seq'\)::text\)/);
+  assert.deepEqual(queryTarget.queries[0].params, [
+    null,
+    'Factory upgrade',
+    10,
+    20,
+    'Upgrade production line',
+    120000.50,
+    'automation',
+    '45 days',
+    '2026-07-10',
+    STATUSES.DRAFT,
+    7
+  ]);
+});

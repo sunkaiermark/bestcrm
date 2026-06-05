@@ -56,12 +56,12 @@ test('salesperson creates draft opportunity referencing owned customer and conta
   assert.equal(opportunity.customerId, 10);
   assert.equal(opportunity.primaryContactId, 20);
   assert.equal(opportunity.salespersonId, 7);
-  assert.match(opportunity.opportunityNo, /^OPP-\d{8}-[a-f0-9]{8}$/);
+  assert.equal(opportunity.opportunityNo, null);
   assert.deepEqual(repositories.calls, [
     ['getCustomer', 10],
     ['getContact', 20],
     ['createOpportunity', {
-      opportunityNo: opportunity.opportunityNo,
+      opportunityNo: null,
       title: 'Factory upgrade',
       customerId: 10,
       primaryContactId: 20,

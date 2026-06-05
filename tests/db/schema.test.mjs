@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
 const schemaPath = new URL('../../src/db/migrations/001_initial_schema.sql', import.meta.url);
+const opportunityNumberMigrationPath = new URL('../../src/db/migrations/003_opportunity_number_sequence.sql', import.meta.url);
+const opportunityNumberMaxMigrationPath = new URL('../../src/db/migrations/004_opportunity_number_maxvalue.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -27,4 +29,20 @@ test('initial schema declares first-version tables', async () => {
   }
   assert.match(sql, /sales_manager_id/);
   assert.doesNotMatch(sql, /department_manager_id/);
+});
+
+test('opportunity number migration creates six digit sequence starting at 800000', async () => {
+  const sql = await readFile(opportunityNumberMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE SEQUENCE IF NOT EXISTS opportunity_no_seq/);
+  assert.match(sql, /START WITH 800000/);
+  assert.match(sql, /opportunity_no ~ '\^\[0-9\]\{6\}\$'/);
+  assert.match(sql, /setval\(\s*'opportunity_no_seq'/);
+});
+
+test('opportunity number sequence is capped at six digits', async () => {
+  const sql = await readFile(opportunityNumberMaxMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER SEQUENCE opportunity_no_seq/);
+  assert.match(sql, /MAXVALUE 999999/);
 });

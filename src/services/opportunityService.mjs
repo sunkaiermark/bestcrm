@@ -1,4 +1,3 @@
-import { randomUUID } from 'node:crypto';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
 import { canMaintainCustomer } from './customerService.mjs';
@@ -23,11 +22,6 @@ function isoDateOrNull(value) {
   return normalized || null;
 }
 
-export function buildOpportunityNo(now = new Date()) {
-  const date = now.toISOString().slice(0, 10).replaceAll('-', '');
-  return `OPP-${date}-${randomUUID().slice(0, 8)}`;
-}
-
 export function canViewOpportunity(user, opportunity) {
   if (hasRole(user, ROLES.ADMINISTRATOR)) {
     return true;
@@ -43,7 +37,7 @@ export function canViewOpportunity(user, opportunity) {
 
 export function normalizeOpportunityInput(input, actor) {
   return {
-    opportunityNo: input.opportunityNo || buildOpportunityNo(),
+    opportunityNo: text(input.opportunityNo) || null,
     title: text(input.title),
     customerId: Number(input.customerId),
     primaryContactId: numberOrNull(input.primaryContactId),
