@@ -4,24 +4,146 @@
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>BESTCRM Login</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f7fa;
+        --panel: #ffffff;
+        --line: #d8e1e8;
+        --ink: #17212b;
+        --muted: #647484;
+        --accent: #0f766e;
+        --accent-dark: #0b5f59;
+        --danger-bg: #fef2f2;
+        --danger: #991b1b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background:
+          linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0)),
+          var(--bg);
+        color: var(--ink);
+        font: 14px/1.4 Arial, Helvetica, sans-serif;
+      }
+
+      .login-shell {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .login-card {
+        width: min(100%, 390px);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: 0 18px 48px rgba(23, 33, 43, 0.12);
+        padding: 28px;
+      }
+
+      .login-heading {
+        margin: 0;
+        font-size: 26px;
+        line-height: 1.15;
+      }
+
+      .login-subtitle {
+        margin: 8px 0 22px;
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .login-form {
+        display: grid;
+        gap: 14px;
+      }
+
+      .form-field {
+        display: grid;
+        gap: 6px;
+        font-weight: 700;
+      }
+
+      .form-field input {
+        width: 100%;
+        height: 40px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--ink);
+        font: inherit;
+        padding: 8px 10px;
+      }
+
+      .form-field input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+        outline: none;
+      }
+
+      .login-button {
+        width: 100%;
+        height: 42px;
+        border: 0;
+        border-radius: 6px;
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+      }
+
+      .login-button:hover {
+        background: var(--accent-dark);
+      }
+
+      .login-alert {
+        margin: 0 0 14px;
+        border: 1px solid #fecaca;
+        border-radius: 6px;
+        background: var(--danger-bg);
+        color: var(--danger);
+        padding: 9px 10px;
+      }
+
+      @media (max-width: 460px) {
+        .login-shell {
+          align-items: start;
+          padding: 18px;
+        }
+
+        .login-card {
+          padding: 22px;
+        }
+      }
+    </style>
   </head>
   <body>
-    <main>
-      <h1>BESTCRM</h1>
+    <main class="login-shell">
+      <section class="login-card" aria-labelledby="login-title">
+        <h1 id="login-title" class="login-heading">BESTCRM</h1>
+        <p class="login-subtitle">Company CRM</p>
       <% if (error) { %>
-        <p role="alert"><%= error %></p>
+          <p class="login-alert" role="alert"><%= error %></p>
       <% } %>
-      <form method="post" action="/login">
-        <label>
+        <form class="login-form" method="post" action="/login">
+          <label class="form-field">
           Username
-          <input name="username" autocomplete="username" value="<%= username %>" required>
-        </label>
-        <label>
+            <input name="username" autocomplete="username" value="<%= username %>" required>
+          </label>
+          <label class="form-field">
           Password
-          <input name="password" type="password" autocomplete="current-password" required>
-        </label>
-        <button type="submit">Login</button>
-      </form>
+            <input name="password" type="password" autocomplete="current-password" required>
+          </label>
+          <button class="login-button" type="submit">Login</button>
+        </form>
+      </section>
     </main>
   </body>
 </html>

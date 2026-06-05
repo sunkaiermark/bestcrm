@@ -23,6 +23,10 @@ test('login page renders username and password form', async () => {
 
   assert.equal(response.status, 200);
   assert.match(response.text, /BESTCRM/);
+  assert.match(response.text, /class="login-shell"/);
+  assert.match(response.text, /class="login-card"/);
+  assert.match(response.text, /class="form-field"/);
+  assert.match(response.text, /class="login-button"/);
   assert.match(response.text, /name="username"/);
   assert.match(response.text, /name="password"/);
 });
