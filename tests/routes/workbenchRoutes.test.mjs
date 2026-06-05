@@ -115,7 +115,8 @@ test('logged in users see compact workbench list layout', async () => {
   assert.match(response.text, /submit_initiation/);
   assert.match(response.text, /draft/);
   assert.match(response.text, /left-nav/);
-  assert.match(response.text, /System/);
+  assert.match(response.text, /class="nav-parent">System/);
+  assert.match(response.text, /class="nav-subgroup"/);
   assert.match(response.text, /href="\/system\/users"/);
   assert.match(response.text, /Users/);
   assert.match(response.text, /href="\/system\/roles"/);

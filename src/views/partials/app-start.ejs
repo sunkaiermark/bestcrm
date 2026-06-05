@@ -123,22 +123,33 @@
         gap: 4px;
       }
 
-      .nav-section {
-        margin: 16px 0 6px;
-        padding: 0 10px;
-        color: #6b7280;
-        font-size: 11px;
-        font-weight: 700;
-        letter-spacing: 0;
-        text-transform: uppercase;
-      }
-
       .nav-link {
         display: block;
         padding: 9px 10px;
         border-radius: 6px;
         color: var(--rail-muted);
         font-weight: 600;
+      }
+
+      .nav-parent {
+        margin: 14px 0 2px;
+        padding: 9px 10px;
+        border-radius: 6px;
+        color: white;
+        font-weight: 700;
+      }
+
+      .nav-subgroup {
+        display: grid;
+        gap: 2px;
+        margin-left: 10px;
+        padding-left: 10px;
+        border-left: 1px solid rgba(255, 255, 255, 0.16);
+      }
+
+      .nav-subgroup .nav-link {
+        padding: 7px 10px;
+        font-size: 13px;
       }
 
       .nav-link:hover,
@@ -343,10 +354,12 @@
           <a class="<%= navClass('opportunities') %>" href="/opportunities">Opportunities</a>
           <a class="<%= navClass('customers') %>" href="/customers">Customers</a>
           <a class="<%= navClass('contacts') %>" href="/contacts">Contacts</a>
-          <div class="nav-section">System</div>
-          <a class="<%= navClass('system-users') %>" href="/system/users">Users</a>
-          <a class="<%= navClass('system-roles') %>" href="/system/roles">Roles</a>
-          <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings">Approval Settings</a>
+          <div class="nav-parent">System</div>
+          <div class="nav-subgroup">
+            <a class="<%= navClass('system-users') %>" href="/system/users">Users</a>
+            <a class="<%= navClass('system-roles') %>" href="/system/roles">Roles</a>
+            <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings">Approval Settings</a>
+          </div>
         </nav>
         <form class="logout-form" method="post" action="/logout">
           <button class="logout-button" type="submit">Logout</button>
