@@ -15,6 +15,7 @@ import { createCustomerRepository } from './repositories/customerRepository.mjs'
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
 import { createRequirementUpdateRepository } from './repositories/requirementUpdateRepository.mjs';
 import { createRoleRepository } from './repositories/roleRepository.mjs';
+import { createTechnicalSolutionRepository } from './repositories/technicalSolutionRepository.mjs';
 import { createTodoRepository } from './repositories/todoRepository.mjs';
 import { createUserRepository } from './repositories/userRepository.mjs';
 import { createWorkbenchRepository } from './repositories/workbenchRepository.mjs';
@@ -146,6 +147,18 @@ const emptyCommercialQuoteRepository = {
   }
 };
 
+const emptyTechnicalSolutionRepository = {
+  async listByOpportunity() {
+    return [];
+  },
+  async createVersion() {
+    throw new Error('Technical solution repository is not configured');
+  },
+  async reviewLatestPending() {
+    throw new Error('Technical solution repository is not configured');
+  }
+};
+
 const emptyRequirementUpdateRepository = {
   async listByOpportunity() {
     return [];
@@ -241,6 +254,7 @@ export function createApp(options = {}) {
   const contactRepository = options.contactRepository || (pool ? createContactRepository(pool) : emptyContactRepository);
   const attachmentRepository = options.attachmentRepository || (pool ? createAttachmentRepository(pool) : emptyAttachmentRepository);
   const commercialQuoteRepository = options.commercialQuoteRepository || (pool ? createCommercialQuoteRepository(pool) : emptyCommercialQuoteRepository);
+  const technicalSolutionRepository = options.technicalSolutionRepository || (pool ? createTechnicalSolutionRepository(pool) : emptyTechnicalSolutionRepository);
   const requirementUpdateRepository = options.requirementUpdateRepository || (pool ? createRequirementUpdateRepository(pool) : emptyRequirementUpdateRepository);
   const contractApprovalRepository = options.contractApprovalRepository || (pool ? createContractApprovalRepository(pool) : emptyContractApprovalRepository);
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
@@ -281,6 +295,7 @@ export function createApp(options = {}) {
     contactRepository,
     attachmentRepository,
     commercialQuoteRepository,
+    technicalSolutionRepository,
     requirementUpdateRepository,
     contractApprovalRepository,
     approvalSettingRepository,

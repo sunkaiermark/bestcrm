@@ -69,6 +69,11 @@ const quoteDetailFields = [
   'validityDate'
 ];
 
+const technicalSolutionReviewStatuses = new Map([
+  [ACTIONS.APPROVE_TECHNICAL_SOLUTION, 'approved'],
+  [ACTIONS.REJECT_TECHNICAL_SOLUTION, 'rejected']
+]);
+
 const configuredApprovalAssignees = new Map([
   [ACTIONS.SUBMIT_INITIATION, {
     settingKey: 'opportunity_initiation',
@@ -187,6 +192,22 @@ function assertCommercialQuotePayload(payload) {
   }
 }
 
+function assertTechnicalSolutionPayload(payload) {
+  if (!hasNonBlankValue(payload.solutionSummary)) {
+    throw new WorkflowValidationError('Technical solution summary is required');
+  }
+}
+
+function technicalSolutionInput({ opportunityId, actor, payload }) {
+  return {
+    opportunityId: Number(opportunityId),
+    summary: String(payload.solutionSummary).trim(),
+    parameters: hasNonBlankValue(payload.solutionParameters) ? String(payload.solutionParameters).trim() : null,
+    implementationPlan: hasNonBlankValue(payload.implementationPlan) ? String(payload.implementationPlan).trim() : null,
+    submittedBy: actor.id
+  };
+}
+
 function commercialQuoteInput({ opportunityId, actor, payload }) {
   const quantity = Number(payload.quoteQuantity);
   const unitPrice = Number(payload.quoteUnitPrice);
@@ -227,6 +248,9 @@ async function assertRequiredMaterials({ action, opportunityId, payload, reposit
   if (action === ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
     assertCommercialQuotePayload(payload);
   }
+  if (action === ACTIONS.SUBMIT_TECHNICAL_SOLUTION) {
+    assertTechnicalSolutionPayload(payload);
+  }
 }
 
 async function payloadWithConfiguredApprovalAssignee({ action, payload, repositories }) {
@@ -248,6 +272,18 @@ async function payloadWithConfiguredApprovalAssignee({ action, payload, reposito
 }
 
 async function persistSubmissionData({ action, actor, opportunityId, payload, repositories }) {
+  if (action === ACTIONS.SUBMIT_TECHNICAL_SOLUTION) {
+    if (typeof repositories.technicalSolutionRepository?.createVersion !== 'function') {
+      throw new WorkflowValidationError('Technical solution repository is not configured');
+    }
+    await repositories.technicalSolutionRepository.createVersion(technicalSolutionInput({
+      opportunityId,
+      actor,
+      payload
+    }));
+    return;
+  }
+
   if (action === ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
     if (typeof repositories.commercialQuoteRepository?.createQuote !== 'function') {
       throw new WorkflowValidationError('Commercial quote repository is not configured');
@@ -258,6 +294,22 @@ async function persistSubmissionData({ action, actor, opportunityId, payload, re
       payload
     }));
   }
+}
+
+async function persistTechnicalSolutionReviewData({ action, actor, opportunityId, payload, repositories }) {
+  const status = technicalSolutionReviewStatuses.get(action);
+  if (!status) {
+    return;
+  }
+  if (typeof repositories.technicalSolutionRepository?.reviewLatestPending !== 'function') {
+    throw new WorkflowValidationError('Technical solution repository is not configured');
+  }
+  await repositories.technicalSolutionRepository.reviewLatestPending({
+    opportunityId: Number(opportunityId),
+    status,
+    reviewedBy: actor.id,
+    reviewComment: commentFromPayload(payload)
+  });
 }
 
 async function loadContractApprovalContext(action, opportunityId, repositories) {
@@ -358,6 +410,7 @@ export async function applyWorkflowAction({
   const updated = await repositories.opportunityRepository.updateWorkflowState(opportunityId, changes);
   const effectiveAfter = updated || { ...before, ...changes };
   await persistSubmissionData({ action, actor, opportunityId, payload: effectivePayload, repositories });
+  await persistTechnicalSolutionReviewData({ action, actor, opportunityId, payload: effectivePayload, repositories });
   await persistContractApprovalData({ action, actor, opportunityId, payload: effectivePayload, repositories, contractApproval });
   const effects = buildWorkflowEffects({ actor, action, before, after: effectiveAfter, payload: effectivePayload });
 

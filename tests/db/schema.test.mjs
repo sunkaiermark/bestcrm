@@ -7,6 +7,7 @@ const opportunityNumberMigrationPath = new URL('../../src/db/migrations/003_oppo
 const opportunityNumberMaxMigrationPath = new URL('../../src/db/migrations/004_opportunity_number_maxvalue.sql', import.meta.url);
 const rolesMetadataMigrationPath = new URL('../../src/db/migrations/005_roles_metadata.sql', import.meta.url);
 const requirementUpdatesMigrationPath = new URL('../../src/db/migrations/006_requirement_updates.sql', import.meta.url);
+const technicalSolutionVersionsMigrationPath = new URL('../../src/db/migrations/007_technical_solution_versions.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -65,4 +66,16 @@ test('requirement updates migration creates supplemental requirement records', a
   assert.match(sql, /requirement_text text NOT NULL/);
   assert.match(sql, /reason text NOT NULL/);
   assert.match(sql, /created_by bigint NOT NULL REFERENCES users\(id\)/);
+});
+
+test('technical solution versions migration adds version and review fields', async () => {
+  const sql = await readFile(technicalSolutionVersionsMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE technical_solutions/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS version_no integer/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS reviewed_by bigint REFERENCES users\(id\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS reviewed_at timestamptz/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS review_comment text/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS technical_solutions_opportunity_version_idx/);
 });

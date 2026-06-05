@@ -184,6 +184,17 @@ async function createLoggedInAgent(extraOptions = {}) {
         return { id: 41, createdAt: '2026-06-06T08:00:00.000Z', ...input };
       }
     },
+    technicalSolutionRepository: {
+      async listByOpportunity() {
+        return [];
+      },
+      async createVersion() {
+        throw new Error('not used');
+      },
+      async reviewLatestPending() {
+        throw new Error('not used');
+      }
+    },
     ...extraOptions
   });
   const agent = request.agent(app);
@@ -229,7 +240,7 @@ function opportunityDetail(overrides = {}) {
   };
 }
 
-async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachments = [], contractApprovals = [], approvalSettings = {} }) {
+async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachments = [], technicalSolutions = [], contractApprovals = [], approvalSettings = {} }) {
   const actor = {
     passwordHash: await hashPassword('ChangeMe123!'),
     isActive: true,
@@ -339,6 +350,19 @@ async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachme
       async createQuote(input) {
         calls.push(['createQuote', input]);
         return { id: 200, ...input };
+      }
+    },
+    technicalSolutionRepository: {
+      async listByOpportunity() {
+        return technicalSolutions;
+      },
+      async createVersion(input) {
+        calls.push(['createTechnicalSolutionVersion', input]);
+        return { id: 201, versionNo: 1, status: 'pending', ...input };
+      },
+      async reviewLatestPending(input) {
+        calls.push(['reviewTechnicalSolutionVersion', input]);
+        return { id: 201, ...input };
       }
     },
     contractApprovalRepository: {
@@ -499,6 +523,49 @@ test('opportunity detail groups business attachments into five business panels',
   assert.match(detail.text, /Commercial Contract[\s\S]*contract-draft\.docx/);
 });
 
+test('opportunity detail shows technical solution version history', async () => {
+  const { agent } = await createLoggedInAgent({
+    technicalSolutionRepository: {
+      async listByOpportunity() {
+        return [{
+          id: 91,
+          opportunityId: 30,
+          versionNo: 2,
+          summary: 'Updated cabinet control solution',
+          parameters: 'IP65, stainless cabinet',
+          implementationPlan: 'Revise drawings and wiring plan',
+          status: 'approved',
+          submittedBy: 3,
+          submitterDisplayName: 'Quote Engineer',
+          submittedAt: '2026-06-06T08:00:00.000Z',
+          reviewedBy: 4,
+          reviewerDisplayName: 'Technical Manager',
+          reviewedAt: '2026-06-06T09:00:00.000Z',
+          reviewComment: 'approved'
+        }];
+      },
+      async createVersion() {
+        throw new Error('not used');
+      },
+      async reviewLatestPending() {
+        throw new Error('not used');
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Technical Solution[\s\S]*Version History/);
+  assert.match(detail.text, /V2/);
+  assert.match(detail.text, /Updated cabinet control solution/);
+  assert.match(detail.text, /IP65, stainless cabinet/);
+  assert.match(detail.text, /Revise drawings and wiring plan/);
+  assert.match(detail.text, /approved/);
+  assert.match(detail.text, /Quote Engineer/);
+  assert.match(detail.text, /Technical Manager/);
+});
+
 test('opportunity detail shows upload forms in each business material panel', async () => {
   const { agent } = await createLoggedInAgent();
 
@@ -512,6 +579,31 @@ test('opportunity detail shows upload forms in each business material panel', as
   assert.match(detail.text, /Technical Solution[\s\S]*name="category" value="technical_solution"/);
   assert.match(detail.text, /Commercial Quote[\s\S]*name="category" value="commercial_quote"/);
   assert.match(detail.text, /Commercial Contract[\s\S]*name="category" value="contract"/);
+});
+
+test('technical solution workflow form captures version details', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'quote01',
+      displayName: 'Quote Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7,
+      quotationEngineerId: 3
+    },
+    attachments: [{ id: 55, category: 'technical_solution' }]
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Submit Technical Solution/);
+  assert.match(detail.text, /name="solutionSummary"/);
+  assert.match(detail.text, /name="solutionParameters"/);
+  assert.match(detail.text, /name="implementationPlan"/);
 });
 
 test('approved opportunity shows supplemental requirement form and history', async () => {
@@ -1149,6 +1241,61 @@ test('workflow route blocks technical submission without required attachment', a
   assert.equal(response.status, 400);
   assert.match(response.text, /Technical Solution attachment is required/);
   assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+});
+
+test('workflow route submits technical solution as a version for approval', async () => {
+  const { agent, calls, getOpportunity } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'quote01',
+      displayName: 'Quote Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7,
+      quotationEngineerId: 3
+    },
+    attachments: [{ id: 55, category: 'technical_solution' }]
+  });
+
+  const response = await agent
+    .post('/opportunities/30/workflow')
+    .type('form')
+    .send({
+      action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+      solutionSummary: 'PLC cabinet technical solution',
+      solutionParameters: 'IP65 cabinet',
+      implementationPlan: 'Prepare drawings',
+      comment: 'solution ready'
+    });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/30');
+  assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_PENDING);
+  assert.deepEqual(calls, [
+    ['findOpportunity', 30],
+    ['findActiveApprovalSetting', 'technical_solution'],
+    ['updateOpportunity', 30, { status: STATUSES.TECHNICAL_SOLUTION_PENDING, technicalManagerId: 4 }],
+    ['createTechnicalSolutionVersion', {
+      opportunityId: 30,
+      summary: 'PLC cabinet technical solution',
+      parameters: 'IP65 cabinet',
+      implementationPlan: 'Prepare drawings',
+      submittedBy: 3
+    }],
+    ['createEvent', {
+      opportunityId: 30,
+      eventType: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+      fromStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      toStatus: STATUSES.TECHNICAL_SOLUTION_PENDING,
+      actorUserId: 3,
+      targetUserId: 4,
+      comment: 'solution ready'
+    }],
+    ['closeTodos', 30, 'completed'],
+    ['createTodo', { opportunityId: 30, assigneeUserId: 4, title: 'Approve technical solution' }]
+  ]);
 });
 
 test('legal reviewer can see contract approval records and approve from detail page', async () => {

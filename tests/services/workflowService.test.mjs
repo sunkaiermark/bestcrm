@@ -72,6 +72,16 @@ function createMaterialRepositories(before, attachments = []) {
       return { id: 200, ...input };
     }
   };
+  repositories.technicalSolutionRepository = {
+    async createVersion(input) {
+      repositories.calls.push(['createTechnicalSolutionVersion', input]);
+      return { id: 201, versionNo: 1, status: 'pending', ...input };
+    },
+    async reviewLatestPending(input) {
+      repositories.calls.push(['reviewTechnicalSolutionVersion', input]);
+      return { id: 201, ...input };
+    }
+  };
   repositories.contractApprovalRepository = {
     async createApproval(input) {
       repositories.calls.push(['createContractApproval', input]);
@@ -321,6 +331,133 @@ test('submit technical solution requires a technical solution attachment before 
     ['findOpportunity', 10],
     ['findActiveApprovalSetting', 'technical_solution'],
     ['listAttachments', 10]
+  ]);
+});
+
+test('submit technical solution stores a pending version before manager approval', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    quotationEngineerId: 3
+  }, [{ id: 55, category: 'technical_solution' }]);
+
+  const result = await applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+    payload: {
+      solutionSummary: 'PLC cabinet technical solution',
+      solutionParameters: 'IP65 cabinet, 380V input',
+      implementationPlan: 'Prepare drawings and installation sequence',
+      comment: 'solution ready'
+    },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.TECHNICAL_SOLUTION_PENDING);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'technical_solution'],
+    ['listAttachments', 10],
+    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_PENDING, technicalManagerId: 4 }],
+    ['createTechnicalSolutionVersion', {
+      opportunityId: 10,
+      summary: 'PLC cabinet technical solution',
+      parameters: 'IP65 cabinet, 380V input',
+      implementationPlan: 'Prepare drawings and installation sequence',
+      submittedBy: 3
+    }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+      fromStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      toStatus: STATUSES.TECHNICAL_SOLUTION_PENDING,
+      actorUserId: 3,
+      targetUserId: 4,
+      comment: 'solution ready'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 4, title: 'Approve technical solution' }]
+  ]);
+});
+
+test('technical manager approval marks latest pending technical solution version approved', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.TECHNICAL_SOLUTION_PENDING,
+    quotationEngineerId: 3,
+    technicalManagerId: 4
+  });
+
+  const result = await applyWorkflowAction({
+    actor: { id: 4, roles: [ROLES.TECHNICAL_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.APPROVE_TECHNICAL_SOLUTION,
+    payload: { comment: 'approved' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['updateOpportunity', 10, { status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS }],
+    ['reviewTechnicalSolutionVersion', {
+      opportunityId: 10,
+      status: 'approved',
+      reviewedBy: 4,
+      reviewComment: 'approved'
+    }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.APPROVE_TECHNICAL_SOLUTION,
+      fromStatus: STATUSES.TECHNICAL_SOLUTION_PENDING,
+      toStatus: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+      actorUserId: 4,
+      targetUserId: 3,
+      comment: 'approved'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 3, title: 'Prepare commercial quote' }]
+  ]);
+});
+
+test('technical manager rejection marks latest pending technical solution version rejected', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.TECHNICAL_SOLUTION_PENDING,
+    quotationEngineerId: 3,
+    technicalManagerId: 4
+  });
+
+  const result = await applyWorkflowAction({
+    actor: { id: 4, roles: [ROLES.TECHNICAL_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.REJECT_TECHNICAL_SOLUTION,
+    payload: { reason: 'revise calculation' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.TECHNICAL_SOLUTION_REJECTED);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_REJECTED }],
+    ['reviewTechnicalSolutionVersion', {
+      opportunityId: 10,
+      status: 'rejected',
+      reviewedBy: 4,
+      reviewComment: 'revise calculation'
+    }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.REJECT_TECHNICAL_SOLUTION,
+      fromStatus: STATUSES.TECHNICAL_SOLUTION_PENDING,
+      toStatus: STATUSES.TECHNICAL_SOLUTION_REJECTED,
+      actorUserId: 4,
+      targetUserId: 3,
+      comment: 'revise calculation'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 3, title: 'Revise technical solution' }]
   ]);
 });
 

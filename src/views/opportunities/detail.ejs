@@ -14,6 +14,7 @@
   const contractAttachments = orderedAttachments.filter((attachment) => attachment.category === 'contract');
   const canDeleteRequirementMaterials = ['draft', 'initiation_rejected'].includes(opportunity.status);
   const supplementalRequirementUpdates = typeof requirementUpdates === 'undefined' ? [] : requirementUpdates;
+  const technicalSolutionVersions = typeof technicalSolutions === 'undefined' ? [] : technicalSolutions;
   const canAddRequirementUpdate = typeof canCreateRequirementUpdate === 'undefined' ? false : canCreateRequirementUpdate;
 %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
@@ -186,6 +187,44 @@
                 </table>
               <% } else { %>
                 <p class="empty">No technical solution files.</p>
+              <% } %>
+
+              <h3>Version History</h3>
+              <% if (technicalSolutionVersions.length > 0) { %>
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>Version</th>
+                      <th>Status</th>
+                      <th>Summary</th>
+                      <th>Parameters</th>
+                      <th>Implementation Plan</th>
+                      <th>Submitted By</th>
+                      <th>Submitted At</th>
+                      <th>Reviewed By</th>
+                      <th>Reviewed At</th>
+                      <th>Review Comment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const solution of technicalSolutionVersions) { %>
+                      <tr>
+                        <td>V<%= solution.versionNo %></td>
+                        <td><%= solution.status %></td>
+                        <td><%= solution.summary %></td>
+                        <td><%= solution.parameters || '' %></td>
+                        <td><%= solution.implementationPlan || '' %></td>
+                        <td><%= solution.submitterDisplayName || '' %></td>
+                        <td><%= solution.submittedAt || '' %></td>
+                        <td><%= solution.reviewerDisplayName || '' %></td>
+                        <td><%= solution.reviewedAt || '' %></td>
+                        <td><%= solution.reviewComment || '' %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p class="empty">No technical solution versions.</p>
               <% } %>
             </div>
           </section>

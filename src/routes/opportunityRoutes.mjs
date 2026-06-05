@@ -141,6 +141,9 @@ function formForAction(action, usersByRole) {
         title: 'Submit Technical Solution',
         button: 'Submit to Technical Manager',
         fields: [
+          textareaField('solutionSummary', 'Solution Summary'),
+          textareaField('solutionParameters', 'Technical Parameters', false),
+          textareaField('implementationPlan', 'Implementation Plan', false),
           textareaField('comment', 'Comment', false)
         ]
       };
@@ -425,6 +428,7 @@ export function opportunityRoutes({
   contactRepository,
   attachmentRepository,
   commercialQuoteRepository,
+  technicalSolutionRepository,
   requirementUpdateRepository,
   contractApprovalRepository,
   approvalSettingRepository,
@@ -490,7 +494,7 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      const [usersByRole, activity, attachments, requirementUpdates] = await Promise.all([
+      const [usersByRole, activity, attachments, requirementUpdates, technicalSolutions] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
           opportunityId: opportunity.id,
@@ -503,6 +507,9 @@ export function opportunityRoutes({
           : [],
         typeof requirementUpdateRepository?.listByOpportunity === 'function'
           ? requirementUpdateRepository.listByOpportunity(opportunity.id)
+          : [],
+        typeof technicalSolutionRepository?.listByOpportunity === 'function'
+          ? technicalSolutionRepository.listByOpportunity(opportunity.id)
           : []
       ]);
       const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals);
@@ -514,6 +521,7 @@ export function opportunityRoutes({
         attachments,
         contractApprovals: activity.contractApprovals,
         requirementUpdates,
+        technicalSolutions,
         canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity)
       });
     } catch (error) {
@@ -667,6 +675,7 @@ export function opportunityRoutes({
           todoRepository,
           attachmentRepository,
           commercialQuoteRepository,
+          technicalSolutionRepository,
           contractApprovalRepository,
           approvalSettingRepository
         }
