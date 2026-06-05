@@ -1,7 +1,7 @@
 import express from 'express';
 import session from 'express-session';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { createPool } from './db/pool.mjs';
 import { createSessionStore } from './db/sessionStore.mjs';
@@ -173,6 +173,9 @@ export function createApp(options = {}) {
     }
   }));
   app.use(attachCurrentUser(userRepository));
+  app.get('/', (req, res) => {
+    res.redirect('/opportunities');
+  });
   app.use(authRoutes(userRepository));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
@@ -197,7 +200,11 @@ export function createApp(options = {}) {
   return app;
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+function isMainModule(metaUrl, argvPath = process.argv[1]) {
+  return Boolean(argvPath && metaUrl === pathToFileURL(path.resolve(argvPath)).href);
+}
+
+if (isMainModule(import.meta.url)) {
   const config = loadConfig();
   const app = createApp(config);
   app.listen(config.port, () => {
