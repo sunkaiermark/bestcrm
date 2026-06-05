@@ -33,6 +33,7 @@ The first version includes these modules:
 - Customer detail
 - Contact list
 - Contact detail
+- Attachment upload and download
 - Workflow archive
 - User and role management
 - Approval-person configuration
@@ -55,7 +56,7 @@ Use a single deployable web application:
 - Database: PostgreSQL for cloud deployment
 - Authentication: internal username/password login with encrypted password hashes
 - Authorization: role-based access control
-- File handling: server-side upload directory with database metadata
+- File handling: server-side upload directory with database metadata and authenticated download routes
 - Frontend: simple server-rendered or lightweight browser JavaScript pages
 - Deployment: one cloud server, domain name, HTTPS reverse proxy, database backup, file backup
 
@@ -86,6 +87,7 @@ Salesperson can:
 - Create opportunity drafts
 - Create and maintain customers they own
 - Create and maintain contacts for customers they own
+- Upload and download attachments for opportunities they created
 - Submit opportunity initiation
 - Edit rejected initiation requests
 - View opportunities they created
@@ -96,11 +98,13 @@ Department Manager can:
 
 - Approve or reject opportunity initiation
 - Assign quotation engineer after approval
+- Download initiation attachments for opportunities waiting on their approval
 
 Quotation Engineer can:
 
 - View assigned quotation tasks
 - Upload technical solution attachments
+- Download related opportunity attachments
 - Submit technical solution for approval
 - Edit rejected technical solutions
 - Create commercial quotation details
@@ -109,14 +113,17 @@ Quotation Engineer can:
 Technical Manager can:
 
 - Approve or reject technical solutions
+- Download technical solution attachments for opportunities waiting on their approval
 
 Commercial Manager can:
 
 - Approve or reject commercial quotations
+- Download commercial quote attachments for opportunities waiting on their approval
 
 Legal Reviewer, Finance Reviewer, and General Manager can:
 
 - Approve or reject contract approval steps assigned to their role
+- Download contract attachments for approval steps assigned to their role
 
 Administrator can:
 
@@ -124,6 +131,7 @@ Administrator can:
 - Manage roles
 - Configure approval users
 - Manage all customers and contacts
+- Upload and download attachments for all opportunities
 - View all opportunities, customers, contacts, and workflow archives
 
 ## Main Workflow States
@@ -518,6 +526,34 @@ The opportunity detail page is the operational center. It shows:
 
 Only valid actions for the current user and current state are shown.
 
+## Attachment Upload and Download Design
+
+The first version supports upload and download for files related to an opportunity. Attachments are managed from the opportunity detail page so technical, quotation, and contract materials stay with the workflow record.
+
+Supported attachment categories:
+
+- Initiation material
+- Technical solution
+- Drawing
+- Technical parameter
+- Commercial quote
+- Contract
+- Other opportunity material
+
+Upload permissions follow the workflow role:
+
+- Salesperson can upload initiation materials and contract files for opportunities they created.
+- Quotation Engineer can upload technical solution, drawing, technical parameter, and commercial quote files for opportunities assigned to them.
+- Administrator can upload attachments to any opportunity when correcting or maintaining records.
+
+Download permissions follow opportunity visibility:
+
+- Users who can view an opportunity can download its attachments.
+- Users who cannot view an opportunity cannot download its attachments, even if they know the file URL.
+- Download routes must check login and server-side authorization before streaming the file.
+
+Every upload creates an attachment record and a workflow timeline event. Every download creates a workflow timeline event with the downloader and file name, so sensitive quotation and contract access is traceable.
+
 ## Customer Detail Design
 
 The customer detail page shows one company account as a business relationship record, not just a row from the customer list. It shows:
@@ -550,9 +586,11 @@ Salespeople can maintain contacts under customers they own. Administrators can m
 - Store passwords with a one-way password hash.
 - Require login for every business page.
 - Protect file download routes with login checks.
+- Protect file upload routes with login, role, workflow-state, and opportunity-visibility checks.
 - Check authorization on the server before every workflow action.
 - Never rely only on hidden frontend buttons for permissions.
 - Record every workflow action in `workflow_events`.
+- Record attachment upload and download actions in `workflow_events`.
 - Provide a first admin account creation path during deployment.
 
 ## Deployment Requirements
@@ -588,13 +626,17 @@ The first version is acceptable when:
 - A department manager can approve or reject initiation.
 - A department manager can assign a quotation engineer.
 - A quotation engineer can submit a technical solution and upload attachments.
+- A quotation engineer can upload and download related technical and quote files.
 - A technical manager can approve or reject the technical solution.
 - A quotation engineer can submit a commercial quote with line items.
 - A commercial manager can approve or reject the commercial quote.
 - A salesperson can mark the opportunity as lost and archive it.
 - A salesperson can mark the opportunity as won and submit contract approval.
+- A salesperson can upload and download related initiation and contract files.
 - Legal, finance, and general manager reviewers can approve or reject contract steps.
 - A fully approved contract closes and archives the opportunity.
+- Authorized users can download opportunity attachments from the opportunity detail page.
+- Unauthorized users cannot upload or download opportunity attachments.
 - Customer and contact lists can be viewed and maintained.
 - Customer detail can be viewed, maintained, and used to start a related opportunity.
 - Contact detail can be viewed, maintained, and used to start a related opportunity.
