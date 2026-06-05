@@ -10,6 +10,7 @@
       <p><a href="/contacts">Contacts</a></p>
       <h1><%= contact.name %></h1>
       <p><a href="/contacts/<%= contact.id %>/edit">Edit contact</a></p>
+      <p><a href="/opportunities/new?customerId=<%= contact.customerId %>&contactId=<%= contact.id %>">New opportunity</a></p>
       <dl>
         <dt>Customer</dt>
         <dd><a href="/customers/<%= contact.customerId %>"><%= contact.customerName %></a></dd>

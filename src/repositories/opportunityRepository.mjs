@@ -14,7 +14,9 @@ function mapOpportunityRow(row) {
     opportunityNo: row.opportunity_no,
     title: row.title,
     customerId: Number(row.customer_id),
+    customerName: row.customer_name || '',
     primaryContactId: numberOrNull(row.primary_contact_id),
+    primaryContactName: row.primary_contact_name || '',
     requirement: row.requirement,
     estimatedAmount: numberOrNull(row.estimated_amount),
     projectType: row.project_type,
@@ -33,6 +35,35 @@ function mapOpportunityRow(row) {
   };
 }
 
+const opportunitySelect = `
+  SELECT
+    o.id,
+    o.opportunity_no,
+    o.title,
+    o.customer_id,
+    c.name AS customer_name,
+    o.primary_contact_id,
+    pc.name AS primary_contact_name,
+    o.requirement,
+    o.estimated_amount,
+    o.project_type,
+    o.delivery_cycle,
+    o.expected_bid_date,
+    o.status,
+    o.salesperson_id,
+    o.sales_manager_id,
+    o.quotation_engineer_id,
+    o.technical_manager_id,
+    o.commercial_manager_id,
+    o.final_deal_amount,
+    o.lost_reason,
+    o.won_description,
+    o.archived_at
+  FROM opportunities o
+  JOIN customers c ON c.id = o.customer_id
+  LEFT JOIN contacts pc ON pc.id = o.primary_contact_id
+`;
+
 const workflowFieldColumns = new Map([
   ['status', 'status'],
   ['salesManagerId', 'sales_manager_id'],
@@ -47,6 +78,71 @@ const workflowFieldColumns = new Map([
 
 export function createOpportunityRepository(queryTarget) {
   return {
+    async listOpportunities(filter = {}) {
+      const where = [];
+      const params = [];
+      if (filter.salespersonId) {
+        params.push(filter.salespersonId);
+        where.push(`o.salesperson_id = $${params.length}`);
+      }
+      if (filter.status) {
+        params.push(filter.status);
+        where.push(`o.status = $${params.length}`);
+      }
+      if (filter.customerId) {
+        params.push(filter.customerId);
+        where.push(`o.customer_id = $${params.length}`);
+      }
+      const result = await queryTarget.query(`
+        ${opportunitySelect}
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY o.created_at DESC, o.id DESC
+      `, params);
+      return result.rows.map(mapOpportunityRow);
+    },
+
+    async getOpportunityDetail(id) {
+      const result = await queryTarget.query(`
+        ${opportunitySelect}
+        WHERE o.id = $1
+        LIMIT 1
+      `, [id]);
+      return mapOpportunityRow(result.rows[0]);
+    },
+
+    async createOpportunity(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO opportunities (
+          opportunity_no,
+          title,
+          customer_id,
+          primary_contact_id,
+          requirement,
+          estimated_amount,
+          project_type,
+          delivery_cycle,
+          expected_bid_date,
+          status,
+          salesperson_id
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        RETURNING *
+      `, [
+        input.opportunityNo,
+        input.title,
+        input.customerId,
+        input.primaryContactId,
+        input.requirement,
+        input.estimatedAmount,
+        input.projectType,
+        input.deliveryCycle,
+        input.expectedBidDate,
+        input.status,
+        input.salespersonId
+      ]);
+      return mapOpportunityRow(result.rows[0]);
+    },
+
     async findById(id) {
       const result = await queryTarget.query(`
         SELECT

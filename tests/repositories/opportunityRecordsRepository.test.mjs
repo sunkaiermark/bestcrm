@@ -1,0 +1,122 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createOpportunityRepository } from '../../src/repositories/opportunityRepository.mjs';
+import { STATUSES } from '../../src/domain/statuses.mjs';
+
+function createFakeQueryTarget(rows = []) {
+  return {
+    queries: [],
+    async query(sql, params) {
+      this.queries.push({ sql, params });
+      return { rows, rowCount: rows.length };
+    }
+  };
+}
+
+const opportunityRow = {
+  id: '30',
+  opportunity_no: 'OPP-20260605-abcdef12',
+  title: 'Factory upgrade',
+  customer_id: '10',
+  customer_name: 'Acme Co',
+  primary_contact_id: '20',
+  primary_contact_name: 'Alice',
+  requirement: 'Upgrade production line',
+  estimated_amount: '120000.50',
+  project_type: 'automation',
+  delivery_cycle: '45 days',
+  expected_bid_date: '2026-07-10',
+  status: STATUSES.DRAFT,
+  salesperson_id: '7',
+  sales_manager_id: null,
+  quotation_engineer_id: null,
+  technical_manager_id: null,
+  commercial_manager_id: null,
+  final_deal_amount: null,
+  lost_reason: null,
+  won_description: null,
+  archived_at: null
+};
+
+test('opportunity repository lists opportunities with customer and contact names', async () => {
+  const queryTarget = createFakeQueryTarget([opportunityRow]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  const opportunities = await repository.listOpportunities({ salespersonId: 7 });
+
+  assert.deepEqual(opportunities, [{
+    id: 30,
+    opportunityNo: 'OPP-20260605-abcdef12',
+    title: 'Factory upgrade',
+    customerId: 10,
+    customerName: 'Acme Co',
+    primaryContactId: 20,
+    primaryContactName: 'Alice',
+    requirement: 'Upgrade production line',
+    estimatedAmount: 120000.50,
+    projectType: 'automation',
+    deliveryCycle: '45 days',
+    expectedBidDate: '2026-07-10',
+    status: STATUSES.DRAFT,
+    salespersonId: 7,
+    salesManagerId: null,
+    quotationEngineerId: null,
+    technicalManagerId: null,
+    commercialManagerId: null,
+    finalDealAmount: null,
+    lostReason: null,
+    wonDescription: null,
+    archivedAt: null
+  }]);
+  assert.match(queryTarget.queries[0].sql, /FROM opportunities o/);
+  assert.match(queryTarget.queries[0].sql, /JOIN customers c/);
+  assert.match(queryTarget.queries[0].sql, /LEFT JOIN contacts pc/);
+  assert.match(queryTarget.queries[0].sql, /WHERE o\.salesperson_id = \$1/);
+  assert.deepEqual(queryTarget.queries[0].params, [7]);
+});
+
+test('opportunity repository gets detail with customer and contact names', async () => {
+  const queryTarget = createFakeQueryTarget([opportunityRow]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  const opportunity = await repository.getOpportunityDetail(30);
+
+  assert.equal(opportunity.id, 30);
+  assert.equal(opportunity.customerName, 'Acme Co');
+  assert.equal(opportunity.primaryContactName, 'Alice');
+  assert.match(queryTarget.queries[0].sql, /WHERE o\.id = \$1/);
+});
+
+test('opportunity repository creates draft opportunity rows', async () => {
+  const queryTarget = createFakeQueryTarget([opportunityRow]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  await repository.createOpportunity({
+    opportunityNo: 'OPP-20260605-abcdef12',
+    title: 'Factory upgrade',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Upgrade production line',
+    estimatedAmount: 120000.50,
+    projectType: 'automation',
+    deliveryCycle: '45 days',
+    expectedBidDate: '2026-07-10',
+    status: STATUSES.DRAFT,
+    salespersonId: 7
+  });
+
+  assert.match(queryTarget.queries[0].sql, /INSERT INTO opportunities/);
+  assert.deepEqual(queryTarget.queries[0].params, [
+    'OPP-20260605-abcdef12',
+    'Factory upgrade',
+    10,
+    20,
+    'Upgrade production line',
+    120000.50,
+    'automation',
+    '45 days',
+    '2026-07-10',
+    STATUSES.DRAFT,
+    7
+  ]);
+});

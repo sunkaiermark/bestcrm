@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Opportunities - BESTCRM</title>
+  </head>
+  <body>
+    <main>
+      <h1>Opportunities</h1>
+      <p><a href="/opportunities/new">New opportunity</a></p>
+      <table>
+        <thead>
+          <tr>
+            <th>No.</th>
+            <th>Title</th>
+            <th>Customer</th>
+            <th>Contact</th>
+            <th>Status</th>
+            <th>Estimated Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (const opportunity of opportunities) { %>
+            <tr>
+              <td><%= opportunity.opportunityNo %></td>
+              <td><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a></td>
+              <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></td>
+              <td>
+                <% if (opportunity.primaryContactId) { %>
+                  <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
+                <% } %>
+              </td>
+              <td><%= opportunity.status %></td>
+              <td><%= opportunity.estimatedAmount ?? '' %></td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </main>
+  </body>
+</html>

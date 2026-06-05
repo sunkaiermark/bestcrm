@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Opportunity - BESTCRM</title>
+  </head>
+  <body>
+    <main>
+      <p><a href="/opportunities">Opportunities</a></p>
+      <h1>Opportunity Initiation</h1>
+      <form method="post" action="<%= action %>">
+        <label>
+          Customer
+          <select name="customerId" required>
+            <% for (const customer of customers) { %>
+              <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
+            <% } %>
+          </select>
+        </label>
+        <label>
+          Contact
+          <select name="primaryContactId">
+            <option value=""></option>
+            <% for (const contact of contacts) { %>
+              <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>" <%= String(opportunity.primaryContactId || '') === String(contact.id) ? 'selected' : '' %>><%= contact.name %> - <%= contact.customerName %></option>
+            <% } %>
+          </select>
+        </label>
+        <label>
+          Title
+          <input name="title" value="<%= opportunity.title || '' %>" required>
+        </label>
+        <label>
+          Requirement
+          <textarea name="requirement" required><%= opportunity.requirement || '' %></textarea>
+        </label>
+        <label>
+          Estimated Amount
+          <input name="estimatedAmount" value="<%= opportunity.estimatedAmount || '' %>">
+        </label>
+        <label>
+          Project Type
+          <input name="projectType" value="<%= opportunity.projectType || '' %>">
+        </label>
+        <label>
+          Delivery Cycle
+          <input name="deliveryCycle" value="<%= opportunity.deliveryCycle || '' %>">
+        </label>
+        <label>
+          Expected Bid Date
+          <input name="expectedBidDate" type="date" value="<%= opportunity.expectedBidDate || '' %>">
+        </label>
+        <button type="submit">Save draft</button>
+      </form>
+    </main>
+  </body>
+</html>

@@ -10,6 +10,7 @@
       <p><a href="/customers">Customers</a></p>
       <h1><%= customer.name %></h1>
       <p><a href="/customers/<%= customer.id %>/edit">Edit customer</a></p>
+      <p><a href="/opportunities/new?customerId=<%= customer.id %>">New opportunity</a></p>
       <dl>
         <dt>Industry</dt>
         <dd><%= customer.industry %></dd>
@@ -29,6 +30,7 @@
             <span><%= contact.title %></span>
             <span><%= contact.phone %></span>
             <span><%= contact.email %></span>
+            <a href="/opportunities/new?customerId=<%= customer.id %>&contactId=<%= contact.id %>">New opportunity</a>
           </li>
         <% } %>
       </ul>
