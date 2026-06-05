@@ -97,7 +97,7 @@ test('anonymous users are redirected from workbench', async () => {
   assert.equal(response.headers.location, '/login');
 });
 
-test('logged in users see compact workbench panels', async () => {
+test('logged in users see compact workbench list layout', async () => {
   const agent = await createWorkbenchAgent();
 
   const response = await agent.get('/workbench');
@@ -115,4 +115,8 @@ test('logged in users see compact workbench panels', async () => {
   assert.match(response.text, /submit_initiation/);
   assert.match(response.text, /draft/);
   assert.match(response.text, /left-nav/);
+  assert.match(response.text, /class="state-strip"/);
+  assert.match(response.text, /class="workbench-list"/);
+  assert.match(response.text, /class="list-section"/);
+  assert.doesNotMatch(response.text, /class="panel-grid"/);
 });

@@ -137,28 +137,29 @@
         padding: 9px 12px;
       }
 
-      .state-grid {
-        display: grid;
-        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+      .state-strip {
+        display: flex;
         gap: 10px;
         margin-bottom: 12px;
+        overflow-x: auto;
+        padding-bottom: 2px;
       }
 
-      .state-tile,
-      .panel {
+      .state-item,
+      .list-section {
         background: var(--panel);
         border: 1px solid var(--line);
         border-radius: 8px;
       }
 
-      .state-tile {
-        padding: 11px 12px;
+      .state-item {
+        flex: 0 0 190px;
+        padding: 10px 12px;
       }
 
       .state-count {
-        display: block;
-        margin-top: 4px;
-        font-size: 22px;
+        float: right;
+        font-size: 20px;
         font-weight: 700;
       }
 
@@ -168,21 +169,25 @@
         color: var(--muted);
       }
 
-      .panel-grid {
+      .workbench-list {
         display: grid;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        gap: 12px;
+        gap: 10px;
       }
 
-      .panel h2 {
+      .list-section h2 {
         margin: 0;
-        padding: 10px 12px;
+        padding: 9px 12px;
         border-bottom: 1px solid var(--line);
         font-size: 15px;
       }
 
-      .panel-body {
-        padding: 0 12px 12px;
+      .list-body {
+        padding: 0 12px 10px;
+      }
+
+      .list-table th,
+      .list-table td {
+        padding: 7px 8px;
       }
 
       .status {
@@ -195,24 +200,6 @@
         padding: 2px 8px;
       }
 
-      .message-list {
-        display: grid;
-        gap: 9px;
-        margin: 0;
-        padding: 12px;
-        list-style: none;
-      }
-
-      .message-item {
-        border-bottom: 1px solid var(--line);
-        padding-bottom: 9px;
-      }
-
-      .message-item:last-child {
-        border-bottom: 0;
-        padding-bottom: 0;
-      }
-
       @media (max-width: 860px) {
         .workbench-shell {
           grid-template-columns: 1fr;
@@ -220,10 +207,6 @@
 
         .left-nav {
           position: static;
-        }
-
-        .panel-grid {
-          grid-template-columns: 1fr;
         }
       }
     </style>
@@ -247,19 +230,19 @@
         <header class="topbar">
           <div>
             <h1>Workbench</h1>
-            <div class="user-line"><%= currentUser.displayName %> · <%= currentUser.roles.join(', ') %></div>
+            <div class="user-line"><%= currentUser.displayName %> - <%= currentUser.roles.join(', ') %></div>
           </div>
           <a class="quick-action" href="/opportunities/new">New opportunity</a>
         </header>
 
         <section aria-labelledby="state-counts">
           <h2 id="state-counts" class="muted">Counts by workflow state</h2>
-          <div class="state-grid">
+          <div class="state-strip">
             <% if (summary.stateCounts.length === 0) { %>
-              <div class="state-tile empty">No visible opportunities.</div>
+              <div class="state-item empty">No visible opportunities.</div>
             <% } %>
             <% for (const item of summary.stateCounts) { %>
-              <div class="state-tile">
+              <div class="state-item">
                 <span class="state-label"><%= item.status %></span>
                 <span class="state-count"><%= item.count %></span>
               </div>
@@ -267,14 +250,14 @@
           </div>
         </section>
 
-        <section class="panel-grid">
-          <article class="panel">
+        <section class="workbench-list">
+          <article class="list-section">
             <h2>My pending todos</h2>
-            <div class="panel-body">
+            <div class="list-body">
               <% if (summary.pendingTodos.length === 0) { %>
                 <p class="empty">No pending todos.</p>
               <% } else { %>
-                <table>
+                <table class="list-table">
                   <thead>
                     <tr>
                       <th>Todo</th>
@@ -286,7 +269,7 @@
                     <% for (const todo of summary.pendingTodos) { %>
                       <tr>
                         <td><%= todo.title %></td>
-                        <td><a href="/opportunities/<%= todo.opportunityId %>"><%= todo.opportunityNo %> · <%= todo.opportunityTitle %></a></td>
+                        <td><a href="/opportunities/<%= todo.opportunityId %>"><%= todo.opportunityNo %> - <%= todo.opportunityTitle %></a></td>
                         <td><%= todo.customerName %></td>
                       </tr>
                     <% } %>
@@ -296,35 +279,43 @@
             </div>
           </article>
 
-          <article class="panel">
+          <article class="list-section">
             <h2>Recent workflow messages</h2>
             <% if (summary.recentWorkflowMessages.length === 0) { %>
-              <div class="panel-body"><p class="empty">No workflow messages.</p></div>
+              <div class="list-body"><p class="empty">No workflow messages.</p></div>
             <% } else { %>
-              <ul class="message-list">
-                <% for (const message of summary.recentWorkflowMessages) { %>
-                  <li class="message-item">
-                    <div>
-                      <a href="/opportunities/<%= message.opportunityId %>"><strong><%= message.opportunityNo %></strong> <%= message.opportunityTitle %></a>
-                    </div>
-                    <div><span class="status"><%= message.eventType %></span> <%= message.fromStatus || '' %> -> <%= message.toStatus || '' %></div>
-                    <div class="muted"><%= message.actorDisplayName %><% if (message.targetDisplayName) { %> to <%= message.targetDisplayName %><% } %></div>
-                    <% if (message.comment) { %>
-                      <div><%= message.comment %></div>
+              <div class="list-body">
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>Opportunity</th>
+                      <th>Event</th>
+                      <th>Actor</th>
+                      <th>Comment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const message of summary.recentWorkflowMessages) { %>
+                      <tr>
+                        <td><a href="/opportunities/<%= message.opportunityId %>"><%= message.opportunityNo %> - <%= message.opportunityTitle %></a></td>
+                        <td><span class="status"><%= message.eventType %></span> <span class="muted"><%= message.fromStatus || '' %> -> <%= message.toStatus || '' %></span></td>
+                        <td><%= message.actorDisplayName %><% if (message.targetDisplayName) { %> to <%= message.targetDisplayName %><% } %></td>
+                        <td><%= message.comment || '' %></td>
+                      </tr>
                     <% } %>
-                  </li>
-                <% } %>
-              </ul>
+                  </tbody>
+                </table>
+              </div>
             <% } %>
           </article>
 
-          <article class="panel">
+          <article class="list-section">
             <h2>Opportunities I created</h2>
-            <div class="panel-body">
+            <div class="list-body">
               <% if (summary.createdOpportunities.length === 0) { %>
                 <p class="empty">No created opportunities.</p>
               <% } else { %>
-                <table>
+                <table class="list-table">
                   <thead>
                     <tr>
                       <th>No.</th>
@@ -348,13 +339,13 @@
             </div>
           </article>
 
-          <article class="panel">
+          <article class="list-section">
             <h2>Opportunities assigned to me</h2>
-            <div class="panel-body">
+            <div class="list-body">
               <% if (summary.assignedOpportunities.length === 0) { %>
                 <p class="empty">No assigned opportunities.</p>
               <% } else { %>
-                <table>
+                <table class="list-table">
                   <thead>
                     <tr>
                       <th>No.</th>
