@@ -38,7 +38,9 @@ const completedTodoActions = new Set([
   ACTIONS.REJECT_COMMERCIAL_QUOTE,
   ACTIONS.MARK_LOST,
   ACTIONS.MARK_WON,
-  ACTIONS.SUBMIT_CONTRACT_APPROVAL
+  ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+  ACTIONS.APPROVE_CONTRACT,
+  ACTIONS.REJECT_CONTRACT
 ]);
 
 const attachmentRequirements = new Map([
@@ -54,6 +56,11 @@ const attachmentRequirements = new Map([
     category: 'contract',
     message: 'Contract attachment is required'
   }]
+]);
+
+const contractReviewActions = new Set([
+  ACTIONS.APPROVE_CONTRACT,
+  ACTIONS.REJECT_CONTRACT
 ]);
 
 const quoteDetailFields = [
@@ -95,6 +102,9 @@ function targetUserForAction(action, before, after, payload) {
       return after.commercialManagerId;
     case ACTIONS.SUBMIT_CONTRACT_APPROVAL:
       return payload.legalReviewerId || null;
+    case ACTIONS.APPROVE_CONTRACT:
+    case ACTIONS.REJECT_CONTRACT:
+      return after.salespersonId;
     default:
       return null;
   }
@@ -126,6 +136,8 @@ function nextTodosForAction(action, after, payload) {
       return payload.legalReviewerId
         ? [{ opportunityId: after.id, assigneeUserId: payload.legalReviewerId, title: 'Review contract' }]
         : [];
+    case ACTIONS.REJECT_CONTRACT:
+      return [{ opportunityId: after.id, assigneeUserId: after.salespersonId, title: 'Revise contract' }];
     default:
       return [];
   }
@@ -199,17 +211,67 @@ async function assertRequiredMaterials({ action, opportunityId, payload, reposit
 }
 
 async function persistSubmissionData({ action, actor, opportunityId, payload, repositories }) {
-  if (action !== ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
+  if (action === ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
+    if (typeof repositories.commercialQuoteRepository?.createQuote !== 'function') {
+      throw new WorkflowValidationError('Commercial quote repository is not configured');
+    }
+    await repositories.commercialQuoteRepository.createQuote(commercialQuoteInput({
+      opportunityId,
+      actor,
+      payload
+    }));
+  }
+}
+
+async function loadContractApprovalContext(action, opportunityId, repositories) {
+  if (!contractReviewActions.has(action)) {
+    return null;
+  }
+  if (typeof repositories.contractApprovalRepository?.findActiveByOpportunity !== 'function') {
+    return null;
+  }
+  return repositories.contractApprovalRepository.findActiveByOpportunity(opportunityId);
+}
+
+function opportunityWithContractApproval(opportunity, contractApproval) {
+  if (!contractApproval) {
+    return opportunity;
+  }
+  return {
+    ...opportunity,
+    legalReviewerId: contractApproval.reviewerUserId
+  };
+}
+
+async function persistContractApprovalData({ action, actor, opportunityId, payload, repositories, contractApproval }) {
+  if (action === ACTIONS.SUBMIT_CONTRACT_APPROVAL) {
+    if (typeof repositories.contractApprovalRepository?.createApproval !== 'function') {
+      throw new WorkflowValidationError('Contract approval repository is not configured');
+    }
+    await repositories.contractApprovalRepository.createApproval({
+      opportunityId,
+      reviewerUserId: payload.legalReviewerId,
+      submittedBy: actor.id
+    });
     return;
   }
-  if (typeof repositories.commercialQuoteRepository?.createQuote !== 'function') {
-    throw new WorkflowValidationError('Commercial quote repository is not configured');
+
+  if (action === ACTIONS.APPROVE_CONTRACT) {
+    await repositories.contractApprovalRepository.approveActive({
+      approvalId: contractApproval.id,
+      stepId: contractApproval.stepId,
+      comment: commentFromPayload(payload)
+    });
+    return;
   }
-  await repositories.commercialQuoteRepository.createQuote(commercialQuoteInput({
-    opportunityId,
-    actor,
-    payload
-  }));
+
+  if (action === ACTIONS.REJECT_CONTRACT) {
+    await repositories.contractApprovalRepository.rejectActive({
+      approvalId: contractApproval.id,
+      stepId: contractApproval.stepId,
+      comment: commentFromPayload(payload)
+    });
+  }
 }
 
 export function buildWorkflowEffects({ actor, action, before, after, payload = {} }) {
@@ -245,17 +307,20 @@ export async function applyWorkflowAction({
   if (!before) {
     throw new Error('Opportunity not found');
   }
+  const contractApproval = await loadContractApprovalContext(action, opportunityId, repositories);
+  const transitionOpportunity = opportunityWithContractApproval(before, contractApproval);
 
   const after = transition({
     userId: actor.id,
     roles: actor.roles,
-    opportunity: before
+    opportunity: transitionOpportunity
   }, action, payload);
   await assertRequiredMaterials({ action, opportunityId, payload, repositories });
   const changes = changedWorkflowFields(before, after);
   const updated = await repositories.opportunityRepository.updateWorkflowState(opportunityId, changes);
   const effectiveAfter = updated || { ...before, ...changes };
   await persistSubmissionData({ action, actor, opportunityId, payload, repositories });
+  await persistContractApprovalData({ action, actor, opportunityId, payload, repositories, contractApproval });
   const effects = buildWorkflowEffects({ actor, action, before, after: effectiveAfter, payload });
 
   await repositories.workflowEventRepository.create(effects.event);

@@ -40,6 +40,14 @@ function createRecordingRepositories(before) {
 
 function createMaterialRepositories(before, attachments = []) {
   const repositories = createRecordingRepositories(before);
+  const activeContractApproval = {
+    id: 90,
+    opportunityId: before?.id,
+    status: 'pending',
+    stepId: 91,
+    reviewerUserId: 6,
+    stepAction: 'pending'
+  };
   repositories.attachmentRepository = {
     async listByOpportunity(opportunityId) {
       repositories.calls.push(['listAttachments', opportunityId]);
@@ -50,6 +58,24 @@ function createMaterialRepositories(before, attachments = []) {
     async createQuote(input) {
       repositories.calls.push(['createQuote', input]);
       return { id: 200, ...input };
+    }
+  };
+  repositories.contractApprovalRepository = {
+    async createApproval(input) {
+      repositories.calls.push(['createContractApproval', input]);
+      return { id: 90, status: 'pending', ...input };
+    },
+    async findActiveByOpportunity(opportunityId) {
+      repositories.calls.push(['findActiveContractApproval', opportunityId]);
+      return activeContractApproval;
+    },
+    async approveActive(input) {
+      repositories.calls.push(['approveContractApproval', input]);
+      return { ...activeContractApproval, status: 'approved', stepAction: 'approved' };
+    },
+    async rejectActive(input) {
+      repositories.calls.push(['rejectContractApproval', input]);
+      return { ...activeContractApproval, status: 'rejected', stepAction: 'rejected' };
     }
   };
   return repositories;
@@ -355,6 +381,111 @@ test('submit contract approval requires a contract attachment before side effect
   assert.deepEqual(repositories.calls, [
     ['findOpportunity', 10],
     ['listAttachments', 10]
+  ]);
+});
+
+test('submit contract approval creates approval record for legal reviewer', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.WON_CONTRACT_PENDING,
+    salespersonId: 1
+  }, [{ id: 56, category: 'contract' }]);
+
+  const result = await applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+    payload: { legalReviewerId: 6, comment: 'contract ready' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.CONTRACT_APPROVAL_IN_PROGRESS);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['listAttachments', 10],
+    ['updateOpportunity', 10, { status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS }],
+    ['createContractApproval', { opportunityId: 10, reviewerUserId: 6, submittedBy: 1 }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+      fromStatus: STATUSES.WON_CONTRACT_PENDING,
+      toStatus: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+      actorUserId: 1,
+      targetUserId: 6,
+      comment: 'contract ready'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 6, title: 'Review contract' }]
+  ]);
+});
+
+test('legal reviewer approves contract and archives opportunity', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+    salespersonId: 1
+  });
+
+  const result = await applyWorkflowAction({
+    actor: { id: 6, roles: [ROLES.LEGAL_REVIEWER] },
+    opportunityId: 10,
+    action: ACTIONS.APPROVE_CONTRACT,
+    payload: { comment: 'legal approved' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.CONTRACT_ARCHIVED);
+  assert.ok(result.archivedAt);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveContractApproval', 10],
+    ['updateOpportunity', 10, { status: STATUSES.CONTRACT_ARCHIVED, archivedAt: result.archivedAt }],
+    ['approveContractApproval', { approvalId: 90, stepId: 91, comment: 'legal approved' }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.APPROVE_CONTRACT,
+      fromStatus: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+      toStatus: STATUSES.CONTRACT_ARCHIVED,
+      actorUserId: 6,
+      targetUserId: 1,
+      comment: 'legal approved'
+    }],
+    ['closeTodos', 10, 'completed']
+  ]);
+});
+
+test('legal reviewer rejects contract and returns opportunity to salesperson', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+    salespersonId: 1
+  });
+
+  const result = await applyWorkflowAction({
+    actor: { id: 6, roles: [ROLES.LEGAL_REVIEWER] },
+    opportunityId: 10,
+    action: ACTIONS.REJECT_CONTRACT,
+    payload: { reason: 'missing liability clause' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.WON_CONTRACT_PENDING);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveContractApproval', 10],
+    ['updateOpportunity', 10, { status: STATUSES.WON_CONTRACT_PENDING }],
+    ['rejectContractApproval', { approvalId: 90, stepId: 91, comment: 'missing liability clause' }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.REJECT_CONTRACT,
+      fromStatus: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+      toStatus: STATUSES.WON_CONTRACT_PENDING,
+      actorUserId: 6,
+      targetUserId: 1,
+      comment: 'missing liability clause'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 1, title: 'Revise contract' }]
   ]);
 });
 

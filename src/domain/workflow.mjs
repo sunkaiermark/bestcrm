@@ -17,7 +17,9 @@ export const ACTIONS = Object.freeze({
   MARK_LOST: 'mark_lost',
   MARK_WON: 'mark_won',
   SUBMIT_CONTRACT_APPROVAL: 'submit_contract_approval',
-  WITHDRAW_CONTRACT_APPROVAL: 'withdraw_contract_approval'
+  WITHDRAW_CONTRACT_APPROVAL: 'withdraw_contract_approval',
+  APPROVE_CONTRACT: 'approve_contract',
+  REJECT_CONTRACT: 'reject_contract'
 });
 
 function actionNotAllowed() {
@@ -215,7 +217,8 @@ const RULES = [
     fromStatuses: [STATUSES.WON_CONTRACT_PENDING],
     role: ROLES.SALESPERSON,
     assigneeField: 'salespersonId',
-    apply(opportunity) {
+    apply(opportunity, payload) {
+      requirePayloadValue(payload, 'legalReviewerId');
       return { ...opportunity, status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS };
     }
   },
@@ -224,6 +227,28 @@ const RULES = [
     fromStatuses: [STATUSES.CONTRACT_APPROVAL_IN_PROGRESS],
     role: ROLES.SALESPERSON,
     assigneeField: 'salespersonId',
+    apply(opportunity) {
+      return { ...opportunity, status: STATUSES.WON_CONTRACT_PENDING };
+    }
+  },
+  {
+    action: ACTIONS.APPROVE_CONTRACT,
+    fromStatuses: [STATUSES.CONTRACT_APPROVAL_IN_PROGRESS],
+    role: ROLES.LEGAL_REVIEWER,
+    assigneeField: 'legalReviewerId',
+    apply(opportunity) {
+      return {
+        ...opportunity,
+        status: STATUSES.CONTRACT_ARCHIVED,
+        archivedAt: new Date().toISOString()
+      };
+    }
+  },
+  {
+    action: ACTIONS.REJECT_CONTRACT,
+    fromStatuses: [STATUSES.CONTRACT_APPROVAL_IN_PROGRESS],
+    role: ROLES.LEGAL_REVIEWER,
+    assigneeField: 'legalReviewerId',
     apply(opportunity) {
       return { ...opportunity, status: STATUSES.WON_CONTRACT_PENDING };
     }

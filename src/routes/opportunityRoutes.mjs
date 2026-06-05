@@ -217,6 +217,20 @@ function formForAction(action, usersByRole) {
         button: 'Withdraw',
         fields: [textareaField('reason', 'Reason')]
       };
+    case ACTIONS.APPROVE_CONTRACT:
+      return {
+        action,
+        title: 'Approve Contract',
+        button: 'Approve Contract',
+        fields: [textareaField('comment', 'Comment', false)]
+      };
+    case ACTIONS.REJECT_CONTRACT:
+      return {
+        action,
+        title: 'Reject Contract',
+        button: 'Reject Contract',
+        fields: [textareaField('reason', 'Reason')]
+      };
     default:
       return null;
   }
@@ -231,11 +245,27 @@ function missingMaterialsForAction(action, attachments) {
   return hasAttachment ? [] : [requirement.message];
 }
 
-function buildWorkflowForms(user, opportunity, usersByRole, attachments = []) {
+function activeContractApproval(contractApprovals) {
+  return contractApprovals.find((approval) => approval.status === 'pending' && approval.stepAction === 'pending') || null;
+}
+
+function opportunityWithActiveContractReviewer(opportunity, contractApprovals) {
+  const activeApproval = activeContractApproval(contractApprovals);
+  if (!activeApproval) {
+    return opportunity;
+  }
+  return {
+    ...opportunity,
+    legalReviewerId: activeApproval.reviewerUserId
+  };
+}
+
+function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = []) {
+  const workflowOpportunity = opportunityWithActiveContractReviewer(opportunity, contractApprovals);
   const allowedActions = getAllowedActions({
     userId: user.id,
     roles: user.roles,
-    opportunity
+    opportunity: workflowOpportunity
   });
   return allowedActions
     .map((action) => formForAction(action, usersByRole))
@@ -261,25 +291,39 @@ function parseWorkflowPayload(body) {
   return payload;
 }
 
-async function loadOpportunityActivity({ opportunityId, workflowEventRepository, todoRepository }) {
-  const [timelineEvents, todos] = await Promise.all([
+async function loadOpportunityActivity({ opportunityId, workflowEventRepository, todoRepository, contractApprovalRepository }) {
+  const [timelineEvents, todos, contractApprovals] = await Promise.all([
     typeof workflowEventRepository?.listByOpportunity === 'function'
       ? workflowEventRepository.listByOpportunity(opportunityId)
       : [],
     typeof todoRepository?.listByOpportunity === 'function'
       ? todoRepository.listByOpportunity(opportunityId)
+      : [],
+    typeof contractApprovalRepository?.listByOpportunity === 'function'
+      ? contractApprovalRepository.listByOpportunity(opportunityId)
       : []
   ]);
-  return { timelineEvents, todos };
+  return { timelineEvents, todos, contractApprovals };
 }
 
-async function loadOpportunityOrSend({ req, res, opportunityRepository }) {
+async function canViewOpportunityWithContractApproval(user, opportunity, contractApprovalRepository) {
+  if (canViewOpportunity(user, opportunity)) {
+    return true;
+  }
+  if (typeof contractApprovalRepository?.listByOpportunity !== 'function') {
+    return false;
+  }
+  const approvals = await contractApprovalRepository.listByOpportunity(opportunity.id);
+  return approvals.some((approval) => approval.reviewerUserId === user.id);
+}
+
+async function loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository }) {
   const opportunity = await opportunityRepository.getOpportunityDetail(req.params.id);
   if (!opportunity) {
     res.status(404).send('Opportunity not found');
     return null;
   }
-  if (!canViewOpportunity(req.currentUser, opportunity)) {
+  if (!await canViewOpportunityWithContractApproval(req.currentUser, opportunity, contractApprovalRepository)) {
     res.status(403).send('Forbidden');
     return null;
   }
@@ -347,6 +391,7 @@ export function opportunityRoutes({
   contactRepository,
   attachmentRepository,
   commercialQuoteRepository,
+  contractApprovalRepository,
   opportunityRepository,
   userRepository,
   workflowEventRepository,
@@ -405,7 +450,7 @@ export function opportunityRoutes({
 
   router.get('/opportunities/:id', async (req, res, next) => {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository });
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
       if (!opportunity) {
         return;
       }
@@ -414,19 +459,21 @@ export function opportunityRoutes({
         loadOpportunityActivity({
           opportunityId: opportunity.id,
           workflowEventRepository,
-          todoRepository
+          todoRepository,
+          contractApprovalRepository
         }),
         typeof attachmentRepository?.listByOpportunity === 'function'
           ? attachmentRepository.listByOpportunity(opportunity.id)
           : []
       ]);
-      const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments);
+      const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals);
       res.render('opportunities/detail', {
         opportunity,
         workflowForms,
         timelineEvents: activity.timelineEvents,
         todos: activity.todos,
-        attachments
+        attachments,
+        contractApprovals: activity.contractApprovals
       });
     } catch (error) {
       next(error);
@@ -435,7 +482,7 @@ export function opportunityRoutes({
 
   router.post('/opportunities/:id/attachments', async (req, res, next) => {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository });
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
       if (!opportunity) {
         return;
       }
@@ -467,7 +514,7 @@ export function opportunityRoutes({
 
   async function sendAttachment(req, res, next, disposition) {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository });
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
       if (!opportunity) {
         return;
       }
@@ -513,7 +560,8 @@ export function opportunityRoutes({
           workflowEventRepository,
           todoRepository,
           attachmentRepository,
-          commercialQuoteRepository
+          commercialQuoteRepository,
+          contractApprovalRepository
         }
       });
       res.redirect(`/opportunities/${req.params.id}`);

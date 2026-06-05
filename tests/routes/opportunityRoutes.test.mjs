@@ -186,7 +186,7 @@ function opportunityDetail(overrides = {}) {
   };
 }
 
-async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachments = [] }) {
+async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachments = [], contractApprovals = [] }) {
   const actor = {
     passwordHash: await hashPassword('ChangeMe123!'),
     isActive: true,
@@ -283,6 +283,27 @@ async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachme
       async createQuote(input) {
         calls.push(['createQuote', input]);
         return { id: 200, ...input };
+      }
+    },
+    contractApprovalRepository: {
+      async listByOpportunity() {
+        return contractApprovals;
+      },
+      async createApproval(input) {
+        calls.push(['createContractApproval', input]);
+        return { id: 90, status: 'pending', ...input };
+      },
+      async findActiveByOpportunity(opportunityId) {
+        calls.push(['findActiveContractApproval', Number(opportunityId)]);
+        return contractApprovals.find((approval) => approval.status === 'pending') || null;
+      },
+      async approveActive(input) {
+        calls.push(['approveContractApproval', input]);
+        return { id: input.approvalId, status: 'approved' };
+      },
+      async rejectActive(input) {
+        calls.push(['rejectContractApproval', input]);
+        return { id: input.approvalId, status: 'rejected' };
       }
     }
   });
@@ -711,4 +732,67 @@ test('workflow route blocks technical submission without required attachment', a
   assert.equal(response.status, 400);
   assert.match(response.text, /Technical Solution attachment is required/);
   assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+});
+
+test('legal reviewer can see contract approval records and approve from detail page', async () => {
+  const contractApprovals = [{
+    id: 90,
+    opportunityId: 30,
+    currentStep: 1,
+    status: 'pending',
+    submittedBy: 7,
+    submittedAt: '2026-06-05T12:00:00.000Z',
+    completedAt: null,
+    stepId: 91,
+    reviewerUserId: 6,
+    reviewerDisplayName: 'Legal One',
+    stepAction: 'pending',
+    stepComment: null,
+    actedAt: null
+  }];
+  const { agent, calls, getOpportunity } = await createWorkflowAgent({
+    user: {
+      id: 6,
+      username: 'legal01',
+      displayName: 'Legal One',
+      roles: [ROLES.LEGAL_REVIEWER]
+    },
+    opportunity: {
+      status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+      salespersonId: 7
+    },
+    contractApprovals
+  });
+
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Contract Approvals/);
+  assert.match(detail.text, /Legal One/);
+  assert.match(detail.text, /approve_contract/);
+  assert.match(detail.text, /reject_contract/);
+
+  const response = await agent
+    .post('/opportunities/30/workflow')
+    .type('form')
+    .send({ action: ACTIONS.APPROVE_CONTRACT, comment: 'legal approved' });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/30');
+  assert.equal(getOpportunity().status, STATUSES.CONTRACT_ARCHIVED);
+  assert.deepEqual(calls.filter((call) => call[0] !== 'listUsersByRole'), [
+    ['findOpportunity', 30],
+    ['findActiveContractApproval', 30],
+    ['updateOpportunity', 30, { status: STATUSES.CONTRACT_ARCHIVED, archivedAt: getOpportunity().archivedAt }],
+    ['approveContractApproval', { approvalId: 90, stepId: 91, comment: 'legal approved' }],
+    ['createEvent', {
+      opportunityId: 30,
+      eventType: ACTIONS.APPROVE_CONTRACT,
+      fromStatus: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+      toStatus: STATUSES.CONTRACT_ARCHIVED,
+      actorUserId: 6,
+      targetUserId: 7,
+      comment: 'legal approved'
+    }],
+    ['closeTodos', 30, 'completed']
+  ]);
 });

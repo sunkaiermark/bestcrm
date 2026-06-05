@@ -114,7 +114,7 @@ test('salesperson can submit and withdraw contract approval before reviewer acti
     userId: 1,
     roles: [ROLES.SALESPERSON],
     opportunity: { status: STATUSES.WON_CONTRACT_PENDING, salespersonId: 1 }
-  }, ACTIONS.SUBMIT_CONTRACT_APPROVAL, { comment: 'contract uploaded' });
+  }, ACTIONS.SUBMIT_CONTRACT_APPROVAL, { legalReviewerId: 6, comment: 'contract uploaded' });
   assert.equal(submitted.status, STATUSES.CONTRACT_APPROVAL_IN_PROGRESS);
 
   const withdrawn = transition({
@@ -123,6 +123,31 @@ test('salesperson can submit and withdraw contract approval before reviewer acti
     opportunity: submitted
   }, ACTIONS.WITHDRAW_CONTRACT_APPROVAL, { reason: 'replace contract' });
   assert.equal(withdrawn.status, STATUSES.WON_CONTRACT_PENDING);
+});
+
+test('legal reviewer approves or rejects active contract approval', () => {
+  const approved = transition({
+    userId: 6,
+    roles: [ROLES.LEGAL_REVIEWER],
+    opportunity: {
+      status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+      salespersonId: 1,
+      legalReviewerId: 6
+    }
+  }, ACTIONS.APPROVE_CONTRACT, { comment: 'legal approved' });
+  assert.equal(approved.status, STATUSES.CONTRACT_ARCHIVED);
+  assert.ok(approved.archivedAt);
+
+  const rejected = transition({
+    userId: 6,
+    roles: [ROLES.LEGAL_REVIEWER],
+    opportunity: {
+      status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+      salespersonId: 1,
+      legalReviewerId: 6
+    }
+  }, ACTIONS.REJECT_CONTRACT, { reason: 'missing clause' });
+  assert.equal(rejected.status, STATUSES.WON_CONTRACT_PENDING);
 });
 
 test('workflow rejects invalid role status and assignee combinations', () => {

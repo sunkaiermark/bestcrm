@@ -8,6 +8,7 @@ import { createSessionStore } from './db/sessionStore.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
 import { createCommercialQuoteRepository } from './repositories/commercialQuoteRepository.mjs';
+import { createContractApprovalRepository } from './repositories/contractApprovalRepository.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
@@ -81,6 +82,24 @@ const emptyCommercialQuoteRepository = {
   }
 };
 
+const emptyContractApprovalRepository = {
+  async createApproval() {
+    throw new Error('Contract approval repository is not configured');
+  },
+  async listByOpportunity() {
+    return [];
+  },
+  async findActiveByOpportunity() {
+    return null;
+  },
+  async approveActive() {
+    throw new Error('Contract approval repository is not configured');
+  },
+  async rejectActive() {
+    throw new Error('Contract approval repository is not configured');
+  }
+};
+
 const emptyOpportunityRepository = {
   async listOpportunities() {
     return [];
@@ -129,6 +148,7 @@ export function createApp(options = {}) {
   const contactRepository = options.contactRepository || (pool ? createContactRepository(pool) : emptyContactRepository);
   const attachmentRepository = options.attachmentRepository || (pool ? createAttachmentRepository(pool) : emptyAttachmentRepository);
   const commercialQuoteRepository = options.commercialQuoteRepository || (pool ? createCommercialQuoteRepository(pool) : emptyCommercialQuoteRepository);
+  const contractApprovalRepository = options.contractApprovalRepository || (pool ? createContractApprovalRepository(pool) : emptyContractApprovalRepository);
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
@@ -161,6 +181,7 @@ export function createApp(options = {}) {
     contactRepository,
     attachmentRepository,
     commercialQuoteRepository,
+    contractApprovalRepository,
     opportunityRepository,
     userRepository,
     workflowEventRepository,
