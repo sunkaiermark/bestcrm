@@ -49,6 +49,21 @@ const requirementMaterialDeleteStatuses = new Set([
   STATUSES.INITIATION_REJECTED
 ]);
 
+const supplementalRequirementStatuses = new Set([
+  STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+  STATUSES.TECHNICAL_SOLUTION_PENDING,
+  STATUSES.TECHNICAL_SOLUTION_REJECTED,
+  STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+  STATUSES.COMMERCIAL_QUOTE_PENDING,
+  STATUSES.COMMERCIAL_QUOTE_REJECTED,
+  STATUSES.CUSTOMER_NEGOTIATION,
+  STATUSES.WON_CONTRACT_PENDING,
+  STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+  STATUSES.CONTRACT_REJECTED,
+  STATUSES.CONTRACT_ARCHIVED,
+  STATUSES.LOST_ARCHIVED
+]);
+
 const attachmentRequirementsByAction = new Map([
   [ACTIONS.SUBMIT_TECHNICAL_SOLUTION, {
     category: 'technical_solution',
@@ -396,11 +411,21 @@ function canDeleteRequirementMaterial(opportunity, attachment) {
     && requirementMaterialDeleteStatuses.has(opportunity.status);
 }
 
+function canCreateRequirementUpdate(user, opportunity) {
+  return supplementalRequirementStatuses.has(opportunity.status)
+    && (hasRole(user, ROLES.ADMINISTRATOR) || Number(opportunity.salespersonId) === Number(user.id));
+}
+
+function requiredText(value) {
+  return String(value || '').trim();
+}
+
 export function opportunityRoutes({
   customerRepository,
   contactRepository,
   attachmentRepository,
   commercialQuoteRepository,
+  requirementUpdateRepository,
   contractApprovalRepository,
   approvalSettingRepository,
   opportunityRepository,
@@ -465,7 +490,7 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      const [usersByRole, activity, attachments] = await Promise.all([
+      const [usersByRole, activity, attachments, requirementUpdates] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
           opportunityId: opportunity.id,
@@ -475,6 +500,9 @@ export function opportunityRoutes({
         }),
         typeof attachmentRepository?.listByOpportunity === 'function'
           ? attachmentRepository.listByOpportunity(opportunity.id)
+          : [],
+        typeof requirementUpdateRepository?.listByOpportunity === 'function'
+          ? requirementUpdateRepository.listByOpportunity(opportunity.id)
           : []
       ]);
       const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals);
@@ -484,8 +512,38 @@ export function opportunityRoutes({
         timelineEvents: activity.timelineEvents,
         todos: activity.todos,
         attachments,
-        contractApprovals: activity.contractApprovals
+        contractApprovals: activity.contractApprovals,
+        requirementUpdates,
+        canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity)
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/requirement-updates', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      if (!opportunity) {
+        return;
+      }
+      if (!canCreateRequirementUpdate(req.currentUser, opportunity)) {
+        res.status(403).send('Supplemental requirement can only be added after initiation approval');
+        return;
+      }
+      const requirementText = requiredText(req.body.requirementText);
+      const reason = requiredText(req.body.reason);
+      if (!requirementText || !reason) {
+        res.status(400).send('Requirement update and reason are required');
+        return;
+      }
+      await requirementUpdateRepository.create({
+        opportunityId: opportunity.id,
+        requirementText,
+        reason,
+        createdBy: req.currentUser.id
+      });
+      res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
       next(error);
     }

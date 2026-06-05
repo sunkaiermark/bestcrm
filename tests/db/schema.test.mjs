@@ -6,6 +6,7 @@ const schemaPath = new URL('../../src/db/migrations/001_initial_schema.sql', imp
 const opportunityNumberMigrationPath = new URL('../../src/db/migrations/003_opportunity_number_sequence.sql', import.meta.url);
 const opportunityNumberMaxMigrationPath = new URL('../../src/db/migrations/004_opportunity_number_maxvalue.sql', import.meta.url);
 const rolesMetadataMigrationPath = new URL('../../src/db/migrations/005_roles_metadata.sql', import.meta.url);
+const requirementUpdatesMigrationPath = new URL('../../src/db/migrations/006_requirement_updates.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -54,4 +55,14 @@ test('roles metadata migration adds role descriptions and active flag', async ()
   assert.match(sql, /ALTER TABLE roles/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS description text/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true/);
+});
+
+test('requirement updates migration creates supplemental requirement records', async () => {
+  const sql = await readFile(requirementUpdatesMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS requirement_updates/);
+  assert.match(sql, /opportunity_id bigint NOT NULL REFERENCES opportunities\(id\) ON DELETE CASCADE/);
+  assert.match(sql, /requirement_text text NOT NULL/);
+  assert.match(sql, /reason text NOT NULL/);
+  assert.match(sql, /created_by bigint NOT NULL REFERENCES users\(id\)/);
 });

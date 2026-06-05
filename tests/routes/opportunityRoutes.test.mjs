@@ -22,6 +22,7 @@ async function createLoggedInAgent(extraOptions = {}) {
   };
   const created = [];
   const uploadedAttachments = [];
+  const requirementUpdates = [];
   const app = createApp({
     sessionSecret: 'test-secret',
     userRepository: {
@@ -154,11 +155,20 @@ async function createLoggedInAgent(extraOptions = {}) {
         return null;
       }
     },
+    requirementUpdateRepository: {
+      async listByOpportunity() {
+        return [];
+      },
+      async create(input) {
+        requirementUpdates.push(input);
+        return { id: 41, createdAt: '2026-06-06T08:00:00.000Z', ...input };
+      }
+    },
     ...extraOptions
   });
   const agent = request.agent(app);
   await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
-  return { agent, created, uploadedAttachments };
+  return { agent, created, uploadedAttachments, requirementUpdates };
 }
 
 function assertAppSidebar(html, activeHref) {
@@ -480,6 +490,95 @@ test('opportunity detail shows upload forms in each business material panel', as
   assert.match(detail.text, /Technical Solution[\s\S]*name="category" value="technical_solution"/);
   assert.match(detail.text, /Commercial Quote[\s\S]*name="category" value="commercial_quote"/);
   assert.match(detail.text, /Commercial Contract[\s\S]*name="category" value="contract"/);
+});
+
+test('approved opportunity shows supplemental requirement form and history', async () => {
+  const { agent } = await createLoggedInAgent({
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return opportunityDetail({ status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS });
+      }
+    },
+    requirementUpdateRepository: {
+      async listByOpportunity() {
+        return [{
+          id: 41,
+          opportunityId: 30,
+          requirementText: 'Add corrosion proof cabinet requirement',
+          reason: 'Customer site has salt fog environment',
+          createdBy: 7,
+          creatorDisplayName: 'Sales One',
+          createdAt: '2026-06-06T08:00:00.000Z'
+        }];
+      },
+      async create() {
+        throw new Error('not used');
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Requirement Materials[\s\S]*Supplemental Requirements/);
+  assert.match(detail.text, /name="requirementText"/);
+  assert.match(detail.text, /name="reason"/);
+  assert.match(detail.text, /Add corrosion proof cabinet requirement/);
+  assert.match(detail.text, /Customer site has salt fog environment/);
+  assert.match(detail.text, /Sales One/);
+});
+
+test('salesperson creates supplemental requirement after initiation approval', async () => {
+  const { agent, requirementUpdates } = await createLoggedInAgent({
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return opportunityDetail({ status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS });
+      }
+    }
+  });
+
+  const response = await agent
+    .post('/opportunities/30/requirement-updates')
+    .type('form')
+    .send({
+      requirementText: 'Add corrosion proof cabinet requirement',
+      reason: 'Customer site has salt fog environment'
+    });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/30');
+  assert.deepEqual(requirementUpdates, [{
+    opportunityId: 30,
+    requirementText: 'Add corrosion proof cabinet requirement',
+    reason: 'Customer site has salt fog environment',
+    createdBy: 7
+  }]);
+});
+
+test('draft opportunity rejects supplemental requirement creation', async () => {
+  let createCalled = false;
+  const { agent } = await createLoggedInAgent({
+    requirementUpdateRepository: {
+      async listByOpportunity() {
+        return [];
+      },
+      async create() {
+        createCalled = true;
+        throw new Error('should not create update');
+      }
+    }
+  });
+
+  const response = await agent
+    .post('/opportunities/30/requirement-updates')
+    .type('form')
+    .send({
+      requirementText: 'Add corrosion proof cabinet requirement',
+      reason: 'Customer site has salt fog environment'
+    });
+
+  assert.equal(response.status, 403);
+  assert.equal(createCalled, false);
 });
 
 test('draft opportunity shows delete action for requirement material attachments', async () => {

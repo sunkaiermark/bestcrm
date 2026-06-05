@@ -13,6 +13,8 @@
   const commercialQuoteAttachments = orderedAttachments.filter((attachment) => attachment.category === 'commercial_quote');
   const contractAttachments = orderedAttachments.filter((attachment) => attachment.category === 'contract');
   const canDeleteRequirementMaterials = ['draft', 'initiation_rejected'].includes(opportunity.status);
+  const supplementalRequirementUpdates = typeof requirementUpdates === 'undefined' ? [] : requirementUpdates;
+  const canAddRequirementUpdate = typeof canCreateRequirementUpdate === 'undefined' ? false : canCreateRequirementUpdate;
 %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
         <header class="page-header">
@@ -111,6 +113,45 @@
                 </table>
               <% } else { %>
                 <p class="empty">No requirement materials.</p>
+              <% } %>
+
+              <h3>Supplemental Requirements</h3>
+              <% if (canAddRequirementUpdate) { %>
+                <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/requirement-updates">
+                  <label>
+                    Requirement Update
+                    <textarea name="requirementText" required></textarea>
+                  </label>
+                  <label>
+                    Reason
+                    <textarea name="reason" required></textarea>
+                  </label>
+                  <button type="submit">Add requirement update</button>
+                </form>
+              <% } %>
+              <% if (supplementalRequirementUpdates.length > 0) { %>
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>Requirement</th>
+                      <th>Reason</th>
+                      <th>Created By</th>
+                      <th>Created At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const update of supplementalRequirementUpdates) { %>
+                      <tr>
+                        <td><%= update.requirementText %></td>
+                        <td><%= update.reason %></td>
+                        <td><%= update.creatorDisplayName || '' %></td>
+                        <td><%= update.createdAt || '' %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p class="empty">No supplemental requirements.</p>
               <% } %>
             </div>
           </section>
