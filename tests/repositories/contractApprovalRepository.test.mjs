@@ -14,7 +14,7 @@ function createFakeQueryTarget(responses = []) {
 
 test('contract approval repository creates approval and legal review step', async () => {
   const queryTarget = createFakeQueryTarget([
-    { rows: [{ id: '90', submitted_at: '2026-06-05T12:00:00.000Z' }], rowCount: 1 },
+    { rows: [{ id: '90', version_no: '2', submitted_at: '2026-06-05T12:00:00.000Z' }], rowCount: 1 },
     { rows: [{ id: '91' }], rowCount: 1 }
   ]);
   const repository = createContractApprovalRepository(queryTarget);
@@ -27,9 +27,11 @@ test('contract approval repository creates approval and legal review step', asyn
 
   assert.equal(approval.id, 90);
   assert.equal(approval.opportunityId, 10);
+  assert.equal(approval.versionNo, 2);
   assert.equal(approval.status, 'pending');
   assert.equal(approval.reviewerUserId, 6);
   assert.match(queryTarget.queries[0].sql, /INSERT INTO contract_approvals/);
+  assert.match(queryTarget.queries[0].sql, /COALESCE\(MAX\(version_no\), 0\) \+ 1/);
   assert.deepEqual(queryTarget.queries[0].params, [10, 'pending', 1]);
   assert.match(queryTarget.queries[1].sql, /INSERT INTO contract_approval_steps/);
   assert.deepEqual(queryTarget.queries[1].params, [90, 1, 'legal_reviewer', 6]);
@@ -40,6 +42,7 @@ test('contract approval repository lists opportunity approvals with reviewer nam
     rows: [{
       id: '90',
       opportunity_id: '10',
+      version_no: '1',
       current_step: 1,
       status: 'pending',
       submitted_by: '1',
@@ -61,6 +64,7 @@ test('contract approval repository lists opportunity approvals with reviewer nam
   assert.deepEqual(approvals, [{
     id: 90,
     opportunityId: 10,
+    versionNo: 1,
     currentStep: 1,
     status: 'pending',
     submittedBy: 1,
@@ -74,6 +78,7 @@ test('contract approval repository lists opportunity approvals with reviewer nam
     actedAt: null
   }]);
   assert.match(queryTarget.queries[0].sql, /FROM contract_approvals ca/);
+  assert.match(queryTarget.queries[0].sql, /ca\.version_no/);
   assert.match(queryTarget.queries[0].sql, /JOIN contract_approval_steps cas/);
   assert.match(queryTarget.queries[0].sql, /JOIN users reviewer/);
   assert.deepEqual(queryTarget.queries[0].params, [10]);
@@ -83,6 +88,7 @@ test('contract approval repository finds and closes the active legal step', asyn
   const activeRow = {
     id: '90',
     opportunity_id: '10',
+    version_no: '1',
     current_step: 1,
     status: 'pending',
     submitted_by: '1',
@@ -106,6 +112,7 @@ test('contract approval repository finds and closes the active legal step', asyn
   await repository.approveActive({ approvalId: active.id, stepId: active.stepId, comment: 'approved' });
 
   assert.equal(active.reviewerUserId, 6);
+  assert.equal(active.versionNo, 1);
   assert.match(queryTarget.queries[0].sql, /ca\.status = 'pending'/);
   assert.match(queryTarget.queries[1].sql, /UPDATE contract_approval_steps/);
   assert.deepEqual(queryTarget.queries[1].params, ['approved', 'approved', 91]);

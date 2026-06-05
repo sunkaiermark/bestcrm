@@ -5,6 +5,7 @@ function mapContractApprovalRow(row) {
   return {
     id: Number(row.id),
     opportunityId: Number(row.opportunity_id),
+    versionNo: Number(row.version_no),
     currentStep: Number(row.current_step),
     status: row.status,
     submittedBy: Number(row.submitted_by),
@@ -23,6 +24,7 @@ const contractApprovalSelect = `
   SELECT
     ca.id,
     ca.opportunity_id,
+    ca.version_no,
     ca.current_step,
     ca.status,
     ca.submitted_by,
@@ -45,11 +47,18 @@ export function createContractApprovalRepository(queryTarget) {
       const approvalResult = await queryTarget.query(`
         INSERT INTO contract_approvals (
           opportunity_id,
+          version_no,
           status,
           submitted_by
         )
-        VALUES ($1, $2, $3)
-        RETURNING id, submitted_at
+        SELECT
+          $1,
+          COALESCE(MAX(version_no), 0) + 1,
+          $2,
+          $3
+        FROM contract_approvals
+        WHERE opportunity_id = $1
+        RETURNING id, version_no, submitted_at
       `, [
         input.opportunityId,
         'pending',
@@ -74,6 +83,7 @@ export function createContractApprovalRepository(queryTarget) {
       return {
         id: approvalId,
         opportunityId: input.opportunityId,
+        versionNo: Number(approvalResult.rows[0].version_no),
         currentStep: 1,
         status: 'pending',
         submittedBy: input.submittedBy,

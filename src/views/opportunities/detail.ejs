@@ -362,11 +362,12 @@
                 <p class="empty">No contract files.</p>
               <% } %>
 
-              <h3>Contract Approvals</h3>
+              <h3>Contract Approvals / Version History</h3>
               <% if (contractApprovals && contractApprovals.length > 0) { %>
                 <table class="list-table">
                   <thead>
                     <tr>
+                      <th>Version</th>
                       <th>Status</th>
                       <th>Reviewer</th>
                       <th>Action</th>
@@ -378,6 +379,7 @@
                   <tbody>
                     <% for (const approval of contractApprovals) { %>
                       <tr>
+                        <td><%= approval.versionNo ? `V${approval.versionNo}` : '' %></td>
                         <td><%= approval.status %></td>
                         <td><%= approval.reviewerDisplayName %></td>
                         <td><%= approval.stepAction %></td>

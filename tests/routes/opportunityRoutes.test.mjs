@@ -638,6 +638,46 @@ test('opportunity detail shows commercial quote version history', async () => {
   assert.match(detail.text, /Commercial Manager/);
 });
 
+test('opportunity detail shows contract version history', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    },
+    opportunity: {
+      status: STATUSES.CONTRACT_REJECTED,
+      salespersonId: 7
+    },
+    contractApprovals: [{
+      id: 90,
+      opportunityId: 30,
+      versionNo: 2,
+      currentStep: 1,
+      status: 'rejected',
+      submittedBy: 7,
+      submittedAt: '2026-06-06T12:00:00.000Z',
+      completedAt: '2026-06-06T13:00:00.000Z',
+      stepId: 91,
+      reviewerUserId: 6,
+      reviewerDisplayName: 'Legal One',
+      stepAction: 'rejected',
+      stepComment: 'missing clause',
+      actedAt: '2026-06-06T13:00:00.000Z'
+    }]
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Commercial Contract[\s\S]*Version History/);
+  assert.match(detail.text, /V2/);
+  assert.match(detail.text, /rejected/);
+  assert.match(detail.text, /Legal One/);
+  assert.match(detail.text, /missing clause/);
+});
+
 test('opportunity detail shows upload forms in each business material panel', async () => {
   const { agent } = await createLoggedInAgent();
 

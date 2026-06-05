@@ -9,6 +9,7 @@ const rolesMetadataMigrationPath = new URL('../../src/db/migrations/005_roles_me
 const requirementUpdatesMigrationPath = new URL('../../src/db/migrations/006_requirement_updates.sql', import.meta.url);
 const technicalSolutionVersionsMigrationPath = new URL('../../src/db/migrations/007_technical_solution_versions.sql', import.meta.url);
 const commercialQuoteVersionsMigrationPath = new URL('../../src/db/migrations/008_commercial_quote_versions.sql', import.meta.url);
+const contractVersionsMigrationPath = new URL('../../src/db/migrations/009_contract_versions.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -91,4 +92,13 @@ test('commercial quote versions migration adds version and review fields', async
   assert.match(sql, /ADD COLUMN IF NOT EXISTS reviewed_at timestamptz/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS review_comment text/);
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS commercial_quotes_opportunity_version_idx/);
+});
+
+test('contract versions migration adds version number fields', async () => {
+  const sql = await readFile(contractVersionsMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE contract_approvals/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS version_no integer/);
+  assert.match(sql, /ROW_NUMBER\(\) OVER/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS contract_approvals_opportunity_version_idx/);
 });
