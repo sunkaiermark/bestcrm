@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { createPool } from './db/pool.mjs';
+import { createSessionStore } from './db/sessionStore.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
 import { createUserRepository } from './repositories/userRepository.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
@@ -21,8 +22,10 @@ const emptyUserRepository = {
 
 export function createApp(options = {}) {
   const config = { ...loadConfig(), ...options };
-  const pool = options.pool || (config.databaseUrl ? createPool(config) : null);
+  const shouldCreatePool = !options.userRepository && config.databaseUrl;
+  const pool = options.pool || (shouldCreatePool ? createPool(config) : null);
   const userRepository = options.userRepository || (pool ? createUserRepository(pool) : emptyUserRepository);
+  const sessionStore = 'sessionStore' in options ? options.sessionStore : createSessionStore(pool);
   const app = express();
 
   app.disable('x-powered-by');
@@ -35,7 +38,7 @@ export function createApp(options = {}) {
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: false,
-    store: options.sessionStore,
+    store: sessionStore,
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
