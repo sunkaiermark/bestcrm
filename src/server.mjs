@@ -36,6 +36,15 @@ const emptyUserRepository = {
   async listUsersWithRoles() {
     return [];
   },
+  async createUser() {
+    throw new Error('User repository is not configured');
+  },
+  async updateUser() {
+    throw new Error('User repository is not configured');
+  },
+  async deactivateUser() {
+    throw new Error('User repository is not configured');
+  },
   async listUsersByRole() {
     return [];
   }

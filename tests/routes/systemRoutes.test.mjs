@@ -2,43 +2,63 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
 import { ROLES } from '../../src/domain/roles.mjs';
-import { hashPassword } from '../../src/services/authService.mjs';
+import { hashPassword, verifyPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function createSystemAgent() {
-  const user = {
+async function createSystemAgent(options = {}) {
+  const currentUser = {
     id: 7,
-    username: 'admin01',
+    username: options.username || 'admin01',
     passwordHash: await hashPassword('ChangeMe123!'),
-    displayName: 'Admin User',
+    displayName: options.displayName || 'Admin User',
     isActive: true,
-    roles: [ROLES.ADMINISTRATOR]
+    roles: options.roles || [ROLES.ADMINISTRATOR]
   };
+  const managedUser = {
+    id: 11,
+    username: 'sales_manager01',
+    displayName: 'Sales Manager',
+    email: 'sales.manager01@bestcrm.local',
+    phone: '',
+    isActive: true,
+    roles: [ROLES.SALES_MANAGER]
+  };
+  const calls = [];
   const app = createApp({
     sessionSecret: 'test-secret',
     userRepository: {
       async findByIdWithRoles(id) {
-        return Number(id) === user.id ? user : null;
+        if (Number(id) === currentUser.id) {
+          return currentUser;
+        }
+        if (Number(id) === managedUser.id) {
+          return managedUser;
+        }
+        return null;
       },
       async findByUsernameWithRoles(username) {
-        return username === user.username ? user : null;
+        return username === currentUser.username ? currentUser : null;
       },
       async listUsersWithRoles() {
-        return [{
-          id: 11,
-          username: 'sales_manager01',
-          displayName: 'Sales Manager',
-          email: 'sales.manager01@bestcrm.local',
-          phone: '',
-          isActive: true,
-          roles: [ROLES.SALES_MANAGER]
-        }];
+        return [managedUser];
+      },
+      async createUser(input) {
+        calls.push({ method: 'createUser', input });
+        return { id: 12 };
+      },
+      async updateUser(id, input) {
+        calls.push({ method: 'updateUser', id: Number(id), input });
+        return { id: Number(id) };
+      },
+      async deactivateUser(id) {
+        calls.push({ method: 'deactivateUser', id: Number(id) });
+        return { id: Number(id) };
       }
     }
   });
   const agent = request.agent(app);
-  await agent.post('/login').type('form').send({ username: 'admin01', password: 'ChangeMe123!' });
-  return agent;
+  await agent.post('/login').type('form').send({ username: currentUser.username, password: 'ChangeMe123!' });
+  return { agent, calls };
 }
 
 function assertSystemSidebar(html, activeHref) {
@@ -60,7 +80,7 @@ test('anonymous users are redirected from system pages', async () => {
 });
 
 test('logged in users can view system user role and approval setting details', async () => {
-  const agent = await createSystemAgent();
+  const { agent } = await createSystemAgent();
 
   const users = await agent.get('/system/users');
   assert.equal(users.status, 200);
@@ -85,4 +105,86 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(approvals.text, /Technical Solution/);
   assert.match(approvals.text, /Commercial Quote/);
   assert.match(approvals.text, /Contract Approval/);
+});
+
+test('administrator can add edit and deactivate system users', async () => {
+  const { agent, calls } = await createSystemAgent();
+
+  const newForm = await agent.get('/system/users/new');
+  assert.equal(newForm.status, 200);
+  assertSystemSidebar(newForm.text, '/system/users');
+  assert.match(newForm.text, /New User/);
+  assert.match(newForm.text, /name="username"/);
+  assert.match(newForm.text, /name="password"/);
+  assert.match(newForm.text, /value="salesperson"/);
+
+  const created = await agent.post('/system/users').type('form').send({
+    username: 'new_user',
+    displayName: 'New User',
+    email: 'new.user@bestcrm.local',
+    phone: '555',
+    password: 'Start12345!',
+    roles: ROLES.SALESPERSON,
+    isActive: 'on'
+  });
+  assert.equal(created.status, 302);
+  assert.equal(created.headers.location, '/system/users');
+  assert.equal(calls[0].method, 'createUser');
+  assert.equal(calls[0].input.username, 'new_user');
+  assert.equal(calls[0].input.displayName, 'New User');
+  assert.deepEqual(calls[0].input.roles, [ROLES.SALESPERSON]);
+  assert.equal(calls[0].input.isActive, true);
+  assert.notEqual(calls[0].input.passwordHash, 'Start12345!');
+  assert.equal(await verifyPassword('Start12345!', calls[0].input.passwordHash), true);
+
+  const editForm = await agent.get('/system/users/11/edit');
+  assert.equal(editForm.status, 200);
+  assertSystemSidebar(editForm.text, '/system/users');
+  assert.match(editForm.text, /Edit User/);
+  assert.match(editForm.text, /sales_manager01/);
+  assert.match(editForm.text, /name="displayName"/);
+
+  const updated = await agent.post('/system/users/11').type('form').send({
+    displayName: 'Updated Manager',
+    email: 'updated.manager@bestcrm.local',
+    phone: '777',
+    roles: ROLES.TECHNICAL_MANAGER
+  });
+  assert.equal(updated.status, 302);
+  assert.equal(updated.headers.location, '/system/users');
+  assert.equal(calls[1].method, 'updateUser');
+  assert.equal(calls[1].id, 11);
+  assert.deepEqual(calls[1].input, {
+    displayName: 'Updated Manager',
+    email: 'updated.manager@bestcrm.local',
+    phone: '777',
+    isActive: false,
+    roles: [ROLES.TECHNICAL_MANAGER]
+  });
+
+  const deleted = await agent.post('/system/users/11/delete').type('form').send();
+  assert.equal(deleted.status, 302);
+  assert.equal(deleted.headers.location, '/system/users');
+  assert.deepEqual(calls[2], { method: 'deactivateUser', id: 11 });
+});
+
+test('non administrators cannot manage system users', async () => {
+  const { agent, calls } = await createSystemAgent({
+    username: 'sales01',
+    displayName: 'Sales User',
+    roles: [ROLES.SALESPERSON]
+  });
+
+  for (const requestCall of [
+    () => agent.get('/system/users/new'),
+    () => agent.post('/system/users').type('form').send({ username: 'x' }),
+    () => agent.get('/system/users/11/edit'),
+    () => agent.post('/system/users/11').type('form').send({ displayName: 'x' }),
+    () => agent.post('/system/users/11/delete').type('form').send()
+  ]) {
+    const response = await requestCall();
+    assert.equal(response.status, 403);
+    assert.match(response.text, /Forbidden/);
+  }
+  assert.deepEqual(calls, []);
 });

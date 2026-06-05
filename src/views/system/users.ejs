@@ -4,6 +4,9 @@
             <h1>System Users</h1>
             <div class="muted">Internal login accounts and assigned roles.</div>
           </div>
+          <% if (canManageUsers) { %>
+            <a class="quick-action" href="/system/users/new">New user</a>
+          <% } %>
         </header>
 
         <section class="list-section">
@@ -17,6 +20,9 @@
                   <th>Email</th>
                   <th>Phone</th>
                   <th>Status</th>
+                  <% if (canManageUsers) { %>
+                    <th>Actions</th>
+                  <% } %>
                 </tr>
               </thead>
               <tbody>
@@ -28,6 +34,18 @@
                     <td><%= user.email || '-' %></td>
                     <td><%= user.phone || '-' %></td>
                     <td><span class="status"><%= user.isActive ? 'active' : 'inactive' %></span></td>
+                    <% if (canManageUsers) { %>
+                      <td>
+                        <div class="inline-actions">
+                          <a class="secondary-action" href="/system/users/<%= user.id %>/edit">Edit</a>
+                          <% if (user.isActive) { %>
+                            <form method="post" action="/system/users/<%= user.id %>/delete">
+                              <button class="danger-action" type="submit">Delete</button>
+                            </form>
+                          <% } %>
+                        </div>
+                      </td>
+                    <% } %>
                   </tr>
                 <% } %>
               </tbody>

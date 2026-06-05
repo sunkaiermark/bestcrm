@@ -92,6 +92,24 @@
         padding: 9px 12px;
       }
 
+      .secondary-action,
+      .danger-action {
+        border-radius: 6px;
+        display: inline-block;
+        font-weight: 700;
+        padding: 7px 9px;
+      }
+
+      .secondary-action {
+        background: #e8eef3;
+        color: var(--ink);
+      }
+
+      .danger-action {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
       button:disabled {
         cursor: not-allowed;
         opacity: 0.55;
@@ -306,6 +324,34 @@
         gap: 8px;
         margin: 0;
         padding-left: 18px;
+      }
+
+      .inline-actions {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+
+      .inline-actions form {
+        margin: 0;
+      }
+
+      .checkbox-list {
+        display: grid;
+        gap: 7px;
+        margin-bottom: 12px;
+      }
+
+      .checkbox-row {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+        margin: 0;
+      }
+
+      .checkbox-row input {
+        width: auto;
       }
 
       .status {

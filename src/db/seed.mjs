@@ -51,6 +51,12 @@ export const INTERNAL_TEST_ACCOUNTS = Object.freeze([
     displayName: 'Legal Reviewer',
     email: 'legal.reviewer01@bestcrm.local',
     role: ROLES.LEGAL_REVIEWER
+  },
+  {
+    username: 'admin01',
+    displayName: 'System Administrator',
+    email: 'admin01@bestcrm.local',
+    role: ROLES.ADMINISTRATOR
   }
 ]);
 

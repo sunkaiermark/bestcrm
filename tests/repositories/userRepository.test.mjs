@@ -12,6 +12,19 @@ function createFakePool(row) {
   };
 }
 
+function createFakePoolSequence(rowSets) {
+  return {
+    queries: [],
+    async query(sql, params) {
+      this.queries.push({ sql, params });
+      if (/^\s*(BEGIN|COMMIT|ROLLBACK)\s*$/i.test(sql)) {
+        return { rows: [] };
+      }
+      return { rows: rowSets.shift() || [] };
+    }
+  };
+}
+
 test('findByUsernameWithRoles returns camelCase user with roles', async () => {
   const pool = createFakePool({
     id: 1,
@@ -109,4 +122,77 @@ test('listUsersWithRoles returns all users for system user detail page', async (
   }]);
   assert.deepEqual(pool.queries[0].params, undefined);
   assert.match(pool.queries[0].sql, /ORDER BY u\.is_active DESC, u\.display_name ASC/);
+});
+
+test('createUser inserts user and assigns roles in one transaction', async () => {
+  const pool = createFakePoolSequence([[{ id: 12 }]]);
+  const repository = createUserRepository(pool);
+
+  const user = await repository.createUser({
+    username: 'new_user',
+    passwordHash: 'hashed-password',
+    displayName: 'New User',
+    email: 'new@example.com',
+    phone: '555',
+    isActive: true,
+    roles: ['salesperson']
+  });
+
+  assert.deepEqual(user, { id: 12 });
+  assert.match(pool.queries[0].sql, /BEGIN/);
+  assert.match(pool.queries[1].sql, /INSERT INTO users/);
+  assert.deepEqual(pool.queries[1].params, [
+    'new_user',
+    'hashed-password',
+    'New User',
+    'new@example.com',
+    '555',
+    true
+  ]);
+  assert.match(pool.queries[2].sql, /DELETE FROM user_roles/);
+  assert.deepEqual(pool.queries[2].params, [12]);
+  assert.match(pool.queries[3].sql, /INSERT INTO user_roles/);
+  assert.deepEqual(pool.queries[3].params, [12, ['salesperson']]);
+  assert.match(pool.queries[4].sql, /COMMIT/);
+});
+
+test('updateUser updates profile fields and replaces roles', async () => {
+  const pool = createFakePoolSequence([[{ id: 12 }]]);
+  const repository = createUserRepository(pool);
+
+  const user = await repository.updateUser(12, {
+    displayName: 'Updated User',
+    email: 'updated@example.com',
+    phone: '777',
+    isActive: false,
+    roles: ['technical_manager']
+  });
+
+  assert.deepEqual(user, { id: 12 });
+  assert.match(pool.queries[0].sql, /BEGIN/);
+  assert.match(pool.queries[1].sql, /UPDATE users/);
+  assert.deepEqual(pool.queries[1].params, [
+    12,
+    'Updated User',
+    'updated@example.com',
+    '777',
+    false
+  ]);
+  assert.match(pool.queries[2].sql, /DELETE FROM user_roles/);
+  assert.deepEqual(pool.queries[2].params, [12]);
+  assert.match(pool.queries[3].sql, /INSERT INTO user_roles/);
+  assert.deepEqual(pool.queries[3].params, [12, ['technical_manager']]);
+  assert.match(pool.queries[4].sql, /COMMIT/);
+});
+
+test('deactivateUser soft deletes by setting inactive', async () => {
+  const pool = createFakePoolSequence([[{ id: 12 }]]);
+  const repository = createUserRepository(pool);
+
+  const user = await repository.deactivateUser(12);
+
+  assert.deepEqual(user, { id: 12 });
+  assert.match(pool.queries[0].sql, /UPDATE users/);
+  assert.match(pool.queries[0].sql, /is_active = false/);
+  assert.deepEqual(pool.queries[0].params, [12]);
 });

@@ -29,6 +29,20 @@ const userWithRolesSelect = `
   LEFT JOIN roles r ON r.id = ur.role_id
 `;
 
+async function replaceUserRoles(pool, userId, roles) {
+  await pool.query('DELETE FROM user_roles WHERE user_id = $1', [userId]);
+  if (!roles.length) {
+    return;
+  }
+  await pool.query(`
+    INSERT INTO user_roles (user_id, role_id)
+    SELECT $1, id
+    FROM roles
+    WHERE code = ANY($2::text[])
+    ON CONFLICT (user_id, role_id) DO NOTHING
+  `, [userId, roles]);
+}
+
 export function createUserRepository(pool) {
   return {
     async findByIdWithRoles(id) {
@@ -52,6 +66,75 @@ export function createUserRepository(pool) {
         GROUP BY u.id
         ORDER BY u.is_active DESC, u.display_name ASC`);
       return result.rows.map(mapUserRow);
+    },
+
+    async createUser(user) {
+      await pool.query('BEGIN');
+      try {
+        const result = await pool.query(`
+          INSERT INTO users (username, password_hash, display_name, email, phone, is_active)
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id
+        `, [
+          user.username,
+          user.passwordHash,
+          user.displayName,
+          user.email || null,
+          user.phone || null,
+          user.isActive
+        ]);
+        const userId = Number(result.rows[0].id);
+        await replaceUserRoles(pool, userId, user.roles);
+        await pool.query('COMMIT');
+        return { id: userId };
+      } catch (error) {
+        await pool.query('ROLLBACK');
+        throw error;
+      }
+    },
+
+    async updateUser(id, user) {
+      await pool.query('BEGIN');
+      try {
+        const result = await pool.query(`
+          UPDATE users
+          SET
+            display_name = $2,
+            email = $3,
+            phone = $4,
+            is_active = $5,
+            updated_at = now()
+          WHERE id = $1
+          RETURNING id
+        `, [
+          id,
+          user.displayName,
+          user.email || null,
+          user.phone || null,
+          user.isActive
+        ]);
+        if (!result.rows[0]) {
+          await pool.query('COMMIT');
+          return null;
+        }
+        const userId = Number(result.rows[0].id);
+        await replaceUserRoles(pool, userId, user.roles);
+        await pool.query('COMMIT');
+        return { id: userId };
+      } catch (error) {
+        await pool.query('ROLLBACK');
+        throw error;
+      }
+    },
+
+    async deactivateUser(id) {
+      const result = await pool.query(`
+        UPDATE users
+        SET is_active = false, updated_at = now()
+        WHERE id = $1
+        RETURNING id
+      `, [id]);
+      return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
     },
 
     async listUsersByRole(role) {

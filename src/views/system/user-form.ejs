@@ -1,0 +1,62 @@
+<%- include('../partials/app-start', { title: `${mode === 'new' ? 'New User' : 'Edit User'} - BESTCRM`, activeNav: 'system-users' }) %>
+        <p class="breadcrumb"><a href="/system/users">System Users</a> / <%= mode === 'new' ? 'New User' : 'Edit User' %></p>
+        <header class="page-header">
+          <h1><%= mode === 'new' ? 'New User' : 'Edit User' %></h1>
+        </header>
+
+        <form class="form-panel" method="post" action="<%= action %>">
+          <% if (mode === 'new') { %>
+            <label>
+              Username
+              <input name="username" value="<%= user.username || '' %>" required>
+            </label>
+            <label>
+              Initial password
+              <input name="password" type="password" required>
+            </label>
+          <% } else { %>
+            <label>
+              Username
+              <input value="<%= user.username %>" disabled>
+            </label>
+          <% } %>
+
+          <label>
+            Display name
+            <input name="displayName" value="<%= user.displayName || '' %>" required>
+          </label>
+          <label>
+            Email
+            <input name="email" type="email" value="<%= user.email || '' %>">
+          </label>
+          <label>
+            Phone
+            <input name="phone" value="<%= user.phone || '' %>">
+          </label>
+
+          <div class="checkbox-list">
+            <div class="muted">Roles</div>
+            <% for (const role of roles) { %>
+              <label class="checkbox-row">
+                <input
+                  name="roles"
+                  type="checkbox"
+                  value="<%= role.code %>"
+                  <%= user.roles?.includes(role.code) ? 'checked' : '' %>
+                >
+                <span><%= role.name %> <span class="muted">(<%= role.code %>)</span></span>
+              </label>
+            <% } %>
+          </div>
+
+          <label class="checkbox-row">
+            <input name="isActive" type="checkbox" <%= user.isActive ? 'checked' : '' %>>
+            <span>Active login account</span>
+          </label>
+
+          <div class="inline-actions">
+            <button type="submit"><%= mode === 'new' ? 'Create user' : 'Save user' %></button>
+            <a class="secondary-action" href="/system/users">Cancel</a>
+          </div>
+        </form>
+<%- include('../partials/app-end') %>

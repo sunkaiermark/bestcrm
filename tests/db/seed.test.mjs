@@ -10,7 +10,8 @@ const requiredWorkflowRoles = [
   ROLES.QUOTATION_ENGINEER,
   ROLES.TECHNICAL_MANAGER,
   ROLES.COMMERCIAL_MANAGER,
-  ROLES.LEGAL_REVIEWER
+  ROLES.LEGAL_REVIEWER,
+  ROLES.ADMINISTRATOR
 ];
 
 class FakeSeedPool {
@@ -82,7 +83,7 @@ test('seedInternalAccounts creates first-version workflow login accounts', async
   const result = await seedInternalAccounts(pool, { password: 'Testing123!' });
 
   assert.deepEqual(result.accounts.map((account) => account.username), INTERNAL_TEST_ACCOUNTS.map((account) => account.username));
-  assert.equal(pool.users.size, 6);
+  assert.equal(pool.users.size, 7);
   for (const role of requiredWorkflowRoles) {
     assert.ok(pool.roles.has(role), `missing role ${role}`);
   }
@@ -90,6 +91,7 @@ test('seedInternalAccounts creates first-version workflow login accounts', async
     assert.ok(pool.hasRole(account.username, account.role), `missing ${account.username} role ${account.role}`);
   }
   assert.equal(await verifyPassword('Testing123!', pool.users.get('sales01').password_hash), true);
+  assert.equal(await verifyPassword('Testing123!', pool.users.get('admin01').password_hash), true);
   assert.deepEqual(pool.transactions, ['BEGIN', 'COMMIT']);
 });
 
@@ -99,7 +101,7 @@ test('seedInternalAccounts is idempotent for repeated seed runs', async () => {
   await seedInternalAccounts(pool, { password: 'Testing123!' });
   await seedInternalAccounts(pool, { password: 'Testing123!' });
 
-  assert.equal(pool.users.size, 6);
+  assert.equal(pool.users.size, 7);
   assert.equal(pool.roles.size >= requiredWorkflowRoles.length, true);
-  assert.equal(pool.userRoles.size, 6);
+  assert.equal(pool.userRoles.size, 7);
 });
