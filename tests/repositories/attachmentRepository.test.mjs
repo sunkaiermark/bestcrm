@@ -53,9 +53,6 @@ test('attachment repository lists opportunity attachments with uploader names', 
     file_size: '2048',
     uploaded_by: '7',
     uploader_display_name: 'Sales One',
-    technical_solution_id: null,
-    commercial_quote_id: '99',
-    contract_approval_id: null,
     uploaded_at: '2026-06-05T12:00:00.000Z'
   }]);
   const repository = createAttachmentRepository(queryTarget);
@@ -72,9 +69,6 @@ test('attachment repository lists opportunity attachments with uploader names', 
     fileSize: 2048,
     uploadedBy: 7,
     uploaderDisplayName: 'Sales One',
-    technicalSolutionId: null,
-    commercialQuoteId: 99,
-    contractApprovalId: null,
     uploadedAt: '2026-06-05T12:00:00.000Z'
   }]);
   assert.match(queryTarget.queries[0].sql, /FROM attachments a/);
@@ -95,9 +89,6 @@ test('attachment repository finds one attachment by id', async () => {
     file_size: '4096',
     uploaded_by: '7',
     uploader_display_name: 'Sales One',
-    technical_solution_id: null,
-    commercial_quote_id: null,
-    contract_approval_id: '90',
     uploaded_at: '2026-06-05T12:00:00.000Z'
   }]);
   const repository = createAttachmentRepository(queryTarget);
@@ -107,48 +98,8 @@ test('attachment repository finds one attachment by id', async () => {
   assert.equal(attachment.id, 55);
   assert.equal(attachment.opportunityId, 30);
   assert.equal(attachment.category, 'contract');
-  assert.equal(attachment.contractApprovalId, 90);
   assert.match(queryTarget.queries[0].sql, /WHERE a\.id = \$1/);
   assert.deepEqual(queryTarget.queries[0].params, [55]);
-});
-
-test('attachment repository binds unlinked technical solution files to a version', async () => {
-  const queryTarget = createFakeQueryTarget([]);
-  const repository = createAttachmentRepository(queryTarget);
-
-  await repository.bindUnlinkedToTechnicalSolution({ opportunityId: 30, technicalSolutionId: 201 });
-
-  assert.match(queryTarget.queries[0].sql, /UPDATE attachments/);
-  assert.match(queryTarget.queries[0].sql, /SET technical_solution_id = \$2/);
-  assert.match(queryTarget.queries[0].sql, /category = 'technical_solution'/);
-  assert.match(queryTarget.queries[0].sql, /technical_solution_id IS NULL/);
-  assert.deepEqual(queryTarget.queries[0].params, [30, 201]);
-});
-
-test('attachment repository binds unlinked commercial quote files to a version', async () => {
-  const queryTarget = createFakeQueryTarget([]);
-  const repository = createAttachmentRepository(queryTarget);
-
-  await repository.bindUnlinkedToCommercialQuote({ opportunityId: 30, commercialQuoteId: 200 });
-
-  assert.match(queryTarget.queries[0].sql, /UPDATE attachments/);
-  assert.match(queryTarget.queries[0].sql, /SET commercial_quote_id = \$2/);
-  assert.match(queryTarget.queries[0].sql, /category = 'commercial_quote'/);
-  assert.match(queryTarget.queries[0].sql, /commercial_quote_id IS NULL/);
-  assert.deepEqual(queryTarget.queries[0].params, [30, 200]);
-});
-
-test('attachment repository binds unlinked contract files to a version', async () => {
-  const queryTarget = createFakeQueryTarget([]);
-  const repository = createAttachmentRepository(queryTarget);
-
-  await repository.bindUnlinkedToContractApproval({ opportunityId: 30, contractApprovalId: 90 });
-
-  assert.match(queryTarget.queries[0].sql, /UPDATE attachments/);
-  assert.match(queryTarget.queries[0].sql, /SET contract_approval_id = \$2/);
-  assert.match(queryTarget.queries[0].sql, /category = 'contract'/);
-  assert.match(queryTarget.queries[0].sql, /contract_approval_id IS NULL/);
-  assert.deepEqual(queryTarget.queries[0].params, [30, 90]);
 });
 
 test('attachment repository deletes attachment metadata by id', async () => {

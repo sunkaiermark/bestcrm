@@ -17,9 +17,6 @@
   const technicalSolutionVersions = typeof technicalSolutions === 'undefined' ? [] : technicalSolutions;
   const commercialQuoteVersions = typeof commercialQuotes === 'undefined' ? [] : commercialQuotes;
   const canAddRequirementUpdate = typeof canCreateRequirementUpdate === 'undefined' ? false : canCreateRequirementUpdate;
-  const attachmentsForTechnicalSolution = (solutionId) => orderedAttachments.filter((attachment) => Number(attachment.technicalSolutionId) === Number(solutionId));
-  const attachmentsForCommercialQuote = (quoteId) => orderedAttachments.filter((attachment) => Number(attachment.commercialQuoteId) === Number(quoteId));
-  const attachmentsForContractApproval = (approvalId) => orderedAttachments.filter((attachment) => Number(attachment.contractApprovalId) === Number(approvalId));
 %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
         <header class="page-header">
@@ -203,7 +200,6 @@
                       <th>Summary</th>
                       <th>Parameters</th>
                       <th>Implementation Plan</th>
-                      <th>Files</th>
                       <th>Submitted By</th>
                       <th>Submitted At</th>
                       <th>Reviewed By</th>
@@ -213,24 +209,12 @@
                   </thead>
                   <tbody>
                     <% for (const solution of technicalSolutionVersions) { %>
-                      <% const linkedAttachments = attachmentsForTechnicalSolution(solution.id); %>
                       <tr>
                         <td>V<%= solution.versionNo %></td>
                         <td><%= solution.status %></td>
                         <td><%= solution.summary %></td>
                         <td><%= solution.parameters || '' %></td>
                         <td><%= solution.implementationPlan || '' %></td>
-                        <td>
-                          <% if (linkedAttachments.length > 0) { %>
-                            <div class="inline-actions">
-                              <% for (const attachment of linkedAttachments) { %>
-                                <span><%= attachment.originalName %></span>
-                                <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
-                                <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
-                              <% } %>
-                            </div>
-                          <% } %>
-                        </td>
                         <td><%= solution.submitterDisplayName || '' %></td>
                         <td><%= solution.submittedAt || '' %></td>
                         <td><%= solution.reviewerDisplayName || '' %></td>
@@ -298,7 +282,6 @@
                       <th>Payment Terms</th>
                       <th>Validity Date</th>
                       <th>Items</th>
-                      <th>Files</th>
                       <th>Submitted By</th>
                       <th>Submitted At</th>
                       <th>Reviewed By</th>
@@ -308,7 +291,6 @@
                   </thead>
                   <tbody>
                     <% for (const quote of commercialQuoteVersions) { %>
-                      <% const linkedAttachments = attachmentsForCommercialQuote(quote.id); %>
                       <tr>
                         <td>V<%= quote.versionNo %></td>
                         <td><%= quote.status %></td>
@@ -321,17 +303,6 @@
                               <strong><%= item.itemName %></strong>
                               <span><%= item.specification || '' %></span>
                               <span><%= item.quantity %> x <%= item.unitPrice %> = <%= item.subtotal %></span>
-                            </div>
-                          <% } %>
-                        </td>
-                        <td>
-                          <% if (linkedAttachments.length > 0) { %>
-                            <div class="inline-actions">
-                              <% for (const attachment of linkedAttachments) { %>
-                                <span><%= attachment.originalName %></span>
-                                <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
-                                <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
-                              <% } %>
                             </div>
                           <% } %>
                         </td>
@@ -401,31 +372,18 @@
                       <th>Reviewer</th>
                       <th>Action</th>
                       <th>Comment</th>
-                      <th>Files</th>
                       <th>Submitted At</th>
                       <th>Completed At</th>
                     </tr>
                   </thead>
                   <tbody>
                     <% for (const approval of contractApprovals) { %>
-                      <% const linkedAttachments = attachmentsForContractApproval(approval.id); %>
                       <tr>
                         <td><%= approval.versionNo ? `V${approval.versionNo}` : '' %></td>
                         <td><%= approval.status %></td>
                         <td><%= approval.reviewerDisplayName %></td>
                         <td><%= approval.stepAction %></td>
                         <td><%= approval.stepComment || '' %></td>
-                        <td>
-                          <% if (linkedAttachments.length > 0) { %>
-                            <div class="inline-actions">
-                              <% for (const attachment of linkedAttachments) { %>
-                                <span><%= attachment.originalName %></span>
-                                <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
-                                <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
-                              <% } %>
-                            </div>
-                          <% } %>
-                        </td>
                         <td><%= approval.submittedAt || '' %></td>
                         <td><%= approval.completedAt || '' %></td>
                       </tr>

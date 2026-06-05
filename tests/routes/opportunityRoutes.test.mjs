@@ -353,18 +353,6 @@ async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachme
       async createAttachment() {
         throw new Error('not used');
       },
-      async bindUnlinkedToTechnicalSolution(input) {
-        calls.push(['bindTechnicalSolutionAttachments', input]);
-        return { rowCount: 1 };
-      },
-      async bindUnlinkedToCommercialQuote(input) {
-        calls.push(['bindCommercialQuoteAttachments', input]);
-        return { rowCount: 1 };
-      },
-      async bindUnlinkedToContractApproval(input) {
-        calls.push(['bindContractAttachments', input]);
-        return { rowCount: 1 };
-      },
       async findById() {
         return null;
       }
@@ -580,34 +568,6 @@ test('opportunity detail shows technical solution version history', async () => 
       async reviewLatestPending() {
         throw new Error('not used');
       }
-    },
-    attachmentRepository: {
-      async listByOpportunity() {
-        return [{
-          id: 55,
-          opportunityId: 30,
-          category: 'technical_solution',
-          originalName: 'solution-v2.pdf',
-          storedPath: '2026/06/solution-v2.pdf',
-          mimeType: 'application/pdf',
-          fileSize: 1024,
-          uploadedBy: 3,
-          uploaderDisplayName: 'Quote Engineer',
-          technicalSolutionId: 91,
-          commercialQuoteId: null,
-          contractApprovalId: null,
-          uploadedAt: '2026-06-06T08:30:00.000Z'
-        }];
-      },
-      async createAttachment() {
-        throw new Error('not used');
-      },
-      async deleteById() {
-        throw new Error('not used');
-      },
-      async findById() {
-        return null;
-      }
     }
   });
 
@@ -622,9 +582,6 @@ test('opportunity detail shows technical solution version history', async () => 
   assert.match(detail.text, /approved/);
   assert.match(detail.text, /Quote Engineer/);
   assert.match(detail.text, /Technical Manager/);
-  assert.match(detail.text, /V2[\s\S]*solution-v2\.pdf/);
-  assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/preview/);
-  assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/download/);
 });
 
 test('opportunity detail shows commercial quote version history', async () => {
@@ -664,34 +621,6 @@ test('opportunity detail shows commercial quote version history', async () => {
       async reviewLatestPending() {
         throw new Error('not used');
       }
-    },
-    attachmentRepository: {
-      async listByOpportunity() {
-        return [{
-          id: 56,
-          opportunityId: 30,
-          category: 'commercial_quote',
-          originalName: 'quote-v2.xlsx',
-          storedPath: '2026/06/quote-v2.xlsx',
-          mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-          fileSize: 2048,
-          uploadedBy: 3,
-          uploaderDisplayName: 'Quote Engineer',
-          technicalSolutionId: null,
-          commercialQuoteId: 101,
-          contractApprovalId: null,
-          uploadedAt: '2026-06-06T12:30:00.000Z'
-        }];
-      },
-      async createAttachment() {
-        throw new Error('not used');
-      },
-      async deleteById() {
-        throw new Error('not used');
-      },
-      async findById() {
-        return null;
-      }
     }
   });
 
@@ -707,9 +636,6 @@ test('opportunity detail shows commercial quote version history', async () => {
   assert.match(detail.text, /approved/);
   assert.match(detail.text, /Quote Engineer/);
   assert.match(detail.text, /Commercial Manager/);
-  assert.match(detail.text, /V2[\s\S]*quote-v2\.xlsx/);
-  assert.match(detail.text, /\/opportunities\/30\/attachments\/56\/preview/);
-  assert.match(detail.text, /\/opportunities\/30\/attachments\/56\/download/);
 });
 
 test('opportunity detail shows contract version history', async () => {
@@ -739,21 +665,6 @@ test('opportunity detail shows contract version history', async () => {
       stepAction: 'rejected',
       stepComment: 'missing clause',
       actedAt: '2026-06-06T13:00:00.000Z'
-    }],
-    attachments: [{
-      id: 57,
-      opportunityId: 30,
-      category: 'contract',
-      originalName: 'contract-v2.pdf',
-      storedPath: '2026/06/contract-v2.pdf',
-      mimeType: 'application/pdf',
-      fileSize: 4096,
-      uploadedBy: 7,
-      uploaderDisplayName: 'Sales One',
-      technicalSolutionId: null,
-      commercialQuoteId: null,
-      contractApprovalId: 90,
-      uploadedAt: '2026-06-06T12:30:00.000Z'
     }]
   });
 
@@ -765,9 +676,6 @@ test('opportunity detail shows contract version history', async () => {
   assert.match(detail.text, /rejected/);
   assert.match(detail.text, /Legal One/);
   assert.match(detail.text, /missing clause/);
-  assert.match(detail.text, /V2[\s\S]*contract-v2\.pdf/);
-  assert.match(detail.text, /\/opportunities\/30\/attachments\/57\/preview/);
-  assert.match(detail.text, /\/opportunities\/30\/attachments\/57\/download/);
 });
 
 test('opportunity detail shows upload forms in each business material panel', async () => {
@@ -1488,7 +1396,6 @@ test('workflow route submits technical solution as a version for approval', asyn
       implementationPlan: 'Prepare drawings',
       submittedBy: 3
     }],
-    ['bindTechnicalSolutionAttachments', { opportunityId: 30, technicalSolutionId: 201 }],
     ['createEvent', {
       opportunityId: 30,
       eventType: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,

@@ -241,14 +241,6 @@ async function listAttachmentsForOpportunity(repositories, opportunityId) {
   return repositories.attachmentRepository.listByOpportunity(opportunityId);
 }
 
-function requireAttachmentRepositoryMethod(repositories, methodName) {
-  const method = repositories.attachmentRepository?.[methodName];
-  if (typeof method !== 'function') {
-    throw new WorkflowValidationError('Attachment repository is not configured');
-  }
-  return method.bind(repositories.attachmentRepository);
-}
-
 async function assertRequiredMaterials({ action, opportunityId, payload, repositories }) {
   const attachmentRequirement = attachmentRequirements.get(action);
   if (attachmentRequirement) {
@@ -289,16 +281,11 @@ async function persistSubmissionData({ action, actor, opportunityId, payload, re
     if (typeof repositories.technicalSolutionRepository?.createVersion !== 'function') {
       throw new WorkflowValidationError('Technical solution repository is not configured');
     }
-    const version = await repositories.technicalSolutionRepository.createVersion(technicalSolutionInput({
+    await repositories.technicalSolutionRepository.createVersion(technicalSolutionInput({
       opportunityId,
       actor,
       payload
     }));
-    const bindAttachments = requireAttachmentRepositoryMethod(repositories, 'bindUnlinkedToTechnicalSolution');
-    await bindAttachments({
-      opportunityId: Number(opportunityId),
-      technicalSolutionId: version.id
-    });
     return;
   }
 
@@ -306,16 +293,11 @@ async function persistSubmissionData({ action, actor, opportunityId, payload, re
     if (typeof repositories.commercialQuoteRepository?.createQuote !== 'function') {
       throw new WorkflowValidationError('Commercial quote repository is not configured');
     }
-    const quote = await repositories.commercialQuoteRepository.createQuote(commercialQuoteInput({
+    await repositories.commercialQuoteRepository.createQuote(commercialQuoteInput({
       opportunityId,
       actor,
       payload
     }));
-    const bindAttachments = requireAttachmentRepositoryMethod(repositories, 'bindUnlinkedToCommercialQuote');
-    await bindAttachments({
-      opportunityId: Number(opportunityId),
-      commercialQuoteId: quote.id
-    });
   }
 }
 
@@ -376,15 +358,10 @@ async function persistContractApprovalData({ action, actor, opportunityId, paylo
     if (typeof repositories.contractApprovalRepository?.createApproval !== 'function') {
       throw new WorkflowValidationError('Contract approval repository is not configured');
     }
-    const approval = await repositories.contractApprovalRepository.createApproval({
+    await repositories.contractApprovalRepository.createApproval({
       opportunityId,
       reviewerUserId: payload.legalReviewerId,
       submittedBy: actor.id
-    });
-    const bindAttachments = requireAttachmentRepositoryMethod(repositories, 'bindUnlinkedToContractApproval');
-    await bindAttachments({
-      opportunityId: Number(opportunityId),
-      contractApprovalId: approval.id
     });
     return;
   }
