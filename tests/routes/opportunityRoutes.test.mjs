@@ -23,6 +23,10 @@ async function createLoggedInAgent(extraOptions = {}) {
   const created = [];
   const uploadedAttachments = [];
   const requirementUpdates = [];
+  const workflowEvents = [];
+  const todoClosures = [];
+  const todosToCreate = [];
+  const workflowUpdates = [];
   const app = createApp({
     sessionSecret: 'test-secret',
     userRepository: {
@@ -95,6 +99,10 @@ async function createLoggedInAgent(extraOptions = {}) {
           primaryContactName: 'Alice'
         };
       },
+      async updateWorkflowState(id, changes) {
+        workflowUpdates.push({ id, changes });
+        return { id, ...changes };
+      },
       ...extraOptions.opportunityRepository
     },
     workflowEventRepository: {
@@ -112,6 +120,10 @@ async function createLoggedInAgent(extraOptions = {}) {
           comment: 'ready for review',
           createdAt: '2026-06-05T10:00:00.000Z'
         }];
+      },
+      async create(event) {
+        workflowEvents.push(event);
+        return { id: 78, ...event };
       }
     },
     todoRepository: {
@@ -127,6 +139,14 @@ async function createLoggedInAgent(extraOptions = {}) {
           createdAt: '2026-06-05T11:00:00.000Z',
           completedAt: null
         }];
+      },
+      async closePendingForOpportunity(opportunityId, status) {
+        todoClosures.push({ opportunityId, status });
+        return { rowCount: 1 };
+      },
+      async create(todo) {
+        todosToCreate.push(todo);
+        return { id: 89, ...todo };
       }
     },
     attachmentRepository: {
@@ -168,7 +188,7 @@ async function createLoggedInAgent(extraOptions = {}) {
   });
   const agent = request.agent(app);
   await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
-  return { agent, created, uploadedAttachments, requirementUpdates };
+  return { agent, created, uploadedAttachments, requirementUpdates, workflowEvents, todoClosures, todosToCreate, workflowUpdates };
 }
 
 function assertAppSidebar(html, activeHref) {
@@ -498,7 +518,10 @@ test('approved opportunity shows supplemental requirement form and history', asy
   const { agent } = await createLoggedInAgent({
     opportunityRepository: {
       async getOpportunityDetail() {
-        return opportunityDetail({ status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS });
+        return opportunityDetail({
+          status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+          quotationEngineerId: 3
+        });
       }
     },
     requirementUpdateRepository: {
@@ -531,10 +554,13 @@ test('approved opportunity shows supplemental requirement form and history', asy
 });
 
 test('salesperson creates supplemental requirement after initiation approval', async () => {
-  const { agent, requirementUpdates } = await createLoggedInAgent({
+  const { agent, requirementUpdates, workflowEvents, todoClosures, todosToCreate, workflowUpdates } = await createLoggedInAgent({
     opportunityRepository: {
       async getOpportunityDetail() {
-        return opportunityDetail({ status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS });
+        return opportunityDetail({
+          status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+          quotationEngineerId: 3
+        });
       }
     }
   });
@@ -554,6 +580,22 @@ test('salesperson creates supplemental requirement after initiation approval', a
     requirementText: 'Add corrosion proof cabinet requirement',
     reason: 'Customer site has salt fog environment',
     createdBy: 7
+  }]);
+  assert.deepEqual(workflowUpdates, []);
+  assert.deepEqual(workflowEvents, [{
+    opportunityId: 30,
+    eventType: ACTIONS.ADD_REQUIREMENT_UPDATE,
+    fromStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    actorUserId: 7,
+    targetUserId: 3,
+    comment: 'Add corrosion proof cabinet requirement\nReason: Customer site has salt fog environment'
+  }]);
+  assert.deepEqual(todoClosures, [{ opportunityId: 30, status: 'superseded' }]);
+  assert.deepEqual(todosToCreate, [{
+    opportunityId: 30,
+    assigneeUserId: 3,
+    title: 'Revise technical solution for supplemental requirement'
   }]);
 });
 

@@ -9,6 +9,7 @@ import { STATUSES } from '../domain/statuses.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { canViewOpportunity, createOpportunityDraft } from '../services/opportunityService.mjs';
+import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 
 function ownerFilter(user) {
@@ -59,9 +60,7 @@ const supplementalRequirementStatuses = new Set([
   STATUSES.CUSTOMER_NEGOTIATION,
   STATUSES.WON_CONTRACT_PENDING,
   STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
-  STATUSES.CONTRACT_REJECTED,
-  STATUSES.CONTRACT_ARCHIVED,
-  STATUSES.LOST_ARCHIVED
+  STATUSES.CONTRACT_REJECTED
 ]);
 
 const attachmentRequirementsByAction = new Map([
@@ -413,6 +412,7 @@ function canDeleteRequirementMaterial(opportunity, attachment) {
 
 function canCreateRequirementUpdate(user, opportunity) {
   return supplementalRequirementStatuses.has(opportunity.status)
+    && Boolean(opportunity.quotationEngineerId)
     && (hasRole(user, ROLES.ADMINISTRATOR) || Number(opportunity.salespersonId) === Number(user.id));
 }
 
@@ -537,14 +537,23 @@ export function opportunityRoutes({
         res.status(400).send('Requirement update and reason are required');
         return;
       }
-      await requirementUpdateRepository.create({
-        opportunityId: opportunity.id,
-        requirementText,
-        reason,
-        createdBy: req.currentUser.id
+      await createSupplementalRequirementUpdate({
+        actor: req.currentUser,
+        opportunity,
+        input: { requirementText, reason },
+        repositories: {
+          requirementUpdateRepository,
+          opportunityRepository,
+          workflowEventRepository,
+          todoRepository
+        }
       });
       res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
+      if (error instanceof WorkflowValidationError) {
+        res.status(error.statusCode).send(error.message);
+        return;
+      }
       next(error);
     }
   });

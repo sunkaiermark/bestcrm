@@ -6,6 +6,7 @@ export const ACTIONS = Object.freeze({
   WITHDRAW_INITIATION: 'withdraw_initiation',
   APPROVE_INITIATION: 'approve_initiation',
   REJECT_INITIATION: 'reject_initiation',
+  ADD_REQUIREMENT_UPDATE: 'add_requirement_update',
   SUBMIT_TECHNICAL_SOLUTION: 'submit_technical_solution',
   WITHDRAW_TECHNICAL_SOLUTION: 'withdraw_technical_solution',
   APPROVE_TECHNICAL_SOLUTION: 'approve_technical_solution',
