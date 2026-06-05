@@ -51,6 +51,33 @@ export const INTERNAL_TEST_ACCOUNTS = Object.freeze([
   }
 ]);
 
+export const APPROVAL_SETTING_SEEDS = Object.freeze([
+  {
+    settingKey: 'opportunity_initiation',
+    username: 'sales_manager01',
+    roleCode: ROLES.SALES_MANAGER,
+    sortOrder: 1
+  },
+  {
+    settingKey: 'technical_solution',
+    username: 'technical_manager01',
+    roleCode: ROLES.TECHNICAL_MANAGER,
+    sortOrder: 1
+  },
+  {
+    settingKey: 'commercial_quote',
+    username: 'commercial_manager01',
+    roleCode: ROLES.COMMERCIAL_MANAGER,
+    sortOrder: 1
+  },
+  {
+    settingKey: 'contract_approval',
+    username: 'legal_reviewer01',
+    roleCode: ROLES.LEGAL_REVIEWER,
+    sortOrder: 1
+  }
+]);
+
 const defaultPassword = 'ChangeMe123!';
 
 async function upsertRole(pool, role) {
@@ -89,10 +116,29 @@ async function assignRole(pool, userId, roleId) {
   `, [userId, roleId]);
 }
 
+async function upsertApprovalSetting(pool, setting, userIdsByUsername) {
+  const userId = userIdsByUsername.get(setting.username);
+  if (!userId) {
+    throw new Error(`Missing approval user ${setting.username}`);
+  }
+  await pool.query(`
+    INSERT INTO approval_settings (setting_key, user_id, role_code, sort_order, is_active)
+    SELECT $1, $2, $3, $4, true
+    WHERE NOT EXISTS (
+      SELECT 1
+      FROM approval_settings
+      WHERE setting_key = $1
+        AND user_id = $2
+        AND role_code = $3
+    )
+  `, [setting.settingKey, userId, setting.roleCode, setting.sortOrder]);
+}
+
 export async function seedInternalAccounts(pool, options = {}) {
   const password = options.password || process.env.SEED_DEFAULT_PASSWORD || defaultPassword;
   const passwordHash = await hashPassword(password);
   const roleIdsByCode = new Map();
+  const userIdsByUsername = new Map();
   await pool.query('BEGIN');
   try {
     for (const role of ROLE_SEEDS) {
@@ -100,7 +146,11 @@ export async function seedInternalAccounts(pool, options = {}) {
     }
     for (const account of INTERNAL_TEST_ACCOUNTS) {
       const userId = await upsertAccount(pool, account, passwordHash);
+      userIdsByUsername.set(account.username, userId);
       await assignRole(pool, userId, roleIdsByCode.get(account.role));
+    }
+    for (const setting of APPROVAL_SETTING_SEEDS) {
+      await upsertApprovalSetting(pool, setting, userIdsByUsername);
     }
     await pool.query('COMMIT');
   } catch (error) {

@@ -7,6 +7,7 @@ import { createPool } from './db/pool.mjs';
 import { createSessionStore } from './db/sessionStore.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
+import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
 import { createCommercialQuoteRepository } from './repositories/commercialQuoteRepository.mjs';
 import { createContractApprovalRepository } from './repositories/contractApprovalRepository.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
@@ -69,6 +70,24 @@ const emptyRoleRepository = {
   },
   async deactivateRole() {
     throw new Error('Role repository is not configured');
+  }
+};
+
+const emptyApprovalSettingRepository = {
+  async listApprovalSettings() {
+    return [];
+  },
+  async findById() {
+    return null;
+  },
+  async createApprovalSetting() {
+    throw new Error('Approval setting repository is not configured');
+  },
+  async updateApprovalSetting() {
+    throw new Error('Approval setting repository is not configured');
+  },
+  async deactivateApprovalSetting() {
+    throw new Error('Approval setting repository is not configured');
   }
 };
 
@@ -201,6 +220,7 @@ export function createApp(options = {}) {
   const pool = options.pool || (shouldCreatePool ? createPool(config) : null);
   const userRepository = options.userRepository || (pool ? createUserRepository(pool) : emptyUserRepository);
   const roleRepository = options.roleRepository || (pool ? createRoleRepository(pool) : emptyRoleRepository);
+  const approvalSettingRepository = options.approvalSettingRepository || (pool ? createApprovalSettingRepository(pool) : emptyApprovalSettingRepository);
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
   const contactRepository = options.contactRepository || (pool ? createContactRepository(pool) : emptyContactRepository);
   const attachmentRepository = options.attachmentRepository || (pool ? createAttachmentRepository(pool) : emptyAttachmentRepository);
@@ -236,7 +256,7 @@ export function createApp(options = {}) {
   });
   app.use(authRoutes(userRepository));
   app.use(workbenchRoutes({ workbenchRepository }));
-  app.use(systemRoutes({ userRepository, roleRepository }));
+  app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
   app.use(opportunityRoutes({

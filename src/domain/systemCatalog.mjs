@@ -50,6 +50,7 @@ export const ROLE_DETAILS = Object.freeze([
 
 export const APPROVAL_SETTINGS = Object.freeze([
   {
+    key: 'opportunity_initiation',
     stage: 'Opportunity Initiation',
     owner: 'Sales',
     approver: 'Sales Manager',
@@ -58,6 +59,7 @@ export const APPROVAL_SETTINGS = Object.freeze([
     rejectResult: 'Rejects back to the salesperson for revision.'
   },
   {
+    key: 'technical_solution',
     stage: 'Technical Solution',
     owner: 'Quotation Engineer',
     approver: 'Technical Manager',
@@ -66,6 +68,7 @@ export const APPROVAL_SETTINGS = Object.freeze([
     rejectResult: 'Rejects back to the Quotation Engineer for solution revision.'
   },
   {
+    key: 'commercial_quote',
     stage: 'Commercial Quote',
     owner: 'Quotation Engineer',
     approver: 'Commercial Manager',
@@ -74,6 +77,7 @@ export const APPROVAL_SETTINGS = Object.freeze([
     rejectResult: 'Rejects back to the Quotation Engineer for quote revision.'
   },
   {
+    key: 'contract_approval',
     stage: 'Contract Approval',
     owner: 'Sales',
     approver: 'Legal Reviewer',
@@ -82,3 +86,9 @@ export const APPROVAL_SETTINGS = Object.freeze([
     rejectResult: 'Rejects back to Sales before contract resubmission.'
   }
 ]);
+
+const approvalStageLabels = new Map(APPROVAL_SETTINGS.map((setting) => [setting.key, setting.stage]));
+
+export function approvalStageLabel(settingKey) {
+  return approvalStageLabels.get(settingKey) || settingKey;
+}

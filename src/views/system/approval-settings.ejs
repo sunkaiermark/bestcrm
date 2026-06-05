@@ -2,8 +2,11 @@
         <header class="page-header">
           <div>
             <h1>Approval Settings</h1>
-            <div class="muted">Current first-version approval routing by workflow stage.</div>
+            <div class="muted">Maintain configured approvers by workflow stage.</div>
           </div>
+          <% if (canManageSettings) { %>
+            <a class="quick-action" href="/system/approval-settings/new">New setting</a>
+          <% } %>
         </header>
 
         <section class="list-section">
@@ -12,22 +15,40 @@
               <thead>
                 <tr>
                   <th>Stage</th>
-                  <th>Owner</th>
+                  <th>Role</th>
                   <th>Approver</th>
-                  <th>Assignment</th>
-                  <th>Approve result</th>
-                  <th>Reject result</th>
+                  <th>Sort</th>
+                  <th>Status</th>
+                  <% if (canManageSettings) { %>
+                    <th>Actions</th>
+                  <% } %>
                 </tr>
               </thead>
               <tbody>
                 <% for (const setting of settings) { %>
                   <tr>
                     <td><%= setting.stage %></td>
-                    <td><%= setting.owner %></td>
-                    <td><%= setting.approver %></td>
-                    <td><%= setting.assignment %></td>
-                    <td><%= setting.approveResult %></td>
-                    <td><%= setting.rejectResult %></td>
+                    <td><%= setting.roleName %> <span class="muted">(<%= setting.roleCode %>)</span></td>
+                    <td><%= setting.userDisplayName %> <span class="muted">(<%= setting.username %>)</span></td>
+                    <td><%= setting.sortOrder %></td>
+                    <td><span class="status"><%= setting.isActive ? 'active' : 'inactive' %></span></td>
+                    <% if (canManageSettings) { %>
+                      <td>
+                        <div class="inline-actions">
+                          <a class="secondary-action" href="/system/approval-settings/<%= setting.id %>/edit">Edit</a>
+                          <% if (setting.isActive) { %>
+                            <form method="post" action="/system/approval-settings/<%= setting.id %>/delete">
+                              <button class="danger-action" type="submit">Delete</button>
+                            </form>
+                          <% } %>
+                        </div>
+                      </td>
+                    <% } %>
+                  </tr>
+                <% } %>
+                <% if (!settings.length) { %>
+                  <tr>
+                    <td colspan="<%= canManageSettings ? 6 : 5 %>" class="empty">No approval settings configured.</td>
                   </tr>
                 <% } %>
               </tbody>

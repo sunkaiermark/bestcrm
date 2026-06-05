@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { APPROVAL_SETTINGS } from '../domain/systemCatalog.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
+import { createSystemApprovalSetting, deactivateSystemApprovalSetting, updateSystemApprovalSetting } from '../services/systemApprovalSettingService.mjs';
 import { createSystemRole, deactivateSystemRole, updateSystemRole } from '../services/systemRoleService.mjs';
 import { createSystemUser, deactivateSystemUser, updateSystemUser } from '../services/systemUserService.mjs';
 
@@ -29,7 +30,29 @@ function defaultUserRole(roles) {
   return roles.find((role) => role.code === ROLES.SALESPERSON)?.code || roles[0]?.code || ROLES.SALESPERSON;
 }
 
-export function systemRoutes({ userRepository, roleRepository }) {
+async function approvalFormOptions(userRepository, roleRepository) {
+  const [roles, users] = await Promise.all([
+    roleRepository.listActiveRoles(),
+    userRepository.listUsersWithRoles()
+  ]);
+  return {
+    stageOptions: APPROVAL_SETTINGS,
+    roles,
+    users: users.filter((user) => user.isActive !== false)
+  };
+}
+
+function defaultApprovalSetting(options) {
+  return {
+    settingKey: options.stageOptions[0]?.key || 'opportunity_initiation',
+    roleCode: options.roles[0]?.code || ROLES.SALES_MANAGER,
+    userId: options.users[0]?.id || '',
+    sortOrder: 1,
+    isActive: true
+  };
+}
+
+export function systemRoutes({ userRepository, roleRepository, approvalSettingRepository }) {
   const router = Router();
 
   router.use('/system', requireLogin);
@@ -215,8 +238,97 @@ export function systemRoutes({ userRepository, roleRepository }) {
     }
   });
 
-  router.get('/system/approval-settings', (req, res) => {
-    res.render('system/approval-settings', { settings: APPROVAL_SETTINGS });
+  router.get('/system/approval-settings', async (req, res, next) => {
+    try {
+      const settings = await approvalSettingRepository.listApprovalSettings();
+      res.render('system/approval-settings', {
+        settings,
+        canManageSettings: canManageSystem(req.currentUser)
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/system/approval-settings/new', async (req, res, next) => {
+    if (!requireSystemAdministrator(req, res)) {
+      return;
+    }
+    try {
+      const options = await approvalFormOptions(userRepository, roleRepository);
+      res.render('system/approval-setting-form', {
+        mode: 'new',
+        action: '/system/approval-settings',
+        setting: defaultApprovalSetting(options),
+        ...options
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/system/approval-settings', async (req, res, next) => {
+    if (!requireSystemAdministrator(req, res)) {
+      return;
+    }
+    try {
+      const options = await approvalFormOptions(userRepository, roleRepository);
+      await createSystemApprovalSetting(approvalSettingRepository, req.currentUser, req.body, { allowedRoleCodes: activeRoleCodes(options.roles) });
+      res.redirect('/system/approval-settings');
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/system/approval-settings/:id/edit', async (req, res, next) => {
+    if (!requireSystemAdministrator(req, res)) {
+      return;
+    }
+    try {
+      const setting = await approvalSettingRepository.findById(req.params.id);
+      if (!setting) {
+        res.status(404).send('Approval setting not found');
+        return;
+      }
+      const options = await approvalFormOptions(userRepository, roleRepository);
+      res.render('system/approval-setting-form', {
+        mode: 'edit',
+        action: `/system/approval-settings/${setting.id}`,
+        setting,
+        ...options
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/system/approval-settings/:id', async (req, res, next) => {
+    if (!requireSystemAdministrator(req, res)) {
+      return;
+    }
+    try {
+      const options = await approvalFormOptions(userRepository, roleRepository);
+      const setting = await updateSystemApprovalSetting(approvalSettingRepository, req.currentUser, req.params.id, req.body, { allowedRoleCodes: activeRoleCodes(options.roles) });
+      if (!setting) {
+        res.status(404).send('Approval setting not found');
+        return;
+      }
+      res.redirect('/system/approval-settings');
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/system/approval-settings/:id/delete', async (req, res, next) => {
+    if (!requireSystemAdministrator(req, res)) {
+      return;
+    }
+    try {
+      await deactivateSystemApprovalSetting(approvalSettingRepository, req.currentUser, req.params.id);
+      res.redirect('/system/approval-settings');
+    } catch (error) {
+      next(error);
+    }
   });
 
   return router;

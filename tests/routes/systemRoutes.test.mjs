@@ -37,11 +37,30 @@ async function createSystemAgent(options = {}) {
     description: 'Creates opportunities.',
     isActive: true
   };
+  const salesManagerRole = {
+    id: 24,
+    code: ROLES.SALES_MANAGER,
+    name: 'Sales Manager',
+    description: 'Approves initiation.',
+    isActive: true
+  };
   const technicalRole = {
     id: 23,
     code: ROLES.TECHNICAL_MANAGER,
     name: 'Technical Manager',
     description: 'Approves technical solutions.',
+    isActive: true
+  };
+  const approvalSetting = {
+    id: 31,
+    settingKey: 'opportunity_initiation',
+    stage: 'Opportunity Initiation',
+    userId: managedUser.id,
+    userDisplayName: managedUser.displayName,
+    username: managedUser.username,
+    roleCode: ROLES.SALES_MANAGER,
+    roleName: 'Sales Manager',
+    sortOrder: 1,
     isActive: true
   };
   const calls = [];
@@ -61,7 +80,7 @@ async function createSystemAgent(options = {}) {
         return username === currentUser.username ? currentUser : null;
       },
       async listUsersWithRoles() {
-        return [managedUser];
+        return [managedUser, currentUser];
       },
       async createUser(input) {
         calls.push({ method: 'createUser', input });
@@ -81,7 +100,7 @@ async function createSystemAgent(options = {}) {
         return [role];
       },
       async listActiveRoles() {
-        return [role, salesRole, technicalRole];
+        return [role, salesRole, salesManagerRole, technicalRole];
       },
       async findById(id) {
         return Number(id) === role.id ? role : null;
@@ -96,6 +115,26 @@ async function createSystemAgent(options = {}) {
       },
       async deactivateRole(id) {
         calls.push({ method: 'deactivateRole', id: Number(id) });
+        return { id: Number(id) };
+      }
+    },
+    approvalSettingRepository: {
+      async listApprovalSettings() {
+        return [approvalSetting];
+      },
+      async findById(id) {
+        return Number(id) === approvalSetting.id ? approvalSetting : null;
+      },
+      async createApprovalSetting(input) {
+        calls.push({ method: 'createApprovalSetting', input });
+        return { id: 32 };
+      },
+      async updateApprovalSetting(id, input) {
+        calls.push({ method: 'updateApprovalSetting', id: Number(id), input });
+        return { id: Number(id) };
+      },
+      async deactivateApprovalSetting(id) {
+        calls.push({ method: 'deactivateApprovalSetting', id: Number(id) });
         return { id: Number(id) };
       }
     }
@@ -146,9 +185,9 @@ test('logged in users can view system user role and approval setting details', a
   assertSystemSidebar(approvals.text, '/system/approval-settings');
   assert.match(approvals.text, /Approval Settings/);
   assert.match(approvals.text, /Opportunity Initiation/);
-  assert.match(approvals.text, /Technical Solution/);
-  assert.match(approvals.text, /Commercial Quote/);
-  assert.match(approvals.text, /Contract Approval/);
+  assert.match(approvals.text, /sales_manager01/);
+  assert.match(approvals.text, /Sales Manager/);
+  assert.match(approvals.text, /New setting/);
 });
 
 test('administrator can add edit and deactivate system users', async () => {
@@ -304,6 +343,92 @@ test('non administrators cannot manage system roles', async () => {
     () => agent.get('/system/roles/21/edit'),
     () => agent.post('/system/roles/21').type('form').send({ name: 'x' }),
     () => agent.post('/system/roles/21/delete').type('form').send()
+  ]) {
+    const response = await requestCall();
+    assert.equal(response.status, 403);
+    assert.match(response.text, /Forbidden/);
+  }
+  assert.deepEqual(calls, []);
+});
+
+test('administrator can add edit and deactivate approval settings', async () => {
+  const { agent, calls } = await createSystemAgent();
+
+  const newForm = await agent.get('/system/approval-settings/new');
+  assert.equal(newForm.status, 200);
+  assertSystemSidebar(newForm.text, '/system/approval-settings');
+  assert.match(newForm.text, /New Approval Setting/);
+  assert.match(newForm.text, /name="settingKey"/);
+  assert.match(newForm.text, /name="roleCode"/);
+  assert.match(newForm.text, /name="userId"/);
+  assert.match(newForm.text, /Opportunity Initiation/);
+
+  const created = await agent.post('/system/approval-settings').type('form').send({
+    settingKey: 'opportunity_initiation',
+    roleCode: ROLES.SALES_MANAGER,
+    userId: '11',
+    sortOrder: '1',
+    isActive: 'on'
+  });
+  assert.equal(created.status, 302);
+  assert.equal(created.headers.location, '/system/approval-settings');
+  assert.deepEqual(calls[0], {
+    method: 'createApprovalSetting',
+    input: {
+      settingKey: 'opportunity_initiation',
+      userId: 11,
+      roleCode: ROLES.SALES_MANAGER,
+      sortOrder: 1,
+      isActive: true
+    }
+  });
+
+  const editForm = await agent.get('/system/approval-settings/31/edit');
+  assert.equal(editForm.status, 200);
+  assertSystemSidebar(editForm.text, '/system/approval-settings');
+  assert.match(editForm.text, /Edit Approval Setting/);
+  assert.match(editForm.text, /value="opportunity_initiation"/);
+  assert.match(editForm.text, /sales_manager01/);
+
+  const updated = await agent.post('/system/approval-settings/31').type('form').send({
+    settingKey: 'technical_solution',
+    roleCode: ROLES.TECHNICAL_MANAGER,
+    userId: '7',
+    sortOrder: '2'
+  });
+  assert.equal(updated.status, 302);
+  assert.equal(updated.headers.location, '/system/approval-settings');
+  assert.deepEqual(calls[1], {
+    method: 'updateApprovalSetting',
+    id: 31,
+    input: {
+      settingKey: 'technical_solution',
+      userId: 7,
+      roleCode: ROLES.TECHNICAL_MANAGER,
+      sortOrder: 2,
+      isActive: false
+    }
+  });
+
+  const deleted = await agent.post('/system/approval-settings/31/delete').type('form').send();
+  assert.equal(deleted.status, 302);
+  assert.equal(deleted.headers.location, '/system/approval-settings');
+  assert.deepEqual(calls[2], { method: 'deactivateApprovalSetting', id: 31 });
+});
+
+test('non administrators cannot manage approval settings', async () => {
+  const { agent, calls } = await createSystemAgent({
+    username: 'sales01',
+    displayName: 'Sales User',
+    roles: [ROLES.SALESPERSON]
+  });
+
+  for (const requestCall of [
+    () => agent.get('/system/approval-settings/new'),
+    () => agent.post('/system/approval-settings').type('form').send({ settingKey: 'x' }),
+    () => agent.get('/system/approval-settings/31/edit'),
+    () => agent.post('/system/approval-settings/31').type('form').send({ settingKey: 'x' }),
+    () => agent.post('/system/approval-settings/31/delete').type('form').send()
   ]) {
     const response = await requestCall();
     assert.equal(response.status, 403);

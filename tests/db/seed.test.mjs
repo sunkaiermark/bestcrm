@@ -14,11 +14,19 @@ const requiredWorkflowRoles = [
   ROLES.ADMINISTRATOR
 ];
 
+const requiredApprovalSettings = [
+  { settingKey: 'opportunity_initiation', username: 'sales_manager01', role: ROLES.SALES_MANAGER },
+  { settingKey: 'technical_solution', username: 'technical_manager01', role: ROLES.TECHNICAL_MANAGER },
+  { settingKey: 'commercial_quote', username: 'commercial_manager01', role: ROLES.COMMERCIAL_MANAGER },
+  { settingKey: 'contract_approval', username: 'legal_reviewer01', role: ROLES.LEGAL_REVIEWER }
+];
+
 class FakeSeedPool {
   constructor() {
     this.roles = new Map();
     this.users = new Map();
     this.userRoles = new Set();
+    this.approvalSettings = new Set();
     this.nextRoleId = 1;
     this.nextUserId = 1;
     this.transactions = [];
@@ -38,6 +46,9 @@ class FakeSeedPool {
     }
     if (normalized.startsWith('INSERT INTO user_roles')) {
       return this.assignUserRole(params);
+    }
+    if (normalized.startsWith('INSERT INTO approval_settings')) {
+      return this.upsertApprovalSetting(params);
     }
     throw new Error(`Unexpected SQL: ${normalized}`);
   }
@@ -70,10 +81,22 @@ class FakeSeedPool {
     return { rows: [], rowCount: existed ? 0 : 1 };
   }
 
+  upsertApprovalSetting([settingKey, userId, roleCode]) {
+    const key = `${settingKey}:${userId}:${roleCode}`;
+    const existed = this.approvalSettings.has(key);
+    this.approvalSettings.add(key);
+    return { rows: [], rowCount: existed ? 0 : 1 };
+  }
+
   hasRole(username, roleCode) {
     const user = this.users.get(username);
     const role = this.roles.get(roleCode);
     return Boolean(user && role && this.userRoles.has(`${user.id}:${role.id}`));
+  }
+
+  hasApprovalSetting(settingKey, username, roleCode) {
+    const user = this.users.get(username);
+    return Boolean(user && this.approvalSettings.has(`${settingKey}:${user.id}:${roleCode}`));
   }
 }
 
@@ -90,6 +113,12 @@ test('seedInternalAccounts creates first-version workflow login accounts', async
   for (const account of INTERNAL_TEST_ACCOUNTS) {
     assert.ok(pool.hasRole(account.username, account.role), `missing ${account.username} role ${account.role}`);
   }
+  for (const setting of requiredApprovalSettings) {
+    assert.ok(
+      pool.hasApprovalSetting(setting.settingKey, setting.username, setting.role),
+      `missing approval setting ${setting.settingKey} for ${setting.username}`
+    );
+  }
   assert.equal(await verifyPassword('Testing123!', pool.users.get('sales01').password_hash), true);
   assert.equal(await verifyPassword('Testing123!', pool.users.get('admin01').password_hash), true);
   assert.deepEqual(pool.transactions, ['BEGIN', 'COMMIT']);
@@ -104,4 +133,5 @@ test('seedInternalAccounts is idempotent for repeated seed runs', async () => {
   assert.equal(pool.users.size, 7);
   assert.equal(pool.roles.size >= requiredWorkflowRoles.length, true);
   assert.equal(pool.userRoles.size, 7);
+  assert.equal(pool.approvalSettings.size, requiredApprovalSettings.length);
 });
