@@ -110,6 +110,14 @@
           <section class="content-section">
             <h2>Technical Solution</h2>
             <div class="section-body">
+              <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                <input type="hidden" name="category" value="technical_solution">
+                <label>
+                  File
+                  <input type="file" name="attachment" required>
+                </label>
+                <button type="submit">Upload technical solution</button>
+              </form>
               <% if (technicalSolutionAttachments.length > 0) { %>
                 <table class="list-table">
                   <thead>
@@ -145,6 +153,14 @@
           <section class="content-section">
             <h2>Commercial Quote</h2>
             <div class="section-body">
+              <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                <input type="hidden" name="category" value="commercial_quote">
+                <label>
+                  File
+                  <input type="file" name="attachment" required>
+                </label>
+                <button type="submit">Upload commercial quote</button>
+              </form>
               <% if (commercialQuoteAttachments.length > 0) { %>
                 <table class="list-table">
                   <thead>
@@ -180,6 +196,14 @@
           <section class="content-section">
             <h2>Commercial Contract</h2>
             <div class="section-body">
+              <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                <input type="hidden" name="category" value="contract">
+                <label>
+                  File
+                  <input type="file" name="attachment" required>
+                </label>
+                <button type="submit">Upload contract</button>
+              </form>
               <% if (contractAttachments.length > 0) { %>
                 <table class="list-table">
                   <thead>

@@ -466,6 +466,19 @@ test('opportunity detail groups business attachments into five business panels',
   assert.match(detail.text, /Commercial Contract[\s\S]*contract-draft\.docx/);
 });
 
+test('opportunity detail shows upload forms in each business material panel', async () => {
+  const { agent } = await createLoggedInAgent();
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.equal((detail.text.match(/action="\/opportunities\/30\/attachments"/g) || []).length, 4);
+  assert.match(detail.text, /Requirement Materials[\s\S]*<option value="requirement">Requirement Material<\/option>/);
+  assert.match(detail.text, /Technical Solution[\s\S]*name="category" value="technical_solution"/);
+  assert.match(detail.text, /Commercial Quote[\s\S]*name="category" value="commercial_quote"/);
+  assert.match(detail.text, /Commercial Contract[\s\S]*name="category" value="contract"/);
+});
+
 test('page form uploads attachment metadata and stores file', async () => {
   const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-upload-'));
   try {
