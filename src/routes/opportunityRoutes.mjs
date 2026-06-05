@@ -30,6 +30,7 @@ const numericPayloadFields = new Set([
 ]);
 
 const attachmentCategories = new Set([
+  'requirement',
   'technical_solution',
   'commercial_quote',
   'contract',

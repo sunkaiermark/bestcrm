@@ -392,12 +392,78 @@ test('opportunity detail shows attachment upload form and file links', async () 
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Attachments/);
+  assert.match(detail.text, /Basic Info/);
+  assert.match(detail.text, /Requirement Materials/);
+  assert.match(detail.text, /Technical Solution/);
+  assert.match(detail.text, /Commercial Quote/);
+  assert.match(detail.text, /Commercial Contract/);
   assert.match(detail.text, /name="attachment"/);
+  assert.match(detail.text, /<option value="requirement">Requirement Material<\/option>/);
   assert.match(detail.text, /technical-solution\.pdf/);
   assert.match(detail.text, /technical_solution/);
   assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/download/);
   assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/preview/);
+});
+
+test('opportunity detail groups business attachments into five business panels', async () => {
+  const attachments = [
+    {
+      id: 51,
+      opportunityId: 30,
+      category: 'requirement',
+      originalName: 'requirement-spec.pdf',
+      storedPath: '2026/06/requirement-spec.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 2048,
+      uploadedBy: 7,
+      uploaderDisplayName: 'Sales One',
+      uploadedAt: '2026-06-05T09:00:00.000Z'
+    },
+    {
+      id: 52,
+      opportunityId: 30,
+      category: 'commercial_quote',
+      originalName: 'quote-v1.xlsx',
+      storedPath: '2026/06/quote-v1.xlsx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      fileSize: 2048,
+      uploadedBy: 3,
+      uploaderDisplayName: 'Quote Engineer',
+      uploadedAt: '2026-06-05T11:00:00.000Z'
+    },
+    {
+      id: 53,
+      opportunityId: 30,
+      category: 'contract',
+      originalName: 'contract-draft.docx',
+      storedPath: '2026/06/contract-draft.docx',
+      mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+      fileSize: 2048,
+      uploadedBy: 7,
+      uploaderDisplayName: 'Sales One',
+      uploadedAt: '2026-06-05T13:00:00.000Z'
+    }
+  ];
+  const { agent } = await createLoggedInAgent({
+    attachmentRepository: {
+      async listByOpportunity() {
+        return attachments;
+      },
+      async createAttachment() {
+        throw new Error('not used');
+      },
+      async findById() {
+        return null;
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Requirement Materials[\s\S]*requirement-spec\.pdf/);
+  assert.match(detail.text, /Commercial Quote[\s\S]*quote-v1\.xlsx/);
+  assert.match(detail.text, /Commercial Contract[\s\S]*contract-draft\.docx/);
 });
 
 test('page form uploads attachment metadata and stores file', async () => {
@@ -424,6 +490,28 @@ test('page form uploads attachment metadata and stores file', async () => {
     assert.equal(uploadedAttachments[0].uploadedBy, 7);
     assert.match(uploadedAttachments[0].storedPath, /\.txt$/);
     assert.equal(existsSync(path.resolve(uploadDir, uploadedAttachments[0].storedPath)), true);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('page form stores requirement material attachment category', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-requirement-upload-'));
+  try {
+    const { agent, uploadedAttachments } = await createLoggedInAgent({ uploadDir });
+
+    const response = await agent
+      .post('/opportunities/30/attachments')
+      .field('category', 'requirement')
+      .attach('attachment', Buffer.from('requirement file'), {
+        filename: 'requirement.txt',
+        contentType: 'text/plain'
+      });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/opportunities/30');
+    assert.equal(uploadedAttachments.length, 1);
+    assert.equal(uploadedAttachments[0].category, 'requirement');
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

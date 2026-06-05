@@ -1,4 +1,18 @@
 <%- include('../partials/app-start', { title: opportunity.title + ' - BESTCRM', activeNav: 'opportunities' }) %>
+<%
+  const orderedAttachments = [...(attachments || [])].sort((left, right) => {
+    const leftAt = left.uploadedAt || '';
+    const rightAt = right.uploadedAt || '';
+    if (leftAt !== rightAt) {
+      return leftAt.localeCompare(rightAt);
+    }
+    return Number(left.id || 0) - Number(right.id || 0);
+  });
+  const requirementAttachments = orderedAttachments.filter((attachment) => attachment.category === 'requirement' || attachment.category === 'other');
+  const technicalSolutionAttachments = orderedAttachments.filter((attachment) => attachment.category === 'technical_solution');
+  const commercialQuoteAttachments = orderedAttachments.filter((attachment) => attachment.category === 'commercial_quote');
+  const contractAttachments = orderedAttachments.filter((attachment) => attachment.category === 'contract');
+%>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
         <header class="page-header">
           <div>
@@ -10,7 +24,7 @@
 
         <div class="section-stack">
           <section class="content-section">
-            <h2>Opportunity detail</h2>
+            <h2>Basic Info</h2>
             <div class="section-body">
               <dl class="detail-list">
                 <dt>No.</dt>
@@ -25,8 +39,6 @@
                 </dd>
                 <dt>Status</dt>
                 <dd><%= opportunity.status %></dd>
-                <dt>Requirement</dt>
-                <dd><%= opportunity.requirement %></dd>
                 <dt>Estimated Amount</dt>
                 <dd><%= opportunity.estimatedAmount ?? '' %></dd>
                 <dt>Project Type</dt>
@@ -36,6 +48,197 @@
                 <dt>Expected Bid Date</dt>
                 <dd><%= opportunity.expectedBidDate || '' %></dd>
               </dl>
+            </div>
+          </section>
+
+          <section class="content-section">
+            <h2>Requirement Materials</h2>
+            <div class="section-body">
+              <dl class="detail-list">
+                <dt>Initial Requirement</dt>
+                <dd><%= opportunity.requirement %></dd>
+              </dl>
+              <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                <label>
+                  Category
+                  <select name="category" required>
+                    <option value="requirement">Requirement Material</option>
+                    <option value="technical_solution">Technical Solution</option>
+                    <option value="commercial_quote">Commercial Quote</option>
+                    <option value="contract">Contract</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label>
+                  File
+                  <input type="file" name="attachment" required>
+                </label>
+                <button type="submit">Upload attachment</button>
+              </form>
+              <% if (requirementAttachments.length > 0) { %>
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>File</th>
+                      <th>Category</th>
+                      <th>Uploaded By</th>
+                      <th>Uploaded At</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const attachment of requirementAttachments) { %>
+                      <tr>
+                        <td><%= attachment.originalName %></td>
+                        <td><%= attachment.category %></td>
+                        <td><%= attachment.uploaderDisplayName %></td>
+                        <td><%= attachment.uploadedAt || '' %></td>
+                        <td>
+                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
+                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
+                        </td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p class="empty">No requirement materials.</p>
+              <% } %>
+            </div>
+          </section>
+
+          <section class="content-section">
+            <h2>Technical Solution</h2>
+            <div class="section-body">
+              <% if (technicalSolutionAttachments.length > 0) { %>
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>File</th>
+                      <th>Category</th>
+                      <th>Uploaded By</th>
+                      <th>Uploaded At</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const attachment of technicalSolutionAttachments) { %>
+                      <tr>
+                        <td><%= attachment.originalName %></td>
+                        <td><%= attachment.category %></td>
+                        <td><%= attachment.uploaderDisplayName %></td>
+                        <td><%= attachment.uploadedAt || '' %></td>
+                        <td>
+                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
+                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
+                        </td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p class="empty">No technical solution files.</p>
+              <% } %>
+            </div>
+          </section>
+
+          <section class="content-section">
+            <h2>Commercial Quote</h2>
+            <div class="section-body">
+              <% if (commercialQuoteAttachments.length > 0) { %>
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>File</th>
+                      <th>Category</th>
+                      <th>Uploaded By</th>
+                      <th>Uploaded At</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const attachment of commercialQuoteAttachments) { %>
+                      <tr>
+                        <td><%= attachment.originalName %></td>
+                        <td><%= attachment.category %></td>
+                        <td><%= attachment.uploaderDisplayName %></td>
+                        <td><%= attachment.uploadedAt || '' %></td>
+                        <td>
+                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
+                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
+                        </td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p class="empty">No commercial quote files.</p>
+              <% } %>
+            </div>
+          </section>
+
+          <section class="content-section">
+            <h2>Commercial Contract</h2>
+            <div class="section-body">
+              <% if (contractAttachments.length > 0) { %>
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>File</th>
+                      <th>Category</th>
+                      <th>Uploaded By</th>
+                      <th>Uploaded At</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const attachment of contractAttachments) { %>
+                      <tr>
+                        <td><%= attachment.originalName %></td>
+                        <td><%= attachment.category %></td>
+                        <td><%= attachment.uploaderDisplayName %></td>
+                        <td><%= attachment.uploadedAt || '' %></td>
+                        <td>
+                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
+                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
+                        </td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p class="empty">No contract files.</p>
+              <% } %>
+
+              <h3>Contract Approvals</h3>
+              <% if (contractApprovals && contractApprovals.length > 0) { %>
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Reviewer</th>
+                      <th>Action</th>
+                      <th>Comment</th>
+                      <th>Submitted At</th>
+                      <th>Completed At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const approval of contractApprovals) { %>
+                      <tr>
+                        <td><%= approval.status %></td>
+                        <td><%= approval.reviewerDisplayName %></td>
+                        <td><%= approval.stepAction %></td>
+                        <td><%= approval.stepComment || '' %></td>
+                        <td><%= approval.submittedAt || '' %></td>
+                        <td><%= approval.completedAt || '' %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p class="empty">No contract approvals.</p>
+              <% } %>
             </div>
           </section>
 
@@ -82,91 +285,6 @@
                 </ol>
               <% } else { %>
                 <p class="empty">No timeline events.</p>
-              <% } %>
-            </div>
-          </section>
-
-          <section class="content-section">
-            <h2>Attachments</h2>
-            <div class="section-body">
-              <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
-                <label>
-                  Category
-                  <select name="category" required>
-                    <option value="technical_solution">Technical Solution</option>
-                    <option value="commercial_quote">Commercial Quote</option>
-                    <option value="contract">Contract</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
-                <label>
-                  File
-                  <input type="file" name="attachment" required>
-                </label>
-                <button type="submit">Upload attachment</button>
-              </form>
-              <% if (attachments && attachments.length > 0) { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>File</th>
-                      <th>Category</th>
-                      <th>Uploaded By</th>
-                      <th>Uploaded At</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const attachment of attachments) { %>
-                      <tr>
-                        <td><%= attachment.originalName %></td>
-                        <td><%= attachment.category %></td>
-                        <td><%= attachment.uploaderDisplayName %></td>
-                        <td><%= attachment.uploadedAt || '' %></td>
-                        <td>
-                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
-                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
-                        </td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } else { %>
-                <p class="empty">No attachments.</p>
-              <% } %>
-            </div>
-          </section>
-
-          <section class="content-section">
-            <h2>Contract Approvals</h2>
-            <div class="section-body">
-              <% if (contractApprovals && contractApprovals.length > 0) { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>Status</th>
-                      <th>Reviewer</th>
-                      <th>Action</th>
-                      <th>Comment</th>
-                      <th>Submitted At</th>
-                      <th>Completed At</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const approval of contractApprovals) { %>
-                      <tr>
-                        <td><%= approval.status %></td>
-                        <td><%= approval.reviewerDisplayName %></td>
-                        <td><%= approval.stepAction %></td>
-                        <td><%= approval.stepComment || '' %></td>
-                        <td><%= approval.submittedAt || '' %></td>
-                        <td><%= approval.completedAt || '' %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } else { %>
-                <p class="empty">No contract approvals.</p>
               <% } %>
             </div>
           </section>
