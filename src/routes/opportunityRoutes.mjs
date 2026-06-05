@@ -14,11 +14,7 @@ function ownerFilter(user) {
 }
 
 const assignmentRoles = [
-  ROLES.SALES_MANAGER,
-  ROLES.QUOTATION_ENGINEER,
-  ROLES.TECHNICAL_MANAGER,
-  ROLES.COMMERCIAL_MANAGER,
-  ROLES.LEGAL_REVIEWER
+  ROLES.QUOTATION_ENGINEER
 ];
 
 const numericPayloadFields = new Set([
@@ -85,7 +81,6 @@ function formForAction(action, usersByRole) {
         title: 'Submit Initiation',
         button: 'Submit to Sales Manager',
         fields: [
-          userSelectField('salesManagerId', 'Sales Manager', usersByRole[ROLES.SALES_MANAGER] || []),
           textareaField('comment', 'Comment', false)
         ]
       };
@@ -119,7 +114,6 @@ function formForAction(action, usersByRole) {
         title: 'Submit Technical Solution',
         button: 'Submit to Technical Manager',
         fields: [
-          userSelectField('technicalManagerId', 'Technical Manager', usersByRole[ROLES.TECHNICAL_MANAGER] || []),
           textareaField('comment', 'Comment', false)
         ]
       };
@@ -150,7 +144,6 @@ function formForAction(action, usersByRole) {
         title: 'Submit Commercial Quote',
         button: 'Submit to Commercial Manager',
         fields: [
-          userSelectField('commercialManagerId', 'Commercial Manager', usersByRole[ROLES.COMMERCIAL_MANAGER] || []),
           inputField('quoteItemName', 'Quote Item'),
           inputField('quoteSpecification', 'Specification', 'text', false),
           inputField('quoteUnit', 'Unit', 'text', false),
@@ -206,7 +199,6 @@ function formForAction(action, usersByRole) {
         title: 'Submit Contract Approval',
         button: 'Submit Contract Approval',
         fields: [
-          userSelectField('legalReviewerId', 'Legal Reviewer', usersByRole[ROLES.LEGAL_REVIEWER] || []),
           textareaField('comment', 'Comment', false)
         ]
       };
@@ -392,6 +384,7 @@ export function opportunityRoutes({
   attachmentRepository,
   commercialQuoteRepository,
   contractApprovalRepository,
+  approvalSettingRepository,
   opportunityRepository,
   userRepository,
   workflowEventRepository,
@@ -561,7 +554,8 @@ export function opportunityRoutes({
           todoRepository,
           attachmentRepository,
           commercialQuoteRepository,
-          contractApprovalRepository
+          contractApprovalRepository,
+          approvalSettingRepository
         }
       });
       res.redirect(`/opportunities/${req.params.id}`);

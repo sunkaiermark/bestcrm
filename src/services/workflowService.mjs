@@ -69,6 +69,25 @@ const quoteDetailFields = [
   'validityDate'
 ];
 
+const configuredApprovalAssignees = new Map([
+  [ACTIONS.SUBMIT_INITIATION, {
+    settingKey: 'opportunity_initiation',
+    payloadField: 'salesManagerId'
+  }],
+  [ACTIONS.SUBMIT_TECHNICAL_SOLUTION, {
+    settingKey: 'technical_solution',
+    payloadField: 'technicalManagerId'
+  }],
+  [ACTIONS.SUBMIT_COMMERCIAL_QUOTE, {
+    settingKey: 'commercial_quote',
+    payloadField: 'commercialManagerId'
+  }],
+  [ACTIONS.SUBMIT_CONTRACT_APPROVAL, {
+    settingKey: 'contract_approval',
+    payloadField: 'legalReviewerId'
+  }]
+]);
+
 function hasValue(value) {
   return value !== undefined && value !== null && value !== '';
 }
@@ -210,6 +229,24 @@ async function assertRequiredMaterials({ action, opportunityId, payload, reposit
   }
 }
 
+async function payloadWithConfiguredApprovalAssignee({ action, payload, repositories }) {
+  const configuredAssignee = configuredApprovalAssignees.get(action);
+  if (!configuredAssignee) {
+    return payload;
+  }
+  if (typeof repositories.approvalSettingRepository?.findActiveByKey !== 'function') {
+    throw new WorkflowValidationError('Approval setting repository is not configured');
+  }
+  const setting = await repositories.approvalSettingRepository.findActiveByKey(configuredAssignee.settingKey);
+  if (!setting?.userId) {
+    throw new WorkflowValidationError(`Approval setting is not configured: ${configuredAssignee.settingKey}`);
+  }
+  return {
+    ...payload,
+    [configuredAssignee.payloadField]: setting.userId
+  };
+}
+
 async function persistSubmissionData({ action, actor, opportunityId, payload, repositories }) {
   if (action === ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
     if (typeof repositories.commercialQuoteRepository?.createQuote !== 'function') {
@@ -309,19 +346,20 @@ export async function applyWorkflowAction({
   }
   const contractApproval = await loadContractApprovalContext(action, opportunityId, repositories);
   const transitionOpportunity = opportunityWithContractApproval(before, contractApproval);
+  const effectivePayload = await payloadWithConfiguredApprovalAssignee({ action, payload, repositories });
 
   const after = transition({
     userId: actor.id,
     roles: actor.roles,
     opportunity: transitionOpportunity
-  }, action, payload);
-  await assertRequiredMaterials({ action, opportunityId, payload, repositories });
+  }, action, effectivePayload);
+  await assertRequiredMaterials({ action, opportunityId, payload: effectivePayload, repositories });
   const changes = changedWorkflowFields(before, after);
   const updated = await repositories.opportunityRepository.updateWorkflowState(opportunityId, changes);
   const effectiveAfter = updated || { ...before, ...changes };
-  await persistSubmissionData({ action, actor, opportunityId, payload, repositories });
-  await persistContractApprovalData({ action, actor, opportunityId, payload, repositories, contractApproval });
-  const effects = buildWorkflowEffects({ actor, action, before, after: effectiveAfter, payload });
+  await persistSubmissionData({ action, actor, opportunityId, payload: effectivePayload, repositories });
+  await persistContractApprovalData({ action, actor, opportunityId, payload: effectivePayload, repositories, contractApproval });
+  const effects = buildWorkflowEffects({ actor, action, before, after: effectiveAfter, payload: effectivePayload });
 
   await repositories.workflowEventRepository.create(effects.event);
   for (const todo of effects.todosToClose) {

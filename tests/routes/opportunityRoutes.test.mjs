@@ -196,7 +196,7 @@ function opportunityDetail(overrides = {}) {
   };
 }
 
-async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachments = [], contractApprovals = [] }) {
+async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachments = [], contractApprovals = [], approvalSettings = {} }) {
   const actor = {
     passwordHash: await hashPassword('ChangeMe123!'),
     isActive: true,
@@ -205,6 +205,13 @@ async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachme
     ...user
   };
   let currentOpportunity = opportunityDetail(opportunity);
+  const approvalSettingsByKey = new Map(Object.entries({
+    opportunity_initiation: { settingKey: 'opportunity_initiation', userId: 2, userDisplayName: 'Sales Manager', username: 'manager01', roleCode: ROLES.SALES_MANAGER },
+    technical_solution: { settingKey: 'technical_solution', userId: 4, userDisplayName: 'Technical Manager', username: 'tech01', roleCode: ROLES.TECHNICAL_MANAGER },
+    commercial_quote: { settingKey: 'commercial_quote', userId: 5, userDisplayName: 'Commercial Manager', username: 'commercial01', roleCode: ROLES.COMMERCIAL_MANAGER },
+    contract_approval: { settingKey: 'contract_approval', userId: 6, userDisplayName: 'Legal One', username: 'legal01', roleCode: ROLES.LEGAL_REVIEWER },
+    ...approvalSettings
+  }));
   const calls = [];
   const app = createApp({
     sessionSecret: 'test-secret',
@@ -218,6 +225,12 @@ async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachme
       async listUsersByRole(role) {
         calls.push(['listUsersByRole', role]);
         return roleUsers[role] || [];
+      }
+    },
+    approvalSettingRepository: {
+      async findActiveByKey(settingKey) {
+        calls.push(['findActiveApprovalSetting', settingKey]);
+        return approvalSettingsByKey.get(settingKey) || null;
       }
     },
     customerRepository: {
@@ -578,11 +591,12 @@ test('salesperson submits initiation from opportunity detail page', async () => 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /submit_initiation/);
   assert.match(detail.text, /Sales Manager/);
+  assert.doesNotMatch(detail.text, /name="salesManagerId"/);
 
   const response = await agent
     .post('/opportunities/30/workflow')
     .type('form')
-    .send({ action: ACTIONS.SUBMIT_INITIATION, salesManagerId: '2', comment: 'ready for review' });
+    .send({ action: ACTIONS.SUBMIT_INITIATION, comment: 'ready for review' });
 
   assert.equal(response.status, 302);
   assert.equal(response.headers.location, '/opportunities/30');
@@ -590,6 +604,7 @@ test('salesperson submits initiation from opportunity detail page', async () => 
   assert.equal(getOpportunity().salesManagerId, 2);
   assert.deepEqual(calls.filter((call) => call[0] !== 'listUsersByRole'), [
     ['findOpportunity', 30],
+    ['findActiveApprovalSetting', 'opportunity_initiation'],
     ['updateOpportunity', 30, { status: STATUSES.INITIATION_PENDING, salesManagerId: 2 }],
     ['createEvent', {
       opportunityId: 30,
@@ -717,6 +732,7 @@ test('commercial quote form shows quote fields and missing attachment hint', asy
   assert.match(detail.text, /name="quoteItemName"/);
   assert.match(detail.text, /name="quoteUnitPrice"/);
   assert.match(detail.text, /name="totalPrice"/);
+  assert.doesNotMatch(detail.text, /name="commercialManagerId"/);
   assert.match(detail.text, /Commercial Quote attachment is required before submission/);
 });
 
@@ -741,7 +757,7 @@ test('workflow route blocks technical submission without required attachment', a
   const response = await agent
     .post('/opportunities/30/workflow')
     .type('form')
-    .send({ action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION, technicalManagerId: '4', comment: 'ready' });
+    .send({ action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION, comment: 'ready' });
 
   assert.equal(response.status, 400);
   assert.match(response.text, /Technical Solution attachment is required/);

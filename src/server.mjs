@@ -80,6 +80,9 @@ const emptyApprovalSettingRepository = {
   async findById() {
     return null;
   },
+  async findActiveByKey() {
+    return null;
+  },
   async createApprovalSetting() {
     throw new Error('Approval setting repository is not configured');
   },
@@ -265,6 +268,7 @@ export function createApp(options = {}) {
     attachmentRepository,
     commercialQuoteRepository,
     contractApprovalRepository,
+    approvalSettingRepository,
     opportunityRepository,
     userRepository,
     workflowEventRepository,

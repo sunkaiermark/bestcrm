@@ -53,6 +53,18 @@ export function createApprovalSettingRepository(pool) {
       return mapApprovalSettingRow(result.rows[0]);
     },
 
+    async findActiveByKey(settingKey) {
+      const result = await pool.query(`
+        ${approvalSettingSelect}
+        WHERE aps.setting_key = $1
+          AND aps.is_active = true
+          AND u.is_active = true
+        ORDER BY aps.sort_order ASC, aps.id ASC
+        LIMIT 1
+      `, [settingKey]);
+      return mapApprovalSettingRow(result.rows[0]);
+    },
+
     async createApprovalSetting(setting) {
       const result = await pool.query(`
         INSERT INTO approval_settings (setting_key, user_id, role_code, sort_order, is_active)

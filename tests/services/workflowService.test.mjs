@@ -7,8 +7,20 @@ import { applyWorkflowAction, buildWorkflowEffects } from '../../src/services/wo
 
 function createRecordingRepositories(before) {
   const calls = [];
+  const approvalSettings = new Map([
+    ['opportunity_initiation', { settingKey: 'opportunity_initiation', userId: 2, roleCode: ROLES.SALES_MANAGER }],
+    ['technical_solution', { settingKey: 'technical_solution', userId: 4, roleCode: ROLES.TECHNICAL_MANAGER }],
+    ['commercial_quote', { settingKey: 'commercial_quote', userId: 5, roleCode: ROLES.COMMERCIAL_MANAGER }],
+    ['contract_approval', { settingKey: 'contract_approval', userId: 6, roleCode: ROLES.LEGAL_REVIEWER }]
+  ]);
   return {
     calls,
+    approvalSettingRepository: {
+      async findActiveByKey(settingKey) {
+        calls.push(['findActiveApprovalSetting', settingKey]);
+        return approvalSettings.get(settingKey) || null;
+      }
+    },
     opportunityRepository: {
       async findById(id) {
         calls.push(['findOpportunity', id]);
@@ -199,6 +211,65 @@ test('applyWorkflowAction updates opportunity creates event and creates todos', 
   ]);
 });
 
+test('submit initiation uses configured Sales Manager when payload omits assignee', async () => {
+  const repositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.DRAFT,
+    salespersonId: 1
+  });
+
+  const result = await applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_INITIATION,
+    payload: { comment: 'ready for review' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.INITIATION_PENDING);
+  assert.equal(result.salesManagerId, 2);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'opportunity_initiation'],
+    ['updateOpportunity', 10, { status: STATUSES.INITIATION_PENDING, salesManagerId: 2 }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.SUBMIT_INITIATION,
+      fromStatus: STATUSES.DRAFT,
+      toStatus: STATUSES.INITIATION_PENDING,
+      actorUserId: 1,
+      targetUserId: 2,
+      comment: 'ready for review'
+    }],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 2, title: 'Approve opportunity initiation' }]
+  ]);
+});
+
+test('submit initiation rejects when approval setting is not configured', async () => {
+  const repositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.DRAFT,
+    salespersonId: 1
+  });
+  repositories.approvalSettingRepository.findActiveByKey = async (settingKey) => {
+    repositories.calls.push(['findActiveApprovalSetting', settingKey]);
+    return null;
+  };
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_INITIATION,
+    payload: { comment: 'ready for review' },
+    repositories
+  }), /Approval setting is not configured: opportunity_initiation/);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'opportunity_initiation']
+  ]);
+});
+
 test('applyWorkflowAction closes pending todos on withdrawal', async () => {
   const repositories = createRecordingRepositories({
     id: 10,
@@ -242,12 +313,13 @@ test('submit technical solution requires a technical solution attachment before 
     actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
     opportunityId: 10,
     action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
-    payload: { technicalManagerId: 4, comment: 'solution ready' },
+    payload: { comment: 'solution ready' },
     repositories
   }), /Technical Solution attachment is required/);
 
   assert.deepEqual(repositories.calls, [
     ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'technical_solution'],
     ['listAttachments', 10]
   ]);
 });
@@ -263,12 +335,13 @@ test('submit commercial quote requires quote details and commercial quote attach
     actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
     opportunityId: 10,
     action: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
-    payload: { commercialManagerId: 5, totalPrice: 2000 },
+    payload: { totalPrice: 2000 },
     repositories
   }), /Commercial quote details are required/);
 
   assert.deepEqual(repositories.calls, [
     ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'commercial_quote'],
     ['listAttachments', 10]
   ]);
 });
@@ -285,7 +358,6 @@ test('submit commercial quote rejects blank required text fields', async () => {
     opportunityId: 10,
     action: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
       payload: {
-        commercialManagerId: 5,
         quoteItemName: '   ',
         quoteQuantity: 2,
         quoteUnitPrice: 1000,
@@ -298,6 +370,7 @@ test('submit commercial quote rejects blank required text fields', async () => {
 
   assert.deepEqual(repositories.calls, [
     ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'commercial_quote'],
     ['listAttachments', 10]
   ]);
 });
@@ -314,7 +387,6 @@ test('submit commercial quote stores quote details when requirements are complet
     opportunityId: 10,
     action: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
     payload: {
-      commercialManagerId: 5,
       quoteItemName: 'Control cabinet',
       quoteSpecification: 'PLC control set',
       quoteUnit: 'set',
@@ -331,6 +403,7 @@ test('submit commercial quote stores quote details when requirements are complet
   assert.equal(result.status, STATUSES.COMMERCIAL_QUOTE_PENDING);
   assert.deepEqual(repositories.calls, [
     ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'commercial_quote'],
     ['listAttachments', 10],
     ['updateOpportunity', 10, { status: STATUSES.COMMERCIAL_QUOTE_PENDING, commercialManagerId: 5 }],
     ['createQuote', {
@@ -374,12 +447,13 @@ test('submit contract approval requires a contract attachment before side effect
     actor: { id: 1, roles: [ROLES.SALESPERSON] },
     opportunityId: 10,
     action: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
-    payload: { legalReviewerId: 6, comment: 'contract ready' },
+    payload: { comment: 'contract ready' },
     repositories
   }), /Contract attachment is required/);
 
   assert.deepEqual(repositories.calls, [
     ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'contract_approval'],
     ['listAttachments', 10]
   ]);
 });
@@ -395,13 +469,14 @@ test('submit contract approval creates approval record for legal reviewer', asyn
     actor: { id: 1, roles: [ROLES.SALESPERSON] },
     opportunityId: 10,
     action: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
-    payload: { legalReviewerId: 6, comment: 'contract ready' },
+    payload: { comment: 'contract ready' },
     repositories
   });
 
   assert.equal(result.status, STATUSES.CONTRACT_APPROVAL_IN_PROGRESS);
   assert.deepEqual(repositories.calls, [
     ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'contract_approval'],
     ['listAttachments', 10],
     ['updateOpportunity', 10, { status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS }],
     ['createContractApproval', { opportunityId: 10, reviewerUserId: 6, submittedBy: 1 }],

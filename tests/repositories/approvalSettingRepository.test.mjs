@@ -65,6 +65,31 @@ test('findById maps one approval setting', async () => {
   assert.deepEqual(pool.queries[0].params, [13]);
 });
 
+test('findActiveByKey returns first active configured approver for a workflow stage', async () => {
+  const pool = createFakePool({
+    id: 17,
+    setting_key: 'opportunity_initiation',
+    user_id: 22,
+    user_display_name: 'Configured Manager',
+    username: 'configured_manager01',
+    role_code: 'sales_manager',
+    role_name: 'Sales Manager',
+    sort_order: 1,
+    is_active: true
+  });
+  const repository = createApprovalSettingRepository(pool);
+
+  const setting = await repository.findActiveByKey('opportunity_initiation');
+
+  assert.equal(setting.userId, 22);
+  assert.equal(setting.userDisplayName, 'Configured Manager');
+  assert.match(pool.queries[0].sql, /aps.setting_key = \$1/);
+  assert.match(pool.queries[0].sql, /aps.is_active = true/);
+  assert.match(pool.queries[0].sql, /u.is_active = true/);
+  assert.match(pool.queries[0].sql, /ORDER BY aps.sort_order ASC, aps.id ASC/);
+  assert.deepEqual(pool.queries[0].params, ['opportunity_initiation']);
+});
+
 test('createApprovalSetting inserts routing metadata', async () => {
   const pool = createFakePool({ id: 14 });
   const repository = createApprovalSettingRepository(pool);
