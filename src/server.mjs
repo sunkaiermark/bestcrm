@@ -1,7 +1,7 @@
 import express from 'express';
 import session from 'express-session';
 import path from 'node:path';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { createPool } from './db/pool.mjs';
 import { createSessionStore } from './db/sessionStore.mjs';
@@ -19,6 +19,7 @@ import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
+import { isMainModule } from './utils/moduleEntry.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -198,10 +199,6 @@ export function createApp(options = {}) {
   });
 
   return app;
-}
-
-function isMainModule(metaUrl, argvPath = process.argv[1]) {
-  return Boolean(argvPath && metaUrl === pathToFileURL(path.resolve(argvPath)).href);
 }
 
 if (isMainModule(import.meta.url)) {

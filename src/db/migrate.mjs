@@ -2,6 +2,7 @@ import { readdir, readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createPool } from './pool.mjs';
+import { isMainModule } from '../utils/moduleEntry.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 const migrationsDir = path.join(dirname, 'migrations');
@@ -25,7 +26,7 @@ export async function migrate(pool = createPool()) {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+if (isMainModule(import.meta.url)) {
   const pool = createPool();
   migrate(pool)
     .then(() => pool.end())

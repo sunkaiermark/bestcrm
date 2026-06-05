@@ -1,0 +1,136 @@
+import { createPool } from './pool.mjs';
+import { ROLES } from '../domain/roles.mjs';
+import { hashPassword } from '../services/authService.mjs';
+import { isMainModule } from '../utils/moduleEntry.mjs';
+
+export const ROLE_SEEDS = Object.freeze([
+  { code: ROLES.SALESPERSON, name: 'Sales' },
+  { code: ROLES.SALES_MANAGER, name: 'Sales Manager' },
+  { code: ROLES.QUOTATION_ENGINEER, name: 'Quotation Engineer' },
+  { code: ROLES.TECHNICAL_MANAGER, name: 'Technical Manager' },
+  { code: ROLES.COMMERCIAL_MANAGER, name: 'Commercial Manager' },
+  { code: ROLES.LEGAL_REVIEWER, name: 'Legal Reviewer' },
+  { code: ROLES.FINANCE_REVIEWER, name: 'Finance Reviewer' },
+  { code: ROLES.GENERAL_MANAGER, name: 'General Manager' },
+  { code: ROLES.ADMINISTRATOR, name: 'Administrator' }
+]);
+
+export const INTERNAL_TEST_ACCOUNTS = Object.freeze([
+  {
+    username: 'sales01',
+    displayName: 'Sales User',
+    email: 'sales01@bestcrm.local',
+    role: ROLES.SALESPERSON
+  },
+  {
+    username: 'sales_manager01',
+    displayName: 'Sales Manager',
+    email: 'sales.manager01@bestcrm.local',
+    role: ROLES.SALES_MANAGER
+  },
+  {
+    username: 'quotation_engineer01',
+    displayName: 'Quotation Engineer',
+    email: 'quotation.engineer01@bestcrm.local',
+    role: ROLES.QUOTATION_ENGINEER
+  },
+  {
+    username: 'technical_manager01',
+    displayName: 'Technical Manager',
+    email: 'technical.manager01@bestcrm.local',
+    role: ROLES.TECHNICAL_MANAGER
+  },
+  {
+    username: 'commercial_manager01',
+    displayName: 'Commercial Manager',
+    email: 'commercial.manager01@bestcrm.local',
+    role: ROLES.COMMERCIAL_MANAGER
+  },
+  {
+    username: 'legal_reviewer01',
+    displayName: 'Legal Reviewer',
+    email: 'legal.reviewer01@bestcrm.local',
+    role: ROLES.LEGAL_REVIEWER
+  }
+]);
+
+const defaultPassword = 'ChangeMe123!';
+
+async function upsertRole(pool, role) {
+  const result = await pool.query(`
+    INSERT INTO roles (code, name)
+    VALUES ($1, $2)
+    ON CONFLICT (code) DO UPDATE SET name = EXCLUDED.name
+    RETURNING id
+  `, [role.code, role.name]);
+  return Number(result.rows[0].id);
+}
+
+async function upsertAccount(pool, account, passwordHash) {
+  const result = await pool.query(`
+    INSERT INTO users (username, password_hash, display_name, email, is_active)
+    VALUES ($1, $2, $3, $4, true)
+    ON CONFLICT (username) DO UPDATE SET
+      password_hash = EXCLUDED.password_hash,
+      display_name = EXCLUDED.display_name,
+      email = EXCLUDED.email,
+      is_active = true,
+      updated_at = now()
+    RETURNING id
+  `, [account.username, passwordHash, account.displayName, account.email]);
+  return Number(result.rows[0].id);
+}
+
+async function assignRole(pool, userId, roleId) {
+  await pool.query(`
+    INSERT INTO user_roles (user_id, role_id)
+    VALUES ($1, $2)
+    ON CONFLICT (user_id, role_id) DO NOTHING
+  `, [userId, roleId]);
+}
+
+export async function seedInternalAccounts(pool, options = {}) {
+  const password = options.password || process.env.SEED_DEFAULT_PASSWORD || defaultPassword;
+  const passwordHash = await hashPassword(password);
+  const roleIdsByCode = new Map();
+  await pool.query('BEGIN');
+  try {
+    for (const role of ROLE_SEEDS) {
+      roleIdsByCode.set(role.code, await upsertRole(pool, role));
+    }
+    for (const account of INTERNAL_TEST_ACCOUNTS) {
+      const userId = await upsertAccount(pool, account, passwordHash);
+      await assignRole(pool, userId, roleIdsByCode.get(account.role));
+    }
+    await pool.query('COMMIT');
+  } catch (error) {
+    await pool.query('ROLLBACK');
+    throw error;
+  }
+  return {
+    password,
+    accounts: INTERNAL_TEST_ACCOUNTS.map((account) => ({
+      username: account.username,
+      displayName: account.displayName,
+      role: account.role
+    }))
+  };
+}
+
+if (isMainModule(import.meta.url)) {
+  const pool = createPool();
+  seedInternalAccounts(pool)
+    .then(async (result) => {
+      console.log(`Seeded ${result.accounts.length} internal workflow accounts.`);
+      console.log(`Default password: ${result.password}`);
+      for (const account of result.accounts) {
+        console.log(`${account.username} (${account.role})`);
+      }
+      await pool.end();
+    })
+    .catch(async (error) => {
+      console.error(error);
+      await pool.end();
+      process.exit(1);
+    });
+}
