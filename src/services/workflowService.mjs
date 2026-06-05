@@ -1,5 +1,13 @@
 import { ACTIONS, transition } from '../domain/workflow.mjs';
 
+export class WorkflowValidationError extends Error {
+  constructor(message) {
+    super(message);
+    this.name = 'WorkflowValidationError';
+    this.statusCode = 400;
+  }
+}
+
 const workflowStateFields = [
   'status',
   'salesManagerId',
@@ -32,6 +40,35 @@ const completedTodoActions = new Set([
   ACTIONS.MARK_WON,
   ACTIONS.SUBMIT_CONTRACT_APPROVAL
 ]);
+
+const attachmentRequirements = new Map([
+  [ACTIONS.SUBMIT_TECHNICAL_SOLUTION, {
+    category: 'technical_solution',
+    message: 'Technical Solution attachment is required'
+  }],
+  [ACTIONS.SUBMIT_COMMERCIAL_QUOTE, {
+    category: 'commercial_quote',
+    message: 'Commercial Quote attachment is required'
+  }],
+  [ACTIONS.SUBMIT_CONTRACT_APPROVAL, {
+    category: 'contract',
+    message: 'Contract attachment is required'
+  }]
+]);
+
+const quoteDetailFields = [
+  'quoteItemName',
+  'paymentTerms',
+  'validityDate'
+];
+
+function hasValue(value) {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function hasNonBlankValue(value) {
+  return hasValue(value) && String(value).trim() !== '';
+}
 
 function commentFromPayload(payload) {
   return payload.reason || payload.comment || null;
@@ -104,6 +141,77 @@ function changedWorkflowFields(before, after) {
   return changes;
 }
 
+function numericPayloadValue(payload, field) {
+  const value = Number(payload[field]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function assertCommercialQuotePayload(payload) {
+  const hasRequiredText = quoteDetailFields.every((field) => hasNonBlankValue(payload[field]));
+  const quantity = numericPayloadValue(payload, 'quoteQuantity');
+  const unitPrice = numericPayloadValue(payload, 'quoteUnitPrice');
+  const totalPrice = numericPayloadValue(payload, 'totalPrice');
+  if (!hasRequiredText || !quantity || quantity <= 0 || !unitPrice || unitPrice <= 0 || !totalPrice || totalPrice <= 0) {
+    throw new WorkflowValidationError('Commercial quote details are required');
+  }
+}
+
+function commercialQuoteInput({ opportunityId, actor, payload }) {
+  const quantity = Number(payload.quoteQuantity);
+  const unitPrice = Number(payload.quoteUnitPrice);
+  return {
+    opportunityId,
+    totalPrice: Number(payload.totalPrice),
+    paymentTerms: String(payload.paymentTerms).trim(),
+    validityDate: String(payload.validityDate).trim(),
+    remarks: commentFromPayload(payload),
+    submittedBy: actor.id,
+    items: [{
+      itemName: String(payload.quoteItemName).trim(),
+      specification: hasValue(payload.quoteSpecification) ? String(payload.quoteSpecification).trim() : null,
+      unit: hasValue(payload.quoteUnit) ? String(payload.quoteUnit).trim() : null,
+      quantity,
+      unitPrice,
+      subtotal: quantity * unitPrice
+    }]
+  };
+}
+
+async function listAttachmentsForOpportunity(repositories, opportunityId) {
+  if (typeof repositories.attachmentRepository?.listByOpportunity !== 'function') {
+    return [];
+  }
+  return repositories.attachmentRepository.listByOpportunity(opportunityId);
+}
+
+async function assertRequiredMaterials({ action, opportunityId, payload, repositories }) {
+  const attachmentRequirement = attachmentRequirements.get(action);
+  if (attachmentRequirement) {
+    const attachments = await listAttachmentsForOpportunity(repositories, opportunityId);
+    if (!attachments.some((attachment) => attachment.category === attachmentRequirement.category)) {
+      throw new WorkflowValidationError(attachmentRequirement.message);
+    }
+  }
+
+  if (action === ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
+    assertCommercialQuotePayload(payload);
+  }
+}
+
+async function persistSubmissionData({ action, actor, opportunityId, payload, repositories }) {
+  if (action !== ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
+    return;
+  }
+  if (typeof repositories.commercialQuoteRepository?.createQuote !== 'function') {
+    throw new WorkflowValidationError('Commercial quote repository is not configured');
+  }
+  await repositories.commercialQuoteRepository.createQuote(commercialQuoteInput({
+    opportunityId,
+    actor,
+    payload
+  }));
+}
+
 export function buildWorkflowEffects({ actor, action, before, after, payload = {} }) {
   const closeStatus = withdrawActions.has(action)
     ? 'withdrawn'
@@ -143,9 +251,11 @@ export async function applyWorkflowAction({
     roles: actor.roles,
     opportunity: before
   }, action, payload);
+  await assertRequiredMaterials({ action, opportunityId, payload, repositories });
   const changes = changedWorkflowFields(before, after);
   const updated = await repositories.opportunityRepository.updateWorkflowState(opportunityId, changes);
   const effectiveAfter = updated || { ...before, ...changes };
+  await persistSubmissionData({ action, actor, opportunityId, payload, repositories });
   const effects = buildWorkflowEffects({ actor, action, before, after: effectiveAfter, payload });
 
   await repositories.workflowEventRepository.create(effects.event);

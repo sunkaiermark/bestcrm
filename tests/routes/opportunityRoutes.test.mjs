@@ -186,7 +186,7 @@ function opportunityDetail(overrides = {}) {
   };
 }
 
-async function createWorkflowAgent({ user, opportunity, roleUsers = {} }) {
+async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachments = [] }) {
   const actor = {
     passwordHash: await hashPassword('ChangeMe123!'),
     isActive: true,
@@ -266,6 +266,23 @@ async function createWorkflowAgent({ user, opportunity, roleUsers = {} }) {
       async closePendingForOpportunity(opportunityId, status) {
         calls.push(['closeTodos', opportunityId, status]);
         return { rowCount: 1 };
+      }
+    },
+    attachmentRepository: {
+      async listByOpportunity() {
+        return attachments;
+      },
+      async createAttachment() {
+        throw new Error('not used');
+      },
+      async findById() {
+        return null;
+      }
+    },
+    commercialQuoteRepository: {
+      async createQuote(input) {
+        calls.push(['createQuote', input]);
+        return { id: 200, ...input };
       }
     }
   });
@@ -638,4 +655,60 @@ test('Sales Manager approves initiation and assigns quotation engineer from deta
     ['closeTodos', 30, 'completed'],
     ['createTodo', { opportunityId: 30, assigneeUserId: 3, title: 'Prepare technical solution' }]
   ]);
+});
+
+test('commercial quote form shows quote fields and missing attachment hint', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'quote01',
+      displayName: 'Quote Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+      salespersonId: 7,
+      quotationEngineerId: 3
+    },
+    roleUsers: {
+      [ROLES.COMMERCIAL_MANAGER]: [{ id: 5, displayName: 'Commercial Manager', username: 'commercial01', roles: [ROLES.COMMERCIAL_MANAGER] }]
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /submit_commercial_quote/);
+  assert.match(detail.text, /name="quoteItemName"/);
+  assert.match(detail.text, /name="quoteUnitPrice"/);
+  assert.match(detail.text, /name="totalPrice"/);
+  assert.match(detail.text, /Commercial Quote attachment is required before submission/);
+});
+
+test('workflow route blocks technical submission without required attachment', async () => {
+  const { agent, getOpportunity } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'quote01',
+      displayName: 'Quote Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7,
+      quotationEngineerId: 3
+    },
+    roleUsers: {
+      [ROLES.TECHNICAL_MANAGER]: [{ id: 4, displayName: 'Technical Manager', username: 'tech01', roles: [ROLES.TECHNICAL_MANAGER] }]
+    }
+  });
+
+  const response = await agent
+    .post('/opportunities/30/workflow')
+    .type('form')
+    .send({ action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION, technicalManagerId: '4', comment: 'ready' });
+
+  assert.equal(response.status, 400);
+  assert.match(response.text, /Technical Solution attachment is required/);
+  assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
 });

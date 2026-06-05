@@ -38,6 +38,23 @@ function createRecordingRepositories(before) {
   };
 }
 
+function createMaterialRepositories(before, attachments = []) {
+  const repositories = createRecordingRepositories(before);
+  repositories.attachmentRepository = {
+    async listByOpportunity(opportunityId) {
+      repositories.calls.push(['listAttachments', opportunityId]);
+      return attachments;
+    }
+  };
+  repositories.commercialQuoteRepository = {
+    async createQuote(input) {
+      repositories.calls.push(['createQuote', input]);
+      return { id: 200, ...input };
+    }
+  };
+  return repositories;
+}
+
 test('Sales Manager approval creates todo and timeline event', () => {
   const effects = buildWorkflowEffects({
     actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
@@ -185,6 +202,159 @@ test('applyWorkflowAction closes pending todos on withdrawal', async () => {
       comment: 'replace drawing'
     }],
     ['closeTodos', 10, 'withdrawn']
+  ]);
+});
+
+test('submit technical solution requires a technical solution attachment before side effects', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    quotationEngineerId: 3
+  }, []);
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+    payload: { technicalManagerId: 4, comment: 'solution ready' },
+    repositories
+  }), /Technical Solution attachment is required/);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['listAttachments', 10]
+  ]);
+});
+
+test('submit commercial quote requires quote details and commercial quote attachment before side effects', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+    quotationEngineerId: 3
+  }, [{ id: 55, category: 'commercial_quote' }]);
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
+    payload: { commercialManagerId: 5, totalPrice: 2000 },
+    repositories
+  }), /Commercial quote details are required/);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['listAttachments', 10]
+  ]);
+});
+
+test('submit commercial quote rejects blank required text fields', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+    quotationEngineerId: 3
+  }, [{ id: 55, category: 'commercial_quote' }]);
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
+      payload: {
+        commercialManagerId: 5,
+        quoteItemName: '   ',
+        quoteQuantity: 2,
+        quoteUnitPrice: 1000,
+        totalPrice: 2000,
+        paymentTerms: '   ',
+        validityDate: '2026-07-31'
+      },
+    repositories
+  }), /Commercial quote details are required/);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['listAttachments', 10]
+  ]);
+});
+
+test('submit commercial quote stores quote details when requirements are complete', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+    quotationEngineerId: 3
+  }, [{ id: 55, category: 'commercial_quote' }]);
+
+  const result = await applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
+    payload: {
+      commercialManagerId: 5,
+      quoteItemName: 'Control cabinet',
+      quoteSpecification: 'PLC control set',
+      quoteUnit: 'set',
+      quoteQuantity: 2,
+      quoteUnitPrice: 1000,
+      totalPrice: 2000,
+      paymentTerms: '30% advance, 70% before delivery',
+      validityDate: '2026-07-31',
+      comment: 'quote ready'
+    },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.COMMERCIAL_QUOTE_PENDING);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['listAttachments', 10],
+    ['updateOpportunity', 10, { status: STATUSES.COMMERCIAL_QUOTE_PENDING, commercialManagerId: 5 }],
+    ['createQuote', {
+      opportunityId: 10,
+      totalPrice: 2000,
+      paymentTerms: '30% advance, 70% before delivery',
+      validityDate: '2026-07-31',
+      remarks: 'quote ready',
+      submittedBy: 3,
+      items: [{
+        itemName: 'Control cabinet',
+        specification: 'PLC control set',
+        unit: 'set',
+        quantity: 2,
+        unitPrice: 1000,
+        subtotal: 2000
+      }]
+    }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
+      fromStatus: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+      toStatus: STATUSES.COMMERCIAL_QUOTE_PENDING,
+      actorUserId: 3,
+      targetUserId: 5,
+      comment: 'quote ready'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 5, title: 'Approve commercial quote' }]
+  ]);
+});
+
+test('submit contract approval requires a contract attachment before side effects', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.WON_CONTRACT_PENDING,
+    salespersonId: 1
+  }, []);
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+    payload: { legalReviewerId: 6, comment: 'contract ready' },
+    repositories
+  }), /Contract attachment is required/);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['listAttachments', 10]
   ]);
 });
 

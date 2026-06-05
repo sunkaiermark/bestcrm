@@ -7,6 +7,7 @@ import { createPool } from './db/pool.mjs';
 import { createSessionStore } from './db/sessionStore.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
+import { createCommercialQuoteRepository } from './repositories/commercialQuoteRepository.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
@@ -74,6 +75,12 @@ const emptyAttachmentRepository = {
   }
 };
 
+const emptyCommercialQuoteRepository = {
+  async createQuote() {
+    throw new Error('Commercial quote repository is not configured');
+  }
+};
+
 const emptyOpportunityRepository = {
   async listOpportunities() {
     return [];
@@ -121,6 +128,7 @@ export function createApp(options = {}) {
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
   const contactRepository = options.contactRepository || (pool ? createContactRepository(pool) : emptyContactRepository);
   const attachmentRepository = options.attachmentRepository || (pool ? createAttachmentRepository(pool) : emptyAttachmentRepository);
+  const commercialQuoteRepository = options.commercialQuoteRepository || (pool ? createCommercialQuoteRepository(pool) : emptyCommercialQuoteRepository);
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
@@ -152,6 +160,7 @@ export function createApp(options = {}) {
     customerRepository,
     contactRepository,
     attachmentRepository,
+    commercialQuoteRepository,
     opportunityRepository,
     userRepository,
     workflowEventRepository,

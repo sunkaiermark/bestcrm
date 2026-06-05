@@ -121,6 +121,13 @@
         <% for (const workflowForm of workflowForms) { %>
           <section>
             <h3><%= workflowForm.title %></h3>
+            <% if (workflowForm.missingRequirements && workflowForm.missingRequirements.length > 0) { %>
+              <ul>
+                <% for (const requirement of workflowForm.missingRequirements) { %>
+                  <li><%= requirement %></li>
+                <% } %>
+              </ul>
+            <% } %>
             <form method="post" action="/opportunities/<%= opportunity.id %>/workflow">
               <input type="hidden" name="action" value="<%= workflowForm.action %>">
               <% for (const field of workflowForm.fields) { %>
@@ -140,7 +147,7 @@
                   <% } %>
                 </label>
               <% } %>
-              <button type="submit"><%= workflowForm.button %></button>
+              <button type="submit" <%= workflowForm.blocked ? 'disabled' : '' %>><%= workflowForm.button %></button>
             </form>
           </section>
         <% } %>

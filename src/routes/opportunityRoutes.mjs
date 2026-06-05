@@ -7,7 +7,7 @@ import { ROLES, hasRole } from '../domain/roles.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { canViewOpportunity, createOpportunityDraft } from '../services/opportunityService.mjs';
-import { applyWorkflowAction } from '../services/workflowService.mjs';
+import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 
 function ownerFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { salespersonId: user.id };
@@ -27,7 +27,10 @@ const numericPayloadFields = new Set([
   'technicalManagerId',
   'commercialManagerId',
   'legalReviewerId',
-  'finalDealAmount'
+  'finalDealAmount',
+  'quoteQuantity',
+  'quoteUnitPrice',
+  'totalPrice'
 ]);
 
 const attachmentCategories = new Set([
@@ -35,6 +38,21 @@ const attachmentCategories = new Set([
   'commercial_quote',
   'contract',
   'other'
+]);
+
+const attachmentRequirementsByAction = new Map([
+  [ACTIONS.SUBMIT_TECHNICAL_SOLUTION, {
+    category: 'technical_solution',
+    message: 'Technical Solution attachment is required before submission'
+  }],
+  [ACTIONS.SUBMIT_COMMERCIAL_QUOTE, {
+    category: 'commercial_quote',
+    message: 'Commercial Quote attachment is required before submission'
+  }],
+  [ACTIONS.SUBMIT_CONTRACT_APPROVAL, {
+    category: 'contract',
+    message: 'Contract attachment is required before submission'
+  }]
 ]);
 
 async function loadUsersByRole(userRepository) {
@@ -133,6 +151,14 @@ function formForAction(action, usersByRole) {
         button: 'Submit to Commercial Manager',
         fields: [
           userSelectField('commercialManagerId', 'Commercial Manager', usersByRole[ROLES.COMMERCIAL_MANAGER] || []),
+          inputField('quoteItemName', 'Quote Item'),
+          inputField('quoteSpecification', 'Specification', 'text', false),
+          inputField('quoteUnit', 'Unit', 'text', false),
+          inputField('quoteQuantity', 'Quantity', 'number'),
+          inputField('quoteUnitPrice', 'Unit Price', 'number'),
+          inputField('totalPrice', 'Total Price', 'number'),
+          textareaField('paymentTerms', 'Payment Terms'),
+          inputField('validityDate', 'Quote Validity Date', 'date'),
           textareaField('comment', 'Comment', false)
         ]
       };
@@ -196,7 +222,16 @@ function formForAction(action, usersByRole) {
   }
 }
 
-function buildWorkflowForms(user, opportunity, usersByRole) {
+function missingMaterialsForAction(action, attachments) {
+  const requirement = attachmentRequirementsByAction.get(action);
+  if (!requirement) {
+    return [];
+  }
+  const hasAttachment = attachments.some((attachment) => attachment.category === requirement.category);
+  return hasAttachment ? [] : [requirement.message];
+}
+
+function buildWorkflowForms(user, opportunity, usersByRole, attachments = []) {
   const allowedActions = getAllowedActions({
     userId: user.id,
     roles: user.roles,
@@ -204,7 +239,15 @@ function buildWorkflowForms(user, opportunity, usersByRole) {
   });
   return allowedActions
     .map((action) => formForAction(action, usersByRole))
-    .filter(Boolean);
+    .filter(Boolean)
+    .map((form) => {
+      const missingRequirements = missingMaterialsForAction(form.action, attachments);
+      return {
+        ...form,
+        missingRequirements,
+        blocked: missingRequirements.length > 0
+      };
+    });
 }
 
 function parseWorkflowPayload(body) {
@@ -303,6 +346,7 @@ export function opportunityRoutes({
   customerRepository,
   contactRepository,
   attachmentRepository,
+  commercialQuoteRepository,
   opportunityRepository,
   userRepository,
   workflowEventRepository,
@@ -376,7 +420,7 @@ export function opportunityRoutes({
           ? attachmentRepository.listByOpportunity(opportunity.id)
           : []
       ]);
-      const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole);
+      const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments);
       res.render('opportunities/detail', {
         opportunity,
         workflowForms,
@@ -467,7 +511,9 @@ export function opportunityRoutes({
         repositories: {
           opportunityRepository,
           workflowEventRepository,
-          todoRepository
+          todoRepository,
+          attachmentRepository,
+          commercialQuoteRepository
         }
       });
       res.redirect(`/opportunities/${req.params.id}`);
@@ -478,6 +524,10 @@ export function opportunityRoutes({
       }
       if (error.message === 'Action not allowed') {
         res.status(403).send('Forbidden');
+        return;
+      }
+      if (error instanceof WorkflowValidationError) {
+        res.status(error.statusCode).send(error.message);
         return;
       }
       next(error);
