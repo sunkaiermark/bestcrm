@@ -14,8 +14,10 @@
         --muted: #62717f;
         --accent: #0f766e;
         --accent-soft: #edf7f6;
-        --rail: #111827;
-        --rail-muted: #9ca3af;
+        --rail: #e0f2fe;
+        --rail-ink: #0c4a6e;
+        --rail-muted: #0369a1;
+        --rail-active: #bae6fd;
       }
 
       * {
@@ -126,7 +128,7 @@
         top: 0;
         height: 100vh;
         background: var(--rail);
-        color: white;
+        color: var(--rail-ink);
         padding: 18px 14px;
       }
 
@@ -153,7 +155,7 @@
         margin: 14px 0 2px;
         padding: 9px 10px;
         border-radius: 6px;
-        color: white;
+        color: var(--rail-ink);
         font-weight: 700;
       }
 
@@ -162,7 +164,7 @@
         gap: 2px;
         margin-left: 10px;
         padding-left: 10px;
-        border-left: 1px solid rgba(255, 255, 255, 0.16);
+        border-left: 1px solid rgba(14, 165, 233, 0.35);
       }
 
       .nav-subgroup .nav-link {
@@ -172,8 +174,8 @@
 
       .nav-link:hover,
       .nav-link.active {
-        background: rgba(255, 255, 255, 0.1);
-        color: white;
+        background: var(--rail-active);
+        color: var(--rail-ink);
       }
 
       .logout-form {
@@ -182,7 +184,7 @@
 
       .logout-button {
         width: 100%;
-        border: 1px solid rgba(255, 255, 255, 0.18);
+        border: 1px solid rgba(14, 165, 233, 0.35);
         background: transparent;
         color: var(--rail-muted);
         text-align: left;

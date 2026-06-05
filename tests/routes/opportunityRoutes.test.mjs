@@ -215,6 +215,9 @@ async function createLoggedInAgent(extraOptions = {}) {
 
 function assertAppSidebar(html, activeHref) {
   assert.match(html, /class="left-nav"/);
+  assert.match(html, /--rail:\s*#e0f2fe;/);
+  assert.match(html, /--rail-ink:\s*#0c4a6e;/);
+  assert.match(html, /--rail-active:\s*#bae6fd;/);
   assert.match(html, /href="\/workbench"/);
   assert.match(html, /href="\/opportunities"/);
   assert.match(html, /href="\/customers"/);
