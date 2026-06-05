@@ -340,6 +340,7 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(list.text, /Opportunities/);
   assert.match(list.text, /Factory upgrade/);
   assert.match(list.text, /Acme Co/);
+  assert.equal((list.text.match(/class="cell-link" href="\/opportunities\/30"/g) || []).length, 6);
 
   const form = await agent.get('/opportunities/new');
   assert.equal(form.status, 200);

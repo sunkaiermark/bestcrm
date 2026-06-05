@@ -20,16 +20,14 @@
               <tbody>
                 <% for (const opportunity of opportunities) { %>
                   <tr>
-                    <td><%= opportunity.opportunityNo %></td>
-                    <td><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a></td>
-                    <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></td>
-                    <td>
-                      <% if (opportunity.primaryContactId) { %>
-                        <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
-                      <% } %>
+                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a></td>
+                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a></td>
+                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.customerName %></a></td>
+                    <td class="clickable-cell">
+                      <a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.primaryContactName || '' %></a>
                     </td>
-                    <td><span class="status"><%= opportunity.status %></span></td>
-                    <td><%= opportunity.estimatedAmount ?? '' %></td>
+                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><span class="status"><%= opportunity.status %></span></a></td>
+                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.estimatedAmount ?? '' %></a></td>
                   </tr>
                 <% } %>
               </tbody>
