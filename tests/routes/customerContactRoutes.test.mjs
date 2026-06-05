@@ -89,6 +89,16 @@ async function createLoggedInAgent() {
   return agent;
 }
 
+function assertAppSidebar(html, activeHref) {
+  assert.match(html, /class="left-nav"/);
+  assert.match(html, /href="\/workbench"/);
+  assert.match(html, /href="\/opportunities"/);
+  assert.match(html, /href="\/customers"/);
+  assert.match(html, /href="\/contacts"/);
+  assert.match(html, /action="\/logout"/);
+  assert.match(html, new RegExp(`href="${activeHref}"`));
+}
+
 test('anonymous users are redirected from customer and contact pages', async () => {
   const app = createApp({ sessionSecret: 'test-secret' });
 
@@ -106,11 +116,18 @@ test('logged in salesperson can view customer list and detail', async () => {
 
   const list = await agent.get('/customers');
   assert.equal(list.status, 200);
+  assertAppSidebar(list.text, '/customers');
   assert.match(list.text, /Customers/);
   assert.match(list.text, /Acme Co/);
 
+  const form = await agent.get('/customers/new');
+  assert.equal(form.status, 200);
+  assertAppSidebar(form.text, '/customers');
+  assert.match(form.text, /name="name"/);
+
   const detail = await agent.get('/customers/10');
   assert.equal(detail.status, 200);
+  assertAppSidebar(detail.text, '/customers');
   assert.match(detail.text, /Acme Co/);
   assert.match(detail.text, /Alice/);
 });
@@ -120,11 +137,18 @@ test('logged in salesperson can view contact list and detail', async () => {
 
   const list = await agent.get('/contacts');
   assert.equal(list.status, 200);
+  assertAppSidebar(list.text, '/contacts');
   assert.match(list.text, /Contacts/);
   assert.match(list.text, /Alice/);
 
+  const form = await agent.get('/contacts/new');
+  assert.equal(form.status, 200);
+  assertAppSidebar(form.text, '/contacts');
+  assert.match(form.text, /name="customerId"/);
+
   const detail = await agent.get('/contacts/20');
   assert.equal(detail.status, 200);
+  assertAppSidebar(detail.text, '/contacts');
   assert.match(detail.text, /Alice/);
   assert.match(detail.text, /Acme Co/);
 });

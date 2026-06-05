@@ -1,42 +1,39 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Opportunities - BESTCRM</title>
-  </head>
-  <body>
-    <main>
-      <h1>Opportunities</h1>
-      <p><a href="/opportunities/new">New opportunity</a></p>
-      <table>
-        <thead>
-          <tr>
-            <th>No.</th>
-            <th>Title</th>
-            <th>Customer</th>
-            <th>Contact</th>
-            <th>Status</th>
-            <th>Estimated Amount</th>
-          </tr>
-        </thead>
-        <tbody>
-          <% for (const opportunity of opportunities) { %>
-            <tr>
-              <td><%= opportunity.opportunityNo %></td>
-              <td><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a></td>
-              <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></td>
-              <td>
-                <% if (opportunity.primaryContactId) { %>
-                  <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
+<%- include('../partials/app-start', { title: 'Opportunities - BESTCRM', activeNav: 'opportunities' }) %>
+        <header class="page-header">
+          <h1>Opportunities</h1>
+          <a class="quick-action" href="/opportunities/new">New opportunity</a>
+        </header>
+
+        <section class="list-section">
+          <div class="list-body">
+            <table class="list-table">
+              <thead>
+                <tr>
+                  <th>No.</th>
+                  <th>Title</th>
+                  <th>Customer</th>
+                  <th>Contact</th>
+                  <th>Status</th>
+                  <th>Estimated Amount</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const opportunity of opportunities) { %>
+                  <tr>
+                    <td><%= opportunity.opportunityNo %></td>
+                    <td><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a></td>
+                    <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></td>
+                    <td>
+                      <% if (opportunity.primaryContactId) { %>
+                        <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
+                      <% } %>
+                    </td>
+                    <td><span class="status"><%= opportunity.status %></span></td>
+                    <td><%= opportunity.estimatedAmount ?? '' %></td>
+                  </tr>
                 <% } %>
-              </td>
-              <td><%= opportunity.status %></td>
-              <td><%= opportunity.estimatedAmount ?? '' %></td>
-            </tr>
-          <% } %>
-        </tbody>
-      </table>
-    </main>
-  </body>
-</html>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

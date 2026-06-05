@@ -1,186 +1,217 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title><%= opportunity.title %> - BESTCRM</title>
-  </head>
-  <body>
-    <main>
-      <p><a href="/opportunities">Opportunities</a></p>
-      <h1><%= opportunity.title %></h1>
-      <dl>
-        <dt>No.</dt>
-        <dd><%= opportunity.opportunityNo %></dd>
-        <dt>Customer</dt>
-        <dd><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></dd>
-        <dt>Primary Contact</dt>
-        <dd>
-          <% if (opportunity.primaryContactId) { %>
-            <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
-          <% } %>
-        </dd>
-        <dt>Status</dt>
-        <dd><%= opportunity.status %></dd>
-        <dt>Requirement</dt>
-        <dd><%= opportunity.requirement %></dd>
-        <dt>Estimated Amount</dt>
-        <dd><%= opportunity.estimatedAmount ?? '' %></dd>
-        <dt>Project Type</dt>
-        <dd><%= opportunity.projectType %></dd>
-        <dt>Delivery Cycle</dt>
-        <dd><%= opportunity.deliveryCycle %></dd>
-        <dt>Expected Bid Date</dt>
-        <dd><%= opportunity.expectedBidDate || '' %></dd>
-      </dl>
-      <h2>Pending Todos</h2>
-      <% if (todos && todos.length > 0) { %>
-        <ul>
-          <% for (const todo of todos) { %>
-            <li>
-              <strong><%= todo.title %></strong>
-              <span><%= todo.status %></span>
-              <span><%= todo.assigneeDisplayName %></span>
-              <span><%= todo.createdAt || '' %></span>
-            </li>
-          <% } %>
-        </ul>
-      <% } else { %>
-        <p>No todos.</p>
-      <% } %>
-      <h2>Timeline</h2>
-      <% if (timelineEvents && timelineEvents.length > 0) { %>
-        <ol>
-          <% for (const event of timelineEvents) { %>
-            <li>
-              <strong><%= event.eventType %></strong>
-              <span><%= event.fromStatus || '' %></span>
-              <span><%= event.toStatus || '' %></span>
-              <span><%= event.actorDisplayName %></span>
-              <% if (event.targetDisplayName) { %>
-                <span><%= event.targetDisplayName %></span>
-              <% } %>
-              <% if (event.comment) { %>
-                <p><%= event.comment %></p>
-              <% } %>
-              <span><%= event.createdAt || '' %></span>
-            </li>
-          <% } %>
-        </ol>
-      <% } else { %>
-        <p>No timeline events.</p>
-      <% } %>
-      <h2>Attachments</h2>
-      <form method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
-        <label>
-          Category
-          <select name="category" required>
-            <option value="technical_solution">Technical Solution</option>
-            <option value="commercial_quote">Commercial Quote</option>
-            <option value="contract">Contract</option>
-            <option value="other">Other</option>
-          </select>
-        </label>
-        <label>
-          File
-          <input type="file" name="attachment" required>
-        </label>
-        <button type="submit">Upload attachment</button>
-      </form>
-      <% if (attachments && attachments.length > 0) { %>
-        <table>
-          <thead>
-            <tr>
-              <th>File</th>
-              <th>Category</th>
-              <th>Uploaded By</th>
-              <th>Uploaded At</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% for (const attachment of attachments) { %>
-              <tr>
-                <td><%= attachment.originalName %></td>
-                <td><%= attachment.category %></td>
-                <td><%= attachment.uploaderDisplayName %></td>
-                <td><%= attachment.uploadedAt || '' %></td>
-                <td>
-                  <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
-                  <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
-                </td>
-              </tr>
-            <% } %>
-          </tbody>
-        </table>
-      <% } else { %>
-        <p>No attachments.</p>
-      <% } %>
-      <h2>Contract Approvals</h2>
-      <% if (contractApprovals && contractApprovals.length > 0) { %>
-        <table>
-          <thead>
-            <tr>
-              <th>Status</th>
-              <th>Reviewer</th>
-              <th>Action</th>
-              <th>Comment</th>
-              <th>Submitted At</th>
-              <th>Completed At</th>
-            </tr>
-          </thead>
-          <tbody>
-            <% for (const approval of contractApprovals) { %>
-              <tr>
-                <td><%= approval.status %></td>
-                <td><%= approval.reviewerDisplayName %></td>
-                <td><%= approval.stepAction %></td>
-                <td><%= approval.stepComment || '' %></td>
-                <td><%= approval.submittedAt || '' %></td>
-                <td><%= approval.completedAt || '' %></td>
-              </tr>
-            <% } %>
-          </tbody>
-        </table>
-      <% } else { %>
-        <p>No contract approvals.</p>
-      <% } %>
-      <% if (workflowForms && workflowForms.length > 0) { %>
-        <h2>Workflow Actions</h2>
-        <% for (const workflowForm of workflowForms) { %>
-          <section>
-            <h3><%= workflowForm.title %></h3>
-            <% if (workflowForm.missingRequirements && workflowForm.missingRequirements.length > 0) { %>
-              <ul>
-                <% for (const requirement of workflowForm.missingRequirements) { %>
-                  <li><%= requirement %></li>
-                <% } %>
-              </ul>
-            <% } %>
-            <form method="post" action="/opportunities/<%= opportunity.id %>/workflow">
-              <input type="hidden" name="action" value="<%= workflowForm.action %>">
-              <% for (const field of workflowForm.fields) { %>
-                <label>
-                  <%= field.label %>
-                  <% if (field.type === 'userSelect') { %>
-                    <select name="<%= field.name %>" required>
-                      <option value=""></option>
-                      <% for (const user of field.users) { %>
-                        <option value="<%= user.id %>"><%= user.displayName %></option>
-                      <% } %>
-                    </select>
-                  <% } else if (field.type === 'textarea') { %>
-                    <textarea name="<%= field.name %>" <%= field.required ? 'required' : '' %>></textarea>
-                  <% } else { %>
-                    <input name="<%= field.name %>" type="<%= field.inputType %>" <%= field.required ? 'required' : '' %>>
+<%- include('../partials/app-start', { title: opportunity.title + ' - BESTCRM', activeNav: 'opportunities' }) %>
+        <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
+        <header class="page-header">
+          <div>
+            <h1><%= opportunity.title %></h1>
+            <div class="user-line"><%= opportunity.opportunityNo %> - <%= opportunity.customerName %></div>
+          </div>
+          <span class="status"><%= opportunity.status %></span>
+        </header>
+
+        <div class="section-stack">
+          <section class="content-section">
+            <h2>Opportunity detail</h2>
+            <div class="section-body">
+              <dl class="detail-list">
+                <dt>No.</dt>
+                <dd><%= opportunity.opportunityNo %></dd>
+                <dt>Customer</dt>
+                <dd><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></dd>
+                <dt>Primary Contact</dt>
+                <dd>
+                  <% if (opportunity.primaryContactId) { %>
+                    <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
                   <% } %>
-                </label>
-              <% } %>
-              <button type="submit" <%= workflowForm.blocked ? 'disabled' : '' %>><%= workflowForm.button %></button>
-            </form>
+                </dd>
+                <dt>Status</dt>
+                <dd><%= opportunity.status %></dd>
+                <dt>Requirement</dt>
+                <dd><%= opportunity.requirement %></dd>
+                <dt>Estimated Amount</dt>
+                <dd><%= opportunity.estimatedAmount ?? '' %></dd>
+                <dt>Project Type</dt>
+                <dd><%= opportunity.projectType %></dd>
+                <dt>Delivery Cycle</dt>
+                <dd><%= opportunity.deliveryCycle %></dd>
+                <dt>Expected Bid Date</dt>
+                <dd><%= opportunity.expectedBidDate || '' %></dd>
+              </dl>
+            </div>
           </section>
-        <% } %>
-      <% } %>
-    </main>
-  </body>
-</html>
+
+          <section class="content-section">
+            <h2>Pending Todos</h2>
+            <div class="section-body">
+              <% if (todos && todos.length > 0) { %>
+                <ul class="inline-list">
+                  <% for (const todo of todos) { %>
+                    <li>
+                      <strong><%= todo.title %></strong>
+                      <span class="status"><%= todo.status %></span>
+                      <span><%= todo.assigneeDisplayName %></span>
+                      <span class="muted"><%= todo.createdAt || '' %></span>
+                    </li>
+                  <% } %>
+                </ul>
+              <% } else { %>
+                <p class="empty">No todos.</p>
+              <% } %>
+            </div>
+          </section>
+
+          <section class="content-section">
+            <h2>Timeline</h2>
+            <div class="section-body">
+              <% if (timelineEvents && timelineEvents.length > 0) { %>
+                <ol class="inline-list">
+                  <% for (const event of timelineEvents) { %>
+                    <li>
+                      <strong><%= event.eventType %></strong>
+                      <span><%= event.fromStatus || '' %></span>
+                      <span><%= event.toStatus || '' %></span>
+                      <span><%= event.actorDisplayName %></span>
+                      <% if (event.targetDisplayName) { %>
+                        <span><%= event.targetDisplayName %></span>
+                      <% } %>
+                      <% if (event.comment) { %>
+                        <p><%= event.comment %></p>
+                      <% } %>
+                      <span class="muted"><%= event.createdAt || '' %></span>
+                    </li>
+                  <% } %>
+                </ol>
+              <% } else { %>
+                <p class="empty">No timeline events.</p>
+              <% } %>
+            </div>
+          </section>
+
+          <section class="content-section">
+            <h2>Attachments</h2>
+            <div class="section-body">
+              <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                <label>
+                  Category
+                  <select name="category" required>
+                    <option value="technical_solution">Technical Solution</option>
+                    <option value="commercial_quote">Commercial Quote</option>
+                    <option value="contract">Contract</option>
+                    <option value="other">Other</option>
+                  </select>
+                </label>
+                <label>
+                  File
+                  <input type="file" name="attachment" required>
+                </label>
+                <button type="submit">Upload attachment</button>
+              </form>
+              <% if (attachments && attachments.length > 0) { %>
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>File</th>
+                      <th>Category</th>
+                      <th>Uploaded By</th>
+                      <th>Uploaded At</th>
+                      <th>Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const attachment of attachments) { %>
+                      <tr>
+                        <td><%= attachment.originalName %></td>
+                        <td><%= attachment.category %></td>
+                        <td><%= attachment.uploaderDisplayName %></td>
+                        <td><%= attachment.uploadedAt || '' %></td>
+                        <td>
+                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
+                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
+                        </td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p class="empty">No attachments.</p>
+              <% } %>
+            </div>
+          </section>
+
+          <section class="content-section">
+            <h2>Contract Approvals</h2>
+            <div class="section-body">
+              <% if (contractApprovals && contractApprovals.length > 0) { %>
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>Status</th>
+                      <th>Reviewer</th>
+                      <th>Action</th>
+                      <th>Comment</th>
+                      <th>Submitted At</th>
+                      <th>Completed At</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const approval of contractApprovals) { %>
+                      <tr>
+                        <td><%= approval.status %></td>
+                        <td><%= approval.reviewerDisplayName %></td>
+                        <td><%= approval.stepAction %></td>
+                        <td><%= approval.stepComment || '' %></td>
+                        <td><%= approval.submittedAt || '' %></td>
+                        <td><%= approval.completedAt || '' %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p class="empty">No contract approvals.</p>
+              <% } %>
+            </div>
+          </section>
+
+          <% if (workflowForms && workflowForms.length > 0) { %>
+            <section>
+              <h2>Workflow Actions</h2>
+              <div class="section-stack">
+                <% for (const workflowForm of workflowForms) { %>
+                  <section class="action-section">
+                    <h3><%= workflowForm.title %></h3>
+                    <div class="section-body">
+                      <% if (workflowForm.missingRequirements && workflowForm.missingRequirements.length > 0) { %>
+                        <ul class="inline-list">
+                          <% for (const requirement of workflowForm.missingRequirements) { %>
+                            <li><%= requirement %></li>
+                          <% } %>
+                        </ul>
+                      <% } %>
+                      <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                        <input type="hidden" name="action" value="<%= workflowForm.action %>">
+                        <% for (const field of workflowForm.fields) { %>
+                          <label>
+                            <%= field.label %>
+                            <% if (field.type === 'userSelect') { %>
+                              <select name="<%= field.name %>" required>
+                                <option value=""></option>
+                                <% for (const user of field.users) { %>
+                                  <option value="<%= user.id %>"><%= user.displayName %></option>
+                                <% } %>
+                              </select>
+                            <% } else if (field.type === 'textarea') { %>
+                              <textarea name="<%= field.name %>" <%= field.required ? 'required' : '' %>></textarea>
+                            <% } else { %>
+                              <input name="<%= field.name %>" type="<%= field.inputType %>" <%= field.required ? 'required' : '' %>>
+                            <% } %>
+                          </label>
+                        <% } %>
+                        <button type="submit" <%= workflowForm.blocked ? 'disabled' : '' %>><%= workflowForm.button %></button>
+                      </form>
+                    </div>
+                  </section>
+                <% } %>
+              </div>
+            </section>
+          <% } %>
+        </div>
+<%- include('../partials/app-end') %>

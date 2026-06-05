@@ -158,6 +158,16 @@ async function createLoggedInAgent(extraOptions = {}) {
   return { agent, created, uploadedAttachments };
 }
 
+function assertAppSidebar(html, activeHref) {
+  assert.match(html, /class="left-nav"/);
+  assert.match(html, /href="\/workbench"/);
+  assert.match(html, /href="\/opportunities"/);
+  assert.match(html, /href="\/customers"/);
+  assert.match(html, /href="\/contacts"/);
+  assert.match(html, /action="\/logout"/);
+  assert.match(html, new RegExp(`href="${activeHref}"`));
+}
+
 function opportunityDetail(overrides = {}) {
   return {
     id: 30,
@@ -326,18 +336,21 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
 
   const list = await agent.get('/opportunities');
   assert.equal(list.status, 200);
+  assertAppSidebar(list.text, '/opportunities');
   assert.match(list.text, /Opportunities/);
   assert.match(list.text, /Factory upgrade/);
   assert.match(list.text, /Acme Co/);
 
   const form = await agent.get('/opportunities/new');
   assert.equal(form.status, 200);
+  assertAppSidebar(form.text, '/opportunities');
   assert.match(form.text, /name="customerId"/);
   assert.match(form.text, /Acme Co/);
   assert.match(form.text, /Alice/);
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
+  assertAppSidebar(detail.text, '/opportunities');
   assert.match(detail.text, /Factory upgrade/);
   assert.match(detail.text, /Upgrade production line/);
   assert.match(detail.text, /Alice/);

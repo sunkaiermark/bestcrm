@@ -1,37 +1,30 @@
-<!doctype html>
-<html lang="en">
-  <head>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Customer - BESTCRM</title>
-  </head>
-  <body>
-    <main>
-      <p><a href="/customers">Customers</a></p>
-      <h1>Customer</h1>
-      <form method="post" action="<%= action %>">
-        <label>
-          Name
-          <input name="name" value="<%= customer.name || '' %>" required>
-        </label>
-        <label>
-          Industry
-          <input name="industry" value="<%= customer.industry || '' %>">
-        </label>
-        <label>
-          Region
-          <input name="region" value="<%= customer.region || '' %>">
-        </label>
-        <label>
-          Address
-          <input name="address" value="<%= customer.address || '' %>">
-        </label>
-        <label>
-          Notes
-          <textarea name="notes"><%= customer.notes || '' %></textarea>
-        </label>
-        <button type="submit">Save</button>
-      </form>
-    </main>
-  </body>
-</html>
+<%- include('../partials/app-start', { title: 'Customer - BESTCRM', activeNav: 'customers' }) %>
+        <p class="breadcrumb"><a href="/customers">Customers</a></p>
+        <header class="page-header">
+          <h1><%= customer.id ? 'Edit Customer' : 'New Customer' %></h1>
+        </header>
+
+        <form class="form-panel" method="post" action="<%= action %>">
+          <label>
+            Name
+            <input name="name" value="<%= customer.name || '' %>" required>
+          </label>
+          <label>
+            Industry
+            <input name="industry" value="<%= customer.industry || '' %>">
+          </label>
+          <label>
+            Region
+            <input name="region" value="<%= customer.region || '' %>">
+          </label>
+          <label>
+            Address
+            <input name="address" value="<%= customer.address || '' %>">
+          </label>
+          <label>
+            Notes
+            <textarea name="notes"><%= customer.notes || '' %></textarea>
+          </label>
+          <button type="submit">Save</button>
+        </form>
+<%- include('../partials/app-end') %>
