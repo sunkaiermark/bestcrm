@@ -30,7 +30,9 @@ The first version includes these modules:
 - Opportunity list
 - Opportunity detail
 - Customer list
+- Customer detail
 - Contact list
+- Contact detail
 - Workflow archive
 - User and role management
 - Approval-person configuration
@@ -82,6 +84,8 @@ All pages require login except the login page.
 Salesperson can:
 
 - Create opportunity drafts
+- Create and maintain customers they own
+- Create and maintain contacts for customers they own
 - Submit opportunity initiation
 - Edit rejected initiation requests
 - View opportunities they created
@@ -119,6 +123,7 @@ Administrator can:
 - Manage users
 - Manage roles
 - Configure approval users
+- Manage all customers and contacts
 - View all opportunities, customers, contacts, and workflow archives
 
 ## Main Workflow States
@@ -513,6 +518,33 @@ The opportunity detail page is the operational center. It shows:
 
 Only valid actions for the current user and current state are shown.
 
+## Customer Detail Design
+
+The customer detail page shows one company account as a business relationship record, not just a row from the customer list. It shows:
+
+- Customer summary
+- Industry, region, address, and owner
+- Primary contacts
+- All contacts under this customer
+- Active opportunities
+- Archived won and lost opportunities
+- Recent workflow events related to this customer
+- Notes and internal remarks
+
+Salespeople can maintain customers they own. Administrators can maintain all customers. Opportunity creation can start from the customer detail page and prefill the selected customer.
+
+## Contact Detail Design
+
+The contact detail page shows one person as the relationship point inside a customer account. It shows:
+
+- Contact summary
+- Customer relationship
+- Title, phone, email, WeChat, and notes
+- Related opportunities where this person is the primary contact
+- Recent workflow events from related opportunities
+
+Salespeople can maintain contacts under customers they own. Administrators can maintain all contacts. Opportunity creation can start from the contact detail page and prefill both the selected customer and contact.
+
 ## Security Requirements
 
 - Store passwords with a one-way password hash.
@@ -564,7 +596,8 @@ The first version is acceptable when:
 - Legal, finance, and general manager reviewers can approve or reject contract steps.
 - A fully approved contract closes and archives the opportunity.
 - Customer and contact lists can be viewed and maintained.
+- Customer detail can be viewed, maintained, and used to start a related opportunity.
+- Contact detail can be viewed, maintained, and used to start a related opportunity.
 - All workflow actions appear in the opportunity timeline.
 - Each role can see its own pending todos.
 - Server-side permission checks block invalid workflow actions.
-
