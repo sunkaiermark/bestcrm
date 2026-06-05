@@ -1,4 +1,8 @@
 import { Router } from 'express';
+import { mkdirSync } from 'node:fs';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import multer from 'multer';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
@@ -24,6 +28,13 @@ const numericPayloadFields = new Set([
   'commercialManagerId',
   'legalReviewerId',
   'finalDealAmount'
+]);
+
+const attachmentCategories = new Set([
+  'technical_solution',
+  'commercial_quote',
+  'contract',
+  'other'
 ]);
 
 async function loadUsersByRole(userRepository) {
@@ -219,15 +230,88 @@ async function loadOpportunityActivity({ opportunityId, workflowEventRepository,
   return { timelineEvents, todos };
 }
 
+async function loadOpportunityOrSend({ req, res, opportunityRepository }) {
+  const opportunity = await opportunityRepository.getOpportunityDetail(req.params.id);
+  if (!opportunity) {
+    res.status(404).send('Opportunity not found');
+    return null;
+  }
+  if (!canViewOpportunity(req.currentUser, opportunity)) {
+    res.status(403).send('Forbidden');
+    return null;
+  }
+  return opportunity;
+}
+
+function currentUploadSubdir() {
+  const now = new Date();
+  return path.join(String(now.getUTCFullYear()), String(now.getUTCMonth() + 1).padStart(2, '0'));
+}
+
+function createUploadMiddleware(uploadDir, maxUploadMb) {
+  const resolvedUploadDir = path.resolve(uploadDir);
+  const storage = multer.diskStorage({
+    destination(req, file, callback) {
+      const relativeDir = currentUploadSubdir();
+      const destination = path.join(resolvedUploadDir, relativeDir);
+      mkdirSync(destination, { recursive: true });
+      callback(null, destination);
+    },
+    filename(req, file, callback) {
+      const extension = path.extname(file.originalname || '');
+      callback(null, `${randomUUID()}${extension}`);
+    }
+  });
+  return multer({
+    storage,
+    limits: { fileSize: maxUploadMb * 1024 * 1024 }
+  });
+}
+
+function normalizeAttachmentCategory(category) {
+  return attachmentCategories.has(category) ? category : 'other';
+}
+
+function storedPathForFile(uploadDir, file) {
+  return path.relative(path.resolve(uploadDir), file.path).split(path.sep).join('/');
+}
+
+function resolveStoredPath(uploadDir, storedPath) {
+  const uploadRoot = path.resolve(uploadDir);
+  const resolved = path.resolve(uploadRoot, storedPath);
+  const normalizedRoot = uploadRoot.toLowerCase();
+  const normalizedResolved = resolved.toLowerCase();
+  if (normalizedResolved !== normalizedRoot && !normalizedResolved.startsWith(`${normalizedRoot}${path.sep}`)) {
+    return null;
+  }
+  return resolved;
+}
+
+function previewMimeType(mimeType) {
+  if (mimeType === 'application/pdf' || mimeType === 'text/plain' || mimeType?.startsWith('image/')) {
+    return mimeType;
+  }
+  return 'application/octet-stream';
+}
+
+function inlineDisposition(filename) {
+  const safeFilename = String(filename || 'attachment').replaceAll('"', "'");
+  return `inline; filename="${safeFilename}"`;
+}
+
 export function opportunityRoutes({
   customerRepository,
   contactRepository,
+  attachmentRepository,
   opportunityRepository,
   userRepository,
   workflowEventRepository,
-  todoRepository
+  todoRepository,
+  uploadDir = './var/uploads',
+  maxUploadMb = 25
 }) {
   const router = Router();
+  const upload = createUploadMiddleware(uploadDir, maxUploadMb);
 
   router.use('/opportunities', requireLogin);
   router.use('/api/opportunities', requireLogin);
@@ -277,33 +361,100 @@ export function opportunityRoutes({
 
   router.get('/opportunities/:id', async (req, res, next) => {
     try {
-      const opportunity = await opportunityRepository.getOpportunityDetail(req.params.id);
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository });
       if (!opportunity) {
-        res.status(404).send('Opportunity not found');
         return;
       }
-      if (!canViewOpportunity(req.currentUser, opportunity)) {
-        res.status(403).send('Forbidden');
-        return;
-      }
-      const [usersByRole, activity] = await Promise.all([
+      const [usersByRole, activity, attachments] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
           opportunityId: opportunity.id,
           workflowEventRepository,
           todoRepository
-        })
+        }),
+        typeof attachmentRepository?.listByOpportunity === 'function'
+          ? attachmentRepository.listByOpportunity(opportunity.id)
+          : []
       ]);
       const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole);
       res.render('opportunities/detail', {
         opportunity,
         workflowForms,
         timelineEvents: activity.timelineEvents,
-        todos: activity.todos
+        todos: activity.todos,
+        attachments
       });
     } catch (error) {
       next(error);
     }
+  });
+
+  router.post('/opportunities/:id/attachments', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository });
+      if (!opportunity) {
+        return;
+      }
+      req.opportunity = opportunity;
+      next();
+    } catch (error) {
+      next(error);
+    }
+  }, upload.single('attachment'), async (req, res, next) => {
+    try {
+      if (!req.file) {
+        res.status(400).send('Attachment file is required');
+        return;
+      }
+      await attachmentRepository.createAttachment({
+        opportunityId: req.opportunity.id,
+        category: normalizeAttachmentCategory(req.body.category),
+        originalName: req.file.originalname,
+        storedPath: storedPathForFile(uploadDir, req.file),
+        mimeType: req.file.mimetype || 'application/octet-stream',
+        fileSize: req.file.size,
+        uploadedBy: req.currentUser.id
+      });
+      res.redirect(`/opportunities/${req.opportunity.id}`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  async function sendAttachment(req, res, next, disposition) {
+    try {
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository });
+      if (!opportunity) {
+        return;
+      }
+      const attachment = await attachmentRepository.findById(req.params.attachmentId);
+      if (!attachment || attachment.opportunityId !== opportunity.id) {
+        res.status(404).send('Attachment not found');
+        return;
+      }
+      const filePath = resolveStoredPath(uploadDir, attachment.storedPath);
+      if (!filePath) {
+        res.status(404).send('Attachment not found');
+        return;
+      }
+      if (disposition === 'download') {
+        res.download(filePath, attachment.originalName);
+        return;
+      }
+      res.type(previewMimeType(attachment.mimeType));
+      res.setHeader('Content-Disposition', inlineDisposition(attachment.originalName));
+      res.sendFile(filePath);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  router.get('/opportunities/:id/attachments/:attachmentId/download', (req, res, next) => {
+    sendAttachment(req, res, next, 'download');
+  });
+
+  router.get('/opportunities/:id/attachments/:attachmentId/preview', (req, res, next) => {
+    sendAttachment(req, res, next, 'preview');
   });
 
   router.post('/opportunities/:id/workflow', async (req, res, next) => {

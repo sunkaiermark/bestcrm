@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { existsSync } from 'node:fs';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 import { ACTIONS } from '../../src/domain/workflow.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
@@ -17,6 +21,7 @@ async function createLoggedInAgent(extraOptions = {}) {
     roles: [ROLES.SALESPERSON]
   };
   const created = [];
+  const uploadedAttachments = [];
   const app = createApp({
     sessionSecret: 'test-secret',
     userRepository: {
@@ -123,11 +128,34 @@ async function createLoggedInAgent(extraOptions = {}) {
         }];
       }
     },
+    attachmentRepository: {
+      async listByOpportunity() {
+        return [{
+          id: 55,
+          opportunityId: 30,
+          category: 'technical_solution',
+          originalName: 'technical-solution.pdf',
+          storedPath: '2026/06/technical-solution.pdf',
+          mimeType: 'application/pdf',
+          fileSize: 1024,
+          uploadedBy: 7,
+          uploaderDisplayName: 'Sales One',
+          uploadedAt: '2026-06-05T12:00:00.000Z'
+        }];
+      },
+      async createAttachment(input) {
+        uploadedAttachments.push(input);
+        return { id: 56, uploadedAt: '2026-06-05T12:30:00.000Z', ...input };
+      },
+      async findById() {
+        return null;
+      }
+    },
     ...extraOptions
   });
   const agent = request.agent(app);
   await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
-  return { agent, created };
+  return { agent, created, uploadedAttachments };
 }
 
 function opportunityDetail(overrides = {}) {
@@ -291,6 +319,143 @@ test('opportunity detail shows pending todos and workflow timeline', async () =>
   assert.match(detail.text, /draft/);
   assert.match(detail.text, /initiation_pending/);
   assert.match(detail.text, /ready for review/);
+});
+
+test('opportunity detail shows attachment upload form and file links', async () => {
+  const { agent } = await createLoggedInAgent();
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Attachments/);
+  assert.match(detail.text, /name="attachment"/);
+  assert.match(detail.text, /technical-solution\.pdf/);
+  assert.match(detail.text, /technical_solution/);
+  assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/download/);
+  assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/preview/);
+});
+
+test('page form uploads attachment metadata and stores file', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-upload-'));
+  try {
+    const { agent, uploadedAttachments } = await createLoggedInAgent({ uploadDir });
+
+    const response = await agent
+      .post('/opportunities/30/attachments')
+      .field('category', 'commercial_quote')
+      .attach('attachment', Buffer.from('quote file'), {
+        filename: 'quote.txt',
+        contentType: 'text/plain'
+      });
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/opportunities/30');
+    assert.equal(uploadedAttachments.length, 1);
+    assert.equal(uploadedAttachments[0].opportunityId, 30);
+    assert.equal(uploadedAttachments[0].category, 'commercial_quote');
+    assert.equal(uploadedAttachments[0].originalName, 'quote.txt');
+    assert.equal(uploadedAttachments[0].mimeType, 'text/plain');
+    assert.equal(uploadedAttachments[0].fileSize, 10);
+    assert.equal(uploadedAttachments[0].uploadedBy, 7);
+    assert.match(uploadedAttachments[0].storedPath, /\.txt$/);
+    assert.equal(existsSync(path.resolve(uploadDir, uploadedAttachments[0].storedPath)), true);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('attachment download and preview return stored files through opportunity permission', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-download-'));
+  try {
+    await writeFile(path.join(uploadDir, 'sample.txt'), 'preview me', 'utf8');
+    const attachment = {
+      id: 55,
+      opportunityId: 30,
+      category: 'technical_solution',
+      originalName: 'sample.txt',
+      storedPath: 'sample.txt',
+      mimeType: 'text/plain',
+      fileSize: 10,
+      uploadedBy: 7,
+      uploaderDisplayName: 'Sales One',
+      uploadedAt: '2026-06-05T12:00:00.000Z'
+    };
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      attachmentRepository: {
+        async listByOpportunity() {
+          return [attachment];
+        },
+        async createAttachment() {
+          throw new Error('not used');
+        },
+        async findById() {
+          return attachment;
+        }
+      }
+    });
+
+    const download = await agent.get('/opportunities/30/attachments/55/download');
+    assert.equal(download.status, 200);
+    assert.equal(download.text, 'preview me');
+    assert.match(download.headers['content-disposition'], /attachment/);
+    assert.match(download.headers['content-disposition'], /sample\.txt/);
+
+    const preview = await agent.get('/opportunities/30/attachments/55/preview');
+    assert.equal(preview.status, 200);
+    assert.equal(preview.text, 'preview me');
+    assert.match(preview.headers['content-type'], /text\/plain/);
+    assert.match(preview.headers['content-disposition'], /inline/);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('attachment upload and preview require opportunity view permission before file operations', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-forbidden-upload-'));
+  let createCalled = false;
+  let findCalled = false;
+  try {
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      opportunityRepository: {
+        async getOpportunityDetail() {
+          return opportunityDetail({ salespersonId: 999 });
+        }
+      },
+      attachmentRepository: {
+        async listByOpportunity() {
+          return [];
+        },
+        async createAttachment() {
+          createCalled = true;
+          throw new Error('should not create attachment');
+        },
+        async findById() {
+          findCalled = true;
+          throw new Error('should not find attachment');
+        }
+      }
+    });
+
+    const upload = await agent
+      .post('/opportunities/30/attachments')
+      .field('category', 'contract')
+      .attach('attachment', Buffer.from('contract file'), {
+        filename: 'contract.txt',
+        contentType: 'text/plain'
+      });
+
+    assert.equal(upload.status, 403);
+    assert.equal(createCalled, false);
+
+    const preview = await agent.get('/opportunities/30/attachments/55/preview');
+
+    assert.equal(preview.status, 403);
+    assert.equal(findCalled, false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
 });
 
 test('page form creates opportunity draft referencing customer and contact', async () => {

@@ -6,6 +6,7 @@ import { loadConfig } from './config.mjs';
 import { createPool } from './db/pool.mjs';
 import { createSessionStore } from './db/sessionStore.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
+import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
@@ -61,6 +62,18 @@ const emptyContactRepository = {
   }
 };
 
+const emptyAttachmentRepository = {
+  async listByOpportunity() {
+    return [];
+  },
+  async createAttachment() {
+    throw new Error('Attachment repository is not configured');
+  },
+  async findById() {
+    return null;
+  }
+};
+
 const emptyOpportunityRepository = {
   async listOpportunities() {
     return [];
@@ -107,6 +120,7 @@ export function createApp(options = {}) {
   const userRepository = options.userRepository || (pool ? createUserRepository(pool) : emptyUserRepository);
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
   const contactRepository = options.contactRepository || (pool ? createContactRepository(pool) : emptyContactRepository);
+  const attachmentRepository = options.attachmentRepository || (pool ? createAttachmentRepository(pool) : emptyAttachmentRepository);
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
@@ -137,10 +151,13 @@ export function createApp(options = {}) {
   app.use(opportunityRoutes({
     customerRepository,
     contactRepository,
+    attachmentRepository,
     opportunityRepository,
     userRepository,
     workflowEventRepository,
-    todoRepository
+    todoRepository,
+    uploadDir: config.uploadDir,
+    maxUploadMb: config.maxUploadMb
   }));
 
   app.get('/health', (req, res) => {

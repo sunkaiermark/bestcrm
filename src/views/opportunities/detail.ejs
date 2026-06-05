@@ -70,6 +70,52 @@
       <% } else { %>
         <p>No timeline events.</p>
       <% } %>
+      <h2>Attachments</h2>
+      <form method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+        <label>
+          Category
+          <select name="category" required>
+            <option value="technical_solution">Technical Solution</option>
+            <option value="commercial_quote">Commercial Quote</option>
+            <option value="contract">Contract</option>
+            <option value="other">Other</option>
+          </select>
+        </label>
+        <label>
+          File
+          <input type="file" name="attachment" required>
+        </label>
+        <button type="submit">Upload attachment</button>
+      </form>
+      <% if (attachments && attachments.length > 0) { %>
+        <table>
+          <thead>
+            <tr>
+              <th>File</th>
+              <th>Category</th>
+              <th>Uploaded By</th>
+              <th>Uploaded At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% for (const attachment of attachments) { %>
+              <tr>
+                <td><%= attachment.originalName %></td>
+                <td><%= attachment.category %></td>
+                <td><%= attachment.uploaderDisplayName %></td>
+                <td><%= attachment.uploadedAt || '' %></td>
+                <td>
+                  <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
+                  <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
+                </td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      <% } else { %>
+        <p>No attachments.</p>
+      <% } %>
       <% if (workflowForms && workflowForms.length > 0) { %>
         <h2>Workflow Actions</h2>
         <% for (const workflowForm of workflowForms) { %>
