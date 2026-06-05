@@ -55,13 +55,13 @@ test('GET /health returns ok', async () => {
   assert.deepEqual(response.body, { ok: true, app: 'BESTCRM' });
 });
 
-test('GET / redirects to the opportunity workbench entry', async () => {
+test('GET / redirects to the workbench entry', async () => {
   const app = createApp({ sessionSecret: 'test-secret' });
 
   const response = await request(app).get('/');
 
   assert.equal(response.status, 302);
-  assert.equal(response.headers.location, '/opportunities');
+  assert.equal(response.headers.location, '/workbench');
 });
 
 test('server entrypoint starts an HTTP listener when run directly', async (t) => {

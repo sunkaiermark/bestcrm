@@ -1,0 +1,384 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Workbench - BESTCRM</title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f5f7f9;
+        --panel: #ffffff;
+        --line: #d9e1e7;
+        --ink: #16202a;
+        --muted: #62717f;
+        --accent: #0f766e;
+        --rail: #111827;
+        --rail-muted: #9ca3af;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        background: var(--bg);
+        color: var(--ink);
+        font: 14px/1.4 Arial, Helvetica, sans-serif;
+      }
+
+      a {
+        color: inherit;
+        text-decoration: none;
+      }
+
+      table {
+        width: 100%;
+        border-collapse: collapse;
+      }
+
+      th,
+      td {
+        padding: 8px 10px;
+        border-bottom: 1px solid var(--line);
+        text-align: left;
+        vertical-align: top;
+      }
+
+      th {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .workbench-shell {
+        min-height: 100vh;
+        display: grid;
+        grid-template-columns: 220px minmax(0, 1fr);
+      }
+
+      .left-nav {
+        background: var(--rail);
+        color: white;
+        padding: 18px 14px;
+      }
+
+      .brand {
+        margin: 0 0 18px;
+        font-size: 17px;
+        font-weight: 700;
+      }
+
+      .nav-group {
+        display: grid;
+        gap: 4px;
+      }
+
+      .nav-link {
+        display: block;
+        padding: 9px 10px;
+        border-radius: 6px;
+        color: var(--rail-muted);
+        font-weight: 600;
+      }
+
+      .nav-link:hover,
+      .nav-link.active {
+        background: rgba(255, 255, 255, 0.1);
+        color: white;
+      }
+
+      .logout-form {
+        margin-top: 18px;
+      }
+
+      .logout-button {
+        width: 100%;
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 6px;
+        background: transparent;
+        color: var(--rail-muted);
+        cursor: pointer;
+        font: inherit;
+        padding: 9px 10px;
+        text-align: left;
+      }
+
+      .workbench-main {
+        min-width: 0;
+        padding: 18px 22px 28px;
+      }
+
+      .topbar {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        gap: 16px;
+        margin-bottom: 14px;
+      }
+
+      h1 {
+        margin: 0;
+        font-size: 22px;
+      }
+
+      .user-line {
+        color: var(--muted);
+        font-size: 13px;
+      }
+
+      .quick-action {
+        border-radius: 6px;
+        background: var(--accent);
+        color: white;
+        font-weight: 700;
+        padding: 9px 12px;
+      }
+
+      .state-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+        gap: 10px;
+        margin-bottom: 12px;
+      }
+
+      .state-tile,
+      .panel {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+      }
+
+      .state-tile {
+        padding: 11px 12px;
+      }
+
+      .state-count {
+        display: block;
+        margin-top: 4px;
+        font-size: 22px;
+        font-weight: 700;
+      }
+
+      .state-label,
+      .empty,
+      .muted {
+        color: var(--muted);
+      }
+
+      .panel-grid {
+        display: grid;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        gap: 12px;
+      }
+
+      .panel h2 {
+        margin: 0;
+        padding: 10px 12px;
+        border-bottom: 1px solid var(--line);
+        font-size: 15px;
+      }
+
+      .panel-body {
+        padding: 0 12px 12px;
+      }
+
+      .status {
+        display: inline-block;
+        border-radius: 999px;
+        background: #edf7f6;
+        color: #0f766e;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 2px 8px;
+      }
+
+      .message-list {
+        display: grid;
+        gap: 9px;
+        margin: 0;
+        padding: 12px;
+        list-style: none;
+      }
+
+      .message-item {
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 9px;
+      }
+
+      .message-item:last-child {
+        border-bottom: 0;
+        padding-bottom: 0;
+      }
+
+      @media (max-width: 860px) {
+        .workbench-shell {
+          grid-template-columns: 1fr;
+        }
+
+        .left-nav {
+          position: static;
+        }
+
+        .panel-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="workbench-shell">
+      <aside class="left-nav" aria-label="Primary navigation">
+        <p class="brand">BESTCRM</p>
+        <nav class="nav-group">
+          <a class="nav-link active" href="/workbench">Workbench</a>
+          <a class="nav-link" href="/opportunities">Opportunities</a>
+          <a class="nav-link" href="/customers">Customers</a>
+          <a class="nav-link" href="/contacts">Contacts</a>
+        </nav>
+        <form class="logout-form" method="post" action="/logout">
+          <button class="logout-button" type="submit">Logout</button>
+        </form>
+      </aside>
+
+      <main class="workbench-main">
+        <header class="topbar">
+          <div>
+            <h1>Workbench</h1>
+            <div class="user-line"><%= currentUser.displayName %> · <%= currentUser.roles.join(', ') %></div>
+          </div>
+          <a class="quick-action" href="/opportunities/new">New opportunity</a>
+        </header>
+
+        <section aria-labelledby="state-counts">
+          <h2 id="state-counts" class="muted">Counts by workflow state</h2>
+          <div class="state-grid">
+            <% if (summary.stateCounts.length === 0) { %>
+              <div class="state-tile empty">No visible opportunities.</div>
+            <% } %>
+            <% for (const item of summary.stateCounts) { %>
+              <div class="state-tile">
+                <span class="state-label"><%= item.status %></span>
+                <span class="state-count"><%= item.count %></span>
+              </div>
+            <% } %>
+          </div>
+        </section>
+
+        <section class="panel-grid">
+          <article class="panel">
+            <h2>My pending todos</h2>
+            <div class="panel-body">
+              <% if (summary.pendingTodos.length === 0) { %>
+                <p class="empty">No pending todos.</p>
+              <% } else { %>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>Todo</th>
+                      <th>Opportunity</th>
+                      <th>Customer</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const todo of summary.pendingTodos) { %>
+                      <tr>
+                        <td><%= todo.title %></td>
+                        <td><a href="/opportunities/<%= todo.opportunityId %>"><%= todo.opportunityNo %> · <%= todo.opportunityTitle %></a></td>
+                        <td><%= todo.customerName %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } %>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h2>Recent workflow messages</h2>
+            <% if (summary.recentWorkflowMessages.length === 0) { %>
+              <div class="panel-body"><p class="empty">No workflow messages.</p></div>
+            <% } else { %>
+              <ul class="message-list">
+                <% for (const message of summary.recentWorkflowMessages) { %>
+                  <li class="message-item">
+                    <div>
+                      <a href="/opportunities/<%= message.opportunityId %>"><strong><%= message.opportunityNo %></strong> <%= message.opportunityTitle %></a>
+                    </div>
+                    <div><span class="status"><%= message.eventType %></span> <%= message.fromStatus || '' %> -> <%= message.toStatus || '' %></div>
+                    <div class="muted"><%= message.actorDisplayName %><% if (message.targetDisplayName) { %> to <%= message.targetDisplayName %><% } %></div>
+                    <% if (message.comment) { %>
+                      <div><%= message.comment %></div>
+                    <% } %>
+                  </li>
+                <% } %>
+              </ul>
+            <% } %>
+          </article>
+
+          <article class="panel">
+            <h2>Opportunities I created</h2>
+            <div class="panel-body">
+              <% if (summary.createdOpportunities.length === 0) { %>
+                <p class="empty">No created opportunities.</p>
+              <% } else { %>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>No.</th>
+                      <th>Title</th>
+                      <th>Status</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const opportunity of summary.createdOpportunities) { %>
+                      <tr>
+                        <td><%= opportunity.opportunityNo %></td>
+                        <td><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a><br><span class="muted"><%= opportunity.customerName %></span></td>
+                        <td><span class="status"><%= opportunity.status %></span></td>
+                        <td><%= opportunity.estimatedAmount ?? '' %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } %>
+            </div>
+          </article>
+
+          <article class="panel">
+            <h2>Opportunities assigned to me</h2>
+            <div class="panel-body">
+              <% if (summary.assignedOpportunities.length === 0) { %>
+                <p class="empty">No assigned opportunities.</p>
+              <% } else { %>
+                <table>
+                  <thead>
+                    <tr>
+                      <th>No.</th>
+                      <th>Title</th>
+                      <th>Status</th>
+                      <th>Amount</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const opportunity of summary.assignedOpportunities) { %>
+                      <tr>
+                        <td><%= opportunity.opportunityNo %></td>
+                        <td><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a><br><span class="muted"><%= opportunity.customerName %></span></td>
+                        <td><span class="status"><%= opportunity.status %></span></td>
+                        <td><%= opportunity.estimatedAmount ?? '' %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } %>
+            </div>
+          </article>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

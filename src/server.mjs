@@ -14,11 +14,13 @@ import { createCustomerRepository } from './repositories/customerRepository.mjs'
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
 import { createTodoRepository } from './repositories/todoRepository.mjs';
 import { createUserRepository } from './repositories/userRepository.mjs';
+import { createWorkbenchRepository } from './repositories/workbenchRepository.mjs';
 import { createWorkflowEventRepository } from './repositories/workflowEventRepository.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
+import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
 import { isMainModule } from './utils/moduleEntry.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -140,6 +142,24 @@ const emptyTodoRepository = {
   }
 };
 
+const emptyWorkbenchRepository = {
+  async listPendingTodos() {
+    return [];
+  },
+  async listCreatedOpportunities() {
+    return [];
+  },
+  async listAssignedOpportunities() {
+    return [];
+  },
+  async listRecentWorkflowMessages() {
+    return [];
+  },
+  async countByWorkflowState() {
+    return [];
+  }
+};
+
 export function createApp(options = {}) {
   const config = { ...loadConfig(), ...options };
   const shouldCreatePool = !options.userRepository && config.databaseUrl;
@@ -153,6 +173,7 @@ export function createApp(options = {}) {
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
+  const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
   const sessionStore = 'sessionStore' in options ? options.sessionStore : createSessionStore(pool);
   const app = express();
 
@@ -175,9 +196,10 @@ export function createApp(options = {}) {
   }));
   app.use(attachCurrentUser(userRepository));
   app.get('/', (req, res) => {
-    res.redirect('/opportunities');
+    res.redirect('/workbench');
   });
   app.use(authRoutes(userRepository));
+  app.use(workbenchRoutes({ workbenchRepository }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
   app.use(opportunityRoutes({
