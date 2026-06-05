@@ -9,7 +9,9 @@ import { attachCurrentUser } from './middleware/auth.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
+import { createTodoRepository } from './repositories/todoRepository.mjs';
 import { createUserRepository } from './repositories/userRepository.mjs';
+import { createWorkflowEventRepository } from './repositories/workflowEventRepository.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
@@ -23,6 +25,9 @@ const emptyUserRepository = {
   },
   async findByUsernameWithRoles() {
     return null;
+  },
+  async listUsersByRole() {
+    return [];
   }
 };
 
@@ -74,6 +79,21 @@ const emptyOpportunityRepository = {
   }
 };
 
+const emptyWorkflowEventRepository = {
+  async create() {
+    throw new Error('Workflow event repository is not configured');
+  }
+};
+
+const emptyTodoRepository = {
+  async create() {
+    throw new Error('Todo repository is not configured');
+  },
+  async closePendingForOpportunity() {
+    throw new Error('Todo repository is not configured');
+  }
+};
+
 export function createApp(options = {}) {
   const config = { ...loadConfig(), ...options };
   const shouldCreatePool = !options.userRepository && config.databaseUrl;
@@ -82,6 +102,8 @@ export function createApp(options = {}) {
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
   const contactRepository = options.contactRepository || (pool ? createContactRepository(pool) : emptyContactRepository);
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
+  const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
+  const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const sessionStore = 'sessionStore' in options ? options.sessionStore : createSessionStore(pool);
   const app = express();
 
@@ -106,7 +128,14 @@ export function createApp(options = {}) {
   app.use(authRoutes(userRepository));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
-  app.use(opportunityRoutes({ customerRepository, contactRepository, opportunityRepository }));
+  app.use(opportunityRoutes({
+    customerRepository,
+    contactRepository,
+    opportunityRepository,
+    userRepository,
+    workflowEventRepository,
+    todoRepository
+  }));
 
   app.get('/health', (req, res) => {
     res.json({ ok: true, app: 'BESTCRM' });

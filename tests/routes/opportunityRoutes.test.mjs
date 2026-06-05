@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import request from 'supertest';
+import { ACTIONS } from '../../src/domain/workflow.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
 import { STATUSES } from '../../src/domain/statuses.mjs';
 import { createApp } from '../../src/server.mjs';
@@ -97,6 +98,116 @@ async function createLoggedInAgent(extraOptions = {}) {
   return { agent, created };
 }
 
+function opportunityDetail(overrides = {}) {
+  return {
+    id: 30,
+    opportunityNo: 'OPP-20260605-abcdef12',
+    title: 'Factory upgrade',
+    customerId: 10,
+    customerName: 'Acme Co',
+    primaryContactId: 20,
+    primaryContactName: 'Alice',
+    requirement: 'Upgrade production line',
+    estimatedAmount: 120000.50,
+    projectType: 'automation',
+    deliveryCycle: '45 days',
+    expectedBidDate: '2026-07-10',
+    status: STATUSES.DRAFT,
+    salespersonId: 7,
+    salesManagerId: null,
+    quotationEngineerId: null,
+    technicalManagerId: null,
+    commercialManagerId: null,
+    finalDealAmount: null,
+    lostReason: null,
+    wonDescription: null,
+    archivedAt: null,
+    ...overrides
+  };
+}
+
+async function createWorkflowAgent({ user, opportunity, roleUsers = {} }) {
+  const actor = {
+    passwordHash: await hashPassword('ChangeMe123!'),
+    isActive: true,
+    email: null,
+    phone: null,
+    ...user
+  };
+  let currentOpportunity = opportunityDetail(opportunity);
+  const calls = [];
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    userRepository: {
+      async findByIdWithRoles(id) {
+        return Number(id) === actor.id ? actor : null;
+      },
+      async findByUsernameWithRoles(username) {
+        return username === actor.username ? actor : null;
+      },
+      async listUsersByRole(role) {
+        calls.push(['listUsersByRole', role]);
+        return roleUsers[role] || [];
+      }
+    },
+    customerRepository: {
+      async listCustomers() {
+        return [{ id: 10, name: 'Acme Co', ownerUserId: 7 }];
+      },
+      async getCustomerDetail() {
+        return { id: 10, name: 'Acme Co', ownerUserId: 7 };
+      }
+    },
+    contactRepository: {
+      async listContacts() {
+        return [{ id: 20, customerId: 10, customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' }];
+      },
+      async getContactDetail() {
+        return { id: 20, customerId: 10, customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' };
+      }
+    },
+    opportunityRepository: {
+      async listOpportunities() {
+        return [currentOpportunity];
+      },
+      async getOpportunityDetail() {
+        return currentOpportunity;
+      },
+      async createOpportunity() {
+        throw new Error('not used');
+      },
+      async findById(id) {
+        calls.push(['findOpportunity', Number(id)]);
+        return currentOpportunity;
+      },
+      async updateWorkflowState(id, changes) {
+        calls.push(['updateOpportunity', Number(id), changes]);
+        currentOpportunity = { ...currentOpportunity, ...changes };
+        return currentOpportunity;
+      }
+    },
+    workflowEventRepository: {
+      async create(event) {
+        calls.push(['createEvent', event]);
+        return { id: 99, ...event };
+      }
+    },
+    todoRepository: {
+      async create(todo) {
+        calls.push(['createTodo', todo]);
+        return { id: 100, ...todo };
+      },
+      async closePendingForOpportunity(opportunityId, status) {
+        calls.push(['closeTodos', opportunityId, status]);
+        return { rowCount: 1 };
+      }
+    }
+  });
+  const agent = request.agent(app);
+  await agent.post('/login').type('form').send({ username: actor.username, password: 'ChangeMe123!' });
+  return { agent, calls, getOpportunity: () => currentOpportunity };
+}
+
 test('anonymous users are redirected from opportunity pages', async () => {
   const app = createApp({ sessionSecret: 'test-secret' });
 
@@ -173,4 +284,139 @@ test('JSON API creates opportunity draft', async () => {
   assert.equal(response.body.customerId, 10);
   assert.equal(response.body.primaryContactId, 20);
   assert.equal(created[0].salespersonId, 7);
+});
+
+test('salesperson submits initiation from opportunity detail page', async () => {
+  const { agent, calls, getOpportunity } = await createWorkflowAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    },
+    opportunity: {
+      status: STATUSES.DRAFT,
+      salespersonId: 7
+    },
+    roleUsers: {
+      [ROLES.SALES_MANAGER]: [{ id: 2, displayName: 'Sales Manager', username: 'manager01', roles: [ROLES.SALES_MANAGER] }]
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /submit_initiation/);
+  assert.match(detail.text, /Sales Manager/);
+
+  const response = await agent
+    .post('/opportunities/30/workflow')
+    .type('form')
+    .send({ action: ACTIONS.SUBMIT_INITIATION, salesManagerId: '2', comment: 'ready for review' });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/30');
+  assert.equal(getOpportunity().status, STATUSES.INITIATION_PENDING);
+  assert.equal(getOpportunity().salesManagerId, 2);
+  assert.deepEqual(calls.filter((call) => call[0] !== 'listUsersByRole'), [
+    ['findOpportunity', 30],
+    ['updateOpportunity', 30, { status: STATUSES.INITIATION_PENDING, salesManagerId: 2 }],
+    ['createEvent', {
+      opportunityId: 30,
+      eventType: ACTIONS.SUBMIT_INITIATION,
+      fromStatus: STATUSES.DRAFT,
+      toStatus: STATUSES.INITIATION_PENDING,
+      actorUserId: 7,
+      targetUserId: 2,
+      comment: 'ready for review'
+    }],
+    ['createTodo', { opportunityId: 30, assigneeUserId: 2, title: 'Approve opportunity initiation' }]
+  ]);
+});
+
+test('salesperson withdraws pending initiation from opportunity detail page', async () => {
+  const { agent, calls, getOpportunity } = await createWorkflowAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    },
+    opportunity: {
+      status: STATUSES.INITIATION_PENDING,
+      salespersonId: 7,
+      salesManagerId: 2
+    }
+  });
+
+  const response = await agent
+    .post('/opportunities/30/workflow')
+    .type('form')
+    .send({ action: ACTIONS.WITHDRAW_INITIATION, reason: 'revise amount' });
+
+  assert.equal(response.status, 302);
+  assert.equal(getOpportunity().status, STATUSES.DRAFT);
+  assert.deepEqual(calls, [
+    ['findOpportunity', 30],
+    ['updateOpportunity', 30, { status: STATUSES.DRAFT }],
+    ['createEvent', {
+      opportunityId: 30,
+      eventType: ACTIONS.WITHDRAW_INITIATION,
+      fromStatus: STATUSES.INITIATION_PENDING,
+      toStatus: STATUSES.DRAFT,
+      actorUserId: 7,
+      targetUserId: null,
+      comment: 'revise amount'
+    }],
+    ['closeTodos', 30, 'withdrawn']
+  ]);
+});
+
+test('Sales Manager approves initiation and assigns quotation engineer from detail page', async () => {
+  const { agent, calls, getOpportunity } = await createWorkflowAgent({
+    user: {
+      id: 2,
+      username: 'manager01',
+      displayName: 'Sales Manager',
+      roles: [ROLES.SALES_MANAGER]
+    },
+    opportunity: {
+      status: STATUSES.INITIATION_PENDING,
+      salespersonId: 7,
+      salesManagerId: 2
+    },
+    roleUsers: {
+      [ROLES.QUOTATION_ENGINEER]: [{ id: 3, displayName: 'Quote Engineer', username: 'quote01', roles: [ROLES.QUOTATION_ENGINEER] }]
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /approve_initiation/);
+  assert.match(detail.text, /reject_initiation/);
+  assert.match(detail.text, /Quote Engineer/);
+
+  const response = await agent
+    .post('/opportunities/30/workflow')
+    .type('form')
+    .send({ action: ACTIONS.APPROVE_INITIATION, quotationEngineerId: '3', comment: 'approved' });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/30');
+  assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+  assert.equal(getOpportunity().quotationEngineerId, 3);
+  assert.deepEqual(calls.filter((call) => call[0] !== 'listUsersByRole'), [
+    ['findOpportunity', 30],
+    ['updateOpportunity', 30, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3 }],
+    ['createEvent', {
+      opportunityId: 30,
+      eventType: ACTIONS.APPROVE_INITIATION,
+      fromStatus: STATUSES.INITIATION_PENDING,
+      toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      actorUserId: 2,
+      targetUserId: 3,
+      comment: 'approved'
+    }],
+    ['closeTodos', 30, 'completed'],
+    ['createTodo', { opportunityId: 30, assigneeUserId: 3, title: 'Prepare technical solution' }]
+  ]);
 });

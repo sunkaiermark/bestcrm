@@ -51,3 +51,33 @@ test('findByIdWithRoles returns null when user is missing', async () => {
   assert.deepEqual(pool.queries[0].params, [99]);
   assert.match(pool.queries[0].sql, /WHERE u\.id = \$1/);
 });
+
+test('listUsersByRole returns active users for assignment selects', async () => {
+  const pool = createFakePool({
+    id: 2,
+    username: 'manager01',
+    password_hash: 'hashed',
+    display_name: 'Sales Manager',
+    email: 'manager@example.com',
+    phone: '456',
+    is_active: true,
+    roles: ['sales_manager']
+  });
+  const repository = createUserRepository(pool);
+
+  const users = await repository.listUsersByRole('sales_manager');
+
+  assert.deepEqual(users, [{
+    id: 2,
+    username: 'manager01',
+    passwordHash: 'hashed',
+    displayName: 'Sales Manager',
+    email: 'manager@example.com',
+    phone: '456',
+    isActive: true,
+    roles: ['sales_manager']
+  }]);
+  assert.deepEqual(pool.queries[0].params, ['sales_manager']);
+  assert.match(pool.queries[0].sql, /WHERE u\.is_active = true/);
+  assert.match(pool.queries[0].sql, /HAVING \$1 = ANY/);
+});

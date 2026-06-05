@@ -33,6 +33,35 @@
         <dt>Expected Bid Date</dt>
         <dd><%= opportunity.expectedBidDate || '' %></dd>
       </dl>
+      <% if (workflowForms && workflowForms.length > 0) { %>
+        <h2>Workflow Actions</h2>
+        <% for (const workflowForm of workflowForms) { %>
+          <section>
+            <h3><%= workflowForm.title %></h3>
+            <form method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+              <input type="hidden" name="action" value="<%= workflowForm.action %>">
+              <% for (const field of workflowForm.fields) { %>
+                <label>
+                  <%= field.label %>
+                  <% if (field.type === 'userSelect') { %>
+                    <select name="<%= field.name %>" required>
+                      <option value=""></option>
+                      <% for (const user of field.users) { %>
+                        <option value="<%= user.id %>"><%= user.displayName %></option>
+                      <% } %>
+                    </select>
+                  <% } else if (field.type === 'textarea') { %>
+                    <textarea name="<%= field.name %>" <%= field.required ? 'required' : '' %>></textarea>
+                  <% } else { %>
+                    <input name="<%= field.name %>" type="<%= field.inputType %>" <%= field.required ? 'required' : '' %>>
+                  <% } %>
+                </label>
+              <% } %>
+              <button type="submit"><%= workflowForm.button %></button>
+            </form>
+          </section>
+        <% } %>
+      <% } %>
     </main>
   </body>
 </html>

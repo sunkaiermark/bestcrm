@@ -45,6 +45,15 @@ export function createUserRepository(pool) {
         GROUP BY u.id
         LIMIT 1`, [username]);
       return mapUserRow(result.rows[0]);
+    },
+
+    async listUsersByRole(role) {
+      const result = await pool.query(`${userWithRolesSelect}
+        WHERE u.is_active = true
+        GROUP BY u.id
+        HAVING $1 = ANY(COALESCE(array_remove(array_agg(r.code ORDER BY r.code), NULL), ARRAY[]::text[]))
+        ORDER BY u.display_name ASC`, [role]);
+      return result.rows.map(mapUserRow);
     }
   };
 }
