@@ -10,9 +10,9 @@ The system is not a personal browser prototype. It is a company web application 
 
 The first version implements the core pre-contract opportunity workflow:
 
-1. Salesperson creates an opportunity and submits it for department approval.
-2. Department manager approves or rejects the initiation request.
-3. Department manager assigns a quotation engineer after approval.
+1. Salesperson creates an opportunity and submits it for Sales Manager approval.
+2. Sales Manager approves or rejects the initiation request.
+3. Sales Manager assigns a quotation engineer after approval.
 4. Quotation engineer submits technical solution materials.
 5. Technical manager approves or rejects the technical solution.
 6. Quotation engineer submits commercial quotation details.
@@ -68,7 +68,7 @@ This architecture keeps the first version small enough to build and operate, whi
 The first version supports these roles:
 
 - Salesperson
-- Department Manager
+- Sales Manager
 - Quotation Engineer
 - Technical Manager
 - Commercial Manager
@@ -90,13 +90,13 @@ Salesperson can:
 - Create and maintain contacts for customers they own
 - Upload, preview, and download attachments for opportunities they created
 - Submit opportunity initiation
-- Withdraw submitted initiation before department approval
+- Withdraw submitted initiation before Sales Manager approval
 - Edit rejected initiation requests
 - View opportunities they created
 - Record customer result after quotation approval
 - Submit contract approval after winning a project
 
-Department Manager can:
+Sales Manager can:
 
 - Approve or reject opportunity initiation
 - Assign quotation engineer after approval
@@ -188,9 +188,9 @@ Next state:
 
 - `initiation_pending`
 
-### 2. Department Approval and Assignment
+### 2. Sales Manager Approval and Assignment
 
-Department Manager actions:
+Sales Manager actions:
 
 - Reject initiation with reason
 - Approve initiation and assign quotation engineer
@@ -210,9 +210,9 @@ System creates:
 
 Salesperson withdraw option:
 
-- If the opportunity is still in `initiation_pending` and the Department Manager has not approved or rejected it, the salesperson can withdraw the submission.
+- If the opportunity is still in `initiation_pending` and the Sales Manager has not approved or rejected it, the salesperson can withdraw the submission.
 - Withdrawal returns the opportunity to `draft`.
-- The pending Department Manager todo is closed as withdrawn.
+- The pending Sales Manager todo is closed as withdrawn.
 - The timeline records who withdrew the submission and why.
 
 ### 3. Technical Solution Preparation
@@ -425,7 +425,7 @@ Final approval sends the opportunity to:
 - expected_bid_date
 - status
 - salesperson_id
-- department_manager_id
+- sales_manager_id
 - quotation_engineer_id
 - technical_manager_id
 - commercial_manager_id
@@ -690,9 +690,9 @@ The first version is acceptable when:
 - A user can log in with internal username and password.
 - An administrator can create users and assign roles.
 - A salesperson can create an opportunity and submit initiation.
-- A salesperson can withdraw pending initiation before department approval.
-- A department manager can approve or reject initiation.
-- A department manager can assign a quotation engineer.
+- A salesperson can withdraw pending initiation before Sales Manager approval.
+- A Sales Manager can approve or reject initiation.
+- A Sales Manager can assign a quotation engineer.
 - A quotation engineer can submit a technical solution and upload attachments.
 - A quotation engineer can upload, preview, and download related technical and quote files.
 - A quotation engineer can withdraw pending technical solution before technical approval.
