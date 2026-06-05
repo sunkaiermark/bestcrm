@@ -8,6 +8,8 @@ import { ROLES, hasRole } from '../domain/roles.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
+import { createContact } from '../services/contactService.mjs';
+import { createCustomer } from '../services/customerService.mjs';
 import { canViewOpportunity, createOpportunityDraft } from '../services/opportunityService.mjs';
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
@@ -461,15 +463,39 @@ export function opportunityRoutes({
         customerRepository.listCustomers(filter),
         contactRepository.listContacts(filter)
       ]);
+      const selectedCustomerId = req.query.customerId || customers[0]?.id || '';
       res.render('opportunities/form', {
         opportunity: {
-          customerId: req.query.customerId,
+          customerId: selectedCustomerId,
           primaryContactId: req.query.contactId
         },
         customers,
         contacts,
         action: '/opportunities'
       });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/customers', async (req, res, next) => {
+    try {
+      const customer = await createCustomer(customerRepository, req.currentUser, req.body);
+      const params = new URLSearchParams({ customerId: String(customer.id) });
+      res.redirect(`/opportunities/new?${params.toString()}`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/contacts', async (req, res, next) => {
+    try {
+      const contact = await createContact({ customerRepository, contactRepository }, req.currentUser, req.body);
+      const params = new URLSearchParams({
+        customerId: String(contact.customerId),
+        contactId: String(contact.id)
+      });
+      res.redirect(`/opportunities/new?${params.toString()}`);
     } catch (error) {
       next(error);
     }

@@ -4,48 +4,117 @@
           <h1>Opportunity Initiation</h1>
         </header>
 
-        <form class="form-panel" method="post" action="<%= action %>">
+        <form id="opportunity-form" method="post" action="<%= action %>"></form>
+        <section class="form-panel">
           <label>
             Customer
-            <select name="customerId" required>
+            <select name="customerId" form="opportunity-form" required>
               <% for (const customer of customers) { %>
                 <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
               <% } %>
             </select>
           </label>
+          <details class="inline-create-panel">
+            <summary>Add new customer here</summary>
+            <form method="post" action="/opportunities/customers">
+              <label>
+                Customer Name
+                <input name="name" required>
+              </label>
+              <label>
+                Industry
+                <input name="industry">
+              </label>
+              <label>
+                Region
+                <input name="region">
+              </label>
+              <label>
+                Address
+                <input name="address">
+              </label>
+              <label>
+                Notes
+                <textarea name="notes"></textarea>
+              </label>
+              <button type="submit">Create customer</button>
+            </form>
+          </details>
           <label>
             Contact
-            <select name="primaryContactId">
+            <select name="primaryContactId" form="opportunity-form">
               <option value=""></option>
               <% for (const contact of contacts) { %>
                 <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>" <%= String(opportunity.primaryContactId || '') === String(contact.id) ? 'selected' : '' %>><%= contact.name %> - <%= contact.customerName %></option>
               <% } %>
             </select>
           </label>
+          <details class="inline-create-panel">
+            <summary>Add new contact here</summary>
+            <% if (customers.length) { %>
+              <form method="post" action="/opportunities/contacts">
+                <label>
+                  Customer
+                  <select name="customerId" required>
+                    <% for (const customer of customers) { %>
+                      <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label>
+                  Contact Name
+                  <input name="name" required>
+                </label>
+                <label>
+                  Title
+                  <input name="title">
+                </label>
+                <label>
+                  Phone
+                  <input name="phone">
+                </label>
+                <label>
+                  Email
+                  <input name="email">
+                </label>
+                <label>
+                  WeChat
+                  <input name="wechat">
+                </label>
+                <label>
+                  Notes
+                  <textarea name="notes"></textarea>
+                </label>
+                <button type="submit">Create contact</button>
+              </form>
+            <% } else { %>
+              <p class="empty">Add a customer before creating a contact.</p>
+            <% } %>
+          </details>
           <label>
             Title
-            <input name="title" value="<%= opportunity.title || '' %>" required>
+            <input name="title" form="opportunity-form" value="<%= opportunity.title || '' %>" required>
           </label>
           <label>
             Requirement
-            <textarea name="requirement" required><%= opportunity.requirement || '' %></textarea>
+            <textarea name="requirement" form="opportunity-form" required><%= opportunity.requirement || '' %></textarea>
           </label>
           <label>
             Estimated Amount
-            <input name="estimatedAmount" value="<%= opportunity.estimatedAmount || '' %>">
+            <input name="estimatedAmount" form="opportunity-form" value="<%= opportunity.estimatedAmount || '' %>">
           </label>
           <label>
             Project Type
-            <input name="projectType" value="<%= opportunity.projectType || '' %>">
+            <input name="projectType" form="opportunity-form" value="<%= opportunity.projectType || '' %>">
           </label>
           <label>
             Delivery Cycle
-            <input name="deliveryCycle" value="<%= opportunity.deliveryCycle || '' %>">
+            <input name="deliveryCycle" form="opportunity-form" value="<%= opportunity.deliveryCycle || '' %>">
           </label>
           <label>
             Expected Bid Date
-            <input name="expectedBidDate" type="date" value="<%= opportunity.expectedBidDate || '' %>">
+            <input name="expectedBidDate" form="opportunity-form" type="date" value="<%= opportunity.expectedBidDate || '' %>">
           </label>
-          <button type="submit">Save draft</button>
-        </form>
+          <button type="submit" form="opportunity-form">Save draft</button>
+        </section>
 <%- include('../partials/app-end') %>

@@ -22,6 +22,8 @@ async function createLoggedInAgent(extraOptions = {}) {
   };
   const created = [];
   const uploadedAttachments = [];
+  const createdCustomers = [];
+  const createdContacts = [];
   const requirementUpdates = [];
   const workflowEvents = [];
   const todoClosures = [];
@@ -43,6 +45,10 @@ async function createLoggedInAgent(extraOptions = {}) {
       },
       async getCustomerDetail() {
         return { id: 10, name: 'Acme Co', ownerUserId: 7 };
+      },
+      async createCustomer(input) {
+        createdCustomers.push(input);
+        return { id: 11, ...input };
       }
     },
     contactRepository: {
@@ -51,6 +57,10 @@ async function createLoggedInAgent(extraOptions = {}) {
       },
       async getContactDetail() {
         return { id: 20, customerId: 10, customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' };
+      },
+      async createContact(input) {
+        createdContacts.push(input);
+        return { id: 21, customerName: 'Acme Co', customerOwnerUserId: 7, ...input };
       }
     },
     opportunityRepository: {
@@ -210,7 +220,7 @@ async function createLoggedInAgent(extraOptions = {}) {
   });
   const agent = request.agent(app);
   await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
-  return { agent, created, uploadedAttachments, requirementUpdates, workflowEvents, todoClosures, todosToCreate, workflowUpdates };
+  return { agent, created, createdCustomers, createdContacts, uploadedAttachments, requirementUpdates, workflowEvents, todoClosures, todosToCreate, workflowUpdates };
 }
 
 function assertAppSidebar(html, activeHref) {
@@ -440,6 +450,10 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(form.text, /name="customerId"/);
   assert.match(form.text, /Acme Co/);
   assert.match(form.text, /Alice/);
+  assert.match(form.text, /Add new customer here/);
+  assert.match(form.text, /action="\/opportunities\/customers"/);
+  assert.match(form.text, /Add new contact here/);
+  assert.match(form.text, /action="\/opportunities\/contacts"/);
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
@@ -447,6 +461,61 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(detail.text, /Factory upgrade/);
   assert.match(detail.text, /Upgrade production line/);
   assert.match(detail.text, /Alice/);
+});
+
+test('opportunity form quick creates customer and returns with it selected', async () => {
+  const { agent, createdCustomers } = await createLoggedInAgent();
+
+  const response = await agent
+    .post('/opportunities/customers')
+    .type('form')
+    .send({
+      name: 'New Account',
+      industry: 'Manufacturing',
+      region: 'Shanghai',
+      address: 'No. 1 Road',
+      notes: 'Created while initiating opportunity'
+    });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/new?customerId=11');
+  assert.deepEqual(createdCustomers, [{
+    name: 'New Account',
+    industry: 'Manufacturing',
+    region: 'Shanghai',
+    address: 'No. 1 Road',
+    ownerUserId: 7,
+    notes: 'Created while initiating opportunity'
+  }]);
+});
+
+test('opportunity form quick creates contact and returns with it selected', async () => {
+  const { agent, createdContacts } = await createLoggedInAgent();
+
+  const response = await agent
+    .post('/opportunities/contacts')
+    .type('form')
+    .send({
+      customerId: '10',
+      name: 'Bob Buyer',
+      title: 'Purchasing Manager',
+      phone: '13800000000',
+      email: 'bob@example.com',
+      wechat: 'bobwx',
+      notes: 'Primary buyer'
+    });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/new?customerId=10&contactId=21');
+  assert.deepEqual(createdContacts, [{
+    customerId: 10,
+    name: 'Bob Buyer',
+    title: 'Purchasing Manager',
+    phone: '13800000000',
+    email: 'bob@example.com',
+    wechat: 'bobwx',
+    notes: 'Primary buyer'
+  }]);
 });
 
 test('opportunity detail shows pending todos and workflow timeline', async () => {
