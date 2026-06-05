@@ -226,6 +226,8 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.match(editForm.text, /Edit User/);
   assert.match(editForm.text, /sales_manager01/);
   assert.match(editForm.text, /name="displayName"/);
+  assert.match(editForm.text, /New login password/);
+  assert.match(editForm.text, /name="password"/);
 
   const updated = await agent.post('/system/users/11').type('form').send({
     displayName: 'Updated Manager',
@@ -245,10 +247,27 @@ test('administrator can add edit and deactivate system users', async () => {
     roles: [ROLES.TECHNICAL_MANAGER]
   });
 
+  const passwordUpdated = await agent.post('/system/users/11').type('form').send({
+    displayName: 'Updated Manager',
+    email: 'updated.manager@bestcrm.local',
+    phone: '777',
+    password: 'Changed123!',
+    roles: ROLES.TECHNICAL_MANAGER,
+    isActive: 'on'
+  });
+  assert.equal(passwordUpdated.status, 302);
+  assert.equal(passwordUpdated.headers.location, '/system/users');
+  assert.equal(calls[2].method, 'updateUser');
+  assert.equal(calls[2].id, 11);
+  assert.equal(calls[2].input.displayName, 'Updated Manager');
+  assert.equal(calls[2].input.isActive, true);
+  assert.notEqual(calls[2].input.passwordHash, 'Changed123!');
+  assert.equal(await verifyPassword('Changed123!', calls[2].input.passwordHash), true);
+
   const deleted = await agent.post('/system/users/11/delete').type('form').send();
   assert.equal(deleted.status, 302);
   assert.equal(deleted.headers.location, '/system/users');
-  assert.deepEqual(calls[2], { method: 'deactivateUser', id: 11 });
+  assert.deepEqual(calls[3], { method: 'deactivateUser', id: 11 });
 });
 
 test('non administrators cannot manage system users', async () => {

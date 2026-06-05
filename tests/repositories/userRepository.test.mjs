@@ -185,6 +185,31 @@ test('updateUser updates profile fields and replaces roles', async () => {
   assert.match(pool.queries[4].sql, /COMMIT/);
 });
 
+test('updateUser updates password hash when provided', async () => {
+  const pool = createFakePoolSequence([[{ id: 12 }]]);
+  const repository = createUserRepository(pool);
+
+  const user = await repository.updateUser(12, {
+    displayName: 'Updated User',
+    email: 'updated@example.com',
+    phone: '777',
+    isActive: true,
+    passwordHash: 'new-hashed-password',
+    roles: ['technical_manager']
+  });
+
+  assert.deepEqual(user, { id: 12 });
+  assert.match(pool.queries[1].sql, /password_hash = \$6/);
+  assert.deepEqual(pool.queries[1].params, [
+    12,
+    'Updated User',
+    'updated@example.com',
+    '777',
+    true,
+    'new-hashed-password'
+  ]);
+});
+
 test('deactivateUser soft deletes by setting inactive', async () => {
   const pool = createFakePoolSequence([[{ id: 12 }]]);
   const repository = createUserRepository(pool);

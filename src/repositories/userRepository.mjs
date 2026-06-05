@@ -96,6 +96,17 @@ export function createUserRepository(pool) {
     async updateUser(id, user) {
       await pool.query('BEGIN');
       try {
+        const passwordAssignment = user.passwordHash ? 'password_hash = $6,' : '';
+        const params = [
+          id,
+          user.displayName,
+          user.email || null,
+          user.phone || null,
+          user.isActive
+        ];
+        if (user.passwordHash) {
+          params.push(user.passwordHash);
+        }
         const result = await pool.query(`
           UPDATE users
           SET
@@ -103,16 +114,11 @@ export function createUserRepository(pool) {
             email = $3,
             phone = $4,
             is_active = $5,
+            ${passwordAssignment}
             updated_at = now()
           WHERE id = $1
           RETURNING id
-        `, [
-          id,
-          user.displayName,
-          user.email || null,
-          user.phone || null,
-          user.isActive
-        ]);
+        `, params);
         if (!result.rows[0]) {
           await pool.query('COMMIT');
           return null;

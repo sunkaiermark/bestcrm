@@ -64,6 +64,10 @@ export async function updateSystemUser(userRepository, actor, userId, input, opt
   if (!base.displayName) {
     throw new Error('Missing required user fields');
   }
+  const password = String(input.password || '');
+  if (password) {
+    base.passwordHash = await hashPassword(password);
+  }
   return userRepository.updateUser(userId, base);
 }
 
