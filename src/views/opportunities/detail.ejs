@@ -15,6 +15,7 @@
   const canDeleteRequirementMaterials = ['draft', 'initiation_rejected'].includes(opportunity.status);
   const supplementalRequirementUpdates = typeof requirementUpdates === 'undefined' ? [] : requirementUpdates;
   const technicalSolutionVersions = typeof technicalSolutions === 'undefined' ? [] : technicalSolutions;
+  const commercialQuoteVersions = typeof commercialQuotes === 'undefined' ? [] : commercialQuotes;
   const canAddRequirementUpdate = typeof canCreateRequirementUpdate === 'undefined' ? false : canCreateRequirementUpdate;
 %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
@@ -268,6 +269,54 @@
                 </table>
               <% } else { %>
                 <p class="empty">No commercial quote files.</p>
+              <% } %>
+
+              <h3>Version History</h3>
+              <% if (commercialQuoteVersions.length > 0) { %>
+                <table class="list-table">
+                  <thead>
+                    <tr>
+                      <th>Version</th>
+                      <th>Status</th>
+                      <th>Total Price</th>
+                      <th>Payment Terms</th>
+                      <th>Validity Date</th>
+                      <th>Items</th>
+                      <th>Submitted By</th>
+                      <th>Submitted At</th>
+                      <th>Reviewed By</th>
+                      <th>Reviewed At</th>
+                      <th>Review Comment</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const quote of commercialQuoteVersions) { %>
+                      <tr>
+                        <td>V<%= quote.versionNo %></td>
+                        <td><%= quote.status %></td>
+                        <td><%= quote.totalPrice %></td>
+                        <td><%= quote.paymentTerms || '' %></td>
+                        <td><%= quote.validityDate || '' %></td>
+                        <td>
+                          <% for (const item of quote.items || []) { %>
+                            <div>
+                              <strong><%= item.itemName %></strong>
+                              <span><%= item.specification || '' %></span>
+                              <span><%= item.quantity %> x <%= item.unitPrice %> = <%= item.subtotal %></span>
+                            </div>
+                          <% } %>
+                        </td>
+                        <td><%= quote.submitterDisplayName || '' %></td>
+                        <td><%= quote.submittedAt || '' %></td>
+                        <td><%= quote.reviewerDisplayName || '' %></td>
+                        <td><%= quote.reviewedAt || '' %></td>
+                        <td><%= quote.reviewComment || '' %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p class="empty">No commercial quote versions.</p>
               <% } %>
             </div>
           </section>

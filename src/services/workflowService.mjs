@@ -74,6 +74,11 @@ const technicalSolutionReviewStatuses = new Map([
   [ACTIONS.REJECT_TECHNICAL_SOLUTION, 'rejected']
 ]);
 
+const commercialQuoteReviewStatuses = new Map([
+  [ACTIONS.APPROVE_COMMERCIAL_QUOTE, 'approved'],
+  [ACTIONS.REJECT_COMMERCIAL_QUOTE, 'rejected']
+]);
+
 const configuredApprovalAssignees = new Map([
   [ACTIONS.SUBMIT_INITIATION, {
     settingKey: 'opportunity_initiation',
@@ -312,6 +317,22 @@ async function persistTechnicalSolutionReviewData({ action, actor, opportunityId
   });
 }
 
+async function persistCommercialQuoteReviewData({ action, actor, opportunityId, payload, repositories }) {
+  const status = commercialQuoteReviewStatuses.get(action);
+  if (!status) {
+    return;
+  }
+  if (typeof repositories.commercialQuoteRepository?.reviewLatestPending !== 'function') {
+    throw new WorkflowValidationError('Commercial quote repository is not configured');
+  }
+  await repositories.commercialQuoteRepository.reviewLatestPending({
+    opportunityId: Number(opportunityId),
+    status,
+    reviewedBy: actor.id,
+    reviewComment: commentFromPayload(payload)
+  });
+}
+
 async function loadContractApprovalContext(action, opportunityId, repositories) {
   if (!contractReviewActions.has(action)) {
     return null;
@@ -411,6 +432,7 @@ export async function applyWorkflowAction({
   const effectiveAfter = updated || { ...before, ...changes };
   await persistSubmissionData({ action, actor, opportunityId, payload: effectivePayload, repositories });
   await persistTechnicalSolutionReviewData({ action, actor, opportunityId, payload: effectivePayload, repositories });
+  await persistCommercialQuoteReviewData({ action, actor, opportunityId, payload: effectivePayload, repositories });
   await persistContractApprovalData({ action, actor, opportunityId, payload: effectivePayload, repositories, contractApproval });
   const effects = buildWorkflowEffects({ actor, action, before, after: effectiveAfter, payload: effectivePayload });
 

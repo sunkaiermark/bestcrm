@@ -494,7 +494,7 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      const [usersByRole, activity, attachments, requirementUpdates, technicalSolutions] = await Promise.all([
+      const [usersByRole, activity, attachments, requirementUpdates, technicalSolutions, commercialQuotes] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
           opportunityId: opportunity.id,
@@ -510,6 +510,9 @@ export function opportunityRoutes({
           : [],
         typeof technicalSolutionRepository?.listByOpportunity === 'function'
           ? technicalSolutionRepository.listByOpportunity(opportunity.id)
+          : [],
+        typeof commercialQuoteRepository?.listByOpportunity === 'function'
+          ? commercialQuoteRepository.listByOpportunity(opportunity.id)
           : []
       ]);
       const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals);
@@ -522,6 +525,7 @@ export function opportunityRoutes({
         contractApprovals: activity.contractApprovals,
         requirementUpdates,
         technicalSolutions,
+        commercialQuotes,
         canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity)
       });
     } catch (error) {

@@ -70,6 +70,10 @@ function createMaterialRepositories(before, attachments = []) {
     async createQuote(input) {
       repositories.calls.push(['createQuote', input]);
       return { id: 200, ...input };
+    },
+    async reviewLatestPending(input) {
+      repositories.calls.push(['reviewCommercialQuoteVersion', input]);
+      return { id: 200, ...input };
     }
   };
   repositories.technicalSolutionRepository = {
@@ -570,6 +574,87 @@ test('submit commercial quote stores quote details when requirements are complet
     }],
     ['closeTodos', 10, 'completed'],
     ['createTodo', { opportunityId: 10, assigneeUserId: 5, title: 'Approve commercial quote' }]
+  ]);
+});
+
+test('commercial manager approval marks latest pending commercial quote version approved', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.COMMERCIAL_QUOTE_PENDING,
+    salespersonId: 1,
+    quotationEngineerId: 3,
+    commercialManagerId: 5
+  });
+
+  const result = await applyWorkflowAction({
+    actor: { id: 5, roles: [ROLES.COMMERCIAL_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.APPROVE_COMMERCIAL_QUOTE,
+    payload: { comment: 'approved' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.CUSTOMER_NEGOTIATION);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['updateOpportunity', 10, { status: STATUSES.CUSTOMER_NEGOTIATION }],
+    ['reviewCommercialQuoteVersion', {
+      opportunityId: 10,
+      status: 'approved',
+      reviewedBy: 5,
+      reviewComment: 'approved'
+    }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.APPROVE_COMMERCIAL_QUOTE,
+      fromStatus: STATUSES.COMMERCIAL_QUOTE_PENDING,
+      toStatus: STATUSES.CUSTOMER_NEGOTIATION,
+      actorUserId: 5,
+      targetUserId: 1,
+      comment: 'approved'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 1, title: 'Record customer result' }]
+  ]);
+});
+
+test('commercial manager rejection marks latest pending commercial quote version rejected', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.COMMERCIAL_QUOTE_PENDING,
+    quotationEngineerId: 3,
+    commercialManagerId: 5
+  });
+
+  const result = await applyWorkflowAction({
+    actor: { id: 5, roles: [ROLES.COMMERCIAL_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.REJECT_COMMERCIAL_QUOTE,
+    payload: { reason: 'revise price' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.COMMERCIAL_QUOTE_REJECTED);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['updateOpportunity', 10, { status: STATUSES.COMMERCIAL_QUOTE_REJECTED }],
+    ['reviewCommercialQuoteVersion', {
+      opportunityId: 10,
+      status: 'rejected',
+      reviewedBy: 5,
+      reviewComment: 'revise price'
+    }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.REJECT_COMMERCIAL_QUOTE,
+      fromStatus: STATUSES.COMMERCIAL_QUOTE_PENDING,
+      toStatus: STATUSES.COMMERCIAL_QUOTE_REJECTED,
+      actorUserId: 5,
+      targetUserId: 3,
+      comment: 'revise price'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 3, title: 'Revise commercial quote' }]
   ]);
 });
 

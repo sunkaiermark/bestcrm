@@ -184,6 +184,17 @@ async function createLoggedInAgent(extraOptions = {}) {
         return { id: 41, createdAt: '2026-06-06T08:00:00.000Z', ...input };
       }
     },
+    commercialQuoteRepository: {
+      async listByOpportunity() {
+        return [];
+      },
+      async createQuote() {
+        throw new Error('not used');
+      },
+      async reviewLatestPending() {
+        throw new Error('not used');
+      }
+    },
     technicalSolutionRepository: {
       async listByOpportunity() {
         return [];
@@ -240,7 +251,7 @@ function opportunityDetail(overrides = {}) {
   };
 }
 
-async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachments = [], technicalSolutions = [], contractApprovals = [], approvalSettings = {} }) {
+async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachments = [], technicalSolutions = [], commercialQuotes = [], contractApprovals = [], approvalSettings = {} }) {
   const actor = {
     passwordHash: await hashPassword('ChangeMe123!'),
     isActive: true,
@@ -347,8 +358,15 @@ async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachme
       }
     },
     commercialQuoteRepository: {
+      async listByOpportunity() {
+        return commercialQuotes;
+      },
       async createQuote(input) {
         calls.push(['createQuote', input]);
+        return { id: 200, ...input };
+      },
+      async reviewLatestPending(input) {
+        calls.push(['reviewCommercialQuoteVersion', input]);
         return { id: 200, ...input };
       }
     },
@@ -564,6 +582,60 @@ test('opportunity detail shows technical solution version history', async () => 
   assert.match(detail.text, /approved/);
   assert.match(detail.text, /Quote Engineer/);
   assert.match(detail.text, /Technical Manager/);
+});
+
+test('opportunity detail shows commercial quote version history', async () => {
+  const { agent } = await createLoggedInAgent({
+    commercialQuoteRepository: {
+      async listByOpportunity() {
+        return [{
+          id: 101,
+          opportunityId: 30,
+          versionNo: 2,
+          totalPrice: 2100,
+          paymentTerms: '40% advance, 60% before delivery',
+          validityDate: '2026-08-31',
+          remarks: 'price revised',
+          status: 'approved',
+          submittedBy: 3,
+          submitterDisplayName: 'Quote Engineer',
+          submittedAt: '2026-06-06T12:00:00.000Z',
+          reviewedBy: 5,
+          reviewerDisplayName: 'Commercial Manager',
+          reviewedAt: '2026-06-06T13:00:00.000Z',
+          reviewComment: 'approved',
+          items: [{
+            id: 501,
+            itemName: 'Control cabinet',
+            specification: 'PLC control set',
+            unit: 'set',
+            quantity: 2,
+            unitPrice: 1050,
+            subtotal: 2100
+          }]
+        }];
+      },
+      async createQuote() {
+        throw new Error('not used');
+      },
+      async reviewLatestPending() {
+        throw new Error('not used');
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Commercial Quote[\s\S]*Version History/);
+  assert.match(detail.text, /V2/);
+  assert.match(detail.text, /2100/);
+  assert.match(detail.text, /40% advance, 60% before delivery/);
+  assert.match(detail.text, /Control cabinet/);
+  assert.match(detail.text, /PLC control set/);
+  assert.match(detail.text, /approved/);
+  assert.match(detail.text, /Quote Engineer/);
+  assert.match(detail.text, /Commercial Manager/);
 });
 
 test('opportunity detail shows upload forms in each business material panel', async () => {

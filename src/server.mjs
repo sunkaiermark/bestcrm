@@ -142,7 +142,13 @@ const emptyAttachmentRepository = {
 };
 
 const emptyCommercialQuoteRepository = {
+  async listByOpportunity() {
+    return [];
+  },
   async createQuote() {
+    throw new Error('Commercial quote repository is not configured');
+  },
+  async reviewLatestPending() {
     throw new Error('Commercial quote repository is not configured');
   }
 };
