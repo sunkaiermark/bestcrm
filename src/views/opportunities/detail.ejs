@@ -62,16 +62,7 @@
                 <dd><%= opportunity.requirement %></dd>
               </dl>
               <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
-                <label>
-                  Category
-                  <select name="category" required>
-                    <option value="requirement">Requirement Material</option>
-                    <option value="technical_solution">Technical Solution</option>
-                    <option value="commercial_quote">Commercial Quote</option>
-                    <option value="contract">Contract</option>
-                    <option value="other">Other</option>
-                  </select>
-                </label>
+                <input type="hidden" name="category" value="requirement">
                 <label>
                   File
                   <input type="file" name="attachment" required>

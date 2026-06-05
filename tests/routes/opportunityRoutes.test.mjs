@@ -411,7 +411,7 @@ test('opportunity detail shows attachment upload form and file links', async () 
   assert.match(detail.text, /Commercial Quote/);
   assert.match(detail.text, /Commercial Contract/);
   assert.match(detail.text, /name="attachment"/);
-  assert.match(detail.text, /<option value="requirement">Requirement Material<\/option>/);
+  assert.match(detail.text, /name="category" value="requirement"/);
   assert.match(detail.text, /technical-solution\.pdf/);
   assert.match(detail.text, /technical_solution/);
   assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/download/);
@@ -486,7 +486,9 @@ test('opportunity detail shows upload forms in each business material panel', as
 
   assert.equal(detail.status, 200);
   assert.equal((detail.text.match(/action="\/opportunities\/30\/attachments"/g) || []).length, 4);
-  assert.match(detail.text, /Requirement Materials[\s\S]*<option value="requirement">Requirement Material<\/option>/);
+  const requirementSection = detail.text.match(/<h2>Requirement Materials<\/h2>[\s\S]*?<h2>Technical Solution<\/h2>/)[0];
+  assert.match(requirementSection, /name="category" value="requirement"/);
+  assert.doesNotMatch(requirementSection, /<select name="category"/);
   assert.match(detail.text, /Technical Solution[\s\S]*name="category" value="technical_solution"/);
   assert.match(detail.text, /Commercial Quote[\s\S]*name="category" value="commercial_quote"/);
   assert.match(detail.text, /Commercial Contract[\s\S]*name="category" value="contract"/);
