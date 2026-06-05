@@ -47,6 +47,13 @@ export function createUserRepository(pool) {
       return mapUserRow(result.rows[0]);
     },
 
+    async listUsersWithRoles() {
+      const result = await pool.query(`${userWithRolesSelect}
+        GROUP BY u.id
+        ORDER BY u.is_active DESC, u.display_name ASC`);
+      return result.rows.map(mapUserRow);
+    },
+
     async listUsersByRole(role) {
       const result = await pool.query(`${userWithRolesSelect}
         WHERE u.is_active = true

@@ -1,0 +1,31 @@
+<%- include('../partials/app-start', { title: 'System Roles - BESTCRM', activeNav: 'system-roles' }) %>
+        <header class="page-header">
+          <div>
+            <h1>System Roles</h1>
+            <div class="muted">Role definitions used by opportunity workflow permissions.</div>
+          </div>
+        </header>
+
+        <section class="list-section">
+          <div class="list-body">
+            <table class="list-table">
+              <thead>
+                <tr>
+                  <th>Role</th>
+                  <th>Code</th>
+                  <th>Workflow responsibility</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const role of roles) { %>
+                  <tr>
+                    <td><%= role.name %></td>
+                    <td><%= role.code %></td>
+                    <td><%= role.description %></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

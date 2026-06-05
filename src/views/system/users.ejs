@@ -1,0 +1,37 @@
+<%- include('../partials/app-start', { title: 'System Users - BESTCRM', activeNav: 'system-users' }) %>
+        <header class="page-header">
+          <div>
+            <h1>System Users</h1>
+            <div class="muted">Internal login accounts and assigned roles.</div>
+          </div>
+        </header>
+
+        <section class="list-section">
+          <div class="list-body">
+            <table class="list-table">
+              <thead>
+                <tr>
+                  <th>User</th>
+                  <th>Username</th>
+                  <th>Roles</th>
+                  <th>Email</th>
+                  <th>Phone</th>
+                  <th>Status</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const user of users) { %>
+                  <tr>
+                    <td><%= user.displayName %></td>
+                    <td><%= user.username %></td>
+                    <td><%= user.roles.join(', ') %></td>
+                    <td><%= user.email || '-' %></td>
+                    <td><%= user.phone || '-' %></td>
+                    <td><span class="status"><%= user.isActive ? 'active' : 'inactive' %></span></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

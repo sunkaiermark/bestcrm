@@ -1,0 +1,37 @@
+<%- include('../partials/app-start', { title: 'Approval Settings - BESTCRM', activeNav: 'system-approval-settings' }) %>
+        <header class="page-header">
+          <div>
+            <h1>Approval Settings</h1>
+            <div class="muted">Current first-version approval routing by workflow stage.</div>
+          </div>
+        </header>
+
+        <section class="list-section">
+          <div class="list-body">
+            <table class="list-table">
+              <thead>
+                <tr>
+                  <th>Stage</th>
+                  <th>Owner</th>
+                  <th>Approver</th>
+                  <th>Assignment</th>
+                  <th>Approve result</th>
+                  <th>Reject result</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const setting of settings) { %>
+                  <tr>
+                    <td><%= setting.stage %></td>
+                    <td><%= setting.owner %></td>
+                    <td><%= setting.approver %></td>
+                    <td><%= setting.assignment %></td>
+                    <td><%= setting.approveResult %></td>
+                    <td><%= setting.rejectResult %></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

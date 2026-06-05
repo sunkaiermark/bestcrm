@@ -20,6 +20,7 @@ import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
+import { systemRoutes } from './routes/systemRoutes.mjs';
 import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
 import { isMainModule } from './utils/moduleEntry.mjs';
 
@@ -31,6 +32,9 @@ const emptyUserRepository = {
   },
   async findByUsernameWithRoles() {
     return null;
+  },
+  async listUsersWithRoles() {
+    return [];
   },
   async listUsersByRole() {
     return [];
@@ -200,6 +204,7 @@ export function createApp(options = {}) {
   });
   app.use(authRoutes(userRepository));
   app.use(workbenchRoutes({ workbenchRepository }));
+  app.use(systemRoutes({ userRepository }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
   app.use(opportunityRoutes({
