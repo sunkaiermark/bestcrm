@@ -80,12 +80,18 @@ const emptyOpportunityRepository = {
 };
 
 const emptyWorkflowEventRepository = {
+  async listByOpportunity() {
+    return [];
+  },
   async create() {
     throw new Error('Workflow event repository is not configured');
   }
 };
 
 const emptyTodoRepository = {
+  async listByOpportunity() {
+    return [];
+  },
   async create() {
     throw new Error('Todo repository is not configured');
   },

@@ -91,6 +91,38 @@ async function createLoggedInAgent(extraOptions = {}) {
       },
       ...extraOptions.opportunityRepository
     },
+    workflowEventRepository: {
+      async listByOpportunity() {
+        return [{
+          id: 77,
+          opportunityId: 30,
+          eventType: ACTIONS.SUBMIT_INITIATION,
+          fromStatus: STATUSES.DRAFT,
+          toStatus: STATUSES.INITIATION_PENDING,
+          actorUserId: 7,
+          actorDisplayName: 'Sales One',
+          targetUserId: 2,
+          targetDisplayName: 'Sales Manager',
+          comment: 'ready for review',
+          createdAt: '2026-06-05T10:00:00.000Z'
+        }];
+      }
+    },
+    todoRepository: {
+      async listByOpportunity() {
+        return [{
+          id: 88,
+          opportunityId: 30,
+          assigneeUserId: 2,
+          assigneeDisplayName: 'Sales Manager',
+          title: 'Approve opportunity initiation',
+          status: 'pending',
+          dueAt: null,
+          createdAt: '2026-06-05T11:00:00.000Z',
+          completedAt: null
+        }];
+      }
+    },
     ...extraOptions
   });
   const agent = request.agent(app);
@@ -187,12 +219,18 @@ async function createWorkflowAgent({ user, opportunity, roleUsers = {} }) {
       }
     },
     workflowEventRepository: {
+      async listByOpportunity() {
+        return [];
+      },
       async create(event) {
         calls.push(['createEvent', event]);
         return { id: 99, ...event };
       }
     },
     todoRepository: {
+      async listByOpportunity() {
+        return [];
+      },
       async create(todo) {
         calls.push(['createTodo', todo]);
         return { id: 100, ...todo };
@@ -237,6 +275,22 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(detail.text, /Factory upgrade/);
   assert.match(detail.text, /Upgrade production line/);
   assert.match(detail.text, /Alice/);
+});
+
+test('opportunity detail shows pending todos and workflow timeline', async () => {
+  const { agent } = await createLoggedInAgent();
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Pending Todos/);
+  assert.match(detail.text, /Approve opportunity initiation/);
+  assert.match(detail.text, /Sales Manager/);
+  assert.match(detail.text, /Timeline/);
+  assert.match(detail.text, /submit_initiation/);
+  assert.match(detail.text, /draft/);
+  assert.match(detail.text, /initiation_pending/);
+  assert.match(detail.text, /ready for review/);
 });
 
 test('page form creates opportunity draft referencing customer and contact', async () => {

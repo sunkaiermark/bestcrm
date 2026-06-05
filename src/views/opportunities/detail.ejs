@@ -33,6 +33,43 @@
         <dt>Expected Bid Date</dt>
         <dd><%= opportunity.expectedBidDate || '' %></dd>
       </dl>
+      <h2>Pending Todos</h2>
+      <% if (todos && todos.length > 0) { %>
+        <ul>
+          <% for (const todo of todos) { %>
+            <li>
+              <strong><%= todo.title %></strong>
+              <span><%= todo.status %></span>
+              <span><%= todo.assigneeDisplayName %></span>
+              <span><%= todo.createdAt || '' %></span>
+            </li>
+          <% } %>
+        </ul>
+      <% } else { %>
+        <p>No todos.</p>
+      <% } %>
+      <h2>Timeline</h2>
+      <% if (timelineEvents && timelineEvents.length > 0) { %>
+        <ol>
+          <% for (const event of timelineEvents) { %>
+            <li>
+              <strong><%= event.eventType %></strong>
+              <span><%= event.fromStatus || '' %></span>
+              <span><%= event.toStatus || '' %></span>
+              <span><%= event.actorDisplayName %></span>
+              <% if (event.targetDisplayName) { %>
+                <span><%= event.targetDisplayName %></span>
+              <% } %>
+              <% if (event.comment) { %>
+                <p><%= event.comment %></p>
+              <% } %>
+              <span><%= event.createdAt || '' %></span>
+            </li>
+          <% } %>
+        </ol>
+      <% } else { %>
+        <p>No timeline events.</p>
+      <% } %>
       <% if (workflowForms && workflowForms.length > 0) { %>
         <h2>Workflow Actions</h2>
         <% for (const workflowForm of workflowForms) { %>

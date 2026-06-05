@@ -207,6 +207,18 @@ function parseWorkflowPayload(body) {
   return payload;
 }
 
+async function loadOpportunityActivity({ opportunityId, workflowEventRepository, todoRepository }) {
+  const [timelineEvents, todos] = await Promise.all([
+    typeof workflowEventRepository?.listByOpportunity === 'function'
+      ? workflowEventRepository.listByOpportunity(opportunityId)
+      : [],
+    typeof todoRepository?.listByOpportunity === 'function'
+      ? todoRepository.listByOpportunity(opportunityId)
+      : []
+  ]);
+  return { timelineEvents, todos };
+}
+
 export function opportunityRoutes({
   customerRepository,
   contactRepository,
@@ -274,9 +286,21 @@ export function opportunityRoutes({
         res.status(403).send('Forbidden');
         return;
       }
-      const usersByRole = await loadUsersByRole(userRepository);
+      const [usersByRole, activity] = await Promise.all([
+        loadUsersByRole(userRepository),
+        loadOpportunityActivity({
+          opportunityId: opportunity.id,
+          workflowEventRepository,
+          todoRepository
+        })
+      ]);
       const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole);
-      res.render('opportunities/detail', { opportunity, workflowForms });
+      res.render('opportunities/detail', {
+        opportunity,
+        workflowForms,
+        timelineEvents: activity.timelineEvents,
+        todos: activity.todos
+      });
     } catch (error) {
       next(error);
     }

@@ -85,6 +85,45 @@ test('workflow event repository inserts timeline events', async () => {
   ]);
 });
 
+test('workflow event repository lists opportunity timeline with actor and target names', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    id: '77',
+    opportunity_id: '10',
+    event_type: ACTIONS.APPROVE_INITIATION,
+    from_status: STATUSES.INITIATION_PENDING,
+    to_status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    actor_user_id: '2',
+    actor_display_name: 'Sales Manager',
+    target_user_id: '3',
+    target_display_name: 'Quote Engineer',
+    comment: 'approved',
+    created_at: '2026-06-05T10:00:00.000Z'
+  }]);
+  const repository = createWorkflowEventRepository(queryTarget);
+
+  const events = await repository.listByOpportunity(10);
+
+  assert.deepEqual(events, [{
+    id: 77,
+    opportunityId: 10,
+    eventType: ACTIONS.APPROVE_INITIATION,
+    fromStatus: STATUSES.INITIATION_PENDING,
+    toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    actorUserId: 2,
+    actorDisplayName: 'Sales Manager',
+    targetUserId: 3,
+    targetDisplayName: 'Quote Engineer',
+    comment: 'approved',
+    createdAt: '2026-06-05T10:00:00.000Z'
+  }]);
+  assert.match(queryTarget.queries[0].sql, /FROM workflow_events we/);
+  assert.match(queryTarget.queries[0].sql, /LEFT JOIN users actor/);
+  assert.match(queryTarget.queries[0].sql, /LEFT JOIN users target/);
+  assert.match(queryTarget.queries[0].sql, /WHERE we\.opportunity_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /ORDER BY we\.created_at DESC/);
+  assert.deepEqual(queryTarget.queries[0].params, [10]);
+});
+
 test('todo repository creates and closes pending todos', async () => {
   const queryTarget = createFakeQueryTarget([{ id: '88' }]);
   const repository = createTodoRepository(queryTarget);
@@ -103,4 +142,39 @@ test('todo repository creates and closes pending todos', async () => {
   assert.match(queryTarget.queries[1].sql, /status = \$2/);
   assert.match(queryTarget.queries[1].sql, /completed_at = now\(\)/);
   assert.deepEqual(queryTarget.queries[1].params, [10, 'withdrawn']);
+});
+
+test('todo repository lists opportunity todos with assignee names', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    id: '88',
+    opportunity_id: '10',
+    assignee_user_id: '3',
+    assignee_display_name: 'Quote Engineer',
+    title: 'Prepare technical solution',
+    status: 'pending',
+    due_at: null,
+    created_at: '2026-06-05T11:00:00.000Z',
+    completed_at: null
+  }]);
+  const repository = createTodoRepository(queryTarget);
+
+  const todos = await repository.listByOpportunity(10);
+
+  assert.deepEqual(todos, [{
+    id: 88,
+    opportunityId: 10,
+    assigneeUserId: 3,
+    assigneeDisplayName: 'Quote Engineer',
+    title: 'Prepare technical solution',
+    status: 'pending',
+    dueAt: null,
+    createdAt: '2026-06-05T11:00:00.000Z',
+    completedAt: null
+  }]);
+  assert.match(queryTarget.queries[0].sql, /FROM todos t/);
+  assert.match(queryTarget.queries[0].sql, /JOIN users assignee/);
+  assert.match(queryTarget.queries[0].sql, /WHERE t\.opportunity_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /CASE WHEN t\.status = 'pending'/);
+  assert.match(queryTarget.queries[0].sql, /t\.created_at DESC/);
+  assert.deepEqual(queryTarget.queries[0].params, [10]);
 });
