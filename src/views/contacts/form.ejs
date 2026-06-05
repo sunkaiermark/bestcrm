@@ -1,0 +1,49 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Contact - BESTCRM</title>
+  </head>
+  <body>
+    <main>
+      <p><a href="/contacts">Contacts</a></p>
+      <h1>Contact</h1>
+      <form method="post" action="<%= action %>">
+        <label>
+          Customer
+          <select name="customerId" required>
+            <% for (const customer of customers) { %>
+              <option value="<%= customer.id %>" <%= String(contact.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
+            <% } %>
+          </select>
+        </label>
+        <label>
+          Name
+          <input name="name" value="<%= contact.name || '' %>" required>
+        </label>
+        <label>
+          Title
+          <input name="title" value="<%= contact.title || '' %>">
+        </label>
+        <label>
+          Phone
+          <input name="phone" value="<%= contact.phone || '' %>">
+        </label>
+        <label>
+          Email
+          <input name="email" value="<%= contact.email || '' %>">
+        </label>
+        <label>
+          WeChat
+          <input name="wechat" value="<%= contact.wechat || '' %>">
+        </label>
+        <label>
+          Notes
+          <textarea name="notes"><%= contact.notes || '' %></textarea>
+        </label>
+        <button type="submit">Save</button>
+      </form>
+    </main>
+  </body>
+</html>

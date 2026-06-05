@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><%= contact.name %> - BESTCRM</title>
+  </head>
+  <body>
+    <main>
+      <p><a href="/contacts">Contacts</a></p>
+      <h1><%= contact.name %></h1>
+      <p><a href="/contacts/<%= contact.id %>/edit">Edit contact</a></p>
+      <dl>
+        <dt>Customer</dt>
+        <dd><a href="/customers/<%= contact.customerId %>"><%= contact.customerName %></a></dd>
+        <dt>Title</dt>
+        <dd><%= contact.title %></dd>
+        <dt>Phone</dt>
+        <dd><%= contact.phone %></dd>
+        <dt>Email</dt>
+        <dd><%= contact.email %></dd>
+        <dt>WeChat</dt>
+        <dd><%= contact.wechat %></dd>
+        <dt>Notes</dt>
+        <dd><%= contact.notes %></dd>
+      </dl>
+    </main>
+  </body>
+</html>

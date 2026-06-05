@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title><%= customer.name %> - BESTCRM</title>
+  </head>
+  <body>
+    <main>
+      <p><a href="/customers">Customers</a></p>
+      <h1><%= customer.name %></h1>
+      <p><a href="/customers/<%= customer.id %>/edit">Edit customer</a></p>
+      <dl>
+        <dt>Industry</dt>
+        <dd><%= customer.industry %></dd>
+        <dt>Region</dt>
+        <dd><%= customer.region %></dd>
+        <dt>Address</dt>
+        <dd><%= customer.address %></dd>
+        <dt>Notes</dt>
+        <dd><%= customer.notes %></dd>
+      </dl>
+      <h2>Contacts</h2>
+      <p><a href="/contacts/new?customerId=<%= customer.id %>">New contact</a></p>
+      <ul>
+        <% for (const contact of customer.contacts || []) { %>
+          <li>
+            <a href="/contacts/<%= contact.id %>"><%= contact.name %></a>
+            <span><%= contact.title %></span>
+            <span><%= contact.phone %></span>
+            <span><%= contact.email %></span>
+          </li>
+        <% } %>
+      </ul>
+    </main>
+  </body>
+</html>

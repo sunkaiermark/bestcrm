@@ -6,8 +6,12 @@ import { loadConfig } from './config.mjs';
 import { createPool } from './db/pool.mjs';
 import { createSessionStore } from './db/sessionStore.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
+import { createContactRepository } from './repositories/contactRepository.mjs';
+import { createCustomerRepository } from './repositories/customerRepository.mjs';
 import { createUserRepository } from './repositories/userRepository.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
+import { contactRoutes } from './routes/contactRoutes.mjs';
+import { customerRoutes } from './routes/customerRoutes.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -20,11 +24,43 @@ const emptyUserRepository = {
   }
 };
 
+const emptyCustomerRepository = {
+  async listCustomers() {
+    return [];
+  },
+  async getCustomerDetail() {
+    return null;
+  },
+  async createCustomer() {
+    throw new Error('Customer repository is not configured');
+  },
+  async updateCustomer() {
+    throw new Error('Customer repository is not configured');
+  }
+};
+
+const emptyContactRepository = {
+  async listContacts() {
+    return [];
+  },
+  async getContactDetail() {
+    return null;
+  },
+  async createContact() {
+    throw new Error('Contact repository is not configured');
+  },
+  async updateContact() {
+    throw new Error('Contact repository is not configured');
+  }
+};
+
 export function createApp(options = {}) {
   const config = { ...loadConfig(), ...options };
   const shouldCreatePool = !options.userRepository && config.databaseUrl;
   const pool = options.pool || (shouldCreatePool ? createPool(config) : null);
   const userRepository = options.userRepository || (pool ? createUserRepository(pool) : emptyUserRepository);
+  const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
+  const contactRepository = options.contactRepository || (pool ? createContactRepository(pool) : emptyContactRepository);
   const sessionStore = 'sessionStore' in options ? options.sessionStore : createSessionStore(pool);
   const app = express();
 
@@ -47,6 +83,8 @@ export function createApp(options = {}) {
   }));
   app.use(attachCurrentUser(userRepository));
   app.use(authRoutes(userRepository));
+  app.use(customerRoutes({ customerRepository }));
+  app.use(contactRoutes({ customerRepository, contactRepository }));
 
   app.get('/health', (req, res) => {
     res.json({ ok: true, app: 'BESTCRM' });
