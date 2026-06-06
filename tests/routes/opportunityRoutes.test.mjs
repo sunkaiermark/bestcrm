@@ -479,6 +479,9 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(detail.text, /Factory upgrade/);
   assert.match(detail.text, /Upgrade production line/);
   assert.match(detail.text, /Alice/);
+  const basicInfoHtml = detail.text.match(/<section class="content-section business-section business-section-basic">[\s\S]*?<\/section>/)?.[0] || '';
+  assert.match(basicInfoHtml, /<table class="detail-table">/);
+  assert.match(basicInfoHtml, /<th scope="row">Status<\/th>\s*<td>draft<\/td>/);
 });
 
 test('opportunity detail shows list and edit actions but hides delete from non administrators', async () => {
@@ -492,7 +495,7 @@ test('opportunity detail shows list and edit actions but hides delete from non a
   assert.match(detail.text, />Edit</);
   const headerHtml = detail.text.match(/<header class="page-header">[\s\S]*?<\/header>/)?.[0] || '';
   assert.doesNotMatch(headerHtml, /class="status"/);
-  assert.match(detail.text, /<dt>Status<\/dt>\s*<dd>draft<\/dd>/);
+  assert.match(detail.text, /<th scope="row">Status<\/th>\s*<td>draft<\/td>/);
   assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/delete"/);
 });
 

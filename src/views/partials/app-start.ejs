@@ -364,6 +364,31 @@
         background: #f8fbfc;
       }
 
+      .detail-table {
+        background: rgba(255, 255, 255, 0.38);
+        border: 1px solid var(--line);
+      }
+
+      .detail-table th,
+      .detail-table td {
+        border-bottom: 1px solid var(--line);
+        padding: 8px 10px;
+      }
+
+      .detail-table tr:last-child th,
+      .detail-table tr:last-child td {
+        border-bottom: 0;
+      }
+
+      .detail-table th {
+        background: rgba(255, 255, 255, 0.34);
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+        text-transform: none;
+        width: 160px;
+      }
+
       .detail-list {
         display: grid;
         grid-template-columns: max-content minmax(0, 1fr);

@@ -41,28 +41,46 @@
           <section class="content-section business-section business-section-basic">
             <h2>Basic Info</h2>
             <div class="section-body">
-              <dl class="detail-list">
-                <dt>No.</dt>
-                <dd><%= opportunity.opportunityNo %></dd>
-                <dt>Customer</dt>
-                <dd><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></dd>
-                <dt>Primary Contact</dt>
-                <dd>
-                  <% if (opportunity.primaryContactId) { %>
-                    <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
-                  <% } %>
-                </dd>
-                <dt>Status</dt>
-                <dd><%= opportunity.status %></dd>
-                <dt>Estimated Amount</dt>
-                <dd><%= opportunity.estimatedAmount ?? '' %></dd>
-                <dt>Project Type</dt>
-                <dd><%= opportunity.projectType %></dd>
-                <dt>Delivery Cycle</dt>
-                <dd><%= opportunity.deliveryCycle %></dd>
-                <dt>Expected Bid Date</dt>
-                <dd><%= opportunity.expectedBidDate || '' %></dd>
-              </dl>
+              <table class="detail-table">
+                <tbody>
+                  <tr>
+                    <th scope="row">No.</th>
+                    <td><%= opportunity.opportunityNo %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Customer</th>
+                    <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Primary Contact</th>
+                    <td>
+                      <% if (opportunity.primaryContactId) { %>
+                        <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
+                      <% } %>
+                    </td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Status</th>
+                    <td><%= opportunity.status %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Estimated Amount</th>
+                    <td><%= opportunity.estimatedAmount ?? '' %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Project Type</th>
+                    <td><%= opportunity.projectType %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Delivery Cycle</th>
+                    <td><%= opportunity.deliveryCycle %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Expected Bid Date</th>
+                    <td><%= opportunity.expectedBidDate || '' %></td>
+                  </tr>
+                </tbody>
+              </table>
             </div>
           </section>
 
