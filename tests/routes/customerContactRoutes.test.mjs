@@ -134,6 +134,11 @@ test('logged in salesperson can view customer list and detail', async () => {
   assertAppSidebar(detail.text, '/customers');
   assert.match(detail.text, /Acme Co/);
   assert.match(detail.text, /Alice/);
+  const customerDetailHtml = detail.text.match(/<h2>Customer detail<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
+  assert.match(customerDetailHtml, /class="basic-info-grid"/);
+  assert.equal((customerDetailHtml.match(/<table class="detail-table">/g) || []).length, 2);
+  assert.match(customerDetailHtml, /<th scope="row">Industry<\/th>/);
+  assert.match(customerDetailHtml, /<th scope="row">Address<\/th>/);
 });
 
 test('logged in salesperson can view contact list and detail', async () => {

@@ -11,16 +11,32 @@
         <section class="content-section">
           <h2>Customer detail</h2>
           <div class="section-body">
-            <dl class="detail-list">
-              <dt>Industry</dt>
-              <dd><%= customer.industry %></dd>
-              <dt>Region</dt>
-              <dd><%= customer.region %></dd>
-              <dt>Address</dt>
-              <dd><%= customer.address %></dd>
-              <dt>Notes</dt>
-              <dd><%= customer.notes %></dd>
-            </dl>
+            <div class="basic-info-grid">
+              <table class="detail-table">
+                <tbody>
+                  <tr>
+                    <th scope="row">Industry</th>
+                    <td><%= customer.industry %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Region</th>
+                    <td><%= customer.region %></td>
+                  </tr>
+                </tbody>
+              </table>
+              <table class="detail-table">
+                <tbody>
+                  <tr>
+                    <th scope="row">Address</th>
+                    <td><%= customer.address %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Notes</th>
+                    <td><%= customer.notes %></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 
