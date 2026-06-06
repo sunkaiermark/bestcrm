@@ -13,6 +13,7 @@ const contractVersionsMigrationPath = new URL('../../src/db/migrations/009_contr
 const opportunityResponsibilityMigrationPath = new URL('../../src/db/migrations/010_opportunity_responsibility.sql', import.meta.url);
 const customerCountryMigrationPath = new URL('../../src/db/migrations/011_customer_country.sql', import.meta.url);
 const contactProfileMigrationPath = new URL('../../src/db/migrations/012_contact_profile_fields.sql', import.meta.url);
+const customerProfileMigrationPath = new URL('../../src/db/migrations/013_customer_profile_fields.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -142,4 +143,13 @@ test('contact profile migration adds education work experience and achievement f
   assert.match(sql, /ADD COLUMN IF NOT EXISTS education_background text/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS work_experience text/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS key_achievements text/);
+});
+
+test('customer profile migration adds parent company enterprise nature and highlights fields', async () => {
+  const sql = await readFile(customerProfileMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE customers/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS parent_company text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS enterprise_nature text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS company_highlights text/);
 });

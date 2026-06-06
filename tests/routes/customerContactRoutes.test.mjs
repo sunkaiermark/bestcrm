@@ -40,6 +40,9 @@ async function createLoggedInAgent(options = {}) {
           industry: 'Manufacturing',
           country: 'China',
           region: 'Shanghai',
+          parentCompany: 'Acme Group',
+          enterpriseNature: 'Private',
+          companyHighlights: 'Regional leader in precision assembly',
           ownerUserId: 7,
           contactCount: 1
         }];
@@ -51,6 +54,9 @@ async function createLoggedInAgent(options = {}) {
           industry: 'Manufacturing',
           country: 'China',
           region: 'Shanghai',
+          parentCompany: 'Acme Group',
+          enterpriseNature: 'Private',
+          companyHighlights: 'Regional leader in precision assembly',
           address: 'Road 1',
           ownerUserId: 7,
           notes: 'Important',
@@ -163,6 +169,10 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(form.text, /<option value="China"\s*>China<\/option>/);
   assert.match(form.text, /<select name="region">/);
   assert.match(form.text, /<option value="Shanghai">Shanghai<\/option>/);
+  assert.match(form.text, /name="parentCompany"/);
+  assert.match(form.text, /<select name="enterpriseNature">/);
+  assert.match(form.text, /<option value="Private">Private<\/option>/);
+  assert.match(form.text, /name="companyHighlights"/);
 
   const editForm = await agent.get('/customers/10/edit');
   assert.equal(editForm.status, 200);
@@ -171,6 +181,10 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(editForm.text, /<option value="China" selected>China<\/option>/);
   assert.match(editForm.text, /<select name="region">/);
   assert.match(editForm.text, /<option value="Shanghai" selected>Shanghai<\/option>/);
+  assert.match(editForm.text, /name="parentCompany" value="Acme Group"/);
+  assert.match(editForm.text, /<select name="enterpriseNature">/);
+  assert.match(editForm.text, /<option value="Private" selected>Private<\/option>/);
+  assert.match(editForm.text, /Regional leader in precision assembly/);
 
   const detail = await agent.get('/customers/10');
   assert.equal(detail.status, 200);
@@ -184,9 +198,15 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(customerDetailHtml, /class="basic-info-grid"/);
   assert.equal((customerDetailHtml.match(/<table class="detail-table">/g) || []).length, 2);
   assert.match(customerDetailHtml, /<th scope="row">Industry<\/th>/);
+  assert.match(customerDetailHtml, /<th scope="row">Parent Company<\/th>/);
+  assert.match(customerDetailHtml, /Acme Group/);
+  assert.match(customerDetailHtml, /<th scope="row">Enterprise Nature<\/th>/);
+  assert.match(customerDetailHtml, /Private/);
   assert.match(customerDetailHtml, /<th scope="row">Country<\/th>/);
   assert.match(customerDetailHtml, /China/);
   assert.match(customerDetailHtml, /<th scope="row">Address<\/th>/);
+  assert.match(customerDetailHtml, /<th scope="row">Company Highlights<\/th>/);
+  assert.match(customerDetailHtml, /Regional leader in precision assembly/);
   assert.doesNotMatch(detail.text, /Delete customer/);
 });
 

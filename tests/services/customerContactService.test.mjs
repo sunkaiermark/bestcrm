@@ -37,7 +37,10 @@ test('createCustomer defaults ownership to current salesperson', async () => {
     name: 'Acme Co',
     industry: 'Manufacturing',
     country: 'China',
-    region: 'Shanghai'
+    region: 'Shanghai',
+    parentCompany: 'Acme Group',
+    enterpriseNature: 'Private',
+    companyHighlights: 'Regional leader'
   });
 
   assert.equal(customer.ownerUserId, 7);
@@ -46,6 +49,9 @@ test('createCustomer defaults ownership to current salesperson', async () => {
     industry: 'Manufacturing',
     country: 'China',
     region: 'Shanghai',
+    parentCompany: 'Acme Group',
+    enterpriseNature: 'Private',
+    companyHighlights: 'Regional leader',
     address: '',
     ownerUserId: 7,
     notes: ''

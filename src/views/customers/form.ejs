@@ -14,6 +14,24 @@
             <input name="industry" value="<%= customer.industry || '' %>">
           </label>
           <label>
+            Parent Company
+            <input name="parentCompany" value="<%= customer.parentCompany || '' %>">
+          </label>
+          <label>
+            Enterprise Nature
+            <select name="enterpriseNature">
+              <% const currentEnterpriseNature = customer.enterpriseNature || ''; %>
+              <% const availableEnterpriseNatures = typeof enterpriseNatureOptions !== 'undefined' ? enterpriseNatureOptions : []; %>
+              <option value="">Select enterprise nature</option>
+              <% if (currentEnterpriseNature && !availableEnterpriseNatures.includes(currentEnterpriseNature)) { %>
+                <option value="<%= currentEnterpriseNature %>" selected><%= currentEnterpriseNature %></option>
+              <% } %>
+              <% for (const enterpriseNature of availableEnterpriseNatures) { %>
+                <option value="<%= enterpriseNature %>"<%= currentEnterpriseNature === enterpriseNature ? ' selected' : '' %>><%= enterpriseNature %></option>
+              <% } %>
+            </select>
+          </label>
+          <label>
             Country
             <select name="country">
               <option value="">Select country</option>
@@ -39,6 +57,10 @@
           <label>
             Address
             <input name="address" value="<%= customer.address || '' %>">
+          </label>
+          <label>
+            Company Highlights
+            <textarea name="companyHighlights"><%= customer.companyHighlights || '' %></textarea>
           </label>
           <label>
             Notes

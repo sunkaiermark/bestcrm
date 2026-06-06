@@ -776,6 +776,9 @@ test('opportunity form quick creates customer and returns with it selected', asy
     industry: 'Manufacturing',
     country: 'China',
     region: 'Shanghai',
+    parentCompany: '',
+    enterpriseNature: '',
+    companyHighlights: '',
     address: 'No. 1 Road',
     ownerUserId: 7,
     notes: 'Created while initiating opportunity'

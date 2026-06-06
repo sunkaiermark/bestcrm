@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
 import { CUSTOMER_REGIONS } from '../domain/customerRegions.mjs';
+import { ENTERPRISE_NATURES } from '../domain/enterpriseNatures.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { canDeleteCustomer, canMaintainCustomer, createCustomer, deleteCustomer, updateCustomer } from '../services/customerService.mjs';
@@ -27,6 +28,7 @@ export function customerRoutes({ customerRepository }) {
     res.render('customers/form', {
       customer: {},
       countryOptions: CUSTOMER_COUNTRIES,
+      enterpriseNatureOptions: ENTERPRISE_NATURES,
       regionOptions: CUSTOMER_REGIONS,
       action: '/customers'
     });
@@ -72,6 +74,7 @@ export function customerRoutes({ customerRepository }) {
       res.render('customers/form', {
         customer,
         countryOptions: CUSTOMER_COUNTRIES,
+        enterpriseNatureOptions: ENTERPRISE_NATURES,
         regionOptions: CUSTOMER_REGIONS,
         action: `/customers/${customer.id}`
       });

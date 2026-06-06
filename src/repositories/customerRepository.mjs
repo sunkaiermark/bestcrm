@@ -15,6 +15,9 @@ function mapCustomerRow(row) {
     industry: row.industry || '',
     country: row.country || '',
     region: row.region || '',
+    parentCompany: row.parent_company || '',
+    enterpriseNature: row.enterprise_nature || '',
+    companyHighlights: row.company_highlights || '',
     address: row.address || '',
     ownerUserId: Number(row.owner_user_id),
     notes: row.notes || '',
@@ -42,6 +45,9 @@ const customerSelect = `
     c.industry,
     c.country,
     c.region,
+    c.parent_company,
+    c.enterprise_nature,
+    c.company_highlights,
     c.address,
     c.owner_user_id,
     c.notes,
@@ -98,17 +104,23 @@ export function createCustomerRepository(queryTarget) {
           industry,
           country,
           region,
+          parent_company,
+          enterprise_nature,
+          company_highlights,
           address,
           owner_user_id,
           notes
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
         RETURNING *, 0::int AS contact_count
       `, [
         input.name,
         input.industry,
         input.country,
         input.region,
+        input.parentCompany,
+        input.enterpriseNature,
+        input.companyHighlights,
         input.address,
         input.ownerUserId,
         input.notes
@@ -124,16 +136,22 @@ export function createCustomerRepository(queryTarget) {
           industry = $2,
           country = $3,
           region = $4,
-          address = $5,
-          notes = $6,
+          parent_company = $5,
+          enterprise_nature = $6,
+          company_highlights = $7,
+          address = $8,
+          notes = $9,
           updated_at = now()
-        WHERE id = $7
+        WHERE id = $10
         RETURNING *, 0::int AS contact_count
       `, [
         input.name,
         input.industry,
         input.country,
         input.region,
+        input.parentCompany,
+        input.enterpriseNature,
+        input.companyHighlights,
         input.address,
         input.notes,
         id
