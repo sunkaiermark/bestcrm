@@ -5,6 +5,11 @@
           <div class="page-actions">
             <a class="quick-action" href="/customers/<%= customer.id %>/edit">Edit customer</a>
             <a class="quick-action" href="/opportunities/new?customerId=<%= customer.id %>">New opportunity</a>
+            <% if (typeof canDeleteCustomer !== 'undefined' && canDeleteCustomer) { %>
+              <form method="post" action="/customers/<%= customer.id %>/delete" onsubmit="return confirm('Delete this customer and its contacts?')">
+                <button class="danger-action" type="submit">Delete customer</button>
+              </form>
+            <% } %>
           </div>
         </header>
 

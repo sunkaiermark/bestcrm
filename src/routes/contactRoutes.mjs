@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { canMaintainContact } from '../services/customerService.mjs';
-import { createContact, updateContact } from '../services/contactService.mjs';
+import { canDeleteContact, createContact, deleteContact, updateContact } from '../services/contactService.mjs';
 
 function contactFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
@@ -51,7 +51,7 @@ export function contactRoutes({ customerRepository, contactRepository }) {
         res.status(403).send('Forbidden');
         return;
       }
-      res.render('contacts/detail', { contact });
+      res.render('contacts/detail', { contact, canDeleteContact: canDeleteContact(req.currentUser) });
     } catch (error) {
       next(error);
     }
@@ -80,6 +80,27 @@ export function contactRoutes({ customerRepository, contactRepository }) {
       const contact = await updateContact(contactRepository, req.currentUser, req.params.id, req.body);
       res.redirect(`/contacts/${contact.id}`);
     } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/contacts/:id/delete', async (req, res, next) => {
+    try {
+      await deleteContact(contactRepository, req.currentUser, req.params.id);
+      res.redirect('/contacts');
+    } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Contact not found') {
+        res.status(404).send('Contact not found');
+        return;
+      }
+      if (error.code === '23503') {
+        res.status(409).send('Cannot delete contact because it is linked to existing opportunities.');
+        return;
+      }
       next(error);
     }
   });

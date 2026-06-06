@@ -5,15 +5,23 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function createLoggedInAgent() {
+async function createLoggedInAgent(options = {}) {
+  const {
+    user: userOverrides = {},
+    customerRepository: customerRepositoryOverrides = {},
+    contactRepository: contactRepositoryOverrides = {}
+  } = options;
   const user = {
     id: 7,
     username: 'sales01',
     passwordHash: await hashPassword('ChangeMe123!'),
     displayName: 'Sales One',
     isActive: true,
-    roles: [ROLES.SALESPERSON]
+    ...userOverrides,
+    roles: userOverrides.roles || [ROLES.SALESPERSON]
   };
+  const deletedCustomers = [];
+  const deletedContacts = [];
   const app = createApp({
     sessionSecret: 'test-secret',
     userRepository: {
@@ -52,7 +60,12 @@ async function createLoggedInAgent() {
             email: 'alice@example.com'
           }]
         };
-      }
+      },
+      async deleteById(id) {
+        deletedCustomers.push(Number(id));
+        return true;
+      },
+      ...customerRepositoryOverrides
     },
     contactRepository: {
       async listContacts() {
@@ -81,12 +94,17 @@ async function createLoggedInAgent() {
           wechat: 'alicewx',
           notes: 'Key contact'
         };
-      }
+      },
+      async deleteById(id) {
+        deletedContacts.push(Number(id));
+        return true;
+      },
+      ...contactRepositoryOverrides
     }
   });
   const agent = request.agent(app);
-  await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
-  return agent;
+  await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
+  return { agent, deletedCustomers, deletedContacts };
 }
 
 function assertAppSidebar(html, activeHref) {
@@ -112,7 +130,7 @@ test('anonymous users are redirected from customer and contact pages', async () 
 });
 
 test('logged in salesperson can view customer list and detail', async () => {
-  const agent = await createLoggedInAgent();
+  const { agent } = await createLoggedInAgent();
 
   const list = await agent.get('/customers');
   assert.equal(list.status, 200);
@@ -139,10 +157,11 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.equal((customerDetailHtml.match(/<table class="detail-table">/g) || []).length, 2);
   assert.match(customerDetailHtml, /<th scope="row">Industry<\/th>/);
   assert.match(customerDetailHtml, /<th scope="row">Address<\/th>/);
+  assert.doesNotMatch(detail.text, /Delete customer/);
 });
 
 test('logged in salesperson can view contact list and detail', async () => {
-  const agent = await createLoggedInAgent();
+  const { agent } = await createLoggedInAgent();
 
   const list = await agent.get('/contacts');
   assert.equal(list.status, 200);
@@ -161,4 +180,50 @@ test('logged in salesperson can view contact list and detail', async () => {
   assertAppSidebar(detail.text, '/contacts');
   assert.match(detail.text, /Alice/);
   assert.match(detail.text, /Acme Co/);
+  assert.doesNotMatch(detail.text, /Delete contact/);
+});
+
+test('administrator deletes customers and contacts from detail pages with confirmation prompts', async () => {
+  const { agent, deletedCustomers, deletedContacts } = await createLoggedInAgent({
+    user: {
+      id: 99,
+      username: 'admin01',
+      displayName: 'System Administrator',
+      roles: [ROLES.ADMINISTRATOR]
+    }
+  });
+
+  const customerDetail = await agent.get('/customers/10');
+  assert.equal(customerDetail.status, 200);
+  assert.match(customerDetail.text, /Delete customer/);
+  assert.match(customerDetail.text, /action="\/customers\/10\/delete"/);
+  assert.match(customerDetail.text, /onsubmit="return confirm\('Delete this customer and its contacts\?'\)"/);
+
+  const customerDelete = await agent.post('/customers/10/delete');
+  assert.equal(customerDelete.status, 302);
+  assert.equal(customerDelete.headers.location, '/customers');
+  assert.deepEqual(deletedCustomers, [10]);
+
+  const contactDetail = await agent.get('/contacts/20');
+  assert.equal(contactDetail.status, 200);
+  assert.match(contactDetail.text, /Delete contact/);
+  assert.match(contactDetail.text, /action="\/contacts\/20\/delete"/);
+  assert.match(contactDetail.text, /onsubmit="return confirm\('Delete this contact\?'\)"/);
+
+  const contactDelete = await agent.post('/contacts/20/delete');
+  assert.equal(contactDelete.status, 302);
+  assert.equal(contactDelete.headers.location, '/contacts');
+  assert.deepEqual(deletedContacts, [20]);
+});
+
+test('non administrators cannot delete customers or contacts directly', async () => {
+  const { agent, deletedCustomers, deletedContacts } = await createLoggedInAgent();
+
+  const customerDelete = await agent.post('/customers/10/delete');
+  assert.equal(customerDelete.status, 403);
+  assert.deepEqual(deletedCustomers, []);
+
+  const contactDelete = await agent.post('/contacts/20/delete');
+  assert.equal(contactDelete.status, 403);
+  assert.deepEqual(deletedContacts, []);
 });

@@ -4,9 +4,10 @@ import {
   canMaintainContact,
   canMaintainCustomer,
   createCustomer,
+  deleteCustomer,
   updateCustomer
 } from '../../src/services/customerService.mjs';
-import { createContact, updateContact } from '../../src/services/contactService.mjs';
+import { createContact, deleteContact, updateContact } from '../../src/services/contactService.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
 
 test('salesperson maintains only owned customer records', () => {
@@ -67,6 +68,22 @@ test('updateCustomer rejects non-owner salesperson', async () => {
   }), /Forbidden/);
 });
 
+test('deleteCustomer allows administrators only', async () => {
+  const calls = [];
+  const customerRepository = {
+    async deleteById(id) {
+      calls.push(id);
+      return true;
+    }
+  };
+
+  await deleteCustomer(customerRepository, { id: 99, roles: [ROLES.ADMINISTRATOR] }, 10);
+  assert.deepEqual(calls, [10]);
+
+  await assert.rejects(() => deleteCustomer(customerRepository, { id: 7, roles: [ROLES.SALESPERSON] }, 10), /Forbidden/);
+  assert.deepEqual(calls, [10]);
+});
+
 test('createContact checks customer ownership before insert', async () => {
   const calls = [];
   const customerRepository = {
@@ -118,4 +135,20 @@ test('updateContact rejects non-owner salesperson', async () => {
   }, 20, {
     name: 'Alice Updated'
   }), /Forbidden/);
+});
+
+test('deleteContact allows administrators only', async () => {
+  const calls = [];
+  const contactRepository = {
+    async deleteById(id) {
+      calls.push(id);
+      return true;
+    }
+  };
+
+  await deleteContact(contactRepository, { id: 99, roles: [ROLES.ADMINISTRATOR] }, 20);
+  assert.deepEqual(calls, [20]);
+
+  await assert.rejects(() => deleteContact(contactRepository, { id: 7, roles: [ROLES.SALESPERSON] }, 20), /Forbidden/);
+  assert.deepEqual(calls, [20]);
 });

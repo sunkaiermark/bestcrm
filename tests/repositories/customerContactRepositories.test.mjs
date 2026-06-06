@@ -95,6 +95,17 @@ test('customer repository creates and updates customer rows', async () => {
   ]);
 });
 
+test('customer repository deletes customer rows by id', async () => {
+  const queryTarget = createFakeQueryTarget([{ id: '10' }]);
+  const repository = createCustomerRepository(queryTarget);
+
+  const deleted = await repository.deleteById(10);
+
+  assert.equal(deleted, true);
+  assert.match(queryTarget.queries[0].sql, /DELETE FROM customers/);
+  assert.deepEqual(queryTarget.queries[0].params, [10]);
+});
+
 test('contact repository lists and maps contacts with customer owner', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '20',
@@ -186,4 +197,15 @@ test('contact repository creates and updates contact rows', async () => {
     'Updated',
     20
   ]);
+});
+
+test('contact repository deletes contact rows by id', async () => {
+  const queryTarget = createFakeQueryTarget([{ id: '20' }]);
+  const repository = createContactRepository(queryTarget);
+
+  const deleted = await repository.deleteById(20);
+
+  assert.equal(deleted, true);
+  assert.match(queryTarget.queries[0].sql, /DELETE FROM contacts/);
+  assert.deepEqual(queryTarget.queries[0].params, [20]);
 });

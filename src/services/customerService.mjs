@@ -16,6 +16,10 @@ export function canMaintainContact(user, contact) {
   return hasRole(user, ROLES.ADMINISTRATOR) || contact.customerOwnerUserId === user.id;
 }
 
+export function canDeleteCustomer(user) {
+  return hasRole(user, ROLES.ADMINISTRATOR);
+}
+
 export function normalizeCustomerInput(input, ownerUserId) {
   return {
     name: text(input.name),
@@ -43,4 +47,14 @@ export async function updateCustomer(customerRepository, actor, customerId, inpu
     forbidden();
   }
   return customerRepository.updateCustomer(customerId, normalizeCustomerInput(input, existing.ownerUserId));
+}
+
+export async function deleteCustomer(customerRepository, actor, customerId) {
+  if (!canDeleteCustomer(actor)) {
+    forbidden();
+  }
+  const deleted = await customerRepository.deleteById(Number(customerId));
+  if (!deleted) {
+    throw new Error('Customer not found');
+  }
 }

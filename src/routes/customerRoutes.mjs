@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
-import { canMaintainCustomer, createCustomer, updateCustomer } from '../services/customerService.mjs';
+import { canDeleteCustomer, canMaintainCustomer, createCustomer, deleteCustomer, updateCustomer } from '../services/customerService.mjs';
 
 function customerFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
@@ -45,7 +45,7 @@ export function customerRoutes({ customerRepository }) {
         res.status(403).send('Forbidden');
         return;
       }
-      res.render('customers/detail', { customer });
+      res.render('customers/detail', { customer, canDeleteCustomer: canDeleteCustomer(req.currentUser) });
     } catch (error) {
       next(error);
     }
@@ -73,6 +73,27 @@ export function customerRoutes({ customerRepository }) {
       const customer = await updateCustomer(customerRepository, req.currentUser, req.params.id, req.body);
       res.redirect(`/customers/${customer.id}`);
     } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/customers/:id/delete', async (req, res, next) => {
+    try {
+      await deleteCustomer(customerRepository, req.currentUser, req.params.id);
+      res.redirect('/customers');
+    } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Customer not found') {
+        res.status(404).send('Customer not found');
+        return;
+      }
+      if (error.code === '23503') {
+        res.status(409).send('Cannot delete customer because it is linked to existing opportunities.');
+        return;
+      }
       next(error);
     }
   });

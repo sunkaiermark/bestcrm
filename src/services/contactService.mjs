@@ -1,3 +1,4 @@
+import { ROLES, hasRole } from '../domain/roles.mjs';
 import { canMaintainContact, canMaintainCustomer } from './customerService.mjs';
 
 function forbidden() {
@@ -18,6 +19,10 @@ export function normalizeContactInput(input) {
     wechat: text(input.wechat),
     notes: text(input.notes)
   };
+}
+
+export function canDeleteContact(user) {
+  return hasRole(user, ROLES.ADMINISTRATOR);
 }
 
 export async function createContact({ customerRepository, contactRepository }, actor, input) {
@@ -44,4 +49,14 @@ export async function updateContact(contactRepository, actor, contactId, input) 
     ...normalizeContactInput({ ...existing, ...input }),
     customerId: existing.customerId
   });
+}
+
+export async function deleteContact(contactRepository, actor, contactId) {
+  if (!canDeleteContact(actor)) {
+    forbidden();
+  }
+  const deleted = await contactRepository.deleteById(Number(contactId));
+  if (!deleted) {
+    throw new Error('Contact not found');
+  }
 }

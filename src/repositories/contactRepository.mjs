@@ -140,6 +140,14 @@ export function createContactRepository(queryTarget) {
         id
       ]);
       return mapContactRow(result.rows[0]);
+    },
+
+    async deleteById(id) {
+      const result = await queryTarget.query(`
+        DELETE FROM contacts
+        WHERE id = $1
+      `, [id]);
+      return result.rowCount > 0;
     }
   };
 }

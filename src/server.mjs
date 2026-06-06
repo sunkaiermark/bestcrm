@@ -109,6 +109,9 @@ const emptyCustomerRepository = {
   },
   async updateCustomer() {
     throw new Error('Customer repository is not configured');
+  },
+  async deleteById() {
+    throw new Error('Customer repository is not configured');
   }
 };
 
@@ -123,6 +126,9 @@ const emptyContactRepository = {
     throw new Error('Contact repository is not configured');
   },
   async updateContact() {
+    throw new Error('Contact repository is not configured');
+  },
+  async deleteById() {
     throw new Error('Contact repository is not configured');
   }
 };

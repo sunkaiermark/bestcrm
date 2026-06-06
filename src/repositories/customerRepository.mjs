@@ -133,6 +133,14 @@ export function createCustomerRepository(queryTarget) {
         id
       ]);
       return mapCustomerRow(result.rows[0]);
+    },
+
+    async deleteById(id) {
+      const result = await queryTarget.query(`
+        DELETE FROM customers
+        WHERE id = $1
+      `, [id]);
+      return result.rowCount > 0;
     }
   };
 }
