@@ -31,8 +31,8 @@
                     <td><%= role.description || '-' %></td>
                     <td><span class="status"><%= role.isActive ? 'active' : 'inactive' %></span></td>
                     <% if (canManageRoles) { %>
-                      <td>
-                        <div class="inline-actions">
+                      <td class="actions-cell">
+                        <div class="inline-actions system-actions">
                           <a class="secondary-action" href="/system/roles/<%= role.id %>/edit">Edit</a>
                           <% if (role.isActive) { %>
                             <form method="post" action="/system/roles/<%= role.id %>/delete">

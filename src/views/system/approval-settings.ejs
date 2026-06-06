@@ -33,8 +33,8 @@
                     <td><%= setting.sortOrder %></td>
                     <td><span class="status"><%= setting.isActive ? 'active' : 'inactive' %></span></td>
                     <% if (canManageSettings) { %>
-                      <td>
-                        <div class="inline-actions">
+                      <td class="actions-cell">
+                        <div class="inline-actions system-actions">
                           <a class="secondary-action" href="/system/approval-settings/<%= setting.id %>/edit">Edit</a>
                           <% if (setting.isActive) { %>
                             <form method="post" action="/system/approval-settings/<%= setting.id %>/delete">

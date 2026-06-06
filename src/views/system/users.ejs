@@ -35,8 +35,8 @@
                     <td><%= user.phone || '-' %></td>
                     <td><span class="status"><%= user.isActive ? 'active' : 'inactive' %></span></td>
                     <% if (canManageUsers) { %>
-                      <td>
-                        <div class="inline-actions">
+                      <td class="actions-cell">
+                        <div class="inline-actions system-actions">
                           <a class="secondary-action" href="/system/users/<%= user.id %>/edit">Edit</a>
                           <% if (user.isActive) { %>
                             <form method="post" action="/system/users/<%= user.id %>/delete">
