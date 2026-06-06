@@ -217,9 +217,10 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(customerContactsHtml, /<th>Title<\/th>/);
   assert.match(customerContactsHtml, /<th>Phone<\/th>/);
   assert.match(customerContactsHtml, /<th>Email<\/th>/);
-  assert.match(customerContactsHtml, /<th>Actions<\/th>/);
   assert.match(customerContactsHtml, /href="\/contacts\/20"/);
-  assert.match(customerContactsHtml, /href="\/opportunities\/new\?customerId=10&contactId=20"/);
+  assert.doesNotMatch(customerContactsHtml, /<th>Actions<\/th>/);
+  assert.doesNotMatch(customerContactsHtml, /New opportunity/);
+  assert.doesNotMatch(customerContactsHtml, /href="\/opportunities\/new\?customerId=10&contactId=20"/);
   assert.doesNotMatch(customerContactsHtml, /<ul class="inline-list">/);
   assert.doesNotMatch(detail.text, /Delete customer/);
 });

@@ -84,7 +84,6 @@
                     <th>Title</th>
                     <th>Phone</th>
                     <th>Email</th>
-                    <th>Actions</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -94,9 +93,6 @@
                       <td><%= contact.title %></td>
                       <td><%= contact.phone %></td>
                       <td><%= contact.email %></td>
-                      <td>
-                        <a href="/opportunities/new?customerId=<%= customer.id %>&contactId=<%= contact.id %>">New opportunity</a>
-                      </td>
                     </tr>
                   <% } %>
                 </tbody>
