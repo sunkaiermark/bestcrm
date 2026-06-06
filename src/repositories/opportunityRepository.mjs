@@ -143,6 +143,39 @@ export function createOpportunityRepository(queryTarget) {
       return mapOpportunityRow(result.rows[0]);
     },
 
+    async updateOpportunity(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE opportunities
+        SET
+          title = $1,
+          customer_id = $2,
+          primary_contact_id = $3,
+          requirement = $4,
+          estimated_amount = $5,
+          project_type = $6,
+          delivery_cycle = $7,
+          expected_bid_date = $8,
+          updated_at = now()
+        WHERE id = $9
+        RETURNING *
+      `, [
+        input.title,
+        input.customerId,
+        input.primaryContactId,
+        input.requirement,
+        input.estimatedAmount,
+        input.projectType,
+        input.deliveryCycle,
+        input.expectedBidDate,
+        id
+      ]);
+      return mapOpportunityRow(result.rows[0]);
+    },
+
+    async deleteById(id) {
+      return queryTarget.query('DELETE FROM opportunities WHERE id = $1', [id]);
+    },
+
     async findById(id) {
       const result = await queryTarget.query(`
         SELECT

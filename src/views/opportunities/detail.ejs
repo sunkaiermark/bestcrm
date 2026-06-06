@@ -24,7 +24,18 @@
             <h1><%= opportunity.title %></h1>
             <div class="user-line"><%= opportunity.opportunityNo %> - <%= opportunity.customerName %></div>
           </div>
-          <span class="status"><%= opportunity.status %></span>
+          <div class="page-actions">
+            <span class="status"><%= opportunity.status %></span>
+            <a class="secondary-action" href="/opportunities">Back to list</a>
+            <% if (typeof canEditOpportunity !== 'undefined' && canEditOpportunity) { %>
+              <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit">Edit</a>
+            <% } %>
+            <% if (typeof canDeleteOpportunity !== 'undefined' && canDeleteOpportunity) { %>
+              <form method="post" action="/opportunities/<%= opportunity.id %>/delete">
+                <button class="danger-action" type="submit">Delete</button>
+              </form>
+            <% } %>
+          </div>
         </header>
 
         <div class="section-stack">

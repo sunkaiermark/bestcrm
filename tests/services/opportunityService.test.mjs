@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canEditOpportunity,
   canViewOpportunity,
-  createOpportunityDraft
+  createOpportunityDraft,
+  updateOpportunity
 } from '../../src/services/opportunityService.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
 import { STATUSES } from '../../src/domain/statuses.mjs';
@@ -27,6 +29,10 @@ function buildRepositories({ customer, contact }) {
       async createOpportunity(input) {
         calls.push(['createOpportunity', input]);
         return { id: 30, ...input };
+      },
+      async updateOpportunity(id, input) {
+        calls.push(['updateOpportunity', Number(id), input]);
+        return { id: Number(id), ...input };
       }
     }
   };
@@ -122,4 +128,73 @@ test('canViewOpportunity allows owner assignees and administrator', () => {
   assert.equal(canViewOpportunity({ id: 3, roles: [ROLES.QUOTATION_ENGINEER] }, opportunity), true);
   assert.equal(canViewOpportunity({ id: 99, roles: [ROLES.ADMINISTRATOR] }, opportunity), true);
   assert.equal(canViewOpportunity({ id: 9, roles: [ROLES.SALESPERSON] }, opportunity), false);
+});
+
+test('owner salesperson updates opportunity fields', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7 },
+    contact: { id: 20, customerId: 10, customerOwnerUserId: 7 }
+  });
+
+  const opportunity = await updateOpportunity(repositories, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, {
+    id: 30,
+    salespersonId: 7
+  }, {
+    title: 'Factory upgrade revised',
+    customerId: '10',
+    primaryContactId: '20',
+    requirement: 'Upgrade production and packing lines',
+    estimatedAmount: '180000',
+    projectType: 'automation',
+    deliveryCycle: '60 days',
+    expectedBidDate: '2026-08-01'
+  });
+
+  assert.equal(opportunity.id, 30);
+  assert.deepEqual(repositories.calls, [
+    ['getCustomer', 10],
+    ['getContact', 20],
+    ['updateOpportunity', 30, {
+      title: 'Factory upgrade revised',
+      customerId: 10,
+      primaryContactId: 20,
+      requirement: 'Upgrade production and packing lines',
+      estimatedAmount: 180000,
+      projectType: 'automation',
+      deliveryCycle: '60 days',
+      expectedBidDate: '2026-08-01'
+    }]
+  ]);
+});
+
+test('canEditOpportunity only allows administrator or owner salesperson', () => {
+  const opportunity = { salespersonId: 7 };
+
+  assert.equal(canEditOpportunity({ id: 7, roles: [ROLES.SALESPERSON] }, opportunity), true);
+  assert.equal(canEditOpportunity({ id: 99, roles: [ROLES.ADMINISTRATOR] }, opportunity), true);
+  assert.equal(canEditOpportunity({ id: 8, roles: [ROLES.SALESPERSON] }, opportunity), false);
+});
+
+test('updateOpportunity rejects non-owner salesperson', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 8 },
+    contact: null
+  });
+
+  await assert.rejects(() => updateOpportunity(repositories, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, {
+    id: 30,
+    salespersonId: 8
+  }, {
+    title: 'Factory upgrade revised',
+    customerId: 10,
+    requirement: 'Upgrade production line'
+  }), /Forbidden/);
+
+  assert.deepEqual(repositories.calls, []);
 });

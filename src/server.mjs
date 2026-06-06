@@ -202,6 +202,12 @@ const emptyOpportunityRepository = {
   async createOpportunity() {
     throw new Error('Opportunity repository is not configured');
   },
+  async updateOpportunity() {
+    throw new Error('Opportunity repository is not configured');
+  },
+  async deleteById() {
+    throw new Error('Opportunity repository is not configured');
+  },
   async findById() {
     return null;
   },

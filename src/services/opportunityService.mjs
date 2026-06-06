@@ -35,6 +35,11 @@ export function canViewOpportunity(user, opportunity) {
   ].includes(user.id);
 }
 
+export function canEditOpportunity(user, opportunity) {
+  return hasRole(user, ROLES.ADMINISTRATOR)
+    || Number(opportunity.salespersonId) === Number(user.id);
+}
+
 export function normalizeOpportunityInput(input, actor) {
   return {
     opportunityNo: text(input.opportunityNo) || null,
@@ -51,8 +56,20 @@ export function normalizeOpportunityInput(input, actor) {
   };
 }
 
-export async function createOpportunityDraft(repositories, actor, input) {
-  const normalized = normalizeOpportunityInput(input, actor);
+export function normalizeOpportunityUpdateInput(input) {
+  return {
+    title: text(input.title),
+    customerId: Number(input.customerId),
+    primaryContactId: numberOrNull(input.primaryContactId),
+    requirement: text(input.requirement),
+    estimatedAmount: numberOrNull(input.estimatedAmount),
+    projectType: text(input.projectType),
+    deliveryCycle: text(input.deliveryCycle),
+    expectedBidDate: isoDateOrNull(input.expectedBidDate)
+  };
+}
+
+async function validateOpportunityReferences(repositories, actor, normalized) {
   const customer = await repositories.customerRepository.getCustomerDetail(normalized.customerId);
   if (!customer) {
     throw new Error('Customer not found');
@@ -73,6 +90,21 @@ export async function createOpportunityDraft(repositories, actor, input) {
       forbidden();
     }
   }
+}
+
+export async function createOpportunityDraft(repositories, actor, input) {
+  const normalized = normalizeOpportunityInput(input, actor);
+  await validateOpportunityReferences(repositories, actor, normalized);
 
   return repositories.opportunityRepository.createOpportunity(normalized);
+}
+
+export async function updateOpportunity(repositories, actor, opportunity, input) {
+  if (!canEditOpportunity(actor, opportunity)) {
+    forbidden();
+  }
+  const normalized = normalizeOpportunityUpdateInput(input);
+  await validateOpportunityReferences(repositories, actor, normalized);
+
+  return repositories.opportunityRepository.updateOpportunity(opportunity.id, normalized);
 }

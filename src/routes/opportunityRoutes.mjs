@@ -10,7 +10,12 @@ import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { createContact } from '../services/contactService.mjs';
 import { createCustomer } from '../services/customerService.mjs';
-import { canViewOpportunity, createOpportunityDraft } from '../services/opportunityService.mjs';
+import {
+  canEditOpportunity,
+  canViewOpportunity,
+  createOpportunityDraft,
+  updateOpportunity
+} from '../services/opportunityService.mjs';
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 
@@ -421,6 +426,10 @@ function canCreateRequirementUpdate(user, opportunity) {
     && (hasRole(user, ROLES.ADMINISTRATOR) || Number(opportunity.salespersonId) === Number(user.id));
 }
 
+function canDeleteOpportunity(user) {
+  return hasRole(user, ROLES.ADMINISTRATOR);
+}
+
 function requiredText(value) {
   return String(value || '').trim();
 }
@@ -514,6 +523,86 @@ export function opportunityRoutes({
     }
   });
 
+  router.get('/opportunities/:id/edit', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      if (!opportunity) {
+        return;
+      }
+      if (!canEditOpportunity(req.currentUser, opportunity)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const filter = hasRole(req.currentUser, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: req.currentUser.id };
+      const [customers, contacts] = await Promise.all([
+        customerRepository.listCustomers(filter),
+        contactRepository.listContacts(filter)
+      ]);
+      res.render('opportunities/form', {
+        pageTitle: 'Edit Opportunity',
+        submitLabel: 'Save changes',
+        allowInlineCreate: false,
+        opportunity,
+        customers,
+        contacts,
+        action: `/opportunities/${opportunity.id}`
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      if (!opportunity) {
+        return;
+      }
+      if (!canEditOpportunity(req.currentUser, opportunity)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const updated = await updateOpportunity({
+        customerRepository,
+        contactRepository,
+        opportunityRepository
+      }, req.currentUser, opportunity, req.body);
+      res.redirect(`/opportunities/${updated?.id || opportunity.id}`);
+    } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/delete', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      if (!opportunity) {
+        return;
+      }
+      if (!canDeleteOpportunity(req.currentUser)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const attachments = typeof attachmentRepository?.listByOpportunity === 'function'
+        ? await attachmentRepository.listByOpportunity(opportunity.id)
+        : [];
+      await opportunityRepository.deleteById(opportunity.id);
+      await Promise.all(attachments.map(async (attachment) => {
+        const filePath = resolveStoredPath(uploadDir, attachment.storedPath);
+        if (filePath) {
+          await rm(filePath, { force: true });
+        }
+      }));
+      res.redirect('/opportunities');
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.get('/opportunities/:id', async (req, res, next) => {
     try {
       const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
@@ -552,7 +641,9 @@ export function opportunityRoutes({
         requirementUpdates,
         technicalSolutions,
         commercialQuotes,
-        canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity)
+        canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity),
+        canEditOpportunity: canEditOpportunity(req.currentUser, opportunity),
+        canDeleteOpportunity: canDeleteOpportunity(req.currentUser)
       });
     } catch (error) {
       next(error);

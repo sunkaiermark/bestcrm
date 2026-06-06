@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
@@ -12,13 +12,20 @@ import { createApp } from '../../src/server.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 
 async function createLoggedInAgent(extraOptions = {}) {
+  const {
+    user: userOverrides = {},
+    opportunityRepository: opportunityRepositoryOverrides = {},
+    attachmentRepository: attachmentRepositoryOverrides = {},
+    ...appOptions
+  } = extraOptions;
   const user = {
     id: 7,
     username: 'sales01',
     passwordHash: await hashPassword('ChangeMe123!'),
     displayName: 'Sales One',
     isActive: true,
-    roles: [ROLES.SALESPERSON]
+    ...userOverrides,
+    roles: userOverrides.roles || [ROLES.SALESPERSON]
   };
   const created = [];
   const uploadedAttachments = [];
@@ -109,11 +116,17 @@ async function createLoggedInAgent(extraOptions = {}) {
           primaryContactName: 'Alice'
         };
       },
+      async updateOpportunity() {
+        throw new Error('not used');
+      },
+      async deleteById() {
+        throw new Error('not used');
+      },
       async updateWorkflowState(id, changes) {
         workflowUpdates.push({ id, changes });
         return { id, ...changes };
       },
-      ...extraOptions.opportunityRepository
+      ...opportunityRepositoryOverrides
     },
     workflowEventRepository: {
       async listByOpportunity() {
@@ -183,7 +196,8 @@ async function createLoggedInAgent(extraOptions = {}) {
       },
       async findById() {
         return null;
-      }
+      },
+      ...attachmentRepositoryOverrides
     },
     requirementUpdateRepository: {
       async listByOpportunity() {
@@ -216,10 +230,10 @@ async function createLoggedInAgent(extraOptions = {}) {
         throw new Error('not used');
       }
     },
-    ...extraOptions
+    ...appOptions
   });
   const agent = request.agent(app);
-  await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
+  await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
   return { agent, created, createdCustomers, createdContacts, uploadedAttachments, requirementUpdates, workflowEvents, todoClosures, todosToCreate, workflowUpdates };
 }
 
@@ -465,6 +479,160 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(detail.text, /Factory upgrade/);
   assert.match(detail.text, /Upgrade production line/);
   assert.match(detail.text, /Alice/);
+});
+
+test('opportunity detail shows list and edit actions but hides delete from non administrators', async () => {
+  const { agent } = await createLoggedInAgent();
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Back to list/);
+  assert.match(detail.text, /href="\/opportunities\/30\/edit"/);
+  assert.match(detail.text, />Edit</);
+  assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/delete"/);
+});
+
+test('administrator sees opportunity delete action on detail page', async () => {
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 99,
+      username: 'admin01',
+      displayName: 'Admin User',
+      roles: [ROLES.ADMINISTRATOR]
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /action="\/opportunities\/30\/delete"/);
+  assert.match(detail.text, />Delete</);
+});
+
+test('salesperson edits opportunity fields from the detail action', async () => {
+  const updates = [];
+  const { agent } = await createLoggedInAgent({
+    opportunityRepository: {
+      async updateOpportunity(id, input) {
+        updates.push({ id: Number(id), input });
+        return opportunityDetail({ id: Number(id), ...input });
+      }
+    }
+  });
+
+  const editForm = await agent.get('/opportunities/30/edit');
+
+  assert.equal(editForm.status, 200);
+  assert.match(editForm.text, /Edit Opportunity/);
+  assert.match(editForm.text, /value="Factory upgrade"/);
+  assert.match(editForm.text, /Save changes/);
+
+  const response = await agent
+    .post('/opportunities/30')
+    .type('form')
+    .send({
+      customerId: '10',
+      primaryContactId: '20',
+      title: 'Factory upgrade revised',
+      requirement: 'Upgrade production line and packing line',
+      estimatedAmount: '180000',
+      projectType: 'automation',
+      deliveryCycle: '60 days',
+      expectedBidDate: '2026-08-01'
+    });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/30');
+  assert.deepEqual(updates, [{
+    id: 30,
+    input: {
+      title: 'Factory upgrade revised',
+      customerId: 10,
+      primaryContactId: 20,
+      requirement: 'Upgrade production line and packing line',
+      estimatedAmount: 180000,
+      projectType: 'automation',
+      deliveryCycle: '60 days',
+      expectedBidDate: '2026-08-01'
+    }
+  }]);
+});
+
+test('non administrators cannot delete opportunities directly', async () => {
+  let deleteCalled = false;
+  const { agent } = await createLoggedInAgent({
+    opportunityRepository: {
+      async deleteById() {
+        deleteCalled = true;
+      }
+    }
+  });
+
+  const response = await agent.post('/opportunities/30/delete').type('form').send();
+
+  assert.equal(response.status, 403);
+  assert.equal(deleteCalled, false);
+});
+
+test('administrator deletes opportunity and removes stored attachment files', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-delete-opportunity-'));
+  const storedPath = '2026/06/delete-me.txt';
+  const absolutePath = path.join(uploadDir, storedPath);
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, 'delete this file');
+  const deletedIds = [];
+  try {
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      user: {
+        id: 99,
+        username: 'admin01',
+        displayName: 'Admin User',
+        roles: [ROLES.ADMINISTRATOR]
+      },
+      attachmentRepository: {
+        async listByOpportunity() {
+          return [{
+            id: 55,
+            opportunityId: 30,
+            category: 'technical_solution',
+            originalName: 'delete-me.txt',
+            storedPath,
+            mimeType: 'text/plain',
+            fileSize: 16,
+            uploadedBy: 7,
+            uploaderDisplayName: 'Sales One',
+            uploadedAt: '2026-06-05T12:00:00.000Z'
+          }];
+        },
+        async createAttachment() {
+          throw new Error('not used');
+        },
+        async deleteById() {
+          throw new Error('not used');
+        },
+        async findById() {
+          return null;
+        }
+      },
+      opportunityRepository: {
+        async deleteById(id) {
+          deletedIds.push(Number(id));
+          return { rowCount: 1 };
+        }
+      }
+    });
+
+    const response = await agent.post('/opportunities/30/delete').type('form').send();
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/opportunities');
+    assert.deepEqual(deletedIds, [30]);
+    assert.equal(existsSync(absolutePath), false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
 });
 
 test('opportunity form quick creates customer and returns with it selected', async () => {

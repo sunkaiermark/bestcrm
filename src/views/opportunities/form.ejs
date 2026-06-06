@@ -1,7 +1,7 @@
 <%- include('../partials/app-start', { title: 'Opportunity - BESTCRM', activeNav: 'opportunities' }) %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
         <header class="page-header">
-          <h1>Opportunity Initiation</h1>
+          <h1><%= typeof pageTitle === 'undefined' ? 'Opportunity Initiation' : pageTitle %></h1>
         </header>
 
         <form id="opportunity-form" method="post" action="<%= action %>"></form>
@@ -14,32 +14,34 @@
               <% } %>
             </select>
           </label>
-          <details class="inline-create-panel">
-            <summary>Add new customer here</summary>
-            <form method="post" action="/opportunities/customers">
-              <label>
-                Customer Name
-                <input name="name" required>
-              </label>
-              <label>
-                Industry
-                <input name="industry">
-              </label>
-              <label>
-                Region
-                <input name="region">
-              </label>
-              <label>
-                Address
-                <input name="address">
-              </label>
-              <label>
-                Notes
-                <textarea name="notes"></textarea>
-              </label>
-              <button type="submit">Create customer</button>
-            </form>
-          </details>
+          <% if (typeof allowInlineCreate === 'undefined' || allowInlineCreate) { %>
+            <details class="inline-create-panel">
+              <summary>Add new customer here</summary>
+              <form method="post" action="/opportunities/customers">
+                <label>
+                  Customer Name
+                  <input name="name" required>
+                </label>
+                <label>
+                  Industry
+                  <input name="industry">
+                </label>
+                <label>
+                  Region
+                  <input name="region">
+                </label>
+                <label>
+                  Address
+                  <input name="address">
+                </label>
+                <label>
+                  Notes
+                  <textarea name="notes"></textarea>
+                </label>
+                <button type="submit">Create customer</button>
+              </form>
+            </details>
+          <% } %>
           <label>
             Contact
             <select name="primaryContactId" form="opportunity-form">
@@ -49,48 +51,50 @@
               <% } %>
             </select>
           </label>
-          <details class="inline-create-panel">
-            <summary>Add new contact here</summary>
-            <% if (customers.length) { %>
-              <form method="post" action="/opportunities/contacts">
-                <label>
-                  Customer
-                  <select name="customerId" required>
-                    <% for (const customer of customers) { %>
-                      <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
-                    <% } %>
-                  </select>
-                </label>
-                <label>
-                  Contact Name
-                  <input name="name" required>
-                </label>
-                <label>
-                  Title
-                  <input name="title">
-                </label>
-                <label>
-                  Phone
-                  <input name="phone">
-                </label>
-                <label>
-                  Email
-                  <input name="email">
-                </label>
-                <label>
-                  WeChat
-                  <input name="wechat">
-                </label>
-                <label>
-                  Notes
-                  <textarea name="notes"></textarea>
-                </label>
-                <button type="submit">Create contact</button>
-              </form>
-            <% } else { %>
-              <p class="empty">Add a customer before creating a contact.</p>
-            <% } %>
-          </details>
+          <% if (typeof allowInlineCreate === 'undefined' || allowInlineCreate) { %>
+            <details class="inline-create-panel">
+              <summary>Add new contact here</summary>
+              <% if (customers.length) { %>
+                <form method="post" action="/opportunities/contacts">
+                  <label>
+                    Customer
+                    <select name="customerId" required>
+                      <% for (const customer of customers) { %>
+                        <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
+                      <% } %>
+                    </select>
+                  </label>
+                  <label>
+                    Contact Name
+                    <input name="name" required>
+                  </label>
+                  <label>
+                    Title
+                    <input name="title">
+                  </label>
+                  <label>
+                    Phone
+                    <input name="phone">
+                  </label>
+                  <label>
+                    Email
+                    <input name="email">
+                  </label>
+                  <label>
+                    WeChat
+                    <input name="wechat">
+                  </label>
+                  <label>
+                    Notes
+                    <textarea name="notes"></textarea>
+                  </label>
+                  <button type="submit">Create contact</button>
+                </form>
+              <% } else { %>
+                <p class="empty">Add a customer before creating a contact.</p>
+              <% } %>
+            </details>
+          <% } %>
           <label>
             Title
             <input name="title" form="opportunity-form" value="<%= opportunity.title || '' %>" required>
@@ -115,6 +119,6 @@
             Expected Bid Date
             <input name="expectedBidDate" form="opportunity-form" type="date" value="<%= opportunity.expectedBidDate || '' %>">
           </label>
-          <button type="submit" form="opportunity-form">Save draft</button>
+          <button type="submit" form="opportunity-form"><%= typeof submitLabel === 'undefined' ? 'Save draft' : submitLabel %></button>
         </section>
 <%- include('../partials/app-end') %>
