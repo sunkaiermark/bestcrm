@@ -477,11 +477,13 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(list.text, /Opportunities/);
   assert.match(list.text, /Factory upgrade/);
   assert.match(list.text, /Acme Co/);
+  assert.match(list.text, /<th>Owner<\/th>/);
+  assert.match(list.text, /Sales One/);
   assert.match(list.text, /<table class="list-table opportunity-list-table">/);
   assert.match(list.text, /\.opportunity-list-table\s*\{[\s\S]*table-layout:\s*auto;/);
   assert.match(list.text, /\.opportunity-list-table thead th\s*\{[\s\S]*background:\s*#1e3a5f;/);
   assert.match(list.text, /\.opportunity-list-table th,\s*\.opportunity-list-table td\s*\{[\s\S]*white-space:\s*nowrap;/);
-  assert.equal((list.text.match(/class="cell-link" href="\/opportunities\/30"/g) || []).length, 6);
+  assert.equal((list.text.match(/class="cell-link" href="\/opportunities\/30"/g) || []).length, 7);
 
   const form = await agent.get('/opportunities/new');
   assert.equal(form.status, 200);

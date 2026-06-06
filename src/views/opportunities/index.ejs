@@ -12,6 +12,7 @@
                   <th>No.</th>
                   <th>Title</th>
                   <th>Customer</th>
+                  <th>Owner</th>
                   <th>Contact</th>
                   <th>Status</th>
                   <th>Estimated Amount</th>
@@ -23,6 +24,7 @@
                     <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a></td>
                     <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a></td>
                     <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.customerName %></a></td>
+                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.salespersonDisplayName || opportunity.salespersonUsername || '' %></a></td>
                     <td class="clickable-cell">
                       <a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.primaryContactName || '' %></a>
                     </td>
