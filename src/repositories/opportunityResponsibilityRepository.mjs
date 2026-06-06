@@ -57,6 +57,125 @@ function mapCurrentResponsibleRow(row) {
 
 export function createOpportunityResponsibilityRepository(queryTarget) {
   return {
+    async addTeamMember(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO opportunity_members (
+          opportunity_id,
+          user_id,
+          role_code,
+          permission_level,
+          added_by
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (opportunity_id, user_id, role_code) WHERE is_active = true DO UPDATE
+        SET
+          permission_level = EXCLUDED.permission_level,
+          added_by = EXCLUDED.added_by,
+          added_at = now(),
+          removed_by = NULL,
+          removed_at = NULL
+        RETURNING id
+      `, [
+        input.opportunityId,
+        input.userId,
+        input.roleCode,
+        input.permissionLevel,
+        input.addedBy
+      ]);
+      return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
+    },
+
+    async removeTeamMember(input) {
+      const result = await queryTarget.query(`
+        UPDATE opportunity_members
+        SET
+          is_active = false,
+          removed_by = $3,
+          removed_at = now()
+        WHERE opportunity_id = $1
+          AND id = $2
+          AND is_active = true
+        RETURNING id
+      `, [
+        input.opportunityId,
+        input.memberId,
+        input.removedBy
+      ]);
+      return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
+    },
+
+    async transferOwner(input) {
+      await queryTarget.query('BEGIN');
+      try {
+        const ownerResult = await queryTarget.query(`
+          UPDATE opportunities
+          SET salesperson_id = $2, updated_at = now()
+          WHERE id = $1
+            AND salesperson_id = $3
+          RETURNING id
+        `, [
+          input.opportunityId,
+          input.toOwnerUserId,
+          input.fromOwnerUserId
+        ]);
+        if (!ownerResult.rows[0]) {
+          throw new Error('Opportunity owner changed before transfer');
+        }
+
+        const transferResult = await queryTarget.query(`
+          INSERT INTO opportunity_owner_transfers (
+            opportunity_id,
+            from_owner_user_id,
+            to_owner_user_id,
+            changed_by,
+            reason,
+            keep_previous_owner_as_member
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
+          RETURNING id
+        `, [
+          input.opportunityId,
+          input.fromOwnerUserId,
+          input.toOwnerUserId,
+          input.changedBy,
+          input.reason,
+          input.keepPreviousOwnerAsMember
+        ]);
+
+        if (input.keepPreviousOwnerAsMember) {
+          await queryTarget.query(`
+            INSERT INTO opportunity_members (
+              opportunity_id,
+              user_id,
+              role_code,
+              permission_level,
+              added_by
+            )
+            VALUES ($1, $2, $3, $4, $5)
+            ON CONFLICT (opportunity_id, user_id, role_code) WHERE is_active = true DO UPDATE
+            SET
+              permission_level = EXCLUDED.permission_level,
+              added_by = EXCLUDED.added_by,
+              added_at = now(),
+              removed_by = NULL,
+              removed_at = NULL
+          `, [
+            input.opportunityId,
+            input.fromOwnerUserId,
+            'salesperson',
+            'view',
+            input.changedBy
+          ]);
+        }
+
+        await queryTarget.query('COMMIT');
+        return transferResult.rows[0] ? { id: Number(transferResult.rows[0].id) } : null;
+      } catch (error) {
+        await queryTarget.query('ROLLBACK');
+        throw error;
+      }
+    },
+
     async listTeamMembersByOpportunity(opportunityId) {
       const result = await queryTarget.query(`
         SELECT

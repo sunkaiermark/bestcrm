@@ -199,6 +199,20 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(approvals.text, /<td class="actions-cell">[\s\S]*<div class="inline-actions system-actions">/);
 });
 
+test('non administrators cannot view system pages', async () => {
+  const { agent } = await createSystemAgent({
+    username: 'sales01',
+    displayName: 'Sales User',
+    roles: [ROLES.SALESPERSON]
+  });
+
+  for (const path of ['/system/users', '/system/roles', '/system/approval-settings']) {
+    const response = await agent.get(path);
+    assert.equal(response.status, 403);
+    assert.match(response.text, /Forbidden/);
+  }
+});
+
 test('administrator can add edit and deactivate system users', async () => {
   const { agent, calls } = await createSystemAgent();
 

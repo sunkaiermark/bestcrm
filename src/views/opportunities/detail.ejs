@@ -19,8 +19,13 @@
   const opportunityTeamMembers = typeof teamMembers === 'undefined' ? [] : teamMembers;
   const opportunityOwnerTransfers = typeof ownerTransfers === 'undefined' ? [] : ownerTransfers;
   const opportunityCurrentResponsibles = typeof currentResponsibles === 'undefined' ? [] : currentResponsibles;
+  const canManageOpportunityResponsibility = typeof canManageResponsibility === 'undefined' ? false : canManageResponsibility;
+  const activeResponsibilityUsers = typeof responsibilityUsers === 'undefined' ? [] : responsibilityUsers;
+  const activeSalesOwnerOptions = typeof salesOwnerOptions === 'undefined' ? [] : salesOwnerOptions;
+  const activeResponsibilityRoleOptions = typeof responsibilityRoleOptions === 'undefined' ? [] : responsibilityRoleOptions;
   const ownerName = opportunity.salespersonDisplayName || opportunity.salespersonUsername || opportunity.salespersonId || '';
   const canAddRequirementUpdate = typeof canCreateRequirementUpdate === 'undefined' ? false : canCreateRequirementUpdate;
+  const uploadPermissions = typeof canUploadAttachments === 'undefined' ? {} : canUploadAttachments;
 %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
         <header class="page-header">
@@ -147,6 +152,9 @@
                               <th>Permission</th>
                               <th>Added By</th>
                               <th>Added At</th>
+                              <% if (canManageOpportunityResponsibility) { %>
+                                <th>Actions</th>
+                              <% } %>
                             </tr>
                           </thead>
                           <tbody>
@@ -157,6 +165,13 @@
                                 <td><%= member.permissionLevel %></td>
                                 <td><%= member.addedByDisplayName || '' %></td>
                                 <td><%= member.addedAt || '' %></td>
+                                <% if (canManageOpportunityResponsibility) { %>
+                                  <td>
+                                    <form method="post" action="/opportunities/<%= opportunity.id %>/team-members/<%= member.id %>/remove">
+                                      <button class="danger-action" type="submit">Remove</button>
+                                    </form>
+                                  </td>
+                                <% } %>
                               </tr>
                             <% } %>
                           </tbody>
@@ -164,12 +179,65 @@
                       <% } else { %>
                         <p class="empty">No team members.</p>
                       <% } %>
+                      <% if (canManageOpportunityResponsibility) { %>
+                        <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/team-members" data-team-member-form>
+                          <h3>Add Team Member</h3>
+                          <label>
+                            User
+                            <select name="userId" required>
+                              <option value=""></option>
+                              <% for (const user of activeResponsibilityUsers) { %>
+                                <option value="<%= user.id %>" data-role-codes="<%= (user.roles || []).join(',') %>"><%= user.displayName %> (<%= user.username %>)</option>
+                              <% } %>
+                            </select>
+                          </label>
+                          <label>
+                            Role
+                            <select name="roleCode" required>
+                              <% for (const role of activeResponsibilityRoleOptions) { %>
+                                <option value="<%= role.code %>" data-role-code="<%= role.code %>"><%= role.name %></option>
+                              <% } %>
+                            </select>
+                          </label>
+                          <label>
+                            Permission
+                            <select name="permissionLevel" required>
+                              <option value="view">View</option>
+                              <option value="edit">Edit</option>
+                            </select>
+                          </label>
+                          <button type="submit">Add Team Member</button>
+                        </form>
+                      <% } %>
                     </div>
                   </div>
 
                   <div class="responsibility-block">
                     <h3>Owner Transfer History</h3>
                     <div class="responsibility-content">
+                      <% if (canManageOpportunityResponsibility) { %>
+                        <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/owner-transfer">
+                          <h3>Transfer Owner</h3>
+                          <label>
+                            New Owner
+                            <select name="toOwnerUserId" required>
+                              <option value=""></option>
+                              <% for (const user of activeSalesOwnerOptions) { %>
+                                <option value="<%= user.id %>"><%= user.displayName %> (<%= user.username %>)</option>
+                              <% } %>
+                            </select>
+                          </label>
+                          <label>
+                            Reason
+                            <textarea name="reason" required></textarea>
+                          </label>
+                          <label class="checkbox-label">
+                            <input type="checkbox" name="keepPreviousOwnerAsMember">
+                            Keep previous owner as team member
+                          </label>
+                          <button type="submit">Transfer Owner</button>
+                        </form>
+                      <% } %>
                       <% if (opportunityOwnerTransfers.length > 0) { %>
                         <table class="list-table content-fit-table">
                           <thead>
@@ -210,14 +278,16 @@
                 <dt>Initial Requirement</dt>
                 <dd><%= opportunity.requirement %></dd>
               </dl>
-              <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
-                <input type="hidden" name="category" value="requirement">
-                <label>
-                  File
-                  <input type="file" name="attachment" required>
-                </label>
-                <button type="submit">Upload attachment</button>
-              </form>
+              <% if (uploadPermissions.requirement) { %>
+                <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <input type="hidden" name="category" value="requirement">
+                  <label>
+                    File
+                    <input type="file" name="attachment" required>
+                  </label>
+                  <button type="submit">Upload attachment</button>
+                </form>
+              <% } %>
               <% if (requirementAttachments.length > 0) { %>
                 <table class="list-table">
                   <thead>
@@ -299,14 +369,16 @@
           <section class="content-section business-section business-section-technical">
             <h2>Technical Solution</h2>
             <div class="section-body">
-              <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
-                <input type="hidden" name="category" value="technical_solution">
-                <label>
-                  File
-                  <input type="file" name="attachment" required>
-                </label>
-                <button type="submit">Upload technical solution</button>
-              </form>
+              <% if (uploadPermissions.technical_solution) { %>
+                <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <input type="hidden" name="category" value="technical_solution">
+                  <label>
+                    File
+                    <input type="file" name="attachment" required>
+                  </label>
+                  <button type="submit">Upload technical solution</button>
+                </form>
+              <% } %>
               <% if (technicalSolutionAttachments.length > 0) { %>
                 <table class="list-table">
                   <thead>
@@ -380,14 +452,16 @@
           <section class="content-section business-section business-section-quote">
             <h2>Commercial Quote</h2>
             <div class="section-body">
-              <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
-                <input type="hidden" name="category" value="commercial_quote">
-                <label>
-                  File
-                  <input type="file" name="attachment" required>
-                </label>
-                <button type="submit">Upload commercial quote</button>
-              </form>
+              <% if (uploadPermissions.commercial_quote) { %>
+                <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <input type="hidden" name="category" value="commercial_quote">
+                  <label>
+                    File
+                    <input type="file" name="attachment" required>
+                  </label>
+                  <button type="submit">Upload commercial quote</button>
+                </form>
+              <% } %>
               <% if (commercialQuoteAttachments.length > 0) { %>
                 <table class="list-table">
                   <thead>
@@ -471,14 +545,16 @@
           <section class="content-section business-section business-section-contract">
             <h2>Commercial Contract</h2>
             <div class="section-body">
-              <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
-                <input type="hidden" name="category" value="contract">
-                <label>
-                  File
-                  <input type="file" name="attachment" required>
-                </label>
-                <button type="submit">Upload contract</button>
-              </form>
+              <% if (uploadPermissions.contract) { %>
+                <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <input type="hidden" name="category" value="contract">
+                  <label>
+                    File
+                    <input type="file" name="attachment" required>
+                  </label>
+                  <button type="submit">Upload contract</button>
+                </form>
+              <% } %>
               <% if (contractAttachments.length > 0) { %>
                 <table class="list-table">
                   <thead>
@@ -633,4 +709,39 @@
             </section>
           <% } %>
         </div>
+<% if (canManageOpportunityResponsibility) { %>
+        <script>
+          (function () {
+            function syncTeamMemberRoleOptions(form) {
+              const userSelect = form.querySelector('select[name="userId"]');
+              const roleSelect = form.querySelector('select[name="roleCode"]');
+              if (!userSelect || !roleSelect) {
+                return;
+              }
+              const selectedUser = userSelect.selectedOptions[0];
+              const roleCodes = new Set(String(selectedUser?.dataset.roleCodes || '').split(',').filter(Boolean));
+              let firstAllowedValue = '';
+              for (const option of roleSelect.options) {
+                const roleCode = option.dataset.roleCode || option.value;
+                const isAllowed = roleCodes.has(roleCode);
+                option.hidden = roleCodes.size > 0 && !isAllowed;
+                option.disabled = roleCodes.size > 0 && !isAllowed;
+                if (isAllowed && !firstAllowedValue) {
+                  firstAllowedValue = option.value;
+                }
+              }
+              roleSelect.disabled = roleCodes.size === 0;
+              if (!roleCodes.has(roleSelect.value)) {
+                roleSelect.value = firstAllowedValue;
+              }
+            }
+
+            for (const form of document.querySelectorAll('[data-team-member-form]')) {
+              const userSelect = form.querySelector('select[name="userId"]');
+              userSelect?.addEventListener('change', () => syncTeamMemberRoleOptions(form));
+              syncTeamMemberRoleOptions(form);
+            }
+          })();
+        </script>
+<% } %>
 <%- include('../partials/app-end') %>

@@ -81,6 +81,30 @@ const workflowFieldColumns = new Map([
   ['archivedAt', 'archived_at']
 ]);
 
+function visibleOpportunityPredicate(userParam) {
+  return `(
+    o.salesperson_id = ${userParam}
+    OR o.sales_manager_id = ${userParam}
+    OR o.quotation_engineer_id = ${userParam}
+    OR o.technical_manager_id = ${userParam}
+    OR o.commercial_manager_id = ${userParam}
+    OR EXISTS (
+      SELECT 1
+      FROM opportunity_members om
+      WHERE om.opportunity_id = o.id
+        AND om.user_id = ${userParam}
+        AND om.is_active = true
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM contract_approvals ca
+      JOIN contract_approval_steps cas ON cas.contract_approval_id = ca.id
+      WHERE ca.opportunity_id = o.id
+        AND cas.reviewer_user_id = ${userParam}
+    )
+  )`;
+}
+
 export function createOpportunityRepository(queryTarget) {
   return {
     async listOpportunities(filter = {}) {
@@ -97,6 +121,10 @@ export function createOpportunityRepository(queryTarget) {
       if (filter.customerId) {
         params.push(filter.customerId);
         where.push(`o.customer_id = $${params.length}`);
+      }
+      if (filter.visibleToUserId) {
+        params.push(filter.visibleToUserId);
+        where.push(visibleOpportunityPredicate(`$${params.length}`));
       }
       const result = await queryTarget.query(`
         ${opportunitySelect}

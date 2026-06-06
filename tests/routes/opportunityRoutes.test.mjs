@@ -44,6 +44,29 @@ async function createLoggedInAgent(extraOptions = {}) {
       },
       async findByUsernameWithRoles(username) {
         return username === user.username ? user : null;
+      },
+      async listUsersWithRoles() {
+        return [
+          user,
+          {
+            id: 8,
+            username: 'team01',
+            displayName: 'Team Member',
+            email: null,
+            phone: null,
+            isActive: true,
+            roles: [ROLES.SALESPERSON]
+          },
+          {
+            id: 2,
+            username: 'manager01',
+            displayName: 'Sales Manager',
+            email: null,
+            phone: null,
+            isActive: true,
+            roles: [ROLES.SALES_MANAGER]
+          }
+        ];
       }
     },
     customerRepository: {
@@ -303,7 +326,17 @@ function opportunityDetail(overrides = {}) {
   };
 }
 
-async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachments = [], technicalSolutions = [], commercialQuotes = [], contractApprovals = [], approvalSettings = {} }) {
+async function createWorkflowAgent({
+  user,
+  opportunity,
+  roleUsers = {},
+  attachments = [],
+  technicalSolutions = [],
+  commercialQuotes = [],
+  contractApprovals = [],
+  approvalSettings = {},
+  workflowTransaction
+}) {
   const actor = {
     passwordHash: await hashPassword('ChangeMe123!'),
     isActive: true,
@@ -455,7 +488,8 @@ async function createWorkflowAgent({ user, opportunity, roleUsers = {}, attachme
         calls.push(['rejectContractApproval', input]);
         return { id: input.approvalId, status: 'rejected' };
       }
-    }
+    },
+    workflowTransaction
   });
   const agent = request.agent(app);
   await agent.post('/login').type('form').send({ username: actor.username, password: 'ChangeMe123!' });
@@ -529,6 +563,50 @@ test('opportunity detail shows list and edit actions but hides delete from non a
   assert.doesNotMatch(headerHtml, /class="status"/);
   assert.match(detail.text, /<th scope="row">Status<\/th>\s*<td>draft<\/td>/);
   assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/delete"/);
+});
+
+test('active team member can view opportunity detail without edit access', async () => {
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 8,
+      username: 'team01',
+      displayName: 'Team Member',
+      roles: [ROLES.SALESPERSON]
+    },
+    opportunityResponsibilityRepository: {
+      async listTeamMembersByOpportunity(opportunityId) {
+        return [{
+          id: 41,
+          opportunityId,
+          userId: 8,
+          username: 'team01',
+          userDisplayName: 'Team Member',
+          roleCode: ROLES.SALESPERSON,
+          roleName: 'Salesperson',
+          permissionLevel: 'view',
+          isActive: true,
+          addedBy: 7,
+          addedByDisplayName: 'Sales One',
+          addedAt: '2026-06-06T08:00:00.000Z',
+          removedBy: null,
+          removedByDisplayName: '',
+          removedAt: null
+        }];
+      },
+      async listOwnerTransfersByOpportunity() {
+        return [];
+      },
+      async listCurrentResponsiblesByOpportunity() {
+        return [];
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Team Member/);
+  assert.doesNotMatch(detail.text, /href="\/opportunities\/30\/edit"/);
 });
 
 test('administrator sees opportunity delete action on detail page', async () => {
@@ -828,6 +906,195 @@ test('opportunity detail shows owner team members current responsibles and trans
   ]);
 });
 
+test('administrator sees responsibility management forms on opportunity detail', async () => {
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 99,
+      username: 'admin01',
+      displayName: 'Admin User',
+      roles: [ROLES.ADMINISTRATOR]
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Add Team Member/);
+  assert.match(detail.text, /name="userId"/);
+  assert.match(detail.text, /name="roleCode"/);
+  assert.match(detail.text, /Transfer Owner/);
+  assert.match(detail.text, /name="toOwnerUserId"/);
+  assert.match(detail.text, /name="keepPreviousOwnerAsMember"/);
+});
+
+test('team member form carries user roles for linked role selection', async () => {
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 99,
+      username: 'admin01',
+      displayName: 'Admin User',
+      roles: [ROLES.ADMINISTRATOR]
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /data-team-member-form/);
+  assert.match(detail.text, /<option value="8" data-role-codes="salesperson">Team Member \(team01\)<\/option>/);
+  assert.match(detail.text, /<option value="2" data-role-codes="sales_manager">Sales Manager \(manager01\)<\/option>/);
+  assert.match(detail.text, /<option value="salesperson" data-role-code="salesperson">Sales<\/option>/);
+  assert.match(detail.text, /function syncTeamMemberRoleOptions/);
+});
+
+test('administrator adds and removes opportunity team members', async () => {
+  const addedMembers = [];
+  const removedMembers = [];
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 99,
+      username: 'admin01',
+      displayName: 'Admin User',
+      roles: [ROLES.ADMINISTRATOR]
+    },
+    opportunityResponsibilityRepository: {
+      async listTeamMembersByOpportunity() {
+        return [];
+      },
+      async listOwnerTransfersByOpportunity() {
+        return [];
+      },
+      async listCurrentResponsiblesByOpportunity() {
+        return [];
+      },
+      async addTeamMember(input) {
+        addedMembers.push(input);
+        return { id: 41, ...input };
+      },
+      async removeTeamMember(input) {
+        removedMembers.push(input);
+        return { id: input.memberId };
+      }
+    }
+  });
+
+  const addResponse = await agent
+    .post('/opportunities/30/team-members')
+    .type('form')
+    .send({
+      userId: 8,
+      roleCode: ROLES.SALESPERSON,
+      permissionLevel: 'view'
+    });
+
+  assert.equal(addResponse.status, 302);
+  assert.deepEqual(addedMembers, [{
+    opportunityId: 30,
+    userId: 8,
+    roleCode: ROLES.SALESPERSON,
+    permissionLevel: 'view',
+    addedBy: 99
+  }]);
+
+  const removeResponse = await agent
+    .post('/opportunities/30/team-members/41/remove')
+    .type('form')
+    .send();
+
+  assert.equal(removeResponse.status, 302);
+  assert.deepEqual(removedMembers, [{
+    opportunityId: 30,
+    memberId: 41,
+    removedBy: 99
+  }]);
+});
+
+test('Sales Manager transfers opportunity owner and can keep previous owner as team member', async () => {
+  const transfers = [];
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 2,
+      username: 'manager01',
+      displayName: 'Sales Manager',
+      roles: [ROLES.SALES_MANAGER]
+    },
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return opportunityDetail({
+          salespersonId: 7,
+          salesManagerId: 2
+        });
+      }
+    },
+    opportunityResponsibilityRepository: {
+      async listTeamMembersByOpportunity() {
+        return [];
+      },
+      async listOwnerTransfersByOpportunity() {
+        return [];
+      },
+      async listCurrentResponsiblesByOpportunity() {
+        return [];
+      },
+      async transferOwner(input) {
+        transfers.push(input);
+        return { id: 51, ...input };
+      }
+    }
+  });
+
+  const response = await agent
+    .post('/opportunities/30/owner-transfer')
+    .type('form')
+    .send({
+      toOwnerUserId: 8,
+      reason: 'Territory realignment',
+      keepPreviousOwnerAsMember: 'on'
+    });
+
+  assert.equal(response.status, 302);
+  assert.deepEqual(transfers, [{
+    opportunityId: 30,
+    fromOwnerUserId: 7,
+    toOwnerUserId: 8,
+    changedBy: 2,
+    reason: 'Territory realignment',
+    keepPreviousOwnerAsMember: true
+  }]);
+});
+
+test('non managers cannot manage opportunity responsibility directly', async () => {
+  let addCalled = false;
+  const { agent } = await createLoggedInAgent({
+    opportunityResponsibilityRepository: {
+      async listTeamMembersByOpportunity() {
+        return [];
+      },
+      async listOwnerTransfersByOpportunity() {
+        return [];
+      },
+      async listCurrentResponsiblesByOpportunity() {
+        return [];
+      },
+      async addTeamMember() {
+        addCalled = true;
+      }
+    }
+  });
+
+  const response = await agent
+    .post('/opportunities/30/team-members')
+    .type('form')
+    .send({
+      userId: 8,
+      roleCode: ROLES.SALESPERSON,
+      permissionLevel: 'view'
+    });
+
+  assert.equal(response.status, 403);
+  assert.equal(addCalled, false);
+});
+
 test('opportunity detail shows attachment upload form and file links', async () => {
   const { agent } = await createLoggedInAgent();
 
@@ -1069,7 +1336,9 @@ test('opportunity detail shows contract version history', async () => {
 });
 
 test('opportunity detail shows upload forms in each business material panel', async () => {
-  const { agent } = await createLoggedInAgent();
+  const { agent } = await createLoggedInAgent({
+    user: { roles: [ROLES.ADMINISTRATOR] }
+  });
 
   const detail = await agent.get('/opportunities/30');
 
@@ -1091,6 +1360,16 @@ test('opportunity detail shows upload forms in each business material panel', as
   assert.match(detail.text, /Technical Solution[\s\S]*name="category" value="technical_solution"/);
   assert.match(detail.text, /Commercial Quote[\s\S]*name="category" value="commercial_quote"/);
   assert.match(detail.text, /Commercial Contract[\s\S]*name="category" value="contract"/);
+});
+
+test('opportunity detail hides technical upload from users without category permission', async () => {
+  const { agent } = await createLoggedInAgent();
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Requirement Materials[\s\S]*name="category" value="requirement"/);
+  assert.doesNotMatch(detail.text, /Technical Solution[\s\S]*name="category" value="technical_solution"/);
 });
 
 test('technical solution workflow form captures version details', async () => {
@@ -1420,6 +1699,35 @@ test('page form stores requirement material attachment category', async () => {
   }
 });
 
+test('attachment upload requires category permission even when opportunity is visible', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-category-upload-'));
+  let createCalled = false;
+  try {
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      attachmentRepository: {
+        async createAttachment() {
+          createCalled = true;
+          throw new Error('should not create attachment');
+        }
+      }
+    });
+
+    const response = await agent
+      .post('/opportunities/30/attachments')
+      .field('category', 'technical_solution')
+      .attach('attachment', Buffer.from('technical file'), {
+        filename: 'technical.txt',
+        contentType: 'text/plain'
+      });
+
+    assert.equal(response.status, 403);
+    assert.equal(createCalled, false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('attachment download and preview return stored files through opportunity permission', async () => {
   const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-download-'));
   try {
@@ -1608,6 +1916,36 @@ test('salesperson submits initiation from opportunity detail page', async () => 
     }],
     ['createTodo', { opportunityId: 30, assigneeUserId: 2, title: 'Approve opportunity initiation' }]
   ]);
+});
+
+test('workflow page submission runs through configured transaction manager', async () => {
+  const transactionCalls = [];
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    },
+    opportunity: {
+      status: STATUSES.DRAFT,
+      salespersonId: 7
+    },
+    workflowTransaction: async (callback) => {
+      transactionCalls.push('begin');
+      const result = await callback({});
+      transactionCalls.push('commit');
+      return result;
+    }
+  });
+
+  const response = await agent
+    .post('/opportunities/30/workflow')
+    .type('form')
+    .send({ action: ACTIONS.SUBMIT_INITIATION, comment: 'ready for review' });
+
+  assert.equal(response.status, 302);
+  assert.deepEqual(transactionCalls, ['begin', 'commit']);
 });
 
 test('salesperson withdraws pending initiation from opportunity detail page', async () => {

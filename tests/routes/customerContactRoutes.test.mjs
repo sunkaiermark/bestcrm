@@ -248,3 +248,63 @@ test('non administrators cannot delete customers or contacts directly', async ()
   assert.equal(contactDelete.status, 403);
   assert.deepEqual(deletedContacts, []);
 });
+
+test('non owners receive forbidden when directly updating customers or contacts', async () => {
+  let customerUpdateCalled = false;
+  let contactUpdateCalled = false;
+  const { agent } = await createLoggedInAgent({
+    customerRepository: {
+      async getCustomerDetail(id) {
+        return {
+          id: Number(id),
+          name: 'Other Customer',
+          industry: 'Manufacturing',
+          country: 'China',
+          region: 'Shanghai',
+          address: 'Road 1',
+          ownerUserId: 999,
+          notes: 'Owned by another user',
+          contacts: []
+        };
+      },
+      async updateCustomer() {
+        customerUpdateCalled = true;
+        throw new Error('should not update customer');
+      }
+    },
+    contactRepository: {
+      async getContactDetail(id) {
+        return {
+          id: Number(id),
+          customerId: 10,
+          customerName: 'Other Customer',
+          customerOwnerUserId: 999,
+          name: 'Alice',
+          title: 'Buyer',
+          phone: '123',
+          email: 'alice@example.com',
+          wechat: 'alicewx',
+          notes: 'Owned by another user'
+        };
+      },
+      async updateContact() {
+        contactUpdateCalled = true;
+        throw new Error('should not update contact');
+      }
+    }
+  });
+
+  const customerUpdate = await agent
+    .post('/customers/10')
+    .type('form')
+    .send({ name: 'Blocked Customer' });
+  assert.equal(customerUpdate.status, 403);
+  assert.equal(customerUpdateCalled, false);
+
+  const contactUpdate = await agent
+    .post('/contacts/20')
+    .type('form')
+    .send({ name: 'Blocked Contact' });
+  assert.equal(contactUpdate.status, 403);
+  assert.equal(contactUpdateCalled, false);
+});

@@ -413,6 +413,20 @@ export async function applyWorkflowAction({
   payload = {},
   repositories
 }) {
+  if (typeof repositories.workflowTransaction === 'function') {
+    return repositories.workflowTransaction((transactionRepositories = {}) => applyWorkflowAction({
+      actor,
+      opportunityId,
+      action,
+      payload,
+      repositories: {
+        ...repositories,
+        ...transactionRepositories,
+        workflowTransaction: null
+      }
+    }));
+  }
+
   const before = await repositories.opportunityRepository.findById(opportunityId);
   if (!before) {
     throw new Error('Opportunity not found');

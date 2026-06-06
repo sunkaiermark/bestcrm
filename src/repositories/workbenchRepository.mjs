@@ -61,6 +61,13 @@ function assignedOpportunityPredicate(userParam = '$1') {
     OR o.commercial_manager_id = ${userParam}
     OR EXISTS (
       SELECT 1
+      FROM opportunity_members om
+      WHERE om.opportunity_id = o.id
+        AND om.user_id = ${userParam}
+        AND om.is_active = true
+    )
+    OR EXISTS (
+      SELECT 1
       FROM contract_approvals ca
       JOIN contract_approval_steps cas ON cas.contract_approval_id = ca.id
       WHERE ca.opportunity_id = o.id

@@ -225,6 +225,101 @@ test('applyWorkflowAction updates opportunity creates event and creates todos', 
   ]);
 });
 
+test('applyWorkflowAction runs workflow side effects through transaction repositories when provided', async () => {
+  const outerRepositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.INITIATION_PENDING,
+    salespersonId: 1,
+    salesManagerId: 2
+  });
+  const transactionRepositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.INITIATION_PENDING,
+    salespersonId: 1,
+    salesManagerId: 2
+  });
+  outerRepositories.workflowTransaction = async (callback) => {
+    outerRepositories.calls.push(['beginWorkflowTransaction']);
+    const result = await callback(transactionRepositories);
+    outerRepositories.calls.push(['commitWorkflowTransaction']);
+    return result;
+  };
+
+  const result = await applyWorkflowAction({
+    actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.APPROVE_INITIATION,
+    payload: { quotationEngineerId: 3, comment: 'approved' },
+    repositories: outerRepositories
+  });
+
+  assert.equal(result.status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+  assert.deepEqual(outerRepositories.calls, [
+    ['beginWorkflowTransaction'],
+    ['commitWorkflowTransaction']
+  ]);
+  assert.deepEqual(transactionRepositories.calls, [
+    ['findOpportunity', 10],
+    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3 }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.APPROVE_INITIATION,
+      fromStatus: STATUSES.INITIATION_PENDING,
+      toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      actorUserId: 2,
+      targetUserId: 3,
+      comment: 'approved'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 3, title: 'Prepare technical solution' }]
+  ]);
+});
+
+test('applyWorkflowAction lets transaction wrapper rollback when a workflow side effect fails', async () => {
+  const outerRepositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.INITIATION_PENDING,
+    salespersonId: 1,
+    salesManagerId: 2
+  });
+  const transactionRepositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.INITIATION_PENDING,
+    salespersonId: 1,
+    salesManagerId: 2
+  });
+  transactionRepositories.workflowEventRepository.create = async (event) => {
+    transactionRepositories.calls.push(['createEvent', event]);
+    throw new Error('timeline write failed');
+  };
+  outerRepositories.workflowTransaction = async (callback) => {
+    outerRepositories.calls.push(['beginWorkflowTransaction']);
+    try {
+      return await callback(transactionRepositories);
+    } catch (error) {
+      outerRepositories.calls.push(['rollbackWorkflowTransaction']);
+      throw error;
+    }
+  };
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.APPROVE_INITIATION,
+    payload: { quotationEngineerId: 3, comment: 'approved' },
+    repositories: outerRepositories
+  }), /timeline write failed/);
+
+  assert.deepEqual(outerRepositories.calls, [
+    ['beginWorkflowTransaction'],
+    ['rollbackWorkflowTransaction']
+  ]);
+  assert.deepEqual(transactionRepositories.calls.slice(0, 2), [
+    ['findOpportunity', 10],
+    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3 }]
+  ]);
+});
+
 test('submit initiation uses configured Sales Manager when payload omits assignee', async () => {
   const repositories = createRecordingRepositories({
     id: 10,

@@ -47,7 +47,7 @@ test('workbench repository lists pending todos assigned to current user', async 
   assert.deepEqual(queryTarget.queries[0].params, [7, 5]);
 });
 
-test('workbench repository lists opportunities assigned through workflow roles and contract review steps', async () => {
+test('workbench repository lists opportunities assigned through workflow roles team membership and contract review steps', async () => {
   const queryTarget = createFakeQueryTarget([[
     {
       id: '31',
@@ -74,6 +74,10 @@ test('workbench repository lists opportunities assigned through workflow roles a
   }]);
   assert.match(queryTarget.queries[0].sql, /o\.sales_manager_id = \$1/);
   assert.match(queryTarget.queries[0].sql, /o\.quotation_engineer_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /FROM opportunity_members om/);
+  assert.match(queryTarget.queries[0].sql, /om\.opportunity_id = o\.id/);
+  assert.match(queryTarget.queries[0].sql, /om\.user_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /om\.is_active = true/);
   assert.match(queryTarget.queries[0].sql, /cas\.reviewer_user_id = \$1/);
   assert.deepEqual(queryTarget.queries[0].params, [6, 8]);
 });
@@ -93,6 +97,8 @@ test('workbench repository counts visible opportunities by workflow state', asyn
   ]);
   assert.match(queryTarget.queries[0].sql, /GROUP BY o\.status/);
   assert.match(queryTarget.queries[0].sql, /o\.salesperson_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /FROM opportunity_members om/);
+  assert.match(queryTarget.queries[0].sql, /om\.is_active = true/);
   assert.deepEqual(queryTarget.queries[0].params, [7]);
 });
 

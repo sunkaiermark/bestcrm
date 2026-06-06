@@ -55,7 +55,12 @@ function defaultApprovalSetting(options) {
 export function systemRoutes({ userRepository, roleRepository, approvalSettingRepository }) {
   const router = Router();
 
-  router.use('/system', requireLogin);
+  router.use('/system', requireLogin, (req, res, next) => {
+    if (!requireSystemAdministrator(req, res)) {
+      return;
+    }
+    next();
+  });
 
   router.get('/system/users', async (req, res, next) => {
     try {

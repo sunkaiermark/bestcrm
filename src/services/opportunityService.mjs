@@ -26,18 +26,25 @@ export function canViewOpportunity(user, opportunity) {
   if (hasRole(user, ROLES.ADMINISTRATOR)) {
     return true;
   }
+  const userId = Number(user.id);
+  const isActiveTeamMember = Array.isArray(opportunity.teamMembers)
+    && opportunity.teamMembers.some((member) => Number(member.userId) === userId && member.isActive !== false);
   return [
     opportunity.salespersonId,
     opportunity.salesManagerId,
     opportunity.quotationEngineerId,
     opportunity.technicalManagerId,
     opportunity.commercialManagerId
-  ].includes(user.id);
+  ].some((assigneeId) => Number(assigneeId) === userId) || isActiveTeamMember;
 }
 
 export function canEditOpportunity(user, opportunity) {
   return hasRole(user, ROLES.ADMINISTRATOR)
     || Number(opportunity.salespersonId) === Number(user.id);
+}
+
+export function canManageOpportunityResponsibility(user) {
+  return hasRole(user, ROLES.ADMINISTRATOR) || hasRole(user, ROLES.SALES_MANAGER);
 }
 
 export function normalizeOpportunityInput(input, actor) {

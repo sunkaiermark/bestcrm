@@ -77,6 +77,37 @@ test('valid login creates a session and logout clears it', async () => {
   assert.equal(afterLogout.status, 401);
 });
 
+test('inactive users cannot keep using an existing session', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const user = {
+    id: 7,
+    username: 'sales01',
+    passwordHash,
+    displayName: 'Sales One',
+    isActive: true,
+    roles: [ROLES.SALESPERSON]
+  };
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    userRepository: buildUserRepository(user)
+  });
+  const agent = request.agent(app);
+
+  await agent
+    .post('/login')
+    .type('form')
+    .send({ username: 'sales01', password: 'ChangeMe123!' });
+
+  user.isActive = false;
+
+  const meResponse = await agent.get('/session/me');
+  assert.equal(meResponse.status, 401);
+
+  const workbenchResponse = await agent.get('/workbench');
+  assert.equal(workbenchResponse.status, 302);
+  assert.equal(workbenchResponse.headers.location, '/login');
+});
+
 test('invalid login does not create a session', async () => {
   const passwordHash = await hashPassword('ChangeMe123!');
   const app = createApp({

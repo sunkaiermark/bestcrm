@@ -80,6 +80,14 @@ export function contactRoutes({ customerRepository, contactRepository }) {
       const contact = await updateContact(contactRepository, req.currentUser, req.params.id, req.body);
       res.redirect(`/contacts/${contact.id}`);
     } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Contact not found') {
+        res.status(404).send('Contact not found');
+        return;
+      }
       next(error);
     }
   });

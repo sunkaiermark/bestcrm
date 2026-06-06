@@ -7,7 +7,8 @@ function createFakeQueryTarget(rows = []) {
     queries: [],
     async query(sql, params) {
       this.queries.push({ sql, params });
-      return { rows, rowCount: rows.length };
+      const rowsForCall = Array.isArray(rows[0]) ? rows[this.queries.length - 1] || [] : rows;
+      return { rows: rowsForCall, rowCount: rowsForCall.length };
     }
   };
 }
@@ -60,6 +61,43 @@ test('opportunity responsibility repository lists active team members with role 
   assert.deepEqual(queryTarget.queries[0].params, [10]);
 });
 
+test('opportunity responsibility repository adds active team members', async () => {
+  const queryTarget = createFakeQueryTarget([]);
+  const repository = createOpportunityResponsibilityRepository(queryTarget);
+
+  await repository.addTeamMember({
+    opportunityId: 10,
+    userId: 8,
+    roleCode: 'quotation_engineer',
+    permissionLevel: 'view',
+    addedBy: 2
+  });
+
+  assert.match(queryTarget.queries[0].sql, /INSERT INTO opportunity_members/);
+  assert.match(queryTarget.queries[0].sql, /ON CONFLICT \(opportunity_id, user_id, role_code\) WHERE is_active = true DO UPDATE/);
+  assert.deepEqual(queryTarget.queries[0].params, [10, 8, 'quotation_engineer', 'view', 2]);
+});
+
+test('opportunity responsibility repository removes active team members by row id', async () => {
+  const queryTarget = createFakeQueryTarget([]);
+  const repository = createOpportunityResponsibilityRepository(queryTarget);
+
+  await repository.removeTeamMember({
+    opportunityId: 10,
+    memberId: 41,
+    removedBy: 2
+  });
+
+  assert.match(queryTarget.queries[0].sql, /UPDATE opportunity_members/);
+  assert.match(queryTarget.queries[0].sql, /SET\s+is_active = false/);
+  assert.match(queryTarget.queries[0].sql, /removed_by = \$3/);
+  assert.match(queryTarget.queries[0].sql, /removed_at = now\(\)/);
+  assert.match(queryTarget.queries[0].sql, /AND id = \$2/);
+  assert.match(queryTarget.queries[0].sql, /opportunity_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /is_active = true/);
+  assert.deepEqual(queryTarget.queries[0].params, [10, 41, 2]);
+});
+
 test('opportunity responsibility repository lists owner transfer history', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '51',
@@ -98,6 +136,38 @@ test('opportunity responsibility repository lists owner transfer history', async
   assert.match(queryTarget.queries[0].sql, /WHERE oot\.opportunity_id = \$1/);
   assert.match(queryTarget.queries[0].sql, /ORDER BY oot\.transferred_at DESC/);
   assert.deepEqual(queryTarget.queries[0].params, [10]);
+});
+
+test('opportunity responsibility repository transfers owner and optionally keeps previous owner as team member', async () => {
+  const queryTarget = createFakeQueryTarget([
+    [],
+    [{ id: '10' }],
+    [{ id: '51' }],
+    [{ id: '41' }],
+    []
+  ]);
+  const repository = createOpportunityResponsibilityRepository(queryTarget);
+
+  await repository.transferOwner({
+    opportunityId: 10,
+    fromOwnerUserId: 7,
+    toOwnerUserId: 8,
+    changedBy: 2,
+    reason: 'Territory realignment',
+    keepPreviousOwnerAsMember: true
+  });
+
+  assert.match(queryTarget.queries[0].sql, /BEGIN/);
+  assert.match(queryTarget.queries[1].sql, /UPDATE opportunities/);
+  assert.match(queryTarget.queries[1].sql, /salesperson_id = \$2/);
+  assert.match(queryTarget.queries[1].sql, /WHERE id = \$1/);
+  assert.match(queryTarget.queries[1].sql, /salesperson_id = \$3/);
+  assert.deepEqual(queryTarget.queries[1].params, [10, 8, 7]);
+  assert.match(queryTarget.queries[2].sql, /INSERT INTO opportunity_owner_transfers/);
+  assert.deepEqual(queryTarget.queries[2].params, [10, 7, 8, 2, 'Territory realignment', true]);
+  assert.match(queryTarget.queries[3].sql, /INSERT INTO opportunity_members/);
+  assert.deepEqual(queryTarget.queries[3].params, [10, 7, 'salesperson', 'view', 2]);
+  assert.match(queryTarget.queries[4].sql, /COMMIT/);
 });
 
 test('opportunity responsibility repository reads current responsibles from pending todos', async () => {

@@ -8,11 +8,13 @@ import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
 import { CUSTOMER_REGIONS } from '../domain/customerRegions.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
+import { ROLE_DETAILS } from '../domain/systemCatalog.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { createContact } from '../services/contactService.mjs';
 import { createCustomer } from '../services/customerService.mjs';
 import {
+  canManageOpportunityResponsibility,
   canEditOpportunity,
   canViewOpportunity,
   createOpportunityDraft,
@@ -21,8 +23,8 @@ import {
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 
-function ownerFilter(user) {
-  return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { salespersonId: user.id };
+function opportunityVisibilityFilter(user) {
+  return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { visibleToUserId: user.id };
 }
 
 const assignmentRoles = [
@@ -58,6 +60,9 @@ const requirementMaterialDeleteStatuses = new Set([
   STATUSES.DRAFT,
   STATUSES.INITIATION_REJECTED
 ]);
+
+const responsibilityPermissionLevels = new Set(['view', 'edit']);
+const responsibilityRoleCodes = new Set(ROLE_DETAILS.map((role) => role.code));
 
 const supplementalRequirementStatuses = new Set([
   STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
@@ -348,17 +353,31 @@ async function canViewOpportunityWithContractApproval(user, opportunity, contrac
   return approvals.some((approval) => approval.reviewerUserId === user.id);
 }
 
-async function loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository }) {
+async function loadOpportunityOrSend({
+  req,
+  res,
+  opportunityRepository,
+  contractApprovalRepository,
+  opportunityResponsibilityRepository
+}) {
   const opportunity = await opportunityRepository.getOpportunityDetail(req.params.id);
   if (!opportunity) {
     res.status(404).send('Opportunity not found');
     return null;
   }
-  if (!await canViewOpportunityWithContractApproval(req.currentUser, opportunity, contractApprovalRepository)) {
+  let opportunityForAccess = opportunity;
+  if (!canViewOpportunity(req.currentUser, opportunity)
+    && typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function') {
+    opportunityForAccess = {
+      ...opportunity,
+      teamMembers: await opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
+    };
+  }
+  if (!await canViewOpportunityWithContractApproval(req.currentUser, opportunityForAccess, contractApprovalRepository)) {
     res.status(403).send('Forbidden');
     return null;
   }
-  return opportunity;
+  return opportunityForAccess;
 }
 
 function currentUploadSubdir() {
@@ -428,12 +447,69 @@ function canCreateRequirementUpdate(user, opportunity) {
     && (hasRole(user, ROLES.ADMINISTRATOR) || Number(opportunity.salespersonId) === Number(user.id));
 }
 
+function canUploadAttachment(user, opportunity, category) {
+  if (hasRole(user, ROLES.ADMINISTRATOR)) {
+    return true;
+  }
+  const isSalesOwner = hasRole(user, ROLES.SALESPERSON)
+    && Number(opportunity.salespersonId) === Number(user.id);
+  const isQuotationEngineer = hasRole(user, ROLES.QUOTATION_ENGINEER)
+    && Number(opportunity.quotationEngineerId) === Number(user.id);
+
+  switch (category) {
+    case 'requirement':
+    case 'other':
+      return isSalesOwner;
+    case 'technical_solution':
+      return isQuotationEngineer;
+    case 'commercial_quote':
+      return isSalesOwner || isQuotationEngineer;
+    case 'contract':
+      return isSalesOwner;
+    default:
+      return false;
+  }
+}
+
+function uploadPermissionsFor(user, opportunity) {
+  return Object.fromEntries([...attachmentCategories].map((category) => [
+    category,
+    canUploadAttachment(user, opportunity, category)
+  ]));
+}
+
 function canDeleteOpportunity(user) {
   return hasRole(user, ROLES.ADMINISTRATOR);
 }
 
 function requiredText(value) {
   return String(value || '').trim();
+}
+
+function requiredPositiveInteger(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+async function listResponsibilityUsers(userRepository) {
+  if (typeof userRepository?.listUsersWithRoles !== 'function') {
+    return [];
+  }
+  const users = await userRepository.listUsersWithRoles();
+  return users.filter((user) => user.isActive);
+}
+
+async function findActiveResponsibilityUser(userRepository, userId) {
+  const users = await listResponsibilityUsers(userRepository);
+  return users.find((user) => Number(user.id) === Number(userId)) || null;
+}
+
+function userHasRole(user, roleCode) {
+  return Array.isArray(user?.roles) && user.roles.includes(roleCode);
+}
+
+function redirectToOpportunity(opportunityId) {
+  return `/opportunities/${opportunityId}`;
 }
 
 export function opportunityRoutes({
@@ -450,6 +526,7 @@ export function opportunityRoutes({
   userRepository,
   workflowEventRepository,
   todoRepository,
+  workflowTransaction,
   uploadDir = './var/uploads',
   maxUploadMb = 25
 }) {
@@ -461,7 +538,7 @@ export function opportunityRoutes({
 
   router.get('/opportunities', async (req, res, next) => {
     try {
-      const opportunities = await opportunityRepository.listOpportunities(ownerFilter(req.currentUser));
+      const opportunities = await opportunityRepository.listOpportunities(opportunityVisibilityFilter(req.currentUser));
       res.render('opportunities/index', { opportunities });
     } catch (error) {
       next(error);
@@ -530,7 +607,13 @@ export function opportunityRoutes({
 
   router.get('/opportunities/:id/edit', async (req, res, next) => {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
       if (!opportunity) {
         return;
       }
@@ -561,7 +644,13 @@ export function opportunityRoutes({
 
   router.post('/opportunities/:id', async (req, res, next) => {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
       if (!opportunity) {
         return;
       }
@@ -586,7 +675,13 @@ export function opportunityRoutes({
 
   router.post('/opportunities/:id/delete', async (req, res, next) => {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
       if (!opportunity) {
         return;
       }
@@ -612,10 +707,17 @@ export function opportunityRoutes({
 
   router.get('/opportunities/:id', async (req, res, next) => {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
       if (!opportunity) {
         return;
       }
+      const canManageResponsibility = canManageOpportunityResponsibility(req.currentUser);
       const [
         usersByRole,
         activity,
@@ -625,7 +727,8 @@ export function opportunityRoutes({
         commercialQuotes,
         teamMembers,
         ownerTransfers,
-        currentResponsibles
+        currentResponsibles,
+        responsibilityUsers
       ] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
@@ -646,7 +749,9 @@ export function opportunityRoutes({
         typeof commercialQuoteRepository?.listByOpportunity === 'function'
           ? commercialQuoteRepository.listByOpportunity(opportunity.id)
           : [],
-        typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
+        Array.isArray(opportunity.teamMembers)
+          ? opportunity.teamMembers
+          : typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
           ? opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
           : [],
         typeof opportunityResponsibilityRepository?.listOwnerTransfersByOpportunity === 'function'
@@ -654,7 +759,8 @@ export function opportunityRoutes({
           : [],
         typeof opportunityResponsibilityRepository?.listCurrentResponsiblesByOpportunity === 'function'
           ? opportunityResponsibilityRepository.listCurrentResponsiblesByOpportunity(opportunity.id)
-          : []
+          : [],
+        canManageResponsibility ? listResponsibilityUsers(userRepository) : []
       ]);
       const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals);
       res.render('opportunities/detail', {
@@ -670,7 +776,12 @@ export function opportunityRoutes({
         requirementUpdates,
         technicalSolutions,
         commercialQuotes,
+        canManageResponsibility,
+        responsibilityUsers,
+        salesOwnerOptions: responsibilityUsers.filter((user) => userHasRole(user, ROLES.SALESPERSON)),
+        responsibilityRoleOptions: ROLE_DETAILS,
         canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity),
+        canUploadAttachments: uploadPermissionsFor(req.currentUser, opportunity),
         canEditOpportunity: canEditOpportunity(req.currentUser, opportunity),
         canDeleteOpportunity: canDeleteOpportunity(req.currentUser)
       });
@@ -679,9 +790,135 @@ export function opportunityRoutes({
     }
   });
 
+  router.post('/opportunities/:id/team-members', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canManageOpportunityResponsibility(req.currentUser)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const userId = requiredPositiveInteger(req.body.userId);
+      const roleCode = requiredText(req.body.roleCode);
+      const permissionLevel = responsibilityPermissionLevels.has(req.body.permissionLevel)
+        ? req.body.permissionLevel
+        : 'view';
+      if (!userId || !responsibilityRoleCodes.has(roleCode)) {
+        res.status(400).send('Team member and role are required');
+        return;
+      }
+      const teamUser = await findActiveResponsibilityUser(userRepository, userId);
+      if (!teamUser || !userHasRole(teamUser, roleCode)) {
+        res.status(400).send('Selected user does not have the selected active role');
+        return;
+      }
+      await opportunityResponsibilityRepository.addTeamMember({
+        opportunityId: opportunity.id,
+        userId,
+        roleCode,
+        permissionLevel,
+        addedBy: req.currentUser.id
+      });
+      res.redirect(redirectToOpportunity(opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/team-members/:memberId/remove', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canManageOpportunityResponsibility(req.currentUser)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const memberId = requiredPositiveInteger(req.params.memberId);
+      if (!memberId) {
+        res.status(400).send('Team member is required');
+        return;
+      }
+      await opportunityResponsibilityRepository.removeTeamMember({
+        opportunityId: opportunity.id,
+        memberId,
+        removedBy: req.currentUser.id
+      });
+      res.redirect(redirectToOpportunity(opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/owner-transfer', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canManageOpportunityResponsibility(req.currentUser)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const toOwnerUserId = requiredPositiveInteger(req.body.toOwnerUserId);
+      const reason = requiredText(req.body.reason);
+      if (!toOwnerUserId || !reason) {
+        res.status(400).send('New owner and reason are required');
+        return;
+      }
+      if (Number(opportunity.salespersonId) === Number(toOwnerUserId)) {
+        res.status(400).send('New owner must be different from current owner');
+        return;
+      }
+      const newOwner = await findActiveResponsibilityUser(userRepository, toOwnerUserId);
+      if (!newOwner || !userHasRole(newOwner, ROLES.SALESPERSON)) {
+        res.status(400).send('New owner must be an active Sales user');
+        return;
+      }
+      await opportunityResponsibilityRepository.transferOwner({
+        opportunityId: opportunity.id,
+        fromOwnerUserId: opportunity.salespersonId,
+        toOwnerUserId,
+        changedBy: req.currentUser.id,
+        reason,
+        keepPreviousOwnerAsMember: req.body.keepPreviousOwnerAsMember === 'on'
+      });
+      res.redirect(redirectToOpportunity(opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
   router.post('/opportunities/:id/requirement-updates', async (req, res, next) => {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
       if (!opportunity) {
         return;
       }
@@ -718,7 +955,13 @@ export function opportunityRoutes({
 
   router.post('/opportunities/:id/attachments', async (req, res, next) => {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
       if (!opportunity) {
         return;
       }
@@ -733,9 +976,15 @@ export function opportunityRoutes({
         res.status(400).send('Attachment file is required');
         return;
       }
+      const category = normalizeAttachmentCategory(req.body.category);
+      if (!canUploadAttachment(req.currentUser, req.opportunity, category)) {
+        await rm(req.file.path, { force: true });
+        res.status(403).send('Attachment upload is not allowed for this section');
+        return;
+      }
       await attachmentRepository.createAttachment({
         opportunityId: req.opportunity.id,
-        category: normalizeAttachmentCategory(req.body.category),
+        category,
         originalName: req.file.originalname,
         storedPath: storedPathForFile(uploadDir, req.file),
         mimeType: req.file.mimetype || 'application/octet-stream',
@@ -750,7 +999,13 @@ export function opportunityRoutes({
 
   router.post('/opportunities/:id/attachments/:attachmentId/delete', async (req, res, next) => {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
       if (!opportunity) {
         return;
       }
@@ -778,7 +1033,13 @@ export function opportunityRoutes({
 
   async function sendAttachment(req, res, next, disposition) {
     try {
-      const opportunity = await loadOpportunityOrSend({ req, res, opportunityRepository, contractApprovalRepository });
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
       if (!opportunity) {
         return;
       }
@@ -827,7 +1088,8 @@ export function opportunityRoutes({
           commercialQuoteRepository,
           technicalSolutionRepository,
           contractApprovalRepository,
-          approvalSettingRepository
+          approvalSettingRepository,
+          workflowTransaction
         }
       });
       res.redirect(`/opportunities/${req.params.id}`);
@@ -850,7 +1112,7 @@ export function opportunityRoutes({
 
   router.get('/api/opportunities', async (req, res, next) => {
     try {
-      const opportunities = await opportunityRepository.listOpportunities(ownerFilter(req.currentUser));
+      const opportunities = await opportunityRepository.listOpportunities(opportunityVisibilityFilter(req.currentUser));
       res.json({ opportunities });
     } catch (error) {
       next(error);

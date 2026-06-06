@@ -2,7 +2,16 @@ export function attachCurrentUser(userRepository) {
   return async (req, res, next) => {
     try {
       const userId = req.session?.userId;
-      req.currentUser = userId ? await userRepository.findByIdWithRoles(userId) : null;
+      const user = userId ? await userRepository.findByIdWithRoles(userId) : null;
+      if (userId && (!user || !user.isActive)) {
+        delete req.session.userId;
+        req.currentUser = null;
+        res.locals.currentUser = null;
+        next();
+        return;
+      }
+
+      req.currentUser = user;
       res.locals.currentUser = req.currentUser;
       next();
     } catch (error) {

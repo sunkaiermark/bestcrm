@@ -27,6 +27,7 @@ const userWithRolesSelect = `
   FROM users u
   LEFT JOIN user_roles ur ON ur.user_id = u.id
   LEFT JOIN roles r ON r.id = ur.role_id
+    AND r.is_active = true
 `;
 
 async function replaceUserRoles(pool, userId, roles) {
@@ -39,6 +40,7 @@ async function replaceUserRoles(pool, userId, roles) {
     SELECT $1, id
     FROM roles
     WHERE code = ANY($2::text[])
+      AND is_active = true
     ON CONFLICT (user_id, role_id) DO NOTHING
   `, [userId, roles]);
 }

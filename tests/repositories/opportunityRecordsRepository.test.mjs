@@ -80,6 +80,24 @@ test('opportunity repository lists opportunities with customer and contact names
   assert.deepEqual(queryTarget.queries[0].params, [7]);
 });
 
+test('opportunity repository filters visible opportunities for owners assignees and active team members', async () => {
+  const queryTarget = createFakeQueryTarget([opportunityRow]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  await repository.listOpportunities({ visibleToUserId: 8 });
+
+  assert.match(queryTarget.queries[0].sql, /o\.salesperson_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /o\.sales_manager_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /o\.quotation_engineer_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /o\.technical_manager_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /o\.commercial_manager_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /FROM opportunity_members om/);
+  assert.match(queryTarget.queries[0].sql, /om\.opportunity_id = o\.id/);
+  assert.match(queryTarget.queries[0].sql, /om\.user_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /om\.is_active = true/);
+  assert.deepEqual(queryTarget.queries[0].params, [8]);
+});
+
 test('opportunity repository gets detail with customer and contact names', async () => {
   const queryTarget = createFakeQueryTarget([opportunityRow]);
   const repository = createOpportunityRepository(queryTarget);

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canManageOpportunityResponsibility,
   canEditOpportunity,
   canViewOpportunity,
   createOpportunityDraft,
@@ -130,6 +131,23 @@ test('canViewOpportunity allows owner assignees and administrator', () => {
   assert.equal(canViewOpportunity({ id: 9, roles: [ROLES.SALESPERSON] }, opportunity), false);
 });
 
+test('canViewOpportunity allows active opportunity team members', () => {
+  const opportunity = {
+    salespersonId: 1,
+    salesManagerId: null,
+    quotationEngineerId: null,
+    technicalManagerId: null,
+    commercialManagerId: null,
+    teamMembers: [
+      { userId: 8, isActive: true },
+      { userId: 9, isActive: false }
+    ]
+  };
+
+  assert.equal(canViewOpportunity({ id: 8, roles: [ROLES.SALESPERSON] }, opportunity), true);
+  assert.equal(canViewOpportunity({ id: 9, roles: [ROLES.SALESPERSON] }, opportunity), false);
+});
+
 test('owner salesperson updates opportunity fields', async () => {
   const repositories = buildRepositories({
     customer: { id: 10, ownerUserId: 7 },
@@ -176,6 +194,12 @@ test('canEditOpportunity only allows administrator or owner salesperson', () => 
   assert.equal(canEditOpportunity({ id: 7, roles: [ROLES.SALESPERSON] }, opportunity), true);
   assert.equal(canEditOpportunity({ id: 99, roles: [ROLES.ADMINISTRATOR] }, opportunity), true);
   assert.equal(canEditOpportunity({ id: 8, roles: [ROLES.SALESPERSON] }, opportunity), false);
+});
+
+test('canManageOpportunityResponsibility allows administrators and Sales Managers only', () => {
+  assert.equal(canManageOpportunityResponsibility({ id: 1, roles: [ROLES.ADMINISTRATOR] }), true);
+  assert.equal(canManageOpportunityResponsibility({ id: 2, roles: [ROLES.SALES_MANAGER] }), true);
+  assert.equal(canManageOpportunityResponsibility({ id: 7, roles: [ROLES.SALESPERSON] }), false);
 });
 
 test('updateOpportunity rejects non-owner salesperson', async () => {

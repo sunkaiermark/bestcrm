@@ -52,6 +52,7 @@ test('findByUsernameWithRoles returns camelCase user with roles', async () => {
   });
   assert.deepEqual(pool.queries[0].params, ['sales01']);
   assert.match(pool.queries[0].sql, /WHERE u\.username = \$1/);
+  assert.match(pool.queries[0].sql, /LEFT JOIN roles r ON r\.id = ur\.role_id\s+AND r\.is_active = true/);
 });
 
 test('findByIdWithRoles returns null when user is missing', async () => {
@@ -152,6 +153,7 @@ test('createUser inserts user and assigns roles in one transaction', async () =>
   assert.match(pool.queries[2].sql, /DELETE FROM user_roles/);
   assert.deepEqual(pool.queries[2].params, [12]);
   assert.match(pool.queries[3].sql, /INSERT INTO user_roles/);
+  assert.match(pool.queries[3].sql, /AND is_active = true/);
   assert.deepEqual(pool.queries[3].params, [12, ['salesperson']]);
   assert.match(pool.queries[4].sql, /COMMIT/);
 });

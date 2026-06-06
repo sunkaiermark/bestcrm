@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { createPool } from './db/pool.mjs';
 import { createSessionStore } from './db/sessionStore.mjs';
+import { createWorkflowTransaction } from './db/workflowTransaction.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
 import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
@@ -294,6 +295,9 @@ export function createApp(options = {}) {
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
+  const workflowTransaction = 'workflowTransaction' in options
+    ? options.workflowTransaction
+    : pool ? createWorkflowTransaction(pool) : null;
   const sessionStore = 'sessionStore' in options ? options.sessionStore : createSessionStore(pool);
   const app = express();
 
@@ -338,6 +342,7 @@ export function createApp(options = {}) {
     userRepository,
     workflowEventRepository,
     todoRepository,
+    workflowTransaction,
     uploadDir: config.uploadDir,
     maxUploadMb: config.maxUploadMb
   }));

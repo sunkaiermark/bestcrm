@@ -85,6 +85,14 @@ export function customerRoutes({ customerRepository }) {
       const customer = await updateCustomer(customerRepository, req.currentUser, req.params.id, req.body);
       res.redirect(`/customers/${customer.id}`);
     } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Customer not found') {
+        res.status(404).send('Customer not found');
+        return;
+      }
       next(error);
     }
   });

@@ -490,6 +490,21 @@
         margin: 0;
       }
 
+      .responsibility-form {
+        margin-top: 10px;
+        max-width: none;
+      }
+
+      .checkbox-label {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+      }
+
+      .checkbox-label input {
+        width: auto;
+      }
+
       @media (max-width: 900px) {
         .responsibility-grid {
           grid-template-columns: 1fr;
@@ -635,6 +650,7 @@
   </head>
   <body>
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>
+    <% const canSeeSystemNav = Array.isArray(currentUser?.roles) && currentUser.roles.includes('administrator'); %>
     <div class="app-shell">
       <aside class="left-nav" aria-label="Primary navigation">
         <a class="brand" href="/workbench" aria-label="Sunkaier workbench">
@@ -645,12 +661,14 @@
           <a class="<%= navClass('opportunities') %>" href="/opportunities">Opportunities</a>
           <a class="<%= navClass('customers') %>" href="/customers">Customers</a>
           <a class="<%= navClass('contacts') %>" href="/contacts">Contacts</a>
-          <div class="nav-parent">System</div>
-          <div class="nav-subgroup">
-            <a class="<%= navClass('system-users') %>" href="/system/users">Users</a>
-            <a class="<%= navClass('system-roles') %>" href="/system/roles">Roles</a>
-            <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings">Approval Settings</a>
-          </div>
+          <% if (canSeeSystemNav) { %>
+            <div class="nav-parent">System</div>
+            <div class="nav-subgroup">
+              <a class="<%= navClass('system-users') %>" href="/system/users">Users</a>
+              <a class="<%= navClass('system-roles') %>" href="/system/roles">Roles</a>
+              <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings">Approval Settings</a>
+            </div>
+          <% } %>
         </nav>
         <form class="logout-form" method="post" action="/logout">
           <button class="logout-button" type="submit">Logout</button>

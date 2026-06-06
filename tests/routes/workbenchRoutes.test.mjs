@@ -6,14 +6,14 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { STATUSES } from '../../src/domain/statuses.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 
-async function createWorkbenchAgent() {
+async function createWorkbenchAgent(options = {}) {
   const user = {
     id: 7,
-    username: 'sales01',
+    username: options.username || 'sales01',
     passwordHash: await hashPassword('ChangeMe123!'),
-    displayName: 'Sales One',
+    displayName: options.displayName || 'Sales One',
     isActive: true,
-    roles: [ROLES.SALESPERSON]
+    roles: options.roles || [ROLES.SALESPERSON]
   };
   const app = createApp({
     sessionSecret: 'test-secret',
@@ -84,7 +84,7 @@ async function createWorkbenchAgent() {
     }
   });
   const agent = request.agent(app);
-  await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
+  await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
   return agent;
 }
 
@@ -118,6 +118,27 @@ test('logged in users see compact workbench list layout', async () => {
   assert.match(response.text, /submit_initiation/);
   assert.match(response.text, /draft/);
   assert.match(response.text, /left-nav/);
+  assert.doesNotMatch(response.text, /class="nav-parent">System/);
+  assert.doesNotMatch(response.text, /href="\/system\/users"/);
+  assert.doesNotMatch(response.text, /href="\/system\/roles"/);
+  assert.doesNotMatch(response.text, /href="\/system\/approval-settings"/);
+  assert.match(response.text, /class="state-strip"/);
+  assert.match(response.text, /class="workbench-list"/);
+  assert.match(response.text, /class="list-section"/);
+  assert.doesNotMatch(response.text, /class="panel-grid"/);
+});
+
+test('administrator users see system navigation in the left sidebar', async () => {
+  const agent = await createWorkbenchAgent({
+    username: 'admin01',
+    displayName: 'System Administrator',
+    roles: [ROLES.ADMINISTRATOR]
+  });
+
+  const response = await agent.get('/workbench');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /left-nav/);
   assert.match(response.text, /class="nav-parent">System/);
   assert.match(response.text, /class="nav-subgroup"/);
   assert.match(response.text, /href="\/system\/users"/);
@@ -126,8 +147,4 @@ test('logged in users see compact workbench list layout', async () => {
   assert.match(response.text, /Roles/);
   assert.match(response.text, /href="\/system\/approval-settings"/);
   assert.match(response.text, /Approval Settings/);
-  assert.match(response.text, /class="state-strip"/);
-  assert.match(response.text, /class="workbench-list"/);
-  assert.match(response.text, /class="list-section"/);
-  assert.doesNotMatch(response.text, /class="panel-grid"/);
 });
