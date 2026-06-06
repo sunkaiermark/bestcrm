@@ -262,6 +262,9 @@ function assertAppSidebar(html, activeHref) {
   assert.match(html, /--rail:\s*#0B0F6E;/);
   assert.match(html, /--rail-ink:\s*#ffffff;/);
   assert.match(html, /--rail-active:\s*#1e40af;/);
+  assert.match(html, /class="brand-logo"\s+src="\/assets\/sunkaier-logo\.png"\s+alt="SUNKAIER"/);
+  assert.match(html, /\.brand-logo\s*\{[\s\S]*width:\s*178px;/);
+  assert.match(html, /\.nav-group\s*\{[\s\S]*margin-top:\s*34px;/);
   assert.match(html, /href="\/workbench"/);
   assert.match(html, /href="\/opportunities"/);
   assert.match(html, /href="\/customers"/);

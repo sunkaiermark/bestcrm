@@ -294,6 +294,7 @@ export function createApp(options = {}) {
   app.disable('x-powered-by');
   app.set('view engine', 'ejs');
   app.set('views', path.join(dirname, 'views'));
+  app.use('/assets', express.static(path.join(dirname, 'public', 'assets')));
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json());
   app.use(session({

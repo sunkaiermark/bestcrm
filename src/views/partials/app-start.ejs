@@ -133,14 +133,21 @@
       }
 
       .brand {
-        margin: 0 0 18px;
-        font-size: 17px;
-        font-weight: 700;
+        display: block;
+        margin: 0;
+      }
+
+      .brand-logo {
+        display: block;
+        height: auto;
+        max-width: 100%;
+        width: 178px;
       }
 
       .nav-group {
         display: grid;
         gap: 4px;
+        margin-top: 34px;
       }
 
       .nav-link {
@@ -630,7 +637,9 @@
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>
     <div class="app-shell">
       <aside class="left-nav" aria-label="Primary navigation">
-        <p class="brand">BESTCRM</p>
+        <a class="brand" href="/workbench" aria-label="Sunkaier workbench">
+          <img class="brand-logo" src="/assets/sunkaier-logo.png" alt="SUNKAIER">
+        </a>
         <nav class="nav-group">
           <a class="<%= navClass('workbench') %>" href="/workbench">Workbench</a>
           <a class="<%= navClass('opportunities') %>" href="/opportunities">Opportunities</a>
