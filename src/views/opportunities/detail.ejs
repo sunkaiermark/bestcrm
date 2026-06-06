@@ -63,7 +63,7 @@
                 <dt>Initial Requirement</dt>
                 <dd><%= opportunity.requirement %></dd>
               </dl>
-              <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+              <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                 <input type="hidden" name="category" value="requirement">
                 <label>
                   File
@@ -152,7 +152,7 @@
           <section class="content-section business-section business-section-technical">
             <h2>Technical Solution</h2>
             <div class="section-body">
-              <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+              <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                 <input type="hidden" name="category" value="technical_solution">
                 <label>
                   File
@@ -233,7 +233,7 @@
           <section class="content-section business-section business-section-quote">
             <h2>Commercial Quote</h2>
             <div class="section-body">
-              <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+              <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                 <input type="hidden" name="category" value="commercial_quote">
                 <label>
                   File
@@ -324,7 +324,7 @@
           <section class="content-section business-section business-section-contract">
             <h2>Commercial Contract</h2>
             <div class="section-body">
-              <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+              <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                 <input type="hidden" name="category" value="contract">
                 <label>
                   File

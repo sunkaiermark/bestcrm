@@ -785,6 +785,10 @@ test('opportunity detail shows upload forms in each business material panel', as
 
   assert.equal(detail.status, 200);
   assert.equal((detail.text.match(/action="\/opportunities\/30\/attachments"/g) || []).length, 4);
+  assert.equal((detail.text.match(/class="form-panel attachment-upload-panel"/g) || []).length, 4);
+  assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*max-width:\s*none;/);
+  assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*width:\s*100%;/);
+  assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.35\);/);
   const requirementSection = detail.text.match(/<h2>Requirement Materials<\/h2>[\s\S]*?<h2>Technical Solution<\/h2>/)[0];
   assert.match(requirementSection, /name="category" value="requirement"/);
   assert.doesNotMatch(requirementSection, /<select name="category"/);
