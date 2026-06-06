@@ -49,15 +49,10 @@
       }
 
       .login-heading {
-        margin: 0;
-        font-size: 26px;
+        margin: 0 0 22px;
+        font-size: 20px;
         line-height: 1.15;
-      }
-
-      .login-subtitle {
-        margin: 8px 0 22px;
-        color: var(--muted);
-        font-size: 13px;
+        text-align: center;
       }
 
       .login-form {
@@ -128,7 +123,6 @@
     <main class="login-shell">
       <section class="login-card" aria-labelledby="login-title">
         <h1 id="login-title" class="login-heading">BESTCRM</h1>
-        <p class="login-subtitle">Company CRM</p>
       <% if (error) { %>
           <p class="login-alert" role="alert"><%= error %></p>
       <% } %>

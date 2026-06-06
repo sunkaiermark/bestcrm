@@ -26,8 +26,10 @@ test('login page renders username and password form', async () => {
   assert.match(response.text, /class="login-shell"/);
   assert.match(response.text, /class="login-card"/);
   assert.match(response.text, /font:\s*14px\/1\.4 Arial, "Microsoft YaHei", Helvetica, sans-serif;/);
-  assert.match(response.text, /\.login-heading\s*\{[\s\S]*font-size:\s*26px;/);
-  assert.match(response.text, /\.login-subtitle\s*\{[\s\S]*font-size:\s*13px;/);
+  assert.match(response.text, /\.login-heading\s*\{[\s\S]*font-size:\s*20px;/);
+  assert.match(response.text, /\.login-heading\s*\{[\s\S]*text-align:\s*center;/);
+  assert.doesNotMatch(response.text, /Company CRM/);
+  assert.doesNotMatch(response.text, /class="login-subtitle"/);
   assert.match(response.text, /\.form-field input\s*\{[\s\S]*height:\s*40px;/);
   assert.match(response.text, /\.login-button\s*\{[\s\S]*height:\s*42px;/);
   assert.match(response.text, /class="form-field"/);
