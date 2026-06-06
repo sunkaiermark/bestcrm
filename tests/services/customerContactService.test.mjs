@@ -36,6 +36,7 @@ test('createCustomer defaults ownership to current salesperson', async () => {
   }, {
     name: 'Acme Co',
     industry: 'Manufacturing',
+    country: 'China',
     region: 'Shanghai'
   });
 
@@ -43,6 +44,7 @@ test('createCustomer defaults ownership to current salesperson', async () => {
   assert.deepEqual(calls, [{
     name: 'Acme Co',
     industry: 'Manufacturing',
+    country: 'China',
     region: 'Shanghai',
     address: '',
     ownerUserId: 7,

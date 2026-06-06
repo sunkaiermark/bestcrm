@@ -24,6 +24,7 @@ export function normalizeCustomerInput(input, ownerUserId) {
   return {
     name: text(input.name),
     industry: text(input.industry),
+    country: text(input.country),
     region: text(input.region),
     address: text(input.address),
     ownerUserId,

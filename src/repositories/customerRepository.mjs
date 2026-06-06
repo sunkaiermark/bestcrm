@@ -13,6 +13,7 @@ function mapCustomerRow(row) {
     id: Number(row.id),
     name: row.name,
     industry: row.industry || '',
+    country: row.country || '',
     region: row.region || '',
     address: row.address || '',
     ownerUserId: Number(row.owner_user_id),
@@ -39,6 +40,7 @@ const customerSelect = `
     c.id,
     c.name,
     c.industry,
+    c.country,
     c.region,
     c.address,
     c.owner_user_id,
@@ -94,16 +96,18 @@ export function createCustomerRepository(queryTarget) {
         INSERT INTO customers (
           name,
           industry,
+          country,
           region,
           address,
           owner_user_id,
           notes
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
         RETURNING *, 0::int AS contact_count
       `, [
         input.name,
         input.industry,
+        input.country,
         input.region,
         input.address,
         input.ownerUserId,
@@ -118,15 +122,17 @@ export function createCustomerRepository(queryTarget) {
         SET
           name = $1,
           industry = $2,
-          region = $3,
-          address = $4,
-          notes = $5,
+          country = $3,
+          region = $4,
+          address = $5,
+          notes = $6,
           updated_at = now()
-        WHERE id = $6
+        WHERE id = $7
         RETURNING *, 0::int AS contact_count
       `, [
         input.name,
         input.industry,
+        input.country,
         input.region,
         input.address,
         input.notes,

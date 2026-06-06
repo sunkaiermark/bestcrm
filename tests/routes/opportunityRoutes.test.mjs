@@ -496,6 +496,7 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(form.text, /Alice/);
   assert.match(form.text, /Add new customer here/);
   assert.match(form.text, /action="\/opportunities\/customers"/);
+  assert.match(form.text, /name="country"/);
   assert.match(form.text, /Add new contact here/);
   assert.match(form.text, /action="\/opportunities\/contacts"/);
 
@@ -679,6 +680,7 @@ test('opportunity form quick creates customer and returns with it selected', asy
     .send({
       name: 'New Account',
       industry: 'Manufacturing',
+      country: 'China',
       region: 'Shanghai',
       address: 'No. 1 Road',
       notes: 'Created while initiating opportunity'
@@ -689,6 +691,7 @@ test('opportunity form quick creates customer and returns with it selected', asy
   assert.deepEqual(createdCustomers, [{
     name: 'New Account',
     industry: 'Manufacturing',
+    country: 'China',
     region: 'Shanghai',
     address: 'No. 1 Road',
     ownerUserId: 7,

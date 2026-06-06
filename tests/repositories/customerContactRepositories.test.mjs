@@ -18,6 +18,7 @@ test('customer repository lists and maps customers', async () => {
     id: '10',
     name: 'Acme Co',
     industry: 'Manufacturing',
+    country: 'China',
     region: 'Shanghai',
     address: 'Road 1',
     owner_user_id: '7',
@@ -32,6 +33,7 @@ test('customer repository lists and maps customers', async () => {
     id: 10,
     name: 'Acme Co',
     industry: 'Manufacturing',
+    country: 'China',
     region: 'Shanghai',
     address: 'Road 1',
     ownerUserId: 7,
@@ -48,6 +50,7 @@ test('customer repository creates and updates customer rows', async () => {
     id: '10',
     name: 'Acme Co',
     industry: 'Manufacturing',
+    country: 'China',
     region: 'Shanghai',
     address: 'Road 1',
     owner_user_id: '7',
@@ -59,6 +62,7 @@ test('customer repository creates and updates customer rows', async () => {
   await repository.createCustomer({
     name: 'Acme Co',
     industry: 'Manufacturing',
+    country: 'China',
     region: 'Shanghai',
     address: 'Road 1',
     ownerUserId: 7,
@@ -69,6 +73,7 @@ test('customer repository creates and updates customer rows', async () => {
   assert.deepEqual(queryTarget.queries[0].params, [
     'Acme Co',
     'Manufacturing',
+    'China',
     'Shanghai',
     'Road 1',
     7,
@@ -78,6 +83,7 @@ test('customer repository creates and updates customer rows', async () => {
   await repository.updateCustomer(10, {
     name: 'Acme Updated',
     industry: 'Energy',
+    country: 'Singapore',
     region: 'Beijing',
     address: 'Road 2',
     notes: 'Updated'
@@ -88,6 +94,7 @@ test('customer repository creates and updates customer rows', async () => {
   assert.deepEqual(queryTarget.queries[1].params, [
     'Acme Updated',
     'Energy',
+    'Singapore',
     'Beijing',
     'Road 2',
     'Updated',

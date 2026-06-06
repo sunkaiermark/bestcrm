@@ -38,6 +38,7 @@ async function createLoggedInAgent(options = {}) {
           id: 10,
           name: 'Acme Co',
           industry: 'Manufacturing',
+          country: 'China',
           region: 'Shanghai',
           ownerUserId: 7,
           contactCount: 1
@@ -48,6 +49,7 @@ async function createLoggedInAgent(options = {}) {
           id: Number(id),
           name: 'Acme Co',
           industry: 'Manufacturing',
+          country: 'China',
           region: 'Shanghai',
           address: 'Road 1',
           ownerUserId: 7,
@@ -137,6 +139,8 @@ test('logged in salesperson can view customer list and detail', async () => {
   assertAppSidebar(list.text, '/customers');
   assert.match(list.text, /Customers/);
   assert.match(list.text, /Acme Co/);
+  assert.match(list.text, /Country/);
+  assert.match(list.text, /China/);
   assert.match(list.text, /<table class="list-table content-fit-table">/);
   assert.match(list.text, /\.content-fit-table\s*\{[\s\S]*table-layout:\s*auto;/);
   assert.match(list.text, /\.content-fit-table thead th\s*\{[\s\S]*background:\s*#1e3a5f;/);
@@ -146,6 +150,7 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.equal(form.status, 200);
   assertAppSidebar(form.text, '/customers');
   assert.match(form.text, /name="name"/);
+  assert.match(form.text, /name="country"/);
 
   const detail = await agent.get('/customers/10');
   assert.equal(detail.status, 200);
@@ -159,6 +164,8 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(customerDetailHtml, /class="basic-info-grid"/);
   assert.equal((customerDetailHtml.match(/<table class="detail-table">/g) || []).length, 2);
   assert.match(customerDetailHtml, /<th scope="row">Industry<\/th>/);
+  assert.match(customerDetailHtml, /<th scope="row">Country<\/th>/);
+  assert.match(customerDetailHtml, /China/);
   assert.match(customerDetailHtml, /<th scope="row">Address<\/th>/);
   assert.doesNotMatch(detail.text, /Delete customer/);
 });

@@ -11,6 +11,7 @@ const technicalSolutionVersionsMigrationPath = new URL('../../src/db/migrations/
 const commercialQuoteVersionsMigrationPath = new URL('../../src/db/migrations/008_commercial_quote_versions.sql', import.meta.url);
 const contractVersionsMigrationPath = new URL('../../src/db/migrations/009_contract_versions.sql', import.meta.url);
 const opportunityResponsibilityMigrationPath = new URL('../../src/db/migrations/010_opportunity_responsibility.sql', import.meta.url);
+const customerCountryMigrationPath = new URL('../../src/db/migrations/011_customer_country.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -124,4 +125,11 @@ test('opportunity responsibility migration adds team members and owner transfer 
   assert.match(sql, /reason text NOT NULL/);
   assert.match(sql, /keep_previous_owner_as_member boolean NOT NULL DEFAULT false/);
   assert.match(sql, /CREATE INDEX IF NOT EXISTS opportunity_owner_transfers_opportunity_idx/);
+});
+
+test('customer country migration adds country to customer records', async () => {
+  const sql = await readFile(customerCountryMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE customers/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS country text/);
 });
