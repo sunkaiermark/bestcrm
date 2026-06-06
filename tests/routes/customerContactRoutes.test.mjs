@@ -119,6 +119,10 @@ test('logged in salesperson can view customer list and detail', async () => {
   assertAppSidebar(list.text, '/customers');
   assert.match(list.text, /Customers/);
   assert.match(list.text, /Acme Co/);
+  assert.match(list.text, /<table class="list-table content-fit-table">/);
+  assert.match(list.text, /\.content-fit-table\s*\{[\s\S]*table-layout:\s*auto;/);
+  assert.match(list.text, /\.content-fit-table thead th\s*\{[\s\S]*background:\s*#1e3a5f;/);
+  assert.match(list.text, /\.content-fit-table th,\s*\.content-fit-table td\s*\{[\s\S]*white-space:\s*nowrap;/);
 
   const form = await agent.get('/customers/new');
   assert.equal(form.status, 200);
@@ -140,6 +144,7 @@ test('logged in salesperson can view contact list and detail', async () => {
   assertAppSidebar(list.text, '/contacts');
   assert.match(list.text, /Contacts/);
   assert.match(list.text, /Alice/);
+  assert.match(list.text, /<table class="list-table content-fit-table">/);
 
   const form = await agent.get('/contacts/new');
   assert.equal(form.status, 200);

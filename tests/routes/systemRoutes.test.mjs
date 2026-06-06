@@ -172,6 +172,8 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(users.text, /sales_manager01/);
   assert.match(users.text, /Sales Manager/);
   assert.match(users.text, /sales_manager/);
+  assert.match(users.text, /<table class="list-table content-fit-table">/);
+  assert.match(users.text, /\.content-fit-table thead th\s*\{[\s\S]*background:\s*#1e3a5f;/);
 
   const roles = await agent.get('/system/roles');
   assert.equal(roles.status, 200);
@@ -179,6 +181,7 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(roles.text, /System Roles/);
   assert.match(roles.text, /Service Manager/);
   assert.match(roles.text, /service_manager/);
+  assert.match(roles.text, /<table class="list-table content-fit-table">/);
 
   const approvals = await agent.get('/system/approval-settings');
   assert.equal(approvals.status, 200);
@@ -188,6 +191,7 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(approvals.text, /sales_manager01/);
   assert.match(approvals.text, /Sales Manager/);
   assert.match(approvals.text, /New setting/);
+  assert.match(approvals.text, /<table class="list-table content-fit-table">/);
 });
 
 test('administrator can add edit and deactivate system users', async () => {
