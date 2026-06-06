@@ -507,6 +507,7 @@ test('administrator sees opportunity delete action on detail page', async () => 
 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /action="\/opportunities\/30\/delete"/);
+  assert.match(detail.text, /onsubmit="return confirm\('Delete this opportunity and all uploaded files\?'\)"/);
   assert.match(detail.text, />Delete</);
 });
 

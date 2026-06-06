@@ -31,7 +31,7 @@
               <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit">Edit</a>
             <% } %>
             <% if (typeof canDeleteOpportunity !== 'undefined' && canDeleteOpportunity) { %>
-              <form method="post" action="/opportunities/<%= opportunity.id %>/delete">
+              <form method="post" action="/opportunities/<%= opportunity.id %>/delete" onsubmit="return confirm('Delete this opportunity and all uploaded files?')">
                 <button class="danger-action" type="submit">Delete</button>
               </form>
             <% } %>
