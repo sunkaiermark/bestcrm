@@ -135,3 +135,43 @@ test('seedInternalAccounts is idempotent for repeated seed runs', async () => {
   assert.equal(pool.userRoles.size, 7);
   assert.equal(pool.approvalSettings.size, requiredApprovalSettings.length);
 });
+
+test('seedInternalAccounts refuses production seeding without explicit opt-in', async () => {
+  const pool = new FakeSeedPool();
+
+  await assert.rejects(
+    () => seedInternalAccounts(pool, { password: 'Testing123!', nodeEnv: 'production' }),
+    /Refusing to seed internal test accounts in production/
+  );
+
+  assert.deepEqual(pool.transactions, []);
+  assert.equal(pool.users.size, 0);
+});
+
+test('seedInternalAccounts allows production seeding with explicit opt-in', async () => {
+  const pool = new FakeSeedPool();
+
+  await seedInternalAccounts(pool, {
+    password: 'Testing123!',
+    nodeEnv: 'production',
+    allowProductionSeed: true
+  });
+
+  assert.equal(pool.users.size, 7);
+  assert.deepEqual(pool.transactions, ['BEGIN', 'COMMIT']);
+});
+
+test('seedInternalAccounts requires an explicit password for production seeding', async () => {
+  const pool = new FakeSeedPool();
+
+  await assert.rejects(
+    () => seedInternalAccounts(pool, {
+      nodeEnv: 'production',
+      allowProductionSeed: true
+    }),
+    /Explicit seed password is required for production seeding/
+  );
+
+  assert.deepEqual(pool.transactions, []);
+  assert.equal(pool.users.size, 0);
+});

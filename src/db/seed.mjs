@@ -80,6 +80,31 @@ export const APPROVAL_SETTING_SEEDS = Object.freeze([
 
 const defaultPassword = 'ChangeMe123!';
 
+function isTruthy(value) {
+  return ['1', 'true', 'yes'].includes(String(value || '').toLowerCase());
+}
+
+function explicitSeedPassword(options) {
+  return Boolean(options.password || process.env.SEED_DEFAULT_PASSWORD);
+}
+
+function assertSeedAllowed(options = {}) {
+  const nodeEnv = String(options.nodeEnv || process.env.NODE_ENV || '').toLowerCase();
+  if (nodeEnv !== 'production') {
+    return;
+  }
+
+  const allowProductionSeed = options.allowProductionSeed === true
+    || isTruthy(process.env.BESTCRM_ALLOW_PRODUCTION_SEED);
+  if (!allowProductionSeed) {
+    throw new Error('Refusing to seed internal test accounts in production. Set BESTCRM_ALLOW_PRODUCTION_SEED=true only for controlled setup.');
+  }
+
+  if (!explicitSeedPassword(options)) {
+    throw new Error('Explicit seed password is required for production seeding. Set SEED_DEFAULT_PASSWORD or pass a password option.');
+  }
+}
+
 async function upsertRole(pool, role) {
   const result = await pool.query(`
     INSERT INTO roles (code, name, description, is_active)
@@ -135,6 +160,7 @@ async function upsertApprovalSetting(pool, setting, userIdsByUsername) {
 }
 
 export async function seedInternalAccounts(pool, options = {}) {
+  assertSeedAllowed(options);
   const password = options.password || process.env.SEED_DEFAULT_PASSWORD || defaultPassword;
   const passwordHash = await hashPassword(password);
   const roleIdsByCode = new Map();
