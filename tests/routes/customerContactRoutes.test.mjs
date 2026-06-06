@@ -257,6 +257,7 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.match(contactDetailHtml, /10 years in procurement/);
   assert.match(contactDetailHtml, /<th scope="row">Key Achievements<\/th>/);
   assert.match(contactDetailHtml, /Led supplier consolidation/);
+  assert.doesNotMatch(detail.text, /New opportunity/);
   assert.doesNotMatch(detail.text, /Delete contact/);
 });
 

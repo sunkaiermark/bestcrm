@@ -4,7 +4,6 @@
           <h1><%= contact.name %></h1>
           <div class="page-actions">
             <a class="quick-action" href="/contacts/<%= contact.id %>/edit">Edit contact</a>
-            <a class="quick-action" href="/opportunities/new?customerId=<%= contact.customerId %>&contactId=<%= contact.id %>">New opportunity</a>
             <% if (typeof canDeleteContact !== 'undefined' && canDeleteContact) { %>
               <form method="post" action="/contacts/<%= contact.id %>/delete" onsubmit="return confirm('Delete this contact?')">
                 <button class="danger-action" type="submit">Delete contact</button>
