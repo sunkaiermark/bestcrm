@@ -106,7 +106,10 @@ test('createContact checks customer ownership before insert', async () => {
   }, {
     customerId: 10,
     name: 'Alice',
-    title: 'Buyer'
+    title: 'Buyer',
+    educationBackground: 'MBA',
+    workExperience: '10 years in procurement',
+    keyAchievements: 'Led supplier consolidation'
   });
 
   assert.equal(contact.customerId, 10);
@@ -117,6 +120,9 @@ test('createContact checks customer ownership before insert', async () => {
     phone: '',
     email: '',
     wechat: '',
+    educationBackground: 'MBA',
+    workExperience: '10 years in procurement',
+    keyAchievements: 'Led supplier consolidation',
     notes: ''
   }]);
 });

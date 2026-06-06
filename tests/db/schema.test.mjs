@@ -12,6 +12,7 @@ const commercialQuoteVersionsMigrationPath = new URL('../../src/db/migrations/00
 const contractVersionsMigrationPath = new URL('../../src/db/migrations/009_contract_versions.sql', import.meta.url);
 const opportunityResponsibilityMigrationPath = new URL('../../src/db/migrations/010_opportunity_responsibility.sql', import.meta.url);
 const customerCountryMigrationPath = new URL('../../src/db/migrations/011_customer_country.sql', import.meta.url);
+const contactProfileMigrationPath = new URL('../../src/db/migrations/012_contact_profile_fields.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -132,4 +133,13 @@ test('customer country migration adds country to customer records', async () => 
 
   assert.match(sql, /ALTER TABLE customers/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS country text/);
+});
+
+test('contact profile migration adds education work experience and achievement fields', async () => {
+  const sql = await readFile(contactProfileMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE contacts/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS education_background text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS work_experience text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS key_achievements text/);
 });

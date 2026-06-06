@@ -124,6 +124,9 @@ test('contact repository lists and maps contacts with customer owner', async () 
     phone: '123',
     email: 'alice@example.com',
     wechat: 'alicewx',
+    education_background: 'MBA',
+    work_experience: '10 years in procurement',
+    key_achievements: 'Led supplier consolidation',
     notes: 'Key contact'
   }]);
   const repository = createContactRepository(queryTarget);
@@ -140,6 +143,9 @@ test('contact repository lists and maps contacts with customer owner', async () 
     phone: '123',
     email: 'alice@example.com',
     wechat: 'alicewx',
+    educationBackground: 'MBA',
+    workExperience: '10 years in procurement',
+    keyAchievements: 'Led supplier consolidation',
     notes: 'Key contact'
   }]);
   assert.match(queryTarget.queries[0].sql, /JOIN customers c/);
@@ -157,6 +163,9 @@ test('contact repository creates and updates contact rows', async () => {
     phone: '123',
     email: 'alice@example.com',
     wechat: 'alicewx',
+    education_background: 'MBA',
+    work_experience: '10 years in procurement',
+    key_achievements: 'Led supplier consolidation',
     notes: 'Key contact'
   }]);
   const repository = createContactRepository(queryTarget);
@@ -168,6 +177,9 @@ test('contact repository creates and updates contact rows', async () => {
     phone: '123',
     email: 'alice@example.com',
     wechat: 'alicewx',
+    educationBackground: 'MBA',
+    workExperience: '10 years in procurement',
+    keyAchievements: 'Led supplier consolidation',
     notes: 'Key contact'
   });
 
@@ -180,6 +192,9 @@ test('contact repository creates and updates contact rows', async () => {
     '123',
     'alice@example.com',
     'alicewx',
+    'MBA',
+    '10 years in procurement',
+    'Led supplier consolidation',
     'Key contact'
   ]);
 
@@ -189,6 +204,9 @@ test('contact repository creates and updates contact rows', async () => {
     phone: '456',
     email: 'alice2@example.com',
     wechat: 'alice2wx',
+    educationBackground: 'Executive program',
+    workExperience: '15 years in operations',
+    keyAchievements: 'Built regional buying team',
     notes: 'Updated'
   });
 
@@ -201,6 +219,9 @@ test('contact repository creates and updates contact rows', async () => {
     '456',
     'alice2@example.com',
     'alice2wx',
+    'Executive program',
+    '15 years in operations',
+    'Built regional buying team',
     'Updated',
     20
   ]);

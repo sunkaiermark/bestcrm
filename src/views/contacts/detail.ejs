@@ -16,20 +16,52 @@
         <section class="content-section">
           <h2>Contact detail</h2>
           <div class="section-body">
-            <dl class="detail-list">
-              <dt>Customer</dt>
-              <dd><a href="/customers/<%= contact.customerId %>"><%= contact.customerName %></a></dd>
-              <dt>Title</dt>
-              <dd><%= contact.title %></dd>
-              <dt>Phone</dt>
-              <dd><%= contact.phone %></dd>
-              <dt>Email</dt>
-              <dd><%= contact.email %></dd>
-              <dt>WeChat</dt>
-              <dd><%= contact.wechat %></dd>
-              <dt>Notes</dt>
-              <dd><%= contact.notes %></dd>
-            </dl>
+            <div class="basic-info-grid">
+              <table class="detail-table">
+                <tbody>
+                  <tr>
+                    <th scope="row">Customer</th>
+                    <td><a href="/customers/<%= contact.customerId %>"><%= contact.customerName %></a></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Title</th>
+                    <td><%= contact.title %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Phone</th>
+                    <td><%= contact.phone %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Email</th>
+                    <td><%= contact.email %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">WeChat</th>
+                    <td><%= contact.wechat %></td>
+                  </tr>
+                </tbody>
+              </table>
+              <table class="detail-table">
+                <tbody>
+                  <tr>
+                    <th scope="row">Education Background</th>
+                    <td><%= contact.educationBackground %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Work Experience</th>
+                    <td><%= contact.workExperience %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Key Achievements</th>
+                    <td><%= contact.keyAchievements %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Notes</th>
+                    <td><%= contact.notes %></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
           </div>
         </section>
 <%- include('../partials/app-end') %>

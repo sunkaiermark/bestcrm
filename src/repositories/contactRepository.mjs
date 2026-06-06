@@ -12,6 +12,9 @@ function mapContactRow(row) {
     phone: row.phone || '',
     email: row.email || '',
     wechat: row.wechat || '',
+    educationBackground: row.education_background || '',
+    workExperience: row.work_experience || '',
+    keyAchievements: row.key_achievements || '',
     notes: row.notes || ''
   };
 }
@@ -27,6 +30,9 @@ const contactSelect = `
     ct.phone,
     ct.email,
     ct.wechat,
+    ct.education_background,
+    ct.work_experience,
+    ct.key_achievements,
     ct.notes
   FROM contacts ct
   JOIN customers c ON c.id = ct.customer_id
@@ -72,9 +78,12 @@ export function createContactRepository(queryTarget) {
             phone,
             email,
             wechat,
+            education_background,
+            work_experience,
+            key_achievements,
             notes
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
           RETURNING *
         )
         SELECT
@@ -87,6 +96,9 @@ export function createContactRepository(queryTarget) {
           inserted.phone,
           inserted.email,
           inserted.wechat,
+          inserted.education_background,
+          inserted.work_experience,
+          inserted.key_achievements,
           inserted.notes
         FROM inserted
         JOIN customers c ON c.id = inserted.customer_id
@@ -97,6 +109,9 @@ export function createContactRepository(queryTarget) {
         input.phone,
         input.email,
         input.wechat,
+        input.educationBackground,
+        input.workExperience,
+        input.keyAchievements,
         input.notes
       ]);
       return mapContactRow(result.rows[0]);
@@ -112,9 +127,12 @@ export function createContactRepository(queryTarget) {
             phone = $3,
             email = $4,
             wechat = $5,
-            notes = $6,
+            education_background = $6,
+            work_experience = $7,
+            key_achievements = $8,
+            notes = $9,
             updated_at = now()
-          WHERE id = $7
+          WHERE id = $10
           RETURNING *
         )
         SELECT
@@ -127,6 +145,9 @@ export function createContactRepository(queryTarget) {
           updated.phone,
           updated.email,
           updated.wechat,
+          updated.education_background,
+          updated.work_experience,
+          updated.key_achievements,
           updated.notes
         FROM updated
         JOIN customers c ON c.id = updated.customer_id
@@ -136,6 +157,9 @@ export function createContactRepository(queryTarget) {
         input.phone,
         input.email,
         input.wechat,
+        input.educationBackground,
+        input.workExperience,
+        input.keyAchievements,
         input.notes,
         id
       ]);

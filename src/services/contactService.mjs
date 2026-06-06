@@ -17,6 +17,9 @@ export function normalizeContactInput(input) {
     phone: text(input.phone),
     email: text(input.email),
     wechat: text(input.wechat),
+    educationBackground: text(input.educationBackground),
+    workExperience: text(input.workExperience),
+    keyAchievements: text(input.keyAchievements),
     notes: text(input.notes)
   };
 }

@@ -57,10 +57,13 @@ async function createLoggedInAgent(options = {}) {
           contacts: [{
             id: 20,
             name: 'Alice',
-            title: 'Buyer',
-            phone: '123',
-            email: 'alice@example.com'
-          }]
+          title: 'Buyer',
+          phone: '123',
+          email: 'alice@example.com',
+          educationBackground: 'MBA',
+          workExperience: '10 years in procurement',
+          keyAchievements: 'Led supplier consolidation'
+        }]
         };
       },
       async deleteById(id) {
@@ -80,7 +83,10 @@ async function createLoggedInAgent(options = {}) {
           title: 'Buyer',
           phone: '123',
           email: 'alice@example.com',
-          wechat: 'alicewx'
+          wechat: 'alicewx',
+          educationBackground: 'MBA',
+          workExperience: '10 years in procurement',
+          keyAchievements: 'Led supplier consolidation'
         }];
       },
       async getContactDetail(id) {
@@ -94,6 +100,9 @@ async function createLoggedInAgent(options = {}) {
           phone: '123',
           email: 'alice@example.com',
           wechat: 'alicewx',
+          educationBackground: 'MBA',
+          workExperience: '10 years in procurement',
+          keyAchievements: 'Led supplier consolidation',
           notes: 'Key contact'
         };
       },
@@ -195,12 +204,24 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.equal(form.status, 200);
   assertAppSidebar(form.text, '/contacts');
   assert.match(form.text, /name="customerId"/);
+  assert.match(form.text, /name="educationBackground"/);
+  assert.match(form.text, /name="workExperience"/);
+  assert.match(form.text, /name="keyAchievements"/);
 
   const detail = await agent.get('/contacts/20');
   assert.equal(detail.status, 200);
   assertAppSidebar(detail.text, '/contacts');
   assert.match(detail.text, /Alice/);
   assert.match(detail.text, /Acme Co/);
+  const contactDetailHtml = detail.text.match(/<h2>Contact detail<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
+  assert.match(contactDetailHtml, /class="basic-info-grid"/);
+  assert.equal((contactDetailHtml.match(/<table class="detail-table">/g) || []).length, 2);
+  assert.match(contactDetailHtml, /<th scope="row">Education Background<\/th>/);
+  assert.match(contactDetailHtml, /MBA/);
+  assert.match(contactDetailHtml, /<th scope="row">Work Experience<\/th>/);
+  assert.match(contactDetailHtml, /10 years in procurement/);
+  assert.match(contactDetailHtml, /<th scope="row">Key Achievements<\/th>/);
+  assert.match(contactDetailHtml, /Led supplier consolidation/);
   assert.doesNotMatch(detail.text, /Delete contact/);
 });
 

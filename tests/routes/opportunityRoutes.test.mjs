@@ -807,6 +807,9 @@ test('opportunity form quick creates contact and returns with it selected', asyn
     phone: '13800000000',
     email: 'bob@example.com',
     wechat: 'bobwx',
+    educationBackground: '',
+    workExperience: '',
+    keyAchievements: '',
     notes: 'Primary buyer'
   }]);
 });
