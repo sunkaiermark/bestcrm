@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { canDeleteCustomer, canMaintainCustomer, createCustomer, deleteCustomer, updateCustomer } from '../services/customerService.mjs';
@@ -22,7 +23,7 @@ export function customerRoutes({ customerRepository }) {
   });
 
   router.get('/customers/new', (req, res) => {
-    res.render('customers/form', { customer: {}, action: '/customers' });
+    res.render('customers/form', { customer: {}, countryOptions: CUSTOMER_COUNTRIES, action: '/customers' });
   });
 
   router.post('/customers', async (req, res, next) => {
@@ -62,7 +63,7 @@ export function customerRoutes({ customerRepository }) {
         res.status(403).send('Forbidden');
         return;
       }
-      res.render('customers/form', { customer, action: `/customers/${customer.id}` });
+      res.render('customers/form', { customer, countryOptions: CUSTOMER_COUNTRIES, action: `/customers/${customer.id}` });
     } catch (error) {
       next(error);
     }

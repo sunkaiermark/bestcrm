@@ -4,6 +4,7 @@ import { rm } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import multer from 'multer';
+import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
@@ -481,6 +482,7 @@ export function opportunityRoutes({
         },
         customers,
         contacts,
+        countryOptions: CUSTOMER_COUNTRIES,
         action: '/opportunities'
       });
     } catch (error) {
@@ -546,6 +548,7 @@ export function opportunityRoutes({
         opportunity,
         customers,
         contacts,
+        countryOptions: CUSTOMER_COUNTRIES,
         action: `/opportunities/${opportunity.id}`
       });
     } catch (error) {

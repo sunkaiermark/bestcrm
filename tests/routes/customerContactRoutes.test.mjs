@@ -150,7 +150,14 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.equal(form.status, 200);
   assertAppSidebar(form.text, '/customers');
   assert.match(form.text, /name="name"/);
-  assert.match(form.text, /name="country"/);
+  assert.match(form.text, /<select name="country">/);
+  assert.match(form.text, /<option value="China"\s*>China<\/option>/);
+
+  const editForm = await agent.get('/customers/10/edit');
+  assert.equal(editForm.status, 200);
+  assertAppSidebar(editForm.text, '/customers');
+  assert.match(editForm.text, /<select name="country">/);
+  assert.match(editForm.text, /<option value="China" selected>China<\/option>/);
 
   const detail = await agent.get('/customers/10');
   assert.equal(detail.status, 200);
