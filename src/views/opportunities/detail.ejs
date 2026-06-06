@@ -101,87 +101,105 @@
           <section class="content-section">
             <h2>Responsibility</h2>
             <div class="section-body">
-              <h3>Current Responsible</h3>
-              <% if (opportunityCurrentResponsibles.length > 0) { %>
-                <table class="list-table content-fit-table">
-                  <thead>
-                    <tr>
-                      <th>Task</th>
-                      <th>Responsible</th>
-                      <th>Status</th>
-                      <th>Created At</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const responsible of opportunityCurrentResponsibles) { %>
-                      <tr>
-                        <td><%= responsible.title %></td>
-                        <td><%= responsible.assigneeDisplayName || responsible.assigneeUsername %></td>
-                        <td><span class="status"><%= responsible.status %></span></td>
-                        <td><%= responsible.createdAt || '' %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } else { %>
-                <p class="empty">No current responsible.</p>
-              <% } %>
+              <div class="responsibility-grid">
+                <div class="responsibility-column">
+                  <div class="responsibility-block">
+                    <h3>Current Responsible</h3>
+                    <div class="responsibility-content">
+                      <% if (opportunityCurrentResponsibles.length > 0) { %>
+                        <table class="list-table content-fit-table">
+                          <thead>
+                            <tr>
+                              <th>Task</th>
+                              <th>Responsible</th>
+                              <th>Status</th>
+                              <th>Created At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <% for (const responsible of opportunityCurrentResponsibles) { %>
+                              <tr>
+                                <td><%= responsible.title %></td>
+                                <td><%= responsible.assigneeDisplayName || responsible.assigneeUsername %></td>
+                                <td><span class="status"><%= responsible.status %></span></td>
+                                <td><%= responsible.createdAt || '' %></td>
+                              </tr>
+                            <% } %>
+                          </tbody>
+                        </table>
+                      <% } else { %>
+                        <p class="empty">No current responsible.</p>
+                      <% } %>
+                    </div>
+                  </div>
+                </div>
 
-              <h3>Team Members</h3>
-              <% if (opportunityTeamMembers.length > 0) { %>
-                <table class="list-table content-fit-table">
-                  <thead>
-                    <tr>
-                      <th>Member</th>
-                      <th>Role</th>
-                      <th>Permission</th>
-                      <th>Added By</th>
-                      <th>Added At</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const member of opportunityTeamMembers) { %>
-                      <tr>
-                        <td><%= member.userDisplayName || member.username %></td>
-                        <td><%= member.roleName || member.roleCode %></td>
-                        <td><%= member.permissionLevel %></td>
-                        <td><%= member.addedByDisplayName || '' %></td>
-                        <td><%= member.addedAt || '' %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } else { %>
-                <p class="empty">No team members.</p>
-              <% } %>
+                <div class="responsibility-column">
+                  <div class="responsibility-block">
+                    <h3>Team Members</h3>
+                    <div class="responsibility-content">
+                      <% if (opportunityTeamMembers.length > 0) { %>
+                        <table class="list-table content-fit-table">
+                          <thead>
+                            <tr>
+                              <th>Member</th>
+                              <th>Role</th>
+                              <th>Permission</th>
+                              <th>Added By</th>
+                              <th>Added At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <% for (const member of opportunityTeamMembers) { %>
+                              <tr>
+                                <td><%= member.userDisplayName || member.username %></td>
+                                <td><%= member.roleName || member.roleCode %></td>
+                                <td><%= member.permissionLevel %></td>
+                                <td><%= member.addedByDisplayName || '' %></td>
+                                <td><%= member.addedAt || '' %></td>
+                              </tr>
+                            <% } %>
+                          </tbody>
+                        </table>
+                      <% } else { %>
+                        <p class="empty">No team members.</p>
+                      <% } %>
+                    </div>
+                  </div>
 
-              <h3>Owner Transfer History</h3>
-              <% if (opportunityOwnerTransfers.length > 0) { %>
-                <table class="list-table content-fit-table">
-                  <thead>
-                    <tr>
-                      <th>From Owner</th>
-                      <th>To Owner</th>
-                      <th>Changed By</th>
-                      <th>Reason</th>
-                      <th>Transferred At</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const transfer of opportunityOwnerTransfers) { %>
-                      <tr>
-                        <td><%= transfer.fromOwnerDisplayName %></td>
-                        <td><%= transfer.toOwnerDisplayName %></td>
-                        <td><%= transfer.changedByDisplayName %></td>
-                        <td><%= transfer.reason %></td>
-                        <td><%= transfer.transferredAt || '' %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } else { %>
-                <p class="empty">No owner transfer history.</p>
-              <% } %>
+                  <div class="responsibility-block">
+                    <h3>Owner Transfer History</h3>
+                    <div class="responsibility-content">
+                      <% if (opportunityOwnerTransfers.length > 0) { %>
+                        <table class="list-table content-fit-table">
+                          <thead>
+                            <tr>
+                              <th>From Owner</th>
+                              <th>To Owner</th>
+                              <th>Changed By</th>
+                              <th>Reason</th>
+                              <th>Transferred At</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <% for (const transfer of opportunityOwnerTransfers) { %>
+                              <tr>
+                                <td><%= transfer.fromOwnerDisplayName %></td>
+                                <td><%= transfer.toOwnerDisplayName %></td>
+                                <td><%= transfer.changedByDisplayName %></td>
+                                <td><%= transfer.reason %></td>
+                                <td><%= transfer.transferredAt || '' %></td>
+                              </tr>
+                            <% } %>
+                          </tbody>
+                        </table>
+                      <% } else { %>
+                        <p class="empty">No owner transfer history.</p>
+                      <% } %>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </section>
 

@@ -798,6 +798,9 @@ test('opportunity detail shows owner team members current responsibles and trans
   assert.equal(detail.status, 200);
   assert.match(detail.text, /<th scope="row">Owner<\/th>[\s\S]*Sales One/);
   assert.match(detail.text, /Responsibility/);
+  assert.match(detail.text, /class="responsibility-grid"/);
+  assert.equal((detail.text.match(/class="responsibility-column"/g) || []).length, 2);
+  assert.match(detail.text, /\.responsibility-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
   assert.match(detail.text, /Current Responsible/);
   assert.match(detail.text, /Technical Manager/);
   assert.match(detail.text, /Approve technical solution/);
