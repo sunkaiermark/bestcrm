@@ -1,3 +1,5 @@
+import { STATUSES } from '../domain/statuses.mjs';
+
 function numberOrNull(value) {
   if (value === null || value === undefined) {
     return null;
@@ -15,6 +17,21 @@ function mapTodoRow(row) {
     title: row.title,
     status: row.status,
     createdAt: row.created_at
+  };
+}
+
+function mapOpportunityInitiationTodoRow(row) {
+  return {
+    id: `opportunity-initiation-${row.opportunity_id}`,
+    opportunityId: Number(row.opportunity_id),
+    opportunityNo: row.opportunity_no,
+    opportunityTitle: row.opportunity_title,
+    customerName: row.customer_name,
+    title: row.opportunity_status === STATUSES.INITIATION_REJECTED
+      ? 'Revise and resubmit opportunity'
+      : 'Submit opportunity initiation',
+    status: 'pending',
+    createdAt: row.updated_at
   };
 }
 
@@ -105,6 +122,25 @@ export function createWorkbenchRepository(queryTarget) {
         LIMIT $2
       `, [userId, limit]);
       return result.rows.map(mapTodoRow);
+    },
+
+    async listOpportunityInitiationTodos(userId, limit = 8) {
+      const result = await queryTarget.query(`
+        SELECT
+          o.id AS opportunity_id,
+          o.opportunity_no,
+          o.title AS opportunity_title,
+          c.name AS customer_name,
+          o.status AS opportunity_status,
+          o.updated_at
+        FROM opportunities o
+        JOIN customers c ON c.id = o.customer_id
+        WHERE o.salesperson_id = $1
+          AND o.status IN ($2, $3)
+        ORDER BY o.updated_at DESC, o.id DESC
+        LIMIT $4
+      `, [userId, STATUSES.DRAFT, STATUSES.INITIATION_REJECTED, limit]);
+      return result.rows.map(mapOpportunityInitiationTodoRow);
     },
 
     async listCreatedOpportunities(userId, limit = 8) {

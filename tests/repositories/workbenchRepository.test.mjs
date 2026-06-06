@@ -47,6 +47,58 @@ test('workbench repository lists pending todos assigned to current user', async 
   assert.deepEqual(queryTarget.queries[0].params, [7, 5]);
 });
 
+test('workbench repository lists draft and rejected opportunities as initiation todos', async () => {
+  const queryTarget = createFakeQueryTarget([[
+    {
+      opportunity_id: '30',
+      opportunity_no: '800003',
+      opportunity_title: 'Factory upgrade',
+      customer_name: 'Acme Co',
+      opportunity_status: STATUSES.DRAFT,
+      updated_at: '2026-06-05T10:00:00.000Z'
+    },
+    {
+      opportunity_id: '31',
+      opportunity_no: '800004',
+      opportunity_title: 'Line expansion',
+      customer_name: 'Beta Ltd',
+      opportunity_status: STATUSES.INITIATION_REJECTED,
+      updated_at: '2026-06-05T09:00:00.000Z'
+    }
+  ]]);
+  const repository = createWorkbenchRepository(queryTarget);
+
+  const todos = await repository.listOpportunityInitiationTodos(7, 5);
+
+  assert.deepEqual(todos, [
+    {
+      id: 'opportunity-initiation-30',
+      opportunityId: 30,
+      opportunityNo: '800003',
+      opportunityTitle: 'Factory upgrade',
+      customerName: 'Acme Co',
+      title: 'Submit opportunity initiation',
+      status: 'pending',
+      createdAt: '2026-06-05T10:00:00.000Z'
+    },
+    {
+      id: 'opportunity-initiation-31',
+      opportunityId: 31,
+      opportunityNo: '800004',
+      opportunityTitle: 'Line expansion',
+      customerName: 'Beta Ltd',
+      title: 'Revise and resubmit opportunity',
+      status: 'pending',
+      createdAt: '2026-06-05T09:00:00.000Z'
+    }
+  ]);
+  assert.match(queryTarget.queries[0].sql, /FROM opportunities o/);
+  assert.match(queryTarget.queries[0].sql, /o\.salesperson_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /o\.status IN \(\$2, \$3\)/);
+  assert.match(queryTarget.queries[0].sql, /ORDER BY o\.updated_at DESC, o\.id DESC/);
+  assert.deepEqual(queryTarget.queries[0].params, [7, STATUSES.DRAFT, STATUSES.INITIATION_REJECTED, 5]);
+});
+
 test('workbench repository lists opportunities assigned through workflow roles team membership and contract review steps', async () => {
   const queryTarget = createFakeQueryTarget([[
     {

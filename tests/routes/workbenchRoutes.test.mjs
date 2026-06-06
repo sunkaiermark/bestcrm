@@ -38,6 +38,18 @@ async function createWorkbenchAgent(options = {}) {
           createdAt: '2026-06-05T10:00:00.000Z'
         }];
       },
+      async listOpportunityInitiationTodos() {
+        return [{
+          id: 'opportunity-initiation-32',
+          opportunityId: 32,
+          opportunityNo: '800003',
+          opportunityTitle: 'Draft package',
+          customerName: 'Gamma LLC',
+          title: 'Submit opportunity initiation',
+          status: 'pending',
+          createdAt: '2026-06-05T09:30:00.000Z'
+        }];
+      },
       async listCreatedOpportunities() {
         return [{
           id: 30,
@@ -113,6 +125,8 @@ test('logged in users see compact workbench list layout', async () => {
   assert.match(response.text, /Recent workflow messages/);
   assert.match(response.text, /Counts by workflow state/);
   assert.match(response.text, /Approve opportunity initiation/);
+  assert.match(response.text, /Submit opportunity initiation/);
+  assert.match(response.text, /href="\/opportunities\/32">800003 - Draft package/);
   assert.match(response.text, /Factory upgrade/);
   assert.match(response.text, /Quotation package/);
   assert.match(response.text, /submit_initiation/);

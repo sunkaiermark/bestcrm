@@ -10,6 +10,10 @@ test('getWorkbenchSummary gathers workbench panels for a normal user', async () 
       calls.push(['todos', userId, limit]);
       return [{ id: 1, title: 'Approve opportunity initiation' }];
     },
+    async listOpportunityInitiationTodos(userId, limit) {
+      calls.push(['initiationTodos', userId, limit]);
+      return [{ id: 'opportunity-initiation-2', title: 'Submit opportunity initiation' }];
+    },
     async listCreatedOpportunities(userId, limit) {
       calls.push(['created', userId, limit]);
       return [{ id: 2, title: 'Factory upgrade' }];
@@ -34,7 +38,10 @@ test('getWorkbenchSummary gathers workbench panels for a normal user', async () 
   });
 
   assert.deepEqual(summary, {
-    pendingTodos: [{ id: 1, title: 'Approve opportunity initiation' }],
+    pendingTodos: [
+      { id: 1, title: 'Approve opportunity initiation' },
+      { id: 'opportunity-initiation-2', title: 'Submit opportunity initiation' }
+    ],
     createdOpportunities: [{ id: 2, title: 'Factory upgrade' }],
     assignedOpportunities: [{ id: 3, title: 'Technical solution' }],
     recentWorkflowMessages: [{ id: 4, eventType: 'submit_initiation' }],
@@ -42,6 +49,7 @@ test('getWorkbenchSummary gathers workbench panels for a normal user', async () 
   });
   assert.deepEqual(calls, [
     ['todos', 7, 8],
+    ['initiationTodos', 7, 8],
     ['created', 7, 8],
     ['assigned', 7, 8],
     ['messages', 7, false, 10],
@@ -53,6 +61,7 @@ test('getWorkbenchSummary passes administrator visibility to repository', async 
   const calls = [];
   const repository = {
     async listPendingTodos() { return []; },
+    async listOpportunityInitiationTodos() { return []; },
     async listCreatedOpportunities() { return []; },
     async listAssignedOpportunities() { return []; },
     async listRecentWorkflowMessages(userId, isAdministrator) {
