@@ -86,7 +86,9 @@ async function createLoggedInAgent(extraOptions = {}) {
           deliveryCycle: '45 days',
           expectedBidDate: '2026-07-10',
           status: STATUSES.DRAFT,
-          salespersonId: 7
+          salespersonId: 7,
+          salespersonUsername: 'sales01',
+          salespersonDisplayName: 'Sales One'
         }];
       },
       async getOpportunityDetail() {
@@ -104,7 +106,9 @@ async function createLoggedInAgent(extraOptions = {}) {
           deliveryCycle: '45 days',
           expectedBidDate: '2026-07-10',
           status: STATUSES.DRAFT,
-          salespersonId: 7
+          salespersonId: 7,
+          salespersonUsername: 'sales01',
+          salespersonDisplayName: 'Sales One'
         };
       },
       async createOpportunity(input) {
@@ -230,6 +234,17 @@ async function createLoggedInAgent(extraOptions = {}) {
         throw new Error('not used');
       }
     },
+    opportunityResponsibilityRepository: {
+      async listTeamMembersByOpportunity() {
+        return [];
+      },
+      async listOwnerTransfersByOpportunity() {
+        return [];
+      },
+      async listCurrentResponsiblesByOpportunity() {
+        return [];
+      }
+    },
     ...appOptions
   });
   const agent = request.agent(app);
@@ -271,6 +286,8 @@ function opportunityDetail(overrides = {}) {
     expectedBidDate: '2026-07-10',
     status: STATUSES.DRAFT,
     salespersonId: 7,
+    salespersonUsername: 'sales01',
+    salespersonDisplayName: 'Sales One',
     salesManagerId: null,
     quotationEngineerId: null,
     technicalManagerId: null,
@@ -715,6 +732,84 @@ test('opportunity detail shows pending todos and workflow timeline', async () =>
   assert.match(detail.text, /draft/);
   assert.match(detail.text, /initiation_pending/);
   assert.match(detail.text, /ready for review/);
+});
+
+test('opportunity detail shows owner team members current responsibles and transfer history', async () => {
+  const responsibilityCalls = [];
+  const { agent } = await createLoggedInAgent({
+    opportunityResponsibilityRepository: {
+      async listTeamMembersByOpportunity(opportunityId) {
+        responsibilityCalls.push(['members', opportunityId]);
+        return [{
+          id: 41,
+          opportunityId,
+          userId: 8,
+          username: 'quote01',
+          userDisplayName: 'Quote Engineer',
+          roleCode: 'quotation_engineer',
+          roleName: 'Quotation Engineer',
+          permissionLevel: 'view',
+          isActive: true,
+          addedBy: 2,
+          addedByDisplayName: 'Sales Manager',
+          addedAt: '2026-06-06T08:00:00.000Z',
+          removedBy: null,
+          removedByDisplayName: '',
+          removedAt: null
+        }];
+      },
+      async listOwnerTransfersByOpportunity(opportunityId) {
+        responsibilityCalls.push(['transfers', opportunityId]);
+        return [{
+          id: 51,
+          opportunityId,
+          fromOwnerUserId: 6,
+          fromOwnerDisplayName: 'Old Sales',
+          toOwnerUserId: 7,
+          toOwnerDisplayName: 'Sales One',
+          changedBy: 2,
+          changedByDisplayName: 'Sales Manager',
+          reason: 'Territory realignment',
+          keepPreviousOwnerAsMember: true,
+          transferredAt: '2026-06-06T09:00:00.000Z'
+        }];
+      },
+      async listCurrentResponsiblesByOpportunity(opportunityId) {
+        responsibilityCalls.push(['current', opportunityId]);
+        return [{
+          todoId: 61,
+          opportunityId,
+          assigneeUserId: 9,
+          assigneeUsername: 'technical_manager01',
+          assigneeDisplayName: 'Technical Manager',
+          title: 'Approve technical solution',
+          status: 'pending',
+          dueAt: null,
+          createdAt: '2026-06-06T10:00:00.000Z'
+        }];
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /<th scope="row">Owner<\/th>[\s\S]*Sales One/);
+  assert.match(detail.text, /Responsibility/);
+  assert.match(detail.text, /Current Responsible/);
+  assert.match(detail.text, /Technical Manager/);
+  assert.match(detail.text, /Approve technical solution/);
+  assert.match(detail.text, /Team Members/);
+  assert.match(detail.text, /Quote Engineer/);
+  assert.match(detail.text, /Quotation Engineer/);
+  assert.match(detail.text, /Owner Transfer History/);
+  assert.match(detail.text, /Old Sales/);
+  assert.match(detail.text, /Territory realignment/);
+  assert.deepEqual(responsibilityCalls, [
+    ['members', 30],
+    ['transfers', 30],
+    ['current', 30]
+  ]);
 });
 
 test('opportunity detail shows attachment upload form and file links', async () => {

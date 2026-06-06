@@ -442,6 +442,7 @@ export function opportunityRoutes({
   technicalSolutionRepository,
   requirementUpdateRepository,
   contractApprovalRepository,
+  opportunityResponsibilityRepository,
   approvalSettingRepository,
   opportunityRepository,
   userRepository,
@@ -609,7 +610,17 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      const [usersByRole, activity, attachments, requirementUpdates, technicalSolutions, commercialQuotes] = await Promise.all([
+      const [
+        usersByRole,
+        activity,
+        attachments,
+        requirementUpdates,
+        technicalSolutions,
+        commercialQuotes,
+        teamMembers,
+        ownerTransfers,
+        currentResponsibles
+      ] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
           opportunityId: opportunity.id,
@@ -628,6 +639,15 @@ export function opportunityRoutes({
           : [],
         typeof commercialQuoteRepository?.listByOpportunity === 'function'
           ? commercialQuoteRepository.listByOpportunity(opportunity.id)
+          : [],
+        typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
+          ? opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
+          : [],
+        typeof opportunityResponsibilityRepository?.listOwnerTransfersByOpportunity === 'function'
+          ? opportunityResponsibilityRepository.listOwnerTransfersByOpportunity(opportunity.id)
+          : [],
+        typeof opportunityResponsibilityRepository?.listCurrentResponsiblesByOpportunity === 'function'
+          ? opportunityResponsibilityRepository.listCurrentResponsiblesByOpportunity(opportunity.id)
           : []
       ]);
       const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals);
@@ -638,6 +658,9 @@ export function opportunityRoutes({
         todos: activity.todos,
         attachments,
         contractApprovals: activity.contractApprovals,
+        teamMembers,
+        ownerTransfers,
+        currentResponsibles,
         requirementUpdates,
         technicalSolutions,
         commercialQuotes,

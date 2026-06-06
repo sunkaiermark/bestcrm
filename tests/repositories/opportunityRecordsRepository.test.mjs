@@ -28,6 +28,8 @@ const opportunityRow = {
   expected_bid_date: '2026-07-10',
   status: STATUSES.DRAFT,
   salesperson_id: '7',
+  salesperson_username: 'sales01',
+  salesperson_display_name: 'Sales One',
   sales_manager_id: null,
   quotation_engineer_id: null,
   technical_manager_id: null,
@@ -59,6 +61,8 @@ test('opportunity repository lists opportunities with customer and contact names
     expectedBidDate: '2026-07-10',
     status: STATUSES.DRAFT,
     salespersonId: 7,
+    salespersonUsername: 'sales01',
+    salespersonDisplayName: 'Sales One',
     salesManagerId: null,
     quotationEngineerId: null,
     technicalManagerId: null,
@@ -71,6 +75,7 @@ test('opportunity repository lists opportunities with customer and contact names
   assert.match(queryTarget.queries[0].sql, /FROM opportunities o/);
   assert.match(queryTarget.queries[0].sql, /JOIN customers c/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN contacts pc/);
+  assert.match(queryTarget.queries[0].sql, /JOIN users salesperson/);
   assert.match(queryTarget.queries[0].sql, /WHERE o\.salesperson_id = \$1/);
   assert.deepEqual(queryTarget.queries[0].params, [7]);
 });
@@ -84,6 +89,7 @@ test('opportunity repository gets detail with customer and contact names', async
   assert.equal(opportunity.id, 30);
   assert.equal(opportunity.customerName, 'Acme Co');
   assert.equal(opportunity.primaryContactName, 'Alice');
+  assert.equal(opportunity.salespersonDisplayName, 'Sales One');
   assert.match(queryTarget.queries[0].sql, /WHERE o\.id = \$1/);
 });
 

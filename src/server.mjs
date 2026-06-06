@@ -13,6 +13,7 @@ import { createContractApprovalRepository } from './repositories/contractApprova
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
+import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
 import { createRequirementUpdateRepository } from './repositories/requirementUpdateRepository.mjs';
 import { createRoleRepository } from './repositories/roleRepository.mjs';
 import { createTechnicalSolutionRepository } from './repositories/technicalSolutionRepository.mjs';
@@ -216,6 +217,18 @@ const emptyOpportunityRepository = {
   }
 };
 
+const emptyOpportunityResponsibilityRepository = {
+  async listTeamMembersByOpportunity() {
+    return [];
+  },
+  async listOwnerTransfersByOpportunity() {
+    return [];
+  },
+  async listCurrentResponsiblesByOpportunity() {
+    return [];
+  }
+};
+
 const emptyWorkflowEventRepository = {
   async listByOpportunity() {
     return [];
@@ -270,6 +283,8 @@ export function createApp(options = {}) {
   const requirementUpdateRepository = options.requirementUpdateRepository || (pool ? createRequirementUpdateRepository(pool) : emptyRequirementUpdateRepository);
   const contractApprovalRepository = options.contractApprovalRepository || (pool ? createContractApprovalRepository(pool) : emptyContractApprovalRepository);
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
+  const opportunityResponsibilityRepository = options.opportunityResponsibilityRepository
+    || (pool ? createOpportunityResponsibilityRepository(pool) : emptyOpportunityResponsibilityRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
@@ -310,6 +325,7 @@ export function createApp(options = {}) {
     technicalSolutionRepository,
     requirementUpdateRepository,
     contractApprovalRepository,
+    opportunityResponsibilityRepository,
     approvalSettingRepository,
     opportunityRepository,
     userRepository,

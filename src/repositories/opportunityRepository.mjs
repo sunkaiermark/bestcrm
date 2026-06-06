@@ -24,6 +24,8 @@ function mapOpportunityRow(row) {
     expectedBidDate: row.expected_bid_date,
     status: row.status,
     salespersonId: Number(row.salesperson_id),
+    salespersonUsername: row.salesperson_username || '',
+    salespersonDisplayName: row.salesperson_display_name || '',
     salesManagerId: numberOrNull(row.sales_manager_id),
     quotationEngineerId: numberOrNull(row.quotation_engineer_id),
     technicalManagerId: numberOrNull(row.technical_manager_id),
@@ -51,6 +53,8 @@ const opportunitySelect = `
     o.expected_bid_date,
     o.status,
     o.salesperson_id,
+    salesperson.username AS salesperson_username,
+    salesperson.display_name AS salesperson_display_name,
     o.sales_manager_id,
     o.quotation_engineer_id,
     o.technical_manager_id,
@@ -62,6 +66,7 @@ const opportunitySelect = `
   FROM opportunities o
   JOIN customers c ON c.id = o.customer_id
   LEFT JOIN contacts pc ON pc.id = o.primary_contact_id
+  JOIN users salesperson ON salesperson.id = o.salesperson_id
 `;
 
 const workflowFieldColumns = new Map([
@@ -191,6 +196,8 @@ export function createOpportunityRepository(queryTarget) {
           expected_bid_date,
           status,
           salesperson_id,
+          '' AS salesperson_username,
+          '' AS salesperson_display_name,
           sales_manager_id,
           quotation_engineer_id,
           technical_manager_id,
