@@ -409,9 +409,16 @@
         background: #f8fbfc;
       }
 
+      .basic-info-grid {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
       .detail-table {
         background: rgba(255, 255, 255, 0.38);
         border: 1px solid var(--line);
+        width: 100%;
       }
 
       .detail-table th,
@@ -432,6 +439,12 @@
         font-weight: 700;
         text-transform: none;
         width: 160px;
+      }
+
+      @media (max-width: 900px) {
+        .basic-info-grid {
+          grid-template-columns: 1fr;
+        }
       }
 
       .detail-list {

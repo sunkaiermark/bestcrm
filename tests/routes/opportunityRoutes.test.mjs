@@ -501,8 +501,10 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(detail.text, /Upgrade production line/);
   assert.match(detail.text, /Alice/);
   const basicInfoHtml = detail.text.match(/<section class="content-section business-section business-section-basic">[\s\S]*?<\/section>/)?.[0] || '';
-  assert.match(basicInfoHtml, /<table class="detail-table">/);
+  assert.match(basicInfoHtml, /class="basic-info-grid"/);
+  assert.equal((basicInfoHtml.match(/<table class="detail-table">/g) || []).length, 2);
   assert.match(basicInfoHtml, /<th scope="row">Status<\/th>\s*<td>draft<\/td>/);
+  assert.match(detail.text, /\.basic-info-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
 });
 
 test('opportunity detail shows list and edit actions but hides delete from non administrators', async () => {

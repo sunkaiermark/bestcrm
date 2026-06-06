@@ -45,50 +45,56 @@
           <section class="content-section business-section business-section-basic">
             <h2>Basic Info</h2>
             <div class="section-body">
-              <table class="detail-table">
-                <tbody>
-                  <tr>
-                    <th scope="row">No.</th>
-                    <td><%= opportunity.opportunityNo %></td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Owner</th>
-                    <td><%= ownerName %></td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Customer</th>
-                    <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Primary Contact</th>
-                    <td>
-                      <% if (opportunity.primaryContactId) { %>
-                        <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
-                      <% } %>
-                    </td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Status</th>
-                    <td><%= opportunity.status %></td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Estimated Amount</th>
-                    <td><%= opportunity.estimatedAmount ?? '' %></td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Project Type</th>
-                    <td><%= opportunity.projectType %></td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Delivery Cycle</th>
-                    <td><%= opportunity.deliveryCycle %></td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Expected Bid Date</th>
-                    <td><%= opportunity.expectedBidDate || '' %></td>
-                  </tr>
-                </tbody>
-              </table>
+              <div class="basic-info-grid">
+                <table class="detail-table">
+                  <tbody>
+                    <tr>
+                      <th scope="row">No.</th>
+                      <td><%= opportunity.opportunityNo %></td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Owner</th>
+                      <td><%= ownerName %></td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Customer</th>
+                      <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Primary Contact</th>
+                      <td>
+                        <% if (opportunity.primaryContactId) { %>
+                          <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
+                        <% } %>
+                      </td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Status</th>
+                      <td><%= opportunity.status %></td>
+                    </tr>
+                  </tbody>
+                </table>
+                <table class="detail-table">
+                  <tbody>
+                    <tr>
+                      <th scope="row">Estimated Amount</th>
+                      <td><%= opportunity.estimatedAmount ?? '' %></td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Project Type</th>
+                      <td><%= opportunity.projectType %></td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Delivery Cycle</th>
+                      <td><%= opportunity.deliveryCycle %></td>
+                    </tr>
+                    <tr>
+                      <th scope="row">Expected Bid Date</th>
+                      <td><%= opportunity.expectedBidDate || '' %></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
             </div>
           </section>
 
