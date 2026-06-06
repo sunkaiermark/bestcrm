@@ -789,8 +789,10 @@ test('opportunity detail shows upload forms in each business material panel', as
   assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*max-width:\s*none;/);
   assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*width:\s*100%;/);
   assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.35\);/);
-  assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*width:\s*190px;/);
+  assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*width:\s*220px;/);
   assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*text-align:\s*center;/);
+  assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*white-space:\s*nowrap;/);
+  assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*letter-spacing:\s*0px;/);
   assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*background:\s*#dbeafe;/);
   assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*color:\s*#0B0F6E;/);
   const requirementSection = detail.text.match(/<h2>Requirement Materials<\/h2>[\s\S]*?<h2>Technical Solution<\/h2>/)[0];
