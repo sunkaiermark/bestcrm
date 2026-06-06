@@ -188,6 +188,54 @@ test('owner salesperson updates opportunity fields', async () => {
   ]);
 });
 
+test('updateOpportunity preserves existing fields when edit payload leaves them blank', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7 },
+    contact: { id: 20, customerId: 10, customerOwnerUserId: 7 }
+  });
+
+  const opportunity = await updateOpportunity(repositories, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, {
+    id: 30,
+    salespersonId: 7,
+    title: 'Factory upgrade',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Upgrade production line',
+    estimatedAmount: 120000.50,
+    projectType: 'automation',
+    deliveryCycle: '45 days',
+    expectedBidDate: '2026-07-10'
+  }, {
+    title: 'Factory upgrade revised',
+    customerId: '',
+    primaryContactId: '',
+    requirement: '',
+    estimatedAmount: '',
+    projectType: '',
+    deliveryCycle: '',
+    expectedBidDate: ''
+  });
+
+  assert.equal(opportunity.id, 30);
+  assert.deepEqual(repositories.calls, [
+    ['getCustomer', 10],
+    ['getContact', 20],
+    ['updateOpportunity', 30, {
+      title: 'Factory upgrade revised',
+      customerId: 10,
+      primaryContactId: 20,
+      requirement: 'Upgrade production line',
+      estimatedAmount: 120000.50,
+      projectType: 'automation',
+      deliveryCycle: '45 days',
+      expectedBidDate: '2026-07-10'
+    }]
+  ]);
+});
+
 test('canEditOpportunity only allows administrator or owner salesperson', () => {
   const opportunity = { salespersonId: 7 };
 

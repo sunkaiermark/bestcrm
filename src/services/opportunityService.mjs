@@ -10,6 +10,10 @@ function text(value) {
   return String(value || '').trim();
 }
 
+function hasText(value) {
+  return text(value) !== '';
+}
+
 function numberOrNull(value) {
   if (value === '' || value === null || value === undefined) {
     return null;
@@ -63,16 +67,34 @@ export function normalizeOpportunityInput(input, actor) {
   };
 }
 
-export function normalizeOpportunityUpdateInput(input) {
+function textOrCurrent(inputValue, currentValue) {
+  const normalized = text(inputValue);
+  return normalized || text(currentValue);
+}
+
+function numberOrCurrent(inputValue, currentValue) {
+  return hasText(inputValue) ? numberOrNull(inputValue) : (currentValue ?? null);
+}
+
+function idOrCurrent(inputValue, currentValue) {
+  return hasText(inputValue) ? Number(inputValue) : (currentValue ?? null);
+}
+
+function dateOrCurrent(inputValue, currentValue) {
+  const normalized = text(inputValue);
+  return normalized || currentValue || null;
+}
+
+export function normalizeOpportunityUpdateInput(input, currentOpportunity = {}) {
   return {
-    title: text(input.title),
-    customerId: Number(input.customerId),
-    primaryContactId: numberOrNull(input.primaryContactId),
-    requirement: text(input.requirement),
-    estimatedAmount: numberOrNull(input.estimatedAmount),
-    projectType: text(input.projectType),
-    deliveryCycle: text(input.deliveryCycle),
-    expectedBidDate: isoDateOrNull(input.expectedBidDate)
+    title: textOrCurrent(input.title, currentOpportunity.title),
+    customerId: idOrCurrent(input.customerId, currentOpportunity.customerId),
+    primaryContactId: idOrCurrent(input.primaryContactId, currentOpportunity.primaryContactId),
+    requirement: textOrCurrent(input.requirement, currentOpportunity.requirement),
+    estimatedAmount: numberOrCurrent(input.estimatedAmount, currentOpportunity.estimatedAmount),
+    projectType: textOrCurrent(input.projectType, currentOpportunity.projectType),
+    deliveryCycle: textOrCurrent(input.deliveryCycle, currentOpportunity.deliveryCycle),
+    expectedBidDate: dateOrCurrent(input.expectedBidDate, currentOpportunity.expectedBidDate)
   };
 }
 
@@ -110,7 +132,7 @@ export async function updateOpportunity(repositories, actor, opportunity, input)
   if (!canEditOpportunity(actor, opportunity)) {
     forbidden();
   }
-  const normalized = normalizeOpportunityUpdateInput(input);
+  const normalized = normalizeOpportunityUpdateInput(input, opportunity);
   await validateOpportunityReferences(repositories, actor, normalized);
 
   return repositories.opportunityRepository.updateOpportunity(opportunity.id, normalized);
