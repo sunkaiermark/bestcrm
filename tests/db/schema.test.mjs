@@ -10,6 +10,7 @@ const requirementUpdatesMigrationPath = new URL('../../src/db/migrations/006_req
 const technicalSolutionVersionsMigrationPath = new URL('../../src/db/migrations/007_technical_solution_versions.sql', import.meta.url);
 const commercialQuoteVersionsMigrationPath = new URL('../../src/db/migrations/008_commercial_quote_versions.sql', import.meta.url);
 const contractVersionsMigrationPath = new URL('../../src/db/migrations/009_contract_versions.sql', import.meta.url);
+const opportunityResponsibilityMigrationPath = new URL('../../src/db/migrations/010_opportunity_responsibility.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -101,4 +102,26 @@ test('contract versions migration adds version number fields', async () => {
   assert.match(sql, /ADD COLUMN IF NOT EXISTS version_no integer/);
   assert.match(sql, /ROW_NUMBER\(\) OVER/);
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS contract_approvals_opportunity_version_idx/);
+});
+
+test('opportunity responsibility migration adds team members and owner transfer history', async () => {
+  const sql = await readFile(opportunityResponsibilityMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_members/);
+  assert.match(sql, /opportunity_id bigint NOT NULL REFERENCES opportunities\(id\) ON DELETE CASCADE/);
+  assert.match(sql, /user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /role_code text NOT NULL/);
+  assert.match(sql, /permission_level text NOT NULL DEFAULT 'view'/);
+  assert.match(sql, /added_by bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /removed_by bigint REFERENCES users\(id\)/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS opportunity_members_active_unique_idx/);
+  assert.match(sql, /WHERE is_active = true/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_owner_transfers/);
+  assert.match(sql, /from_owner_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /to_owner_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /changed_by bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /reason text NOT NULL/);
+  assert.match(sql, /keep_previous_owner_as_member boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS opportunity_owner_transfers_opportunity_idx/);
 });
