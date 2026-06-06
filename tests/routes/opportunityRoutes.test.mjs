@@ -498,6 +498,8 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(form.text, /action="\/opportunities\/customers"/);
   assert.match(form.text, /<select name="country">/);
   assert.match(form.text, /<option value="China">China<\/option>/);
+  assert.match(form.text, /<select name="region">/);
+  assert.match(form.text, /<option value="Shanghai">Shanghai<\/option>/);
   assert.match(form.text, /Add new contact here/);
   assert.match(form.text, /action="\/opportunities\/contacts"/);
 

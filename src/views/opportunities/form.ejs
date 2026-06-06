@@ -37,7 +37,12 @@
                 </label>
                 <label>
                   Region
-                  <input name="region">
+                  <select name="region">
+                    <option value="">Select region</option>
+                    <% for (const region of (typeof regionOptions !== 'undefined' ? regionOptions : [])) { %>
+                      <option value="<%= region %>"><%= region %></option>
+                    <% } %>
+                  </select>
                 </label>
                 <label>
                   Address

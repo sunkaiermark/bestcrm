@@ -24,7 +24,17 @@
           </label>
           <label>
             Region
-            <input name="region" value="<%= customer.region || '' %>">
+            <select name="region">
+              <% const currentRegion = customer.region || ''; %>
+              <% const availableRegions = typeof regionOptions !== 'undefined' ? regionOptions : []; %>
+              <option value="">Select region</option>
+              <% if (currentRegion && !availableRegions.includes(currentRegion)) { %>
+                <option value="<%= currentRegion %>" selected><%= currentRegion %></option>
+              <% } %>
+              <% for (const region of availableRegions) { %>
+                <option value="<%= region %>"<%= currentRegion === region ? ' selected' : '' %>><%= region %></option>
+              <% } %>
+            </select>
           </label>
           <label>
             Address
