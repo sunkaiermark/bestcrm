@@ -122,6 +122,8 @@ test('logged in users see compact workbench list layout', async () => {
   assert.match(response.text, /My pending todos/);
   assert.match(response.text, /Opportunities I created/);
   assert.match(response.text, /Opportunities assigned to me/);
+  assert.equal((response.text.match(/<th>Opportunity Name<\/th>/g) || []).length, 2);
+  assert.doesNotMatch(response.text, /<th>Title<\/th>/);
   assert.match(response.text, /Recent workflow messages/);
   assert.match(response.text, /Counts by workflow state/);
   assert.match(response.text, /Approve opportunity initiation/);
