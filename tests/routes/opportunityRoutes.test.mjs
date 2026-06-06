@@ -898,6 +898,9 @@ test('opportunity detail shows owner team members current responsibles and trans
   assert.match(detail.text, /class="responsibility-grid"/);
   assert.equal((detail.text.match(/class="responsibility-column"/g) || []).length, 2);
   assert.match(detail.text, /\.responsibility-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
+  assert.match(detail.text, /\.responsibility-grid\s*\{[\s\S]*gap:\s*8px;/);
+  assert.match(detail.text, /\.responsibility-content\s*\{[\s\S]*padding:\s*6px 8px;/);
+  assert.match(detail.text, /\.responsibility-content \.list-table th,\s*\.responsibility-content \.list-table td\s*\{[\s\S]*padding:\s*5px 6px;/);
   assert.match(detail.text, /Current Responsible/);
   assert.match(detail.text, /Technical Manager/);
   assert.match(detail.text, /Approve technical solution/);
@@ -927,9 +930,11 @@ test('administrator sees responsibility management forms on opportunity detail',
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
+  assert.match(detail.text, /<details class="responsibility-disclosure">[\s\S]*<summary>Add Team Member<\/summary>/);
   assert.match(detail.text, /Add Team Member/);
   assert.match(detail.text, /name="userId"/);
   assert.match(detail.text, /name="roleCode"/);
+  assert.match(detail.text, /<details class="responsibility-disclosure">[\s\S]*<summary>Transfer Owner<\/summary>/);
   assert.match(detail.text, /Transfer Owner/);
   assert.match(detail.text, /name="toOwnerUserId"/);
   assert.match(detail.text, /name="keepPreviousOwnerAsMember"/);

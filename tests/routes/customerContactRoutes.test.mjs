@@ -197,7 +197,10 @@ test('logged in salesperson can view customer list and detail', async () => {
   const customerDetailHtml = detail.text.match(/<h2>Customer detail<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(customerDetailHtml, /class="basic-info-grid"/);
   assert.equal((customerDetailHtml.match(/<table class="detail-table">/g) || []).length, 2);
+  assert.equal((customerDetailHtml.match(/<table class="detail-table detail-table-wide">/g) || []).length, 3);
+  assert.match(detail.text, /\.detail-table-wide\s*\{[\s\S]*grid-column:\s*1 \/ -1;/);
   assert.match(customerDetailHtml, /<th scope="row">Industry<\/th>/);
+  assert.ok(customerDetailHtml.indexOf('Country') < customerDetailHtml.indexOf('Parent Company'));
   assert.match(customerDetailHtml, /<th scope="row">Parent Company<\/th>/);
   assert.match(customerDetailHtml, /Acme Group/);
   assert.match(customerDetailHtml, /<th scope="row">Enterprise Nature<\/th>/);
@@ -207,6 +210,17 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(customerDetailHtml, /<th scope="row">Address<\/th>/);
   assert.match(customerDetailHtml, /<th scope="row">Company Highlights<\/th>/);
   assert.match(customerDetailHtml, /Regional leader in precision assembly/);
+  const customerContactsHtml = detail.text.match(/<h2>Contacts<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
+  assert.match(customerContactsHtml, /href="\/contacts\/new\?customerId=10"/);
+  assert.match(customerContactsHtml, /<table class="list-table content-fit-table">/);
+  assert.match(customerContactsHtml, /<th>Name<\/th>/);
+  assert.match(customerContactsHtml, /<th>Title<\/th>/);
+  assert.match(customerContactsHtml, /<th>Phone<\/th>/);
+  assert.match(customerContactsHtml, /<th>Email<\/th>/);
+  assert.match(customerContactsHtml, /<th>Actions<\/th>/);
+  assert.match(customerContactsHtml, /href="\/contacts\/20"/);
+  assert.match(customerContactsHtml, /href="\/opportunities\/new\?customerId=10&contactId=20"/);
+  assert.doesNotMatch(customerContactsHtml, /<ul class="inline-list">/);
   assert.doesNotMatch(detail.text, /Delete customer/);
 });
 

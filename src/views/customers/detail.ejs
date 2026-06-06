@@ -23,16 +23,12 @@
                     <td><%= customer.industry %></td>
                   </tr>
                   <tr>
-                    <th scope="row">Parent Company</th>
-                    <td><%= customer.parentCompany %></td>
-                  </tr>
-                  <tr>
-                    <th scope="row">Enterprise Nature</th>
-                    <td><%= customer.enterpriseNature %></td>
-                  </tr>
-                  <tr>
                     <th scope="row">Country</th>
                     <td><%= customer.country %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row">Parent Company</th>
+                    <td><%= customer.parentCompany %></td>
                   </tr>
                 </tbody>
               </table>
@@ -46,10 +42,26 @@
                     <th scope="row">Address</th>
                     <td><%= customer.address %></td>
                   </tr>
+                </tbody>
+              </table>
+              <table class="detail-table detail-table-wide">
+                <tbody>
+                  <tr>
+                    <th scope="row">Enterprise Nature</th>
+                    <td><%= customer.enterpriseNature %></td>
+                  </tr>
+                </tbody>
+              </table>
+              <table class="detail-table detail-table-wide">
+                <tbody>
                   <tr>
                     <th scope="row">Company Highlights</th>
                     <td><%= customer.companyHighlights %></td>
                   </tr>
+                </tbody>
+              </table>
+              <table class="detail-table detail-table-wide">
+                <tbody>
                   <tr>
                     <th scope="row">Notes</th>
                     <td><%= customer.notes %></td>
@@ -64,17 +76,34 @@
           <h2>Contacts</h2>
           <div class="section-body">
             <p><a href="/contacts/new?customerId=<%= customer.id %>">New contact</a></p>
-            <ul class="inline-list">
-              <% for (const contact of customer.contacts || []) { %>
-                <li>
-                  <a href="/contacts/<%= contact.id %>"><%= contact.name %></a>
-                  <span class="muted"><%= contact.title %></span>
-                  <span><%= contact.phone %></span>
-                  <span><%= contact.email %></span>
-                  <a href="/opportunities/new?customerId=<%= customer.id %>&contactId=<%= contact.id %>">New opportunity</a>
-                </li>
-              <% } %>
-            </ul>
+            <% if ((customer.contacts || []).length > 0) { %>
+              <table class="list-table content-fit-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Title</th>
+                    <th>Phone</th>
+                    <th>Email</th>
+                    <th>Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% for (const contact of customer.contacts || []) { %>
+                    <tr>
+                      <td><a href="/contacts/<%= contact.id %>"><%= contact.name %></a></td>
+                      <td><%= contact.title %></td>
+                      <td><%= contact.phone %></td>
+                      <td><%= contact.email %></td>
+                      <td>
+                        <a href="/opportunities/new?customerId=<%= customer.id %>&contactId=<%= contact.id %>">New opportunity</a>
+                      </td>
+                    </tr>
+                  <% } %>
+                </tbody>
+              </table>
+            <% } else { %>
+              <p class="empty">No contacts.</p>
+            <% } %>
           </div>
         </section>
 <%- include('../partials/app-end') %>

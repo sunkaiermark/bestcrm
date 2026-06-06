@@ -448,6 +448,10 @@
         width: 160px;
       }
 
+      .detail-table-wide {
+        grid-column: 1 / -1;
+      }
+
       @media (max-width: 900px) {
         .basic-info-grid {
           grid-template-columns: 1fr;
@@ -457,42 +461,87 @@
       .responsibility-grid {
         align-items: start;
         display: grid;
-        gap: 12px;
+        gap: 8px;
         grid-template-columns: repeat(2, minmax(0, 1fr));
       }
 
       .responsibility-column {
         display: grid;
-        gap: 12px;
+        gap: 8px;
         min-width: 0;
       }
 
       .responsibility-block {
-        background: rgba(255, 255, 255, 0.38);
+        background: rgba(255, 255, 255, 0.22);
         border: 1px solid var(--line);
       }
 
       .responsibility-block h3 {
-        background: rgba(255, 255, 255, 0.34);
+        background: rgba(255, 255, 255, 0.24);
         border-bottom: 1px solid var(--line);
         color: var(--ink);
         font-size: 13px;
         margin: 0;
-        padding: 8px 10px;
+        padding: 6px 8px;
       }
 
       .responsibility-content {
         overflow-x: auto;
-        padding: 10px;
+        padding: 6px 8px;
       }
 
       .responsibility-content .empty {
         margin: 0;
       }
 
+      .responsibility-content .list-table th,
+      .responsibility-content .list-table td {
+        padding: 5px 6px;
+      }
+
+      .responsibility-disclosure {
+        background: rgba(255, 255, 255, 0.28);
+        border: 1px solid var(--line);
+        margin-top: 6px;
+      }
+
+      .responsibility-disclosure summary {
+        color: var(--ink);
+        cursor: pointer;
+        font-weight: 700;
+        padding: 6px 8px;
+      }
+
+      .responsibility-disclosure[open] summary {
+        border-bottom: 1px solid var(--line);
+      }
+
       .responsibility-form {
-        margin-top: 10px;
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        margin-top: 0;
         max-width: none;
+        padding: 8px;
+      }
+
+      .responsibility-form label {
+        gap: 4px;
+        margin-bottom: 8px;
+      }
+
+      .responsibility-form input,
+      .responsibility-form select,
+      .responsibility-form textarea {
+        padding: 6px 8px;
+      }
+
+      .responsibility-form textarea {
+        min-height: 58px;
+      }
+
+      .responsibility-form button {
+        padding: 7px 10px;
       }
 
       .checkbox-label {

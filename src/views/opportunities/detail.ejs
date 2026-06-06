@@ -180,34 +180,36 @@
                         <p class="empty">No team members.</p>
                       <% } %>
                       <% if (canManageOpportunityResponsibility) { %>
-                        <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/team-members" data-team-member-form>
-                          <h3>Add Team Member</h3>
-                          <label>
-                            User
-                            <select name="userId" required>
-                              <option value=""></option>
-                              <% for (const user of activeResponsibilityUsers) { %>
-                                <option value="<%= user.id %>" data-role-codes="<%= (user.roles || []).join(',') %>"><%= user.displayName %> (<%= user.username %>)</option>
-                              <% } %>
-                            </select>
-                          </label>
-                          <label>
-                            Role
-                            <select name="roleCode" required>
-                              <% for (const role of activeResponsibilityRoleOptions) { %>
-                                <option value="<%= role.code %>" data-role-code="<%= role.code %>"><%= role.name %></option>
-                              <% } %>
-                            </select>
-                          </label>
-                          <label>
-                            Permission
-                            <select name="permissionLevel" required>
-                              <option value="view">View</option>
-                              <option value="edit">Edit</option>
-                            </select>
-                          </label>
-                          <button type="submit">Add Team Member</button>
-                        </form>
+                        <details class="responsibility-disclosure">
+                          <summary>Add Team Member</summary>
+                          <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/team-members" data-team-member-form>
+                            <label>
+                              User
+                              <select name="userId" required>
+                                <option value=""></option>
+                                <% for (const user of activeResponsibilityUsers) { %>
+                                  <option value="<%= user.id %>" data-role-codes="<%= (user.roles || []).join(',') %>"><%= user.displayName %> (<%= user.username %>)</option>
+                                <% } %>
+                              </select>
+                            </label>
+                            <label>
+                              Role
+                              <select name="roleCode" required>
+                                <% for (const role of activeResponsibilityRoleOptions) { %>
+                                  <option value="<%= role.code %>" data-role-code="<%= role.code %>"><%= role.name %></option>
+                                <% } %>
+                              </select>
+                            </label>
+                            <label>
+                              Permission
+                              <select name="permissionLevel" required>
+                                <option value="view">View</option>
+                                <option value="edit">Edit</option>
+                              </select>
+                            </label>
+                            <button type="submit">Add Team Member</button>
+                          </form>
+                        </details>
                       <% } %>
                     </div>
                   </div>
@@ -216,27 +218,29 @@
                     <h3>Owner Transfer History</h3>
                     <div class="responsibility-content">
                       <% if (canManageOpportunityResponsibility) { %>
-                        <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/owner-transfer">
-                          <h3>Transfer Owner</h3>
-                          <label>
-                            New Owner
-                            <select name="toOwnerUserId" required>
-                              <option value=""></option>
-                              <% for (const user of activeSalesOwnerOptions) { %>
-                                <option value="<%= user.id %>"><%= user.displayName %> (<%= user.username %>)</option>
-                              <% } %>
-                            </select>
-                          </label>
-                          <label>
-                            Reason
-                            <textarea name="reason" required></textarea>
-                          </label>
-                          <label class="checkbox-label">
-                            <input type="checkbox" name="keepPreviousOwnerAsMember">
-                            Keep previous owner as team member
-                          </label>
-                          <button type="submit">Transfer Owner</button>
-                        </form>
+                        <details class="responsibility-disclosure">
+                          <summary>Transfer Owner</summary>
+                          <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/owner-transfer">
+                            <label>
+                              New Owner
+                              <select name="toOwnerUserId" required>
+                                <option value=""></option>
+                                <% for (const user of activeSalesOwnerOptions) { %>
+                                  <option value="<%= user.id %>"><%= user.displayName %> (<%= user.username %>)</option>
+                                <% } %>
+                              </select>
+                            </label>
+                            <label>
+                              Reason
+                              <textarea name="reason" required></textarea>
+                            </label>
+                            <label class="checkbox-label">
+                              <input type="checkbox" name="keepPreviousOwnerAsMember">
+                              Keep previous owner as team member
+                            </label>
+                            <button type="submit">Transfer Owner</button>
+                          </form>
+                        </details>
                       <% } %>
                       <% if (opportunityOwnerTransfers.length > 0) { %>
                         <table class="list-table content-fit-table">
