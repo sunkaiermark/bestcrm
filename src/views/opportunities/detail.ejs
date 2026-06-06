@@ -68,14 +68,14 @@
                         <% } %>
                       </td>
                     </tr>
-                    <tr>
-                      <th scope="row">Status</th>
-                      <td><%= opportunity.status %></td>
-                    </tr>
                   </tbody>
                 </table>
                 <table class="detail-table">
                   <tbody>
+                    <tr>
+                      <th scope="row">Status</th>
+                      <td><%= opportunity.status %></td>
+                    </tr>
                     <tr>
                       <th scope="row">Estimated Amount</th>
                       <td><%= opportunity.estimatedAmount ?? '' %></td>
