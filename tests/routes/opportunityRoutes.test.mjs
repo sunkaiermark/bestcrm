@@ -514,6 +514,8 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(list.text, /Opportunities/);
   assert.match(list.text, /Factory upgrade/);
   assert.match(list.text, /Acme Co/);
+  assert.match(list.text, /<th>Opportunity Name<\/th>/);
+  assert.doesNotMatch(list.text, /<th>Title<\/th>/);
   assert.match(list.text, /<th>Owner<\/th>/);
   assert.match(list.text, /Sales One/);
   assert.match(list.text, /<table class="list-table opportunity-list-table">/);
