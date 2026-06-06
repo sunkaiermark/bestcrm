@@ -25,7 +25,6 @@
             <div class="user-line"><%= opportunity.opportunityNo %> - <%= opportunity.customerName %></div>
           </div>
           <div class="page-actions">
-            <span class="status"><%= opportunity.status %></span>
             <a class="secondary-action" href="/opportunities">Back to list</a>
             <% if (typeof canEditOpportunity !== 'undefined' && canEditOpportunity) { %>
               <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit">Edit</a>

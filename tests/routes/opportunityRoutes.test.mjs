@@ -490,6 +490,9 @@ test('opportunity detail shows list and edit actions but hides delete from non a
   assert.match(detail.text, /Back to list/);
   assert.match(detail.text, /href="\/opportunities\/30\/edit"/);
   assert.match(detail.text, />Edit</);
+  const headerHtml = detail.text.match(/<header class="page-header">[\s\S]*?<\/header>/)?.[0] || '';
+  assert.doesNotMatch(headerHtml, /class="status"/);
+  assert.match(detail.text, /<dt>Status<\/dt>\s*<dd>draft<\/dd>/);
   assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/delete"/);
 });
 
