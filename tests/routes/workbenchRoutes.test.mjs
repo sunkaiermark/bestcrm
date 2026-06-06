@@ -104,6 +104,9 @@ test('logged in users see compact workbench list layout', async () => {
 
   assert.equal(response.status, 200);
   assert.match(response.text, /Workbench/);
+  const topbarHtml = response.text.match(/<header class="topbar">[\s\S]*?<\/header>/)?.[0] || '';
+  assert.doesNotMatch(topbarHtml, /New opportunity/);
+  assert.doesNotMatch(topbarHtml, /href="\/opportunities\/new"/);
   assert.match(response.text, /My pending todos/);
   assert.match(response.text, /Opportunities I created/);
   assert.match(response.text, /Opportunities assigned to me/);

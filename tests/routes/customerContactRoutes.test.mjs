@@ -152,6 +152,9 @@ test('logged in salesperson can view customer list and detail', async () => {
   assertAppSidebar(detail.text, '/customers');
   assert.match(detail.text, /Acme Co/);
   assert.match(detail.text, /Alice/);
+  const customerHeaderHtml = detail.text.match(/<header class="page-header">[\s\S]*?<\/header>/)?.[0] || '';
+  assert.doesNotMatch(customerHeaderHtml, /New opportunity/);
+  assert.doesNotMatch(customerHeaderHtml, /href="\/opportunities\/new\?customerId=10"/);
   const customerDetailHtml = detail.text.match(/<h2>Customer detail<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(customerDetailHtml, /class="basic-info-grid"/);
   assert.equal((customerDetailHtml.match(/<table class="detail-table">/g) || []).length, 2);
