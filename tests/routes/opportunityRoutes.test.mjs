@@ -557,6 +557,29 @@ test('opportunity detail shows attachment upload form and file links', async () 
   assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/preview/);
 });
 
+test('opportunity detail uses distinct business panel colors', async () => {
+  const { agent } = await createLoggedInAgent();
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /class="content-section business-section business-section-basic"/);
+  assert.match(detail.text, /class="content-section business-section business-section-requirement"/);
+  assert.match(detail.text, /class="content-section business-section business-section-technical"/);
+  assert.match(detail.text, /class="content-section business-section business-section-quote"/);
+  assert.match(detail.text, /class="content-section business-section business-section-contract"/);
+  assert.match(detail.text, /\.business-section-basic\s*\{[\s\S]*background:\s*#f4f7fb;/);
+  assert.match(detail.text, /\.business-section-basic > h2\s*\{[\s\S]*background:\s*#1e3a5f;/);
+  assert.match(detail.text, /\.business-section-requirement\s*\{[\s\S]*background:\s*#fffbeb;/);
+  assert.match(detail.text, /\.business-section-requirement > h2\s*\{[\s\S]*background:\s*#92400e;/);
+  assert.match(detail.text, /\.business-section-technical\s*\{[\s\S]*background:\s*#eff6ff;/);
+  assert.match(detail.text, /\.business-section-technical > h2\s*\{[\s\S]*background:\s*#1d4ed8;/);
+  assert.match(detail.text, /\.business-section-quote\s*\{[\s\S]*background:\s*#ecfdf5;/);
+  assert.match(detail.text, /\.business-section-quote > h2\s*\{[\s\S]*background:\s*#047857;/);
+  assert.match(detail.text, /\.business-section-contract\s*\{[\s\S]*background:\s*#f5f3ff;/);
+  assert.match(detail.text, /\.business-section-contract > h2\s*\{[\s\S]*background:\s*#6d28d9;/);
+});
+
 test('opportunity detail groups business attachments into five business panels', async () => {
   const attachments = [
     {
