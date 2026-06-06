@@ -35,7 +35,7 @@
                         <div class="inline-actions system-actions">
                           <a class="secondary-action" href="/system/roles/<%= role.id %>/edit">Edit</a>
                           <% if (role.isActive) { %>
-                            <form method="post" action="/system/roles/<%= role.id %>/delete">
+                            <form method="post" action="/system/roles/<%= role.id %>/delete" onsubmit="return confirm('Delete this role?')">
                               <button class="danger-action" type="submit">Delete</button>
                             </form>
                           <% } %>

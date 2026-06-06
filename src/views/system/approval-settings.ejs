@@ -37,7 +37,7 @@
                         <div class="inline-actions system-actions">
                           <a class="secondary-action" href="/system/approval-settings/<%= setting.id %>/edit">Edit</a>
                           <% if (setting.isActive) { %>
-                            <form method="post" action="/system/approval-settings/<%= setting.id %>/delete">
+                            <form method="post" action="/system/approval-settings/<%= setting.id %>/delete" onsubmit="return confirm('Delete this approval setting?')">
                               <button class="danger-action" type="submit">Delete</button>
                             </form>
                           <% } %>

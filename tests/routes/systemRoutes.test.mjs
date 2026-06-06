@@ -175,6 +175,7 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(users.text, /<table class="list-table content-fit-table">/);
   assert.match(users.text, /\.content-fit-table thead th\s*\{[\s\S]*background:\s*#1e3a5f;/);
   assert.match(users.text, /<td class="actions-cell">[\s\S]*<div class="inline-actions system-actions">/);
+  assert.match(users.text, /action="\/system\/users\/11\/delete" onsubmit="return confirm\('Delete this user\?'\)"/);
   assert.match(users.text, /\.system-actions\s*\{[\s\S]*flex-wrap:\s*nowrap;/);
   assert.match(users.text, /\.system-actions\s*\{[\s\S]*justify-content:\s*space-between;/);
 
@@ -186,6 +187,7 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(roles.text, /service_manager/);
   assert.match(roles.text, /<table class="list-table content-fit-table">/);
   assert.match(roles.text, /<td class="actions-cell">[\s\S]*<div class="inline-actions system-actions">/);
+  assert.match(roles.text, /action="\/system\/roles\/21\/delete" onsubmit="return confirm\('Delete this role\?'\)"/);
 
   const approvals = await agent.get('/system/approval-settings');
   assert.equal(approvals.status, 200);
@@ -197,6 +199,7 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(approvals.text, /New setting/);
   assert.match(approvals.text, /<table class="list-table content-fit-table">/);
   assert.match(approvals.text, /<td class="actions-cell">[\s\S]*<div class="inline-actions system-actions">/);
+  assert.match(approvals.text, /action="\/system\/approval-settings\/31\/delete" onsubmit="return confirm\('Delete this approval setting\?'\)"/);
 });
 
 test('non administrators cannot view system pages', async () => {

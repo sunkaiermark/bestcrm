@@ -39,7 +39,7 @@
                         <div class="inline-actions system-actions">
                           <a class="secondary-action" href="/system/users/<%= user.id %>/edit">Edit</a>
                           <% if (user.isActive) { %>
-                            <form method="post" action="/system/users/<%= user.id %>/delete">
+                            <form method="post" action="/system/users/<%= user.id %>/delete" onsubmit="return confirm('Delete this user?')">
                               <button class="danger-action" type="submit">Delete</button>
                             </form>
                           <% } %>
