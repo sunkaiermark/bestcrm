@@ -48,11 +48,12 @@
         padding: 28px;
       }
 
-      .login-heading {
-        margin: 0 0 22px;
-        font-size: 20px;
-        line-height: 1.15;
-        text-align: center;
+      .login-logo {
+        display: block;
+        height: auto;
+        margin: 0 auto 22px;
+        max-width: 100%;
+        width: 224px;
       }
 
       .login-form {
@@ -121,8 +122,8 @@
   </head>
   <body>
     <main class="login-shell">
-      <section class="login-card" aria-labelledby="login-title">
-        <h1 id="login-title" class="login-heading">BESTCRM</h1>
+      <section class="login-card" aria-label="Login">
+        <img class="login-logo" src="/assets/sunkaier-logo-login.png" alt="SUNKAIER">
       <% if (error) { %>
           <p class="login-alert" role="alert"><%= error %></p>
       <% } %>

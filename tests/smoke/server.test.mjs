@@ -73,6 +73,15 @@ test('GET /assets/sunkaier-logo.png serves the sidebar logo', async () => {
   assert.match(response.headers['content-type'], /image\/png/);
 });
 
+test('GET /assets/sunkaier-logo-login.png serves the login logo', async () => {
+  const app = createApp({ sessionSecret: 'test-secret' });
+
+  const response = await request(app).get('/assets/sunkaier-logo-login.png');
+
+  assert.equal(response.status, 200);
+  assert.match(response.headers['content-type'], /image\/png/);
+});
+
 test('server entrypoint starts an HTTP listener when run directly', async (t) => {
   const child = spawn(process.execPath, ['src/server.mjs'], {
     cwd: projectRoot,

@@ -22,12 +22,15 @@ test('login page renders username and password form', async () => {
   const response = await request(app).get('/login');
 
   assert.equal(response.status, 200);
-  assert.match(response.text, /BESTCRM/);
   assert.match(response.text, /class="login-shell"/);
   assert.match(response.text, /class="login-card"/);
   assert.match(response.text, /font:\s*14px\/1\.4 Arial, "Microsoft YaHei", Helvetica, sans-serif;/);
-  assert.match(response.text, /\.login-heading\s*\{[\s\S]*font-size:\s*20px;/);
-  assert.match(response.text, /\.login-heading\s*\{[\s\S]*text-align:\s*center;/);
+  assert.match(response.text, /\.login-logo\s*\{[\s\S]*display:\s*block;/);
+  assert.match(response.text, /\.login-logo\s*\{[\s\S]*margin:\s*0 auto 22px;/);
+  assert.match(response.text, /\.login-logo\s*\{[\s\S]*width:\s*224px;/);
+  assert.match(response.text, /class="login-logo"\s+src="\/assets\/sunkaier-logo-login\.png"\s+alt="SUNKAIER"/);
+  assert.doesNotMatch(response.text, /class="login-heading"/);
+  assert.doesNotMatch(response.text, />BESTCRM</);
   assert.doesNotMatch(response.text, /Company CRM/);
   assert.doesNotMatch(response.text, /class="login-subtitle"/);
   assert.match(response.text, /\.form-field input\s*\{[\s\S]*height:\s*40px;/);
