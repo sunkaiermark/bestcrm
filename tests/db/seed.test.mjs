@@ -1,8 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ROLES } from '../../src/domain/roles.mjs';
-import { verifyPassword } from '../../src/services/authService.mjs';
-import { INTERNAL_TEST_ACCOUNTS, seedInternalAccounts } from '../../src/db/seed.mjs';
+import { ROLE_SEEDS, seedInternalAccounts } from '../../src/db/seed.mjs';
 
 const requiredWorkflowRoles = [
   ROLES.SALESPERSON,
@@ -12,13 +11,6 @@ const requiredWorkflowRoles = [
   ROLES.COMMERCIAL_MANAGER,
   ROLES.LEGAL_REVIEWER,
   ROLES.ADMINISTRATOR
-];
-
-const requiredApprovalSettings = [
-  { settingKey: 'opportunity_initiation', username: 'sales_manager01', role: ROLES.SALES_MANAGER },
-  { settingKey: 'technical_solution', username: 'technical_manager01', role: ROLES.TECHNICAL_MANAGER },
-  { settingKey: 'commercial_quote', username: 'commercial_manager01', role: ROLES.COMMERCIAL_MANAGER },
-  { settingKey: 'contract_approval', username: 'legal_reviewer01', role: ROLES.LEGAL_REVIEWER }
 ];
 
 class FakeSeedPool {
@@ -100,27 +92,19 @@ class FakeSeedPool {
   }
 }
 
-test('seedInternalAccounts creates first-version workflow login accounts', async () => {
+test('seedInternalAccounts seeds roles without recreating demo accounts', async () => {
   const pool = new FakeSeedPool();
 
   const result = await seedInternalAccounts(pool, { password: 'Testing123!' });
 
-  assert.deepEqual(result.accounts.map((account) => account.username), INTERNAL_TEST_ACCOUNTS.map((account) => account.username));
-  assert.equal(pool.users.size, 7);
+  assert.deepEqual(result.accounts, []);
+  assert.deepEqual(result.roles.map((role) => role.code), ROLE_SEEDS.map((role) => role.code));
+  assert.equal(pool.users.size, 0);
+  assert.equal(pool.userRoles.size, 0);
+  assert.equal(pool.approvalSettings.size, 0);
   for (const role of requiredWorkflowRoles) {
     assert.ok(pool.roles.has(role), `missing role ${role}`);
   }
-  for (const account of INTERNAL_TEST_ACCOUNTS) {
-    assert.ok(pool.hasRole(account.username, account.role), `missing ${account.username} role ${account.role}`);
-  }
-  for (const setting of requiredApprovalSettings) {
-    assert.ok(
-      pool.hasApprovalSetting(setting.settingKey, setting.username, setting.role),
-      `missing approval setting ${setting.settingKey} for ${setting.username}`
-    );
-  }
-  assert.equal(await verifyPassword('Testing123!', pool.users.get('sales01').password_hash), true);
-  assert.equal(await verifyPassword('Testing123!', pool.users.get('admin01').password_hash), true);
   assert.deepEqual(pool.transactions, ['BEGIN', 'COMMIT']);
 });
 
@@ -130,10 +114,10 @@ test('seedInternalAccounts is idempotent for repeated seed runs', async () => {
   await seedInternalAccounts(pool, { password: 'Testing123!' });
   await seedInternalAccounts(pool, { password: 'Testing123!' });
 
-  assert.equal(pool.users.size, 7);
+  assert.equal(pool.users.size, 0);
   assert.equal(pool.roles.size >= requiredWorkflowRoles.length, true);
-  assert.equal(pool.userRoles.size, 7);
-  assert.equal(pool.approvalSettings.size, requiredApprovalSettings.length);
+  assert.equal(pool.userRoles.size, 0);
+  assert.equal(pool.approvalSettings.size, 0);
 });
 
 test('seedInternalAccounts refuses production seeding without explicit opt-in', async () => {
@@ -141,7 +125,7 @@ test('seedInternalAccounts refuses production seeding without explicit opt-in', 
 
   await assert.rejects(
     () => seedInternalAccounts(pool, { password: 'Testing123!', nodeEnv: 'production' }),
-    /Refusing to seed internal test accounts in production/
+    /Refusing to run db:seed in production/
   );
 
   assert.deepEqual(pool.transactions, []);
@@ -157,21 +141,8 @@ test('seedInternalAccounts allows production seeding with explicit opt-in', asyn
     allowProductionSeed: true
   });
 
-  assert.equal(pool.users.size, 7);
-  assert.deepEqual(pool.transactions, ['BEGIN', 'COMMIT']);
-});
-
-test('seedInternalAccounts requires an explicit password for production seeding', async () => {
-  const pool = new FakeSeedPool();
-
-  await assert.rejects(
-    () => seedInternalAccounts(pool, {
-      nodeEnv: 'production',
-      allowProductionSeed: true
-    }),
-    /Explicit seed password is required for production seeding/
-  );
-
-  assert.deepEqual(pool.transactions, []);
   assert.equal(pool.users.size, 0);
+  assert.equal(pool.userRoles.size, 0);
+  assert.equal(pool.approvalSettings.size, 0);
+  assert.deepEqual(pool.transactions, ['BEGIN', 'COMMIT']);
 });
