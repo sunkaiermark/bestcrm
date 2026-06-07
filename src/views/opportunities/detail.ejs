@@ -15,6 +15,53 @@
   const contractAttachments = orderedAttachments.filter((attachment) => attachment.category === 'contract');
   const canDeleteRequirementMaterials = ['draft', 'initiation_rejected'].includes(opportunity.status);
   const supplementalRequirementUpdates = typeof requirementUpdates === 'undefined' ? [] : requirementUpdates;
+  const formatShortDate = (value) => {
+    if (!value) {
+      return '';
+    }
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+    const pad = (part) => String(part).padStart(2, '0');
+    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+  };
+  const requirementTimelineSortValue = (value) => {
+    if (!value) {
+      return '';
+    }
+    return value instanceof Date ? value.toISOString() : String(value);
+  };
+  const requirementTimeline = [
+    {
+      key: 'initial',
+      type: 'Text',
+      timeLabel: 'Initial Requirement',
+      text: opportunity.requirement,
+      at: '',
+      sortAt: ''
+    },
+    ...supplementalRequirementUpdates.map((update) => ({
+      key: `text-${update.id}`,
+      type: 'Text',
+      text: update.requirementText,
+      at: update.createdAt,
+      sortAt: requirementTimelineSortValue(update.createdAt)
+    })),
+    ...requirementAttachments.map((attachment) => ({
+      key: `file-${attachment.id}`,
+      type: 'File',
+      attachment,
+      text: attachment.originalName,
+      at: attachment.uploadedAt,
+      sortAt: requirementTimelineSortValue(attachment.uploadedAt)
+    }))
+  ].filter((item) => item.text || item.attachment).sort((left, right) => {
+    if (left.sortAt !== right.sortAt) {
+      return left.sortAt.localeCompare(right.sortAt);
+    }
+    return String(left.key).localeCompare(String(right.key));
+  });
   const technicalSolutionVersions = typeof technicalSolutions === 'undefined' ? [] : technicalSolutions;
   const commercialQuoteVersions = typeof commercialQuotes === 'undefined' ? [] : commercialQuotes;
   const opportunityTeamMembers = typeof teamMembers === 'undefined' ? [] : teamMembers;
@@ -27,6 +74,9 @@
   const ownerName = opportunity.salespersonDisplayName || opportunity.salespersonUsername || opportunity.salespersonId || '';
   const canAddRequirementUpdate = typeof canCreateRequirementUpdate === 'undefined' ? false : canCreateRequirementUpdate;
   const uploadPermissions = typeof canUploadAttachments === 'undefined' ? {} : canUploadAttachments;
+  const allWorkflowForms = Array.isArray(workflowForms) ? workflowForms : [];
+  const initiationWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_initiation');
+  const remainingWorkflowForms = allWorkflowForms.filter((workflowForm) => workflowForm.action !== 'submit_initiation');
 %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
         <header class="page-header">
@@ -279,21 +329,16 @@
           <section class="content-section business-section business-section-requirement">
             <h2>Requirement Materials</h2>
             <div class="section-body">
-              <dl class="detail-list">
-                <dt>Initial Requirement</dt>
-                <dd><%= opportunity.requirement %></dd>
-              </dl>
               <% if (canAddRequirementUpdate) { %>
-                <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/requirement-updates">
+                <form class="form-panel requirement-input-panel" method="post" action="/opportunities/<%= opportunity.id %>/requirement-updates">
                   <label>
                     Requirement Description
                     <textarea name="requirementText" required></textarea>
                   </label>
-                  <label>
-                    Reason / Source
-                    <textarea name="reason" required></textarea>
-                  </label>
-                  <button type="submit">Add requirement text</button>
+                  <input type="hidden" name="reason" value="Customer requirement update">
+                  <div class="requirement-input-actions">
+                    <button type="submit">Save text</button>
+                  </div>
                 </form>
               <% } %>
               <% if (uploadPermissions.requirement) { %>
@@ -303,63 +348,43 @@
                   <button type="submit">Upload</button>
                 </form>
               <% } %>
-              <% if (requirementAttachments.length > 0) { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>File</th>
-                      <th>Uploaded At</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const attachment of requirementAttachments) { %>
-                      <tr>
-                        <td><%= attachment.originalName %></td>
-                        <td><%= attachment.uploadedAt || '' %></td>
-                        <td>
-                          <div class="inline-actions">
-                            <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
-                            <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
-                            <% if (canDeleteRequirementMaterials) { %>
-                              <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/delete">
-                                <button class="danger-action" type="submit">Delete</button>
-                              </form>
-                            <% } %>
-                          </div>
-                        </td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } else { %>
-                <p class="empty">No requirement materials.</p>
+              <% if (initiationWorkflowForm) { %>
+                <div class="requirement-initiation-actions">
+                  <% if (initiationWorkflowForm.missingRequirements && initiationWorkflowForm.missingRequirements.length > 0) { %>
+                    <ul class="inline-list">
+                      <% for (const requirement of initiationWorkflowForm.missingRequirements) { %>
+                        <li><%= requirement %></li>
+                      <% } %>
+                    </ul>
+                  <% } %>
+                  <form method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                    <input type="hidden" name="action" value="<%= initiationWorkflowForm.action %>">
+                    <button type="submit" <%= initiationWorkflowForm.blocked ? 'disabled' : '' %>><%= initiationWorkflowForm.button %></button>
+                  </form>
+                </div>
               <% } %>
-
-              <h3>Supplemental Requirements</h3>
-              <% if (supplementalRequirementUpdates.length > 0) { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>Requirement</th>
-                      <th>Reason</th>
-                      <th>Created By</th>
-                      <th>Created At</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const update of supplementalRequirementUpdates) { %>
-                      <tr>
-                        <td><%= update.requirementText %></td>
-                        <td><%= update.reason %></td>
-                        <td><%= update.creatorDisplayName || '' %></td>
-                        <td><%= update.createdAt || '' %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
+              <% if (requirementTimeline.length > 0) { %>
+                <div class="requirement-timeline">
+                  <% for (const item of requirementTimeline) { %>
+                    <article class="requirement-row <%= item.attachment ? 'requirement-row-file' : 'requirement-row-text' %>">
+                      <span class="requirement-row-time"><%= item.at ? formatShortDate(item.at) : item.timeLabel %></span>
+                      <span class="requirement-row-content"><%= item.text %></span>
+                      <% if (item.attachment) { %>
+                        <div class="inline-actions requirement-row-actions">
+                          <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview">Preview</a>
+                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download">Download</a>
+                          <% if (canDeleteRequirementMaterials) { %>
+                            <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete">
+                              <button class="danger-action requirement-action-delete" type="submit">Delete</button>
+                            </form>
+                          <% } %>
+                        </div>
+                      <% } %>
+                    </article>
+                  <% } %>
+                </div>
               <% } else { %>
-                <p class="empty">No supplemental requirements.</p>
+                <p class="empty">No requirement records.</p>
               <% } %>
             </div>
           </section>
@@ -643,11 +668,11 @@
             </div>
           </section>
 
-          <% if (workflowForms && workflowForms.length > 0) { %>
+          <% if (remainingWorkflowForms.length > 0) { %>
             <section>
               <h2>Workflow Actions</h2>
               <div class="section-stack">
-                <% for (const workflowForm of workflowForms) { %>
+                <% for (const workflowForm of remainingWorkflowForms) { %>
                   <section class="action-section">
                     <h3><%= workflowForm.title %></h3>
                     <div class="section-body">

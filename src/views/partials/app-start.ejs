@@ -668,6 +668,123 @@
         color: #0B0F6E;
       }
 
+      .requirement-input-panel {
+        background: rgba(255, 255, 255, 0.35);
+        display: grid;
+        gap: 10px;
+        margin-bottom: 8px;
+        max-width: none;
+      }
+
+      .requirement-input-panel label {
+        margin-bottom: 0;
+      }
+
+      .requirement-input-panel textarea {
+        min-height: 74px;
+      }
+
+      .requirement-input-actions {
+        display: flex;
+        justify-content: flex-start;
+      }
+
+      .requirement-input-actions button {
+        min-width: 110px;
+      }
+
+      .requirement-timeline {
+        display: grid;
+        gap: 0;
+        margin-top: 10px;
+      }
+
+      .requirement-row {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.32);
+        border-bottom: 1px solid rgba(217, 225, 231, 0.85);
+        display: grid;
+        gap: 10px;
+        grid-template-columns: 150px minmax(0, 1fr) auto;
+        padding: 7px 8px;
+      }
+
+      .requirement-row:first-child {
+        border-top: 1px solid rgba(217, 225, 231, 0.85);
+      }
+
+      .requirement-row-time {
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
+      .requirement-row-content {
+        overflow-wrap: anywhere;
+      }
+
+      .requirement-row-text {
+        grid-template-columns: 150px minmax(0, 1fr);
+      }
+
+      .requirement-row-actions {
+        justify-content: flex-end;
+        white-space: nowrap;
+      }
+
+      .requirement-row-actions a,
+      .requirement-row-actions button {
+        font-weight: 700;
+      }
+
+      .requirement-action-preview {
+        color: #1d4ed8;
+      }
+
+      .requirement-action-download {
+        color: #047857;
+      }
+
+      .requirement-action-delete {
+        color: #991b1b;
+      }
+
+      .requirement-initiation-actions {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        justify-content: flex-end;
+        margin: 8px 0 10px;
+      }
+
+      .requirement-initiation-actions form {
+        margin: 0;
+      }
+
+      .requirement-initiation-actions button {
+        background: #0f766e;
+        color: #ffffff;
+        white-space: nowrap;
+      }
+
+      @media (max-width: 900px) {
+        .requirement-row,
+        .requirement-row-text {
+          align-items: start;
+          grid-template-columns: 1fr;
+        }
+
+        .requirement-row-actions {
+          justify-content: flex-start;
+        }
+
+        .requirement-initiation-actions {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+      }
+
       .inline-create-panel {
         background: #eef6ff;
         border: 1px solid #bfdbfe;

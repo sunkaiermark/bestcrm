@@ -1130,7 +1130,8 @@ test('opportunity detail shows attachment upload form and file links', async () 
   assert.match(detail.text, /Commercial Contract/);
   assert.match(detail.text, /name="attachment"/);
   assert.match(detail.text, /name="category" value="requirement"/);
-  assert.match(detail.text, /Initial Requirement[\s\S]*name="requirementText"[\s\S]*name="reason"[\s\S]*name="attachment"/);
+  assert.match(detail.text, /name="requirementText"[\s\S]*type="hidden" name="reason"[\s\S]*name="attachment"[\s\S]*Initial Requirement[\s\S]*Upgrade production line/);
+  assert.doesNotMatch(detail.text, /Reason \/ Source/);
   assert.match(detail.text, /technical-solution\.pdf/);
   assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/download/);
   assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/preview/);
@@ -1259,6 +1260,7 @@ test('opportunity detail groups business attachments into five business panels',
 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /Requirement Materials[\s\S]*requirement-spec\.pdf/);
+  assert.match(detail.text, /requirement-row requirement-row-file[\s\S]*2026-06-05 \d{2}:00[\s\S]*requirement-spec\.pdf[\s\S]*Preview[\s\S]*Download/);
   assert.match(detail.text, /Commercial Quote[\s\S]*quote-v1\.xlsx/);
   assert.match(detail.text, /Commercial Contract[\s\S]*contract-draft\.docx/);
 });
@@ -1499,12 +1501,13 @@ test('approved opportunity shows supplemental requirement form and history', asy
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Requirement Materials[\s\S]*Supplemental Requirements/);
+  assert.match(detail.text, /Requirement Materials[\s\S]*Initial Requirement[\s\S]*Upgrade production line/);
   assert.match(detail.text, /name="requirementText"/);
-  assert.match(detail.text, /name="reason"/);
-  assert.match(detail.text, /Add corrosion proof cabinet requirement/);
-  assert.match(detail.text, /Customer site has salt fog environment/);
-  assert.match(detail.text, /Sales One/);
+  assert.match(detail.text, /type="hidden" name="reason"/);
+  assert.doesNotMatch(detail.text, /Reason \/ Source/);
+  assert.doesNotMatch(detail.text, /Supplemental Requirements/);
+  assert.match(detail.text, /requirement-row requirement-row-text[\s\S]*2026-06-06 \d{2}:00[\s\S]*Add corrosion proof cabinet requirement/);
+  assert.doesNotMatch(detail.text, /Customer site has salt fog environment/);
 });
 
 test('salesperson creates supplemental requirement after initiation approval', async () => {
@@ -1958,6 +1961,8 @@ test('salesperson submits initiation from opportunity detail page', async () => 
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
+  assert.match(detail.text, /Requirement Materials[\s\S]*Submit to Sales Manager[\s\S]*Technical Solution/);
+  assert.doesNotMatch(detail.text, /Workflow Actions[\s\S]*Submit to Sales Manager/);
   assert.match(detail.text, /submit_initiation/);
   assert.match(detail.text, /Sales Manager/);
   assert.doesNotMatch(detail.text, /name="salesManagerId"/);
