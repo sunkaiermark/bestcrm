@@ -283,6 +283,19 @@
                 <dt>Initial Requirement</dt>
                 <dd><%= opportunity.requirement %></dd>
               </dl>
+              <% if (canAddRequirementUpdate) { %>
+                <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/requirement-updates">
+                  <label>
+                    Requirement Description
+                    <textarea name="requirementText" required></textarea>
+                  </label>
+                  <label>
+                    Reason / Source
+                    <textarea name="reason" required></textarea>
+                  </label>
+                  <button type="submit">Add requirement text</button>
+                </form>
+              <% } %>
               <% if (uploadPermissions.requirement) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <input type="hidden" name="category" value="requirement">
@@ -295,8 +308,6 @@
                   <thead>
                     <tr>
                       <th>File</th>
-                      <th>Category</th>
-                      <th>Uploaded By</th>
                       <th>Uploaded At</th>
                       <th>Actions</th>
                     </tr>
@@ -305,8 +316,6 @@
                     <% for (const attachment of requirementAttachments) { %>
                       <tr>
                         <td><%= attachment.originalName %></td>
-                        <td><%= attachment.category %></td>
-                        <td><%= attachment.uploaderDisplayName %></td>
                         <td><%= attachment.uploadedAt || '' %></td>
                         <td>
                           <div class="inline-actions">
@@ -328,19 +337,6 @@
               <% } %>
 
               <h3>Supplemental Requirements</h3>
-              <% if (canAddRequirementUpdate) { %>
-                <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/requirement-updates">
-                  <label>
-                    Requirement Update
-                    <textarea name="requirementText" required></textarea>
-                  </label>
-                  <label>
-                    Reason
-                    <textarea name="reason" required></textarea>
-                  </label>
-                  <button type="submit">Add requirement update</button>
-                </form>
-              <% } %>
               <% if (supplementalRequirementUpdates.length > 0) { %>
                 <table class="list-table">
                   <thead>
@@ -383,8 +379,6 @@
                   <thead>
                     <tr>
                       <th>File</th>
-                      <th>Category</th>
-                      <th>Uploaded By</th>
                       <th>Uploaded At</th>
                       <th>Actions</th>
                     </tr>
@@ -393,8 +387,6 @@
                     <% for (const attachment of technicalSolutionAttachments) { %>
                       <tr>
                         <td><%= attachment.originalName %></td>
-                        <td><%= attachment.category %></td>
-                        <td><%= attachment.uploaderDisplayName %></td>
                         <td><%= attachment.uploadedAt || '' %></td>
                         <td>
                           <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
@@ -463,8 +455,6 @@
                   <thead>
                     <tr>
                       <th>File</th>
-                      <th>Category</th>
-                      <th>Uploaded By</th>
                       <th>Uploaded At</th>
                       <th>Actions</th>
                     </tr>
@@ -473,8 +463,6 @@
                     <% for (const attachment of commercialQuoteAttachments) { %>
                       <tr>
                         <td><%= attachment.originalName %></td>
-                        <td><%= attachment.category %></td>
-                        <td><%= attachment.uploaderDisplayName %></td>
                         <td><%= attachment.uploadedAt || '' %></td>
                         <td>
                           <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
@@ -553,8 +541,6 @@
                   <thead>
                     <tr>
                       <th>File</th>
-                      <th>Category</th>
-                      <th>Uploaded By</th>
                       <th>Uploaded At</th>
                       <th>Actions</th>
                     </tr>
@@ -563,8 +549,6 @@
                     <% for (const attachment of contractAttachments) { %>
                       <tr>
                         <td><%= attachment.originalName %></td>
-                        <td><%= attachment.category %></td>
-                        <td><%= attachment.uploaderDisplayName %></td>
                         <td><%= attachment.uploadedAt || '' %></td>
                         <td>
                           <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>

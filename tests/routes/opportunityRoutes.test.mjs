@@ -1130,10 +1130,12 @@ test('opportunity detail shows attachment upload form and file links', async () 
   assert.match(detail.text, /Commercial Contract/);
   assert.match(detail.text, /name="attachment"/);
   assert.match(detail.text, /name="category" value="requirement"/);
+  assert.match(detail.text, /Initial Requirement[\s\S]*name="requirementText"[\s\S]*name="reason"[\s\S]*name="attachment"/);
   assert.match(detail.text, /technical-solution\.pdf/);
-  assert.match(detail.text, /technical_solution/);
   assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/download/);
   assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/preview/);
+  assert.doesNotMatch(detail.text, /<th>Category<\/th>/);
+  assert.doesNotMatch(detail.text, /<th>Uploaded By<\/th>/);
 });
 
 test('opportunity detail renders attachments with date object timestamps', async () => {
@@ -1551,19 +1553,8 @@ test('salesperson creates supplemental requirement after initiation approval', a
   }]);
 });
 
-test('draft opportunity rejects supplemental requirement creation', async () => {
-  let createCalled = false;
-  const { agent } = await createLoggedInAgent({
-    requirementUpdateRepository: {
-      async listByOpportunity() {
-        return [];
-      },
-      async create() {
-        createCalled = true;
-        throw new Error('should not create update');
-      }
-    }
-  });
+test('draft opportunity creates supplemental requirement without workflow rework', async () => {
+  const { agent, requirementUpdates, workflowEvents, todoClosures, todosToCreate, workflowUpdates } = await createLoggedInAgent();
 
   const response = await agent
     .post('/opportunities/30/requirement-updates')
@@ -1573,8 +1564,18 @@ test('draft opportunity rejects supplemental requirement creation', async () => 
       reason: 'Customer site has salt fog environment'
     });
 
-  assert.equal(response.status, 403);
-  assert.equal(createCalled, false);
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/30');
+  assert.deepEqual(requirementUpdates, [{
+    opportunityId: 30,
+    requirementText: 'Add corrosion proof cabinet requirement',
+    reason: 'Customer site has salt fog environment',
+    createdBy: 7
+  }]);
+  assert.deepEqual(workflowUpdates, []);
+  assert.deepEqual(workflowEvents, []);
+  assert.deepEqual(todoClosures, []);
+  assert.deepEqual(todosToCreate, []);
 });
 
 test('draft opportunity shows delete action for requirement material attachments', async () => {

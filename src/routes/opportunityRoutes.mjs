@@ -71,6 +71,11 @@ const requirementMaterialDeleteStatuses = new Set([
   STATUSES.INITIATION_REJECTED
 ]);
 
+const preSubmissionRequirementUpdateStatuses = new Set([
+  STATUSES.DRAFT,
+  STATUSES.INITIATION_REJECTED
+]);
+
 const responsibilityPermissionLevels = new Set(['view', 'edit']);
 const responsibilityRoleCodes = new Set(ROLE_DETAILS.map((role) => role.code));
 
@@ -452,9 +457,14 @@ function canDeleteRequirementMaterial(opportunity, attachment) {
 }
 
 function canCreateRequirementUpdate(user, opportunity) {
-  return supplementalRequirementStatuses.has(opportunity.status)
-    && Boolean(opportunity.quotationEngineerId)
-    && (hasRole(user, ROLES.ADMINISTRATOR) || Number(opportunity.salespersonId) === Number(user.id));
+  const canAdd = hasRole(user, ROLES.ADMINISTRATOR) || Number(opportunity.salespersonId) === Number(user.id);
+  if (!canAdd) {
+    return false;
+  }
+  if (preSubmissionRequirementUpdateStatuses.has(opportunity.status)) {
+    return true;
+  }
+  return supplementalRequirementStatuses.has(opportunity.status) && Boolean(opportunity.quotationEngineerId);
 }
 
 function canUploadAttachment(user, opportunity, category) {
@@ -944,17 +954,26 @@ export function opportunityRoutes({
         res.status(400).send('Requirement update and reason are required');
         return;
       }
-      await createSupplementalRequirementUpdate({
-        actor: req.currentUser,
-        opportunity,
-        input: { requirementText, reason },
-        repositories: {
-          requirementUpdateRepository,
-          opportunityRepository,
-          workflowEventRepository,
-          todoRepository
-        }
-      });
+      if (preSubmissionRequirementUpdateStatuses.has(opportunity.status)) {
+        await requirementUpdateRepository.create({
+          opportunityId: opportunity.id,
+          requirementText,
+          reason,
+          createdBy: req.currentUser.id
+        });
+      } else {
+        await createSupplementalRequirementUpdate({
+          actor: req.currentUser,
+          opportunity,
+          input: { requirementText, reason },
+          repositories: {
+            requirementUpdateRepository,
+            opportunityRepository,
+            workflowEventRepository,
+            todoRepository
+          }
+        });
+      }
       res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
       if (error instanceof WorkflowValidationError) {
