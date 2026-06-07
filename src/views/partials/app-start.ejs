@@ -646,13 +646,21 @@
       }
 
       .attachment-upload-panel {
+        align-items: center;
+        display: flex;
+        gap: 10px;
         max-width: none;
         width: 100%;
         background: rgba(255, 255, 255, 0.35);
       }
 
+      .attachment-upload-panel input[type="file"] {
+        flex: 1;
+        min-width: 0;
+      }
+
       .attachment-upload-panel button {
-        width: 220px;
+        width: 96px;
         text-align: center;
         white-space: nowrap;
         letter-spacing: 0px;
@@ -661,22 +669,26 @@
       }
 
       .inline-create-panel {
-        border: 1px solid var(--line);
+        background: #eef6ff;
+        border: 1px solid #bfdbfe;
         border-radius: 6px;
         margin: -4px 0 12px;
-        padding: 9px 10px;
+        overflow: hidden;
+        padding: 0;
       }
 
       .inline-create-panel summary {
+        background: #dbeafe;
         color: var(--ink);
         cursor: pointer;
         font-weight: 700;
+        padding: 9px 10px;
       }
 
       .inline-create-panel form {
         display: grid;
         gap: 2px;
-        margin-top: 10px;
+        padding: 10px;
       }
 
       @media (max-width: 860px) {

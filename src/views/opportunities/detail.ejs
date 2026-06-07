@@ -285,11 +285,8 @@
               <% if (uploadPermissions.requirement) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <input type="hidden" name="category" value="requirement">
-                  <label>
-                    File
-                    <input type="file" name="attachment" required>
-                  </label>
-                  <button type="submit">Upload attachment</button>
+                  <input type="file" name="attachment" required>
+                  <button type="submit">Upload</button>
                 </form>
               <% } %>
               <% if (requirementAttachments.length > 0) { %>
@@ -376,11 +373,8 @@
               <% if (uploadPermissions.technical_solution) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <input type="hidden" name="category" value="technical_solution">
-                  <label>
-                    File
-                    <input type="file" name="attachment" required>
-                  </label>
-                  <button type="submit">Upload technical solution</button>
+                  <input type="file" name="attachment" required>
+                  <button type="submit">Upload</button>
                 </form>
               <% } %>
               <% if (technicalSolutionAttachments.length > 0) { %>
@@ -459,11 +453,8 @@
               <% if (uploadPermissions.commercial_quote) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <input type="hidden" name="category" value="commercial_quote">
-                  <label>
-                    File
-                    <input type="file" name="attachment" required>
-                  </label>
-                  <button type="submit">Upload commercial quote</button>
+                  <input type="file" name="attachment" required>
+                  <button type="submit">Upload</button>
                 </form>
               <% } %>
               <% if (commercialQuoteAttachments.length > 0) { %>
@@ -552,11 +543,8 @@
               <% if (uploadPermissions.contract) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <input type="hidden" name="category" value="contract">
-                  <label>
-                    File
-                    <input type="file" name="attachment" required>
-                  </label>
-                  <button type="submit">Upload contract</button>
+                  <input type="file" name="attachment" required>
+                  <button type="submit">Upload</button>
                 </form>
               <% } %>
               <% if (contractAttachments.length > 0) { %>

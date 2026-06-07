@@ -531,6 +531,8 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(form.text, /Acme Co/);
   assert.match(form.text, /Alice/);
   assert.match(form.text, /Add new customer here/);
+  assert.match(form.text, /\.inline-create-panel\s*\{[\s\S]*background:\s*#eef6ff;/);
+  assert.match(form.text, /\.inline-create-panel summary\s*\{[\s\S]*background:\s*#dbeafe;/);
   assert.match(form.text, /action="\/opportunities\/customers"/);
   assert.match(form.text, /<select name="industry">/);
   for (const industry of ['石油化工', '精细化工', '湿法冶金', '环保', '食品', '医化', '其他']) {
@@ -543,6 +545,8 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(form.text, /Add new contact here/);
   assert.match(form.text, /href="\/contacts\/new\?customerId=10&amp;returnTo=opportunity-initiation"/);
   assert.doesNotMatch(form.text, /action="\/opportunities\/contacts"/);
+  assert.match(form.text, /Opportunity Name\s*<input name="title"/);
+  assert.doesNotMatch(form.text, /Title\s*<input name="title"/);
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
@@ -1363,15 +1367,21 @@ test('opportunity detail shows upload forms in each business material panel', as
   assert.equal(detail.status, 200);
   assert.equal((detail.text.match(/action="\/opportunities\/30\/attachments"/g) || []).length, 4);
   assert.equal((detail.text.match(/class="form-panel attachment-upload-panel"/g) || []).length, 4);
+  assert.equal((detail.text.match(/<input type="file" name="attachment" required>/g) || []).length, 4);
   assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*max-width:\s*none;/);
+  assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*display:\s*flex;/);
+  assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*align-items:\s*center;/);
   assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*width:\s*100%;/);
   assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.35\);/);
-  assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*width:\s*220px;/);
+  assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*width:\s*96px;/);
   assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*text-align:\s*center;/);
   assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*white-space:\s*nowrap;/);
   assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*letter-spacing:\s*0px;/);
   assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*background:\s*#dbeafe;/);
   assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*color:\s*#0B0F6E;/);
+  assert.equal((detail.text.match(/<button type="submit">Upload<\/button>/g) || []).length, 4);
+  assert.doesNotMatch(detail.text, />\s*File\s*<input type="file" name="attachment" required>/);
+  assert.doesNotMatch(detail.text, /Upload attachment|Upload technical solution|Upload commercial quote|Upload contract/);
   const requirementSection = detail.text.match(/<h2>Requirement Materials<\/h2>[\s\S]*?<h2>Technical Solution<\/h2>/)[0];
   assert.match(requirementSection, /name="category" value="requirement"/);
   assert.doesNotMatch(requirementSection, /<select name="category"/);
