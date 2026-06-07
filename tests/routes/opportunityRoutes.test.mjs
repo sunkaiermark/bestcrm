@@ -1136,6 +1136,47 @@ test('opportunity detail shows attachment upload form and file links', async () 
   assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/preview/);
 });
 
+test('opportunity detail renders attachments with date object timestamps', async () => {
+  const { agent } = await createLoggedInAgent({
+    attachmentRepository: {
+      async listByOpportunity() {
+        return [
+          {
+            id: 55,
+            opportunityId: 30,
+            category: 'technical_solution',
+            originalName: 'technical-solution.pdf',
+            storedPath: '2026/06/technical-solution.pdf',
+            mimeType: 'application/pdf',
+            fileSize: 1024,
+            uploadedBy: 7,
+            uploaderDisplayName: 'Sales One',
+            uploadedAt: new Date('2026-06-05T12:00:00.000Z')
+          },
+          {
+            id: 56,
+            opportunityId: 30,
+            category: 'technical_solution',
+            originalName: 'technical-addendum.pdf',
+            storedPath: '2026/06/technical-addendum.pdf',
+            mimeType: 'application/pdf',
+            fileSize: 1024,
+            uploadedBy: 7,
+            uploaderDisplayName: 'Sales One',
+            uploadedAt: new Date('2026-06-05T13:00:00.000Z')
+          }
+        ];
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /technical-solution\.pdf/);
+  assert.match(detail.text, /technical-addendum\.pdf/);
+});
+
 test('opportunity detail uses distinct business panel colors', async () => {
   const { agent } = await createLoggedInAgent();
 

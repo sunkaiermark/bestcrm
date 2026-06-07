@@ -1,8 +1,9 @@
 <%- include('../partials/app-start', { title: opportunity.title + ' - BESTCRM', activeNav: 'opportunities' }) %>
 <%
+  const attachmentUploadedAtSortValue = (value) => value instanceof Date ? value.toISOString() : String(value || '');
   const orderedAttachments = [...(attachments || [])].sort((left, right) => {
-    const leftAt = left.uploadedAt || '';
-    const rightAt = right.uploadedAt || '';
+    const leftAt = attachmentUploadedAtSortValue(left.uploadedAt);
+    const rightAt = attachmentUploadedAtSortValue(right.uploadedAt);
     if (leftAt !== rightAt) {
       return leftAt.localeCompare(rightAt);
     }
