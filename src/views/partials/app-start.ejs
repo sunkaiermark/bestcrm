@@ -144,10 +144,31 @@
         width: 178px;
       }
 
+      .nav-account {
+        border-bottom: 1px solid rgba(255, 255, 255, 0.18);
+        border-top: 1px solid rgba(255, 255, 255, 0.18);
+        margin-top: 16px;
+        padding: 10px 8px;
+      }
+
+      .nav-account-name {
+        color: var(--rail-ink);
+        font-size: 14px;
+        font-weight: 700;
+        overflow-wrap: anywhere;
+      }
+
+      .nav-account-roles {
+        color: var(--rail-muted);
+        font-size: 12px;
+        margin-top: 3px;
+        overflow-wrap: anywhere;
+      }
+
       .nav-group {
         display: grid;
         gap: 4px;
-        margin-top: 34px;
+        margin-top: 18px;
       }
 
       .nav-link {
@@ -834,6 +855,12 @@
         <a class="brand" href="/workbench" aria-label="Sunkaier workbench">
           <img class="brand-logo" src="/assets/sunkaier-logo.png" alt="SUNKAIER">
         </a>
+        <% if (currentUser) { %>
+          <div class="nav-account" aria-label="Current login account">
+            <div class="nav-account-name"><%= currentUser.displayName %></div>
+            <div class="nav-account-roles"><%= currentUser.roles.join(', ') %></div>
+          </div>
+        <% } %>
         <nav class="nav-group">
           <a class="<%= navClass('workbench') %>" href="/workbench">Workbench</a>
           <a class="<%= navClass('opportunities') %>" href="/opportunities">Opportunities</a>
