@@ -24,7 +24,12 @@
                 </label>
                 <label>
                   Industry
-                  <input name="industry">
+                  <select name="industry">
+                    <option value="">Select industry</option>
+                    <% for (const industry of (typeof industryOptions !== 'undefined' ? industryOptions : [])) { %>
+                      <option value="<%= industry %>"><%= industry %></option>
+                    <% } %>
+                  </select>
                 </label>
                 <label>
                   Country
@@ -66,48 +71,11 @@
             </select>
           </label>
           <% if (typeof allowInlineCreate === 'undefined' || allowInlineCreate) { %>
-            <details class="inline-create-panel">
-              <summary>Add new contact here</summary>
-              <% if (customers.length) { %>
-                <form method="post" action="/opportunities/contacts">
-                  <label>
-                    Customer
-                    <select name="customerId" required>
-                      <% for (const customer of customers) { %>
-                        <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
-                      <% } %>
-                    </select>
-                  </label>
-                  <label>
-                    Contact Name
-                    <input name="name" required>
-                  </label>
-                  <label>
-                    Title
-                    <input name="title">
-                  </label>
-                  <label>
-                    Phone
-                    <input name="phone">
-                  </label>
-                  <label>
-                    Email
-                    <input name="email">
-                  </label>
-                  <label>
-                    WeChat
-                    <input name="wechat">
-                  </label>
-                  <label>
-                    Notes
-                    <textarea name="notes"></textarea>
-                  </label>
-                  <button type="submit">Create contact</button>
-                </form>
-              <% } else { %>
-                <p class="empty">Add a customer before creating a contact.</p>
-              <% } %>
-            </details>
+            <% if (customers.length) { %>
+              <p><a class="secondary-action" href="<%= typeof newContactUrl !== 'undefined' ? newContactUrl : '/contacts/new?returnTo=opportunity-initiation' %>">Add new contact here</a></p>
+            <% } else { %>
+              <p class="empty">Add a customer before creating a contact.</p>
+            <% } %>
           <% } %>
           <label>
             Title

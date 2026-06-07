@@ -8,6 +8,21 @@ function contactFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
 }
 
+function normalizedReturnTo(value) {
+  return value === 'opportunity-initiation' ? value : '';
+}
+
+function contactCreateRedirect(contact, returnTo) {
+  if (returnTo === 'opportunity-initiation') {
+    const params = new URLSearchParams({
+      customerId: String(contact.customerId),
+      contactId: String(contact.id)
+    });
+    return `/opportunities/new?${params.toString()}`;
+  }
+  return `/contacts/${contact.id}`;
+}
+
 export function contactRoutes({ customerRepository, contactRepository }) {
   const router = Router();
 
@@ -25,7 +40,14 @@ export function contactRoutes({ customerRepository, contactRepository }) {
   router.get('/contacts/new', async (req, res, next) => {
     try {
       const customers = await customerRepository.listCustomers(contactFilter(req.currentUser));
-      res.render('contacts/form', { contact: {}, customers, action: '/contacts' });
+      res.render('contacts/form', {
+        contact: {
+          customerId: req.query.customerId || customers[0]?.id || ''
+        },
+        customers,
+        returnTo: normalizedReturnTo(req.query.returnTo),
+        action: '/contacts'
+      });
     } catch (error) {
       next(error);
     }
@@ -34,7 +56,7 @@ export function contactRoutes({ customerRepository, contactRepository }) {
   router.post('/contacts', async (req, res, next) => {
     try {
       const contact = await createContact({ customerRepository, contactRepository }, req.currentUser, req.body);
-      res.redirect(`/contacts/${contact.id}`);
+      res.redirect(contactCreateRedirect(contact, normalizedReturnTo(req.body.returnTo)));
     } catch (error) {
       next(error);
     }

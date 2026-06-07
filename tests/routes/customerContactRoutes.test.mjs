@@ -22,6 +22,7 @@ async function createLoggedInAgent(options = {}) {
   };
   const deletedCustomers = [];
   const deletedContacts = [];
+  const createdContacts = [];
   const app = createApp({
     sessionSecret: 'test-secret',
     userRepository: {
@@ -116,12 +117,21 @@ async function createLoggedInAgent(options = {}) {
         deletedContacts.push(Number(id));
         return true;
       },
+      async createContact(input) {
+        createdContacts.push(input);
+        return {
+          id: 21,
+          customerName: 'Acme Co',
+          customerOwnerUserId: 7,
+          ...input
+        };
+      },
       ...contactRepositoryOverrides
     }
   });
   const agent = request.agent(app);
   await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
-  return { agent, deletedCustomers, deletedContacts };
+  return { agent, deletedCustomers, deletedContacts, createdContacts };
 }
 
 function assertAppSidebar(html, activeHref) {
@@ -165,6 +175,10 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.equal(form.status, 200);
   assertAppSidebar(form.text, '/customers');
   assert.match(form.text, /name="name"/);
+  assert.match(form.text, /<select name="industry">/);
+  for (const industry of ['石油化工', '精细化工', '湿法冶金', '环保', '食品', '医化', '其他']) {
+    assert.match(form.text, new RegExp(`<option value="${industry}">${industry}<\\/option>`));
+  }
   assert.match(form.text, /<select name="country">/);
   assert.match(form.text, /<option value="China"\s*>China<\/option>/);
   assert.match(form.text, /<select name="region">/);
@@ -243,6 +257,12 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.match(form.text, /name="workExperience"/);
   assert.match(form.text, /name="keyAchievements"/);
 
+  const opportunityContactForm = await agent.get('/contacts/new?customerId=10&returnTo=opportunity-initiation');
+  assert.equal(opportunityContactForm.status, 200);
+  assert.match(opportunityContactForm.text, /<option value="10" selected>Acme Co<\/option>/);
+  assert.match(opportunityContactForm.text, /<input type="hidden" name="returnTo" value="opportunity-initiation">/);
+  assert.match(opportunityContactForm.text, /Create contact/);
+
   const detail = await agent.get('/contacts/20');
   assert.equal(detail.status, 200);
   assertAppSidebar(detail.text, '/contacts');
@@ -259,6 +279,42 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.match(contactDetailHtml, /Led supplier consolidation/);
   assert.doesNotMatch(detail.text, /New opportunity/);
   assert.doesNotMatch(detail.text, /Delete contact/);
+});
+
+test('contact creation can return to opportunity initiation with the new contact selected', async () => {
+  const { agent, createdContacts } = await createLoggedInAgent();
+
+  const response = await agent
+    .post('/contacts')
+    .type('form')
+    .send({
+      customerId: '10',
+      name: 'Bob Buyer',
+      title: 'Purchasing Manager',
+      phone: '13800000000',
+      email: 'bob@example.com',
+      wechat: 'bobwx',
+      educationBackground: '',
+      workExperience: '',
+      keyAchievements: '',
+      notes: 'Primary buyer',
+      returnTo: 'opportunity-initiation'
+    });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/new?customerId=10&contactId=21');
+  assert.deepEqual(createdContacts, [{
+    customerId: 10,
+    name: 'Bob Buyer',
+    title: 'Purchasing Manager',
+    phone: '13800000000',
+    email: 'bob@example.com',
+    wechat: 'bobwx',
+    educationBackground: '',
+    workExperience: '',
+    keyAchievements: '',
+    notes: 'Primary buyer'
+  }]);
 });
 
 test('administrator deletes customers and contacts from detail pages with confirmation prompts', async () => {

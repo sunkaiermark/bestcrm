@@ -11,7 +11,17 @@
           </label>
           <label>
             Industry
-            <input name="industry" value="<%= customer.industry || '' %>">
+            <select name="industry">
+              <% const currentIndustry = customer.industry || ''; %>
+              <% const availableIndustries = typeof industryOptions !== 'undefined' ? industryOptions : []; %>
+              <option value="">Select industry</option>
+              <% if (currentIndustry && !availableIndustries.includes(currentIndustry)) { %>
+                <option value="<%= currentIndustry %>" selected><%= currentIndustry %></option>
+              <% } %>
+              <% for (const industry of availableIndustries) { %>
+                <option value="<%= industry %>"<%= currentIndustry === industry ? ' selected' : '' %>><%= industry %></option>
+              <% } %>
+            </select>
           </label>
           <label>
             Parent Company

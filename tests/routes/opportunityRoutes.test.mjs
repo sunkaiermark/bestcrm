@@ -532,12 +532,17 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(form.text, /Alice/);
   assert.match(form.text, /Add new customer here/);
   assert.match(form.text, /action="\/opportunities\/customers"/);
+  assert.match(form.text, /<select name="industry">/);
+  for (const industry of ['石油化工', '精细化工', '湿法冶金', '环保', '食品', '医化', '其他']) {
+    assert.match(form.text, new RegExp(`<option value="${industry}">${industry}<\\/option>`));
+  }
   assert.match(form.text, /<select name="country">/);
   assert.match(form.text, /<option value="China">China<\/option>/);
   assert.match(form.text, /<select name="region">/);
   assert.match(form.text, /<option value="Shanghai">Shanghai<\/option>/);
   assert.match(form.text, /Add new contact here/);
-  assert.match(form.text, /action="\/opportunities\/contacts"/);
+  assert.match(form.text, /href="\/contacts\/new\?customerId=10&amp;returnTo=opportunity-initiation"/);
+  assert.doesNotMatch(form.text, /action="\/opportunities\/contacts"/);
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);

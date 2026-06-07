@@ -5,6 +5,7 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import multer from 'multer';
 import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
+import { CUSTOMER_INDUSTRIES } from '../domain/customerIndustries.mjs';
 import { CUSTOMER_REGIONS } from '../domain/customerRegions.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
@@ -25,6 +26,15 @@ import { WorkflowValidationError, applyWorkflowAction } from '../services/workfl
 
 function opportunityVisibilityFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { visibleToUserId: user.id };
+}
+
+function newContactUrl(selectedCustomerId) {
+  const params = new URLSearchParams();
+  if (selectedCustomerId) {
+    params.set('customerId', String(selectedCustomerId));
+  }
+  params.set('returnTo', 'opportunity-initiation');
+  return `/contacts/new?${params.toString()}`;
 }
 
 const assignmentRoles = [
@@ -561,7 +571,9 @@ export function opportunityRoutes({
         customers,
         contacts,
         countryOptions: CUSTOMER_COUNTRIES,
+        industryOptions: CUSTOMER_INDUSTRIES,
         regionOptions: CUSTOMER_REGIONS,
+        newContactUrl: newContactUrl(selectedCustomerId),
         action: '/opportunities'
       });
     } catch (error) {
