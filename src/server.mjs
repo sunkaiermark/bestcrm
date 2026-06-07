@@ -230,9 +230,6 @@ const emptyOpportunityResponsibilityRepository = {
   },
   async listOwnerTransfersByOpportunity() {
     return [];
-  },
-  async listCurrentResponsiblesByOpportunity() {
-    return [];
   }
 };
 
@@ -259,12 +256,6 @@ const emptyTodoRepository = {
 
 const emptyWorkbenchRepository = {
   async listPendingTodos() {
-    return [];
-  },
-  async listCreatedOpportunities() {
-    return [];
-  },
-  async listAssignedOpportunities() {
     return [];
   },
   async listRecentWorkflowMessages() {

@@ -342,19 +342,16 @@ function parseWorkflowPayload(body) {
   return payload;
 }
 
-async function loadOpportunityActivity({ opportunityId, workflowEventRepository, todoRepository, contractApprovalRepository }) {
-  const [timelineEvents, todos, contractApprovals] = await Promise.all([
+async function loadOpportunityActivity({ opportunityId, workflowEventRepository, contractApprovalRepository }) {
+  const [timelineEvents, contractApprovals] = await Promise.all([
     typeof workflowEventRepository?.listByOpportunity === 'function'
       ? workflowEventRepository.listByOpportunity(opportunityId)
-      : [],
-    typeof todoRepository?.listByOpportunity === 'function'
-      ? todoRepository.listByOpportunity(opportunityId)
       : [],
     typeof contractApprovalRepository?.listByOpportunity === 'function'
       ? contractApprovalRepository.listByOpportunity(opportunityId)
       : []
   ]);
-  return { timelineEvents, todos, contractApprovals };
+  return { timelineEvents, contractApprovals };
 }
 
 async function canViewOpportunityWithContractApproval(user, opportunity, contractApprovalRepository) {
@@ -749,14 +746,12 @@ export function opportunityRoutes({
         commercialQuotes,
         teamMembers,
         ownerTransfers,
-        currentResponsibles,
         responsibilityUsers
       ] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
           opportunityId: opportunity.id,
           workflowEventRepository,
-          todoRepository,
           contractApprovalRepository
         }),
         typeof attachmentRepository?.listByOpportunity === 'function'
@@ -779,9 +774,6 @@ export function opportunityRoutes({
         typeof opportunityResponsibilityRepository?.listOwnerTransfersByOpportunity === 'function'
           ? opportunityResponsibilityRepository.listOwnerTransfersByOpportunity(opportunity.id)
           : [],
-        typeof opportunityResponsibilityRepository?.listCurrentResponsiblesByOpportunity === 'function'
-          ? opportunityResponsibilityRepository.listCurrentResponsiblesByOpportunity(opportunity.id)
-          : [],
         canManageResponsibility ? listResponsibilityUsers(userRepository) : []
       ]);
       const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals);
@@ -789,12 +781,10 @@ export function opportunityRoutes({
         opportunity,
         workflowForms,
         timelineEvents: activity.timelineEvents,
-        todos: activity.todos,
         attachments,
         contractApprovals: activity.contractApprovals,
         teamMembers,
         ownerTransfers,
-        currentResponsibles,
         requirementUpdates,
         technicalSolutions,
         commercialQuotes,

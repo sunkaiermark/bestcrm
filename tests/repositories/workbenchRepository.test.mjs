@@ -99,39 +99,13 @@ test('workbench repository lists draft and rejected opportunities as initiation 
   assert.deepEqual(queryTarget.queries[0].params, [7, STATUSES.DRAFT, STATUSES.INITIATION_REJECTED, 5]);
 });
 
-test('workbench repository lists opportunities assigned through workflow roles team membership and contract review steps', async () => {
-  const queryTarget = createFakeQueryTarget([[
-    {
-      id: '31',
-      opportunity_no: 'OPP-002',
-      title: 'Contract review',
-      customer_name: 'Beta Ltd',
-      status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
-      estimated_amount: '50000.00',
-      updated_at: '2026-06-05T11:00:00.000Z'
-    }
-  ]]);
+test('workbench repository does not expose passive created or assigned opportunity list queries', async () => {
+  const queryTarget = createFakeQueryTarget([]);
   const repository = createWorkbenchRepository(queryTarget);
 
-  const opportunities = await repository.listAssignedOpportunities(6, 8);
-
-  assert.deepEqual(opportunities, [{
-    id: 31,
-    opportunityNo: 'OPP-002',
-    title: 'Contract review',
-    customerName: 'Beta Ltd',
-    status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
-    estimatedAmount: 50000,
-    updatedAt: '2026-06-05T11:00:00.000Z'
-  }]);
-  assert.match(queryTarget.queries[0].sql, /o\.sales_manager_id = \$1/);
-  assert.match(queryTarget.queries[0].sql, /o\.quotation_engineer_id = \$1/);
-  assert.match(queryTarget.queries[0].sql, /FROM opportunity_members om/);
-  assert.match(queryTarget.queries[0].sql, /om\.opportunity_id = o\.id/);
-  assert.match(queryTarget.queries[0].sql, /om\.user_id = \$1/);
-  assert.match(queryTarget.queries[0].sql, /om\.is_active = true/);
-  assert.match(queryTarget.queries[0].sql, /cas\.reviewer_user_id = \$1/);
-  assert.deepEqual(queryTarget.queries[0].params, [6, 8]);
+  assert.equal(repository.listCreatedOpportunities, undefined);
+  assert.equal(repository.listAssignedOpportunities, undefined);
+  assert.deepEqual(queryTarget.queries, []);
 });
 
 test('workbench repository counts visible opportunities by workflow state', async () => {

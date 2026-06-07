@@ -23,7 +23,7 @@
 
         <section class="workbench-list">
           <article class="list-section">
-            <h2>My pending todos</h2>
+            <h2<% if (summary.pendingTodos.length > 0) { %> class="todo-alert-heading"<% } %>>My pending todos</h2>
             <div class="list-body">
               <% if (summary.pendingTodos.length === 0) { %>
                 <p class="empty">No pending todos.</p>
@@ -80,64 +80,5 @@
             <% } %>
           </article>
 
-          <article class="list-section">
-            <h2>Opportunities I created</h2>
-            <div class="list-body">
-              <% if (summary.createdOpportunities.length === 0) { %>
-                <p class="empty">No created opportunities.</p>
-              <% } else { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>No.</th>
-                      <th>Opportunity Name</th>
-                      <th>Status</th>
-                      <th>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const opportunity of summary.createdOpportunities) { %>
-                      <tr>
-                        <td><%= opportunity.opportunityNo %></td>
-                        <td><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a><br><span class="muted"><%= opportunity.customerName %></span></td>
-                        <td><span class="status"><%= opportunity.status %></span></td>
-                        <td><%= opportunity.estimatedAmount ?? '' %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } %>
-            </div>
-          </article>
-
-          <article class="list-section">
-            <h2>Opportunities assigned to me</h2>
-            <div class="list-body">
-              <% if (summary.assignedOpportunities.length === 0) { %>
-                <p class="empty">No assigned opportunities.</p>
-              <% } else { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>No.</th>
-                      <th>Opportunity Name</th>
-                      <th>Status</th>
-                      <th>Amount</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const opportunity of summary.assignedOpportunities) { %>
-                      <tr>
-                        <td><%= opportunity.opportunityNo %></td>
-                        <td><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a><br><span class="muted"><%= opportunity.customerName %></span></td>
-                        <td><span class="status"><%= opportunity.status %></span></td>
-                        <td><%= opportunity.estimatedAmount ?? '' %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } %>
-            </div>
-          </article>
         </section>
 <%- include('../partials/app-end') %>

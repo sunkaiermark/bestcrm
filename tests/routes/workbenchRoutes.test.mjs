@@ -51,26 +51,10 @@ async function createWorkbenchAgent(options = {}) {
         }];
       },
       async listCreatedOpportunities() {
-        return [{
-          id: 30,
-          opportunityNo: 'OPP-001',
-          title: 'Factory upgrade',
-          customerName: 'Acme Co',
-          status: STATUSES.DRAFT,
-          estimatedAmount: 120000,
-          updatedAt: '2026-06-05T09:00:00.000Z'
-        }];
+        throw new Error('created opportunities should not be queried for workbench');
       },
       async listAssignedOpportunities() {
-        return [{
-          id: 31,
-          opportunityNo: 'OPP-002',
-          title: 'Quotation package',
-          customerName: 'Beta Ltd',
-          status: STATUSES.COMMERCIAL_QUOTE_PENDING,
-          estimatedAmount: 88000,
-          updatedAt: '2026-06-05T08:00:00.000Z'
-        }];
+        throw new Error('assigned opportunities should not be queried for workbench');
       },
       async listRecentWorkflowMessages() {
         return [{
@@ -120,9 +104,11 @@ test('logged in users see compact workbench list layout', async () => {
   assert.doesNotMatch(topbarHtml, /New opportunity/);
   assert.doesNotMatch(topbarHtml, /href="\/opportunities\/new"/);
   assert.match(response.text, /My pending todos/);
-  assert.match(response.text, /Opportunities I created/);
-  assert.match(response.text, /Opportunities assigned to me/);
-  assert.equal((response.text.match(/<th>Opportunity Name<\/th>/g) || []).length, 2);
+  assert.match(response.text, /<h2 class="todo-alert-heading">My pending todos<\/h2>/);
+  assert.match(response.text, /\.todo-alert-heading\s*\{[\s\S]*background:\s*#fee2e2;[\s\S]*color:\s*#991b1b;/);
+  assert.doesNotMatch(response.text, /Opportunities I created/);
+  assert.doesNotMatch(response.text, /Opportunities assigned to me/);
+  assert.doesNotMatch(response.text, /<th>Opportunity Name<\/th>/);
   assert.doesNotMatch(response.text, /<th>Title<\/th>/);
   assert.match(response.text, /Recent workflow messages/);
   assert.match(response.text, /Counts by workflow state/);
@@ -130,7 +116,6 @@ test('logged in users see compact workbench list layout', async () => {
   assert.match(response.text, /Submit opportunity initiation/);
   assert.match(response.text, /href="\/opportunities\/32">800003 - Draft package/);
   assert.match(response.text, /Factory upgrade/);
-  assert.match(response.text, /Quotation package/);
   assert.match(response.text, /submit_initiation/);
   assert.match(response.text, /draft/);
   assert.match(response.text, /left-nav/);

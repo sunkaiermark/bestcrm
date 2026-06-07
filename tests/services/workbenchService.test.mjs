@@ -15,12 +15,10 @@ test('getWorkbenchSummary gathers workbench panels for a normal user', async () 
       return [{ id: 'opportunity-initiation-2', title: 'Submit opportunity initiation' }];
     },
     async listCreatedOpportunities(userId, limit) {
-      calls.push(['created', userId, limit]);
-      return [{ id: 2, title: 'Factory upgrade' }];
+      throw new Error(`created opportunities should not be queried: ${userId}, ${limit}`);
     },
     async listAssignedOpportunities(userId, limit) {
-      calls.push(['assigned', userId, limit]);
-      return [{ id: 3, title: 'Technical solution' }];
+      throw new Error(`assigned opportunities should not be queried: ${userId}, ${limit}`);
     },
     async listRecentWorkflowMessages(userId, isAdministrator, limit) {
       calls.push(['messages', userId, isAdministrator, limit]);
@@ -42,16 +40,12 @@ test('getWorkbenchSummary gathers workbench panels for a normal user', async () 
       { id: 1, title: 'Approve opportunity initiation' },
       { id: 'opportunity-initiation-2', title: 'Submit opportunity initiation' }
     ],
-    createdOpportunities: [{ id: 2, title: 'Factory upgrade' }],
-    assignedOpportunities: [{ id: 3, title: 'Technical solution' }],
     recentWorkflowMessages: [{ id: 4, eventType: 'submit_initiation' }],
     stateCounts: [{ status: 'draft', count: 2 }]
   });
   assert.deepEqual(calls, [
     ['todos', 7, 8],
     ['initiationTodos', 7, 8],
-    ['created', 7, 8],
-    ['assigned', 7, 8],
     ['messages', 7, false, 10],
     ['counts', 7, false]
   ]);
@@ -62,8 +56,6 @@ test('getWorkbenchSummary passes administrator visibility to repository', async 
   const repository = {
     async listPendingTodos() { return []; },
     async listOpportunityInitiationTodos() { return []; },
-    async listCreatedOpportunities() { return []; },
-    async listAssignedOpportunities() { return []; },
     async listRecentWorkflowMessages(userId, isAdministrator) {
       calls.push(['messages', userId, isAdministrator]);
       return [];

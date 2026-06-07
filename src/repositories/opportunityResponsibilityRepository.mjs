@@ -41,20 +41,6 @@ function mapOwnerTransferRow(row) {
   };
 }
 
-function mapCurrentResponsibleRow(row) {
-  return {
-    todoId: Number(row.todo_id),
-    opportunityId: Number(row.opportunity_id),
-    assigneeUserId: Number(row.assignee_user_id),
-    assigneeUsername: row.assignee_username || '',
-    assigneeDisplayName: row.assignee_display_name || '',
-    title: row.title,
-    status: row.status,
-    dueAt: row.due_at,
-    createdAt: row.created_at
-  };
-}
-
 export function createOpportunityResponsibilityRepository(queryTarget) {
   return {
     async addTeamMember(input) {
@@ -228,27 +214,6 @@ export function createOpportunityResponsibilityRepository(queryTarget) {
         ORDER BY oot.transferred_at DESC, oot.id DESC
       `, [opportunityId]);
       return result.rows.map(mapOwnerTransferRow);
-    },
-
-    async listCurrentResponsiblesByOpportunity(opportunityId) {
-      const result = await queryTarget.query(`
-        SELECT
-          t.id AS todo_id,
-          t.opportunity_id,
-          t.assignee_user_id,
-          assignee.username AS assignee_username,
-          assignee.display_name AS assignee_display_name,
-          t.title,
-          t.status,
-          t.due_at,
-          t.created_at
-        FROM todos t
-        JOIN users assignee ON assignee.id = t.assignee_user_id
-        WHERE t.opportunity_id = $1
-          AND t.status = 'pending'
-        ORDER BY t.created_at DESC, t.id DESC
-      `, [opportunityId]);
-      return result.rows.map(mapCurrentResponsibleRow);
     }
   };
 }

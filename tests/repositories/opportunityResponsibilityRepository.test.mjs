@@ -170,37 +170,10 @@ test('opportunity responsibility repository transfers owner and optionally keeps
   assert.match(queryTarget.queries[4].sql, /COMMIT/);
 });
 
-test('opportunity responsibility repository reads current responsibles from pending todos', async () => {
-  const queryTarget = createFakeQueryTarget([{
-    todo_id: '61',
-    opportunity_id: '10',
-    assignee_user_id: '9',
-    assignee_username: 'technical_manager01',
-    assignee_display_name: 'Technical Manager',
-    title: 'Approve technical solution',
-    status: 'pending',
-    due_at: null,
-    created_at: '2026-06-06T10:00:00.000Z'
-  }]);
+test('opportunity responsibility repository does not expose current responsible todo queries', async () => {
+  const queryTarget = createFakeQueryTarget([]);
   const repository = createOpportunityResponsibilityRepository(queryTarget);
 
-  const responsibles = await repository.listCurrentResponsiblesByOpportunity(10);
-
-  assert.deepEqual(responsibles, [{
-    todoId: 61,
-    opportunityId: 10,
-    assigneeUserId: 9,
-    assigneeUsername: 'technical_manager01',
-    assigneeDisplayName: 'Technical Manager',
-    title: 'Approve technical solution',
-    status: 'pending',
-    dueAt: null,
-    createdAt: '2026-06-06T10:00:00.000Z'
-  }]);
-  assert.match(queryTarget.queries[0].sql, /FROM todos t/);
-  assert.match(queryTarget.queries[0].sql, /JOIN users assignee/);
-  assert.match(queryTarget.queries[0].sql, /WHERE t\.opportunity_id = \$1/);
-  assert.match(queryTarget.queries[0].sql, /t\.status = 'pending'/);
-  assert.match(queryTarget.queries[0].sql, /ORDER BY t\.created_at DESC/);
-  assert.deepEqual(queryTarget.queries[0].params, [10]);
+  assert.equal(repository.listCurrentResponsiblesByOpportunity, undefined);
+  assert.deepEqual(queryTarget.queries, []);
 });

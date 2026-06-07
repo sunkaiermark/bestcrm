@@ -1,12 +1,5 @@
 import { STATUSES } from '../domain/statuses.mjs';
 
-function numberOrNull(value) {
-  if (value === null || value === undefined) {
-    return null;
-  }
-  return Number(value);
-}
-
 function mapTodoRow(row) {
   return {
     id: Number(row.id),
@@ -32,18 +25,6 @@ function mapOpportunityInitiationTodoRow(row) {
       : 'Submit opportunity initiation',
     status: 'pending',
     createdAt: row.updated_at
-  };
-}
-
-function mapOpportunityRow(row) {
-  return {
-    id: Number(row.id),
-    opportunityNo: row.opportunity_no,
-    title: row.title,
-    customerName: row.customer_name,
-    status: row.status,
-    estimatedAmount: numberOrNull(row.estimated_amount),
-    updatedAt: row.updated_at
   };
 }
 
@@ -141,44 +122,6 @@ export function createWorkbenchRepository(queryTarget) {
         LIMIT $4
       `, [userId, STATUSES.DRAFT, STATUSES.INITIATION_REJECTED, limit]);
       return result.rows.map(mapOpportunityInitiationTodoRow);
-    },
-
-    async listCreatedOpportunities(userId, limit = 8) {
-      const result = await queryTarget.query(`
-        SELECT
-          o.id,
-          o.opportunity_no,
-          o.title,
-          c.name AS customer_name,
-          o.status,
-          o.estimated_amount,
-          o.updated_at
-        FROM opportunities o
-        JOIN customers c ON c.id = o.customer_id
-        WHERE o.salesperson_id = $1
-        ORDER BY o.updated_at DESC, o.id DESC
-        LIMIT $2
-      `, [userId, limit]);
-      return result.rows.map(mapOpportunityRow);
-    },
-
-    async listAssignedOpportunities(userId, limit = 8) {
-      const result = await queryTarget.query(`
-        SELECT DISTINCT
-          o.id,
-          o.opportunity_no,
-          o.title,
-          c.name AS customer_name,
-          o.status,
-          o.estimated_amount,
-          o.updated_at
-        FROM opportunities o
-        JOIN customers c ON c.id = o.customer_id
-        WHERE ${assignedOpportunityPredicate('$1')}
-        ORDER BY o.updated_at DESC, o.id DESC
-        LIMIT $2
-      `, [userId, limit]);
-      return result.rows.map(mapOpportunityRow);
     },
 
     async listRecentWorkflowMessages(userId, isAdministrator = false, limit = 10) {

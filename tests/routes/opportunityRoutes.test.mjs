@@ -263,9 +263,6 @@ async function createLoggedInAgent(extraOptions = {}) {
       },
       async listOwnerTransfersByOpportunity() {
         return [];
-      },
-      async listCurrentResponsiblesByOpportunity() {
-        return [];
       }
     },
     ...appOptions
@@ -611,9 +608,6 @@ test('active team member can view opportunity detail without edit access', async
       },
       async listOwnerTransfersByOpportunity() {
         return [];
-      },
-      async listCurrentResponsiblesByOpportunity() {
-        return [];
       }
     }
   });
@@ -831,23 +825,23 @@ test('opportunity form quick creates contact and returns with it selected', asyn
   }]);
 });
 
-test('opportunity detail shows pending todos and workflow timeline', async () => {
+test('opportunity detail keeps workflow todos out of the detail page and shows timeline', async () => {
   const { agent } = await createLoggedInAgent();
 
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Pending Todos/);
-  assert.match(detail.text, /Approve opportunity initiation/);
-  assert.match(detail.text, /Sales Manager/);
+  assert.doesNotMatch(detail.text, /Pending Todos/);
+  assert.doesNotMatch(detail.text, /Approve opportunity initiation/);
   assert.match(detail.text, /Timeline/);
   assert.match(detail.text, /submit_initiation/);
   assert.match(detail.text, /draft/);
   assert.match(detail.text, /initiation_pending/);
+  assert.match(detail.text, /Sales Manager/);
   assert.match(detail.text, /ready for review/);
 });
 
-test('opportunity detail shows owner team members current responsibles and transfer history', async () => {
+test('opportunity detail shows owner team members and transfer history without current responsible todos', async () => {
   const responsibilityCalls = [];
   const { agent } = await createLoggedInAgent({
     opportunityResponsibilityRepository: {
@@ -886,20 +880,6 @@ test('opportunity detail shows owner team members current responsibles and trans
           keepPreviousOwnerAsMember: true,
           transferredAt: '2026-06-06T09:00:00.000Z'
         }];
-      },
-      async listCurrentResponsiblesByOpportunity(opportunityId) {
-        responsibilityCalls.push(['current', opportunityId]);
-        return [{
-          todoId: 61,
-          opportunityId,
-          assigneeUserId: 9,
-          assigneeUsername: 'technical_manager01',
-          assigneeDisplayName: 'Technical Manager',
-          title: 'Approve technical solution',
-          status: 'pending',
-          dueAt: null,
-          createdAt: '2026-06-06T10:00:00.000Z'
-        }];
       }
     }
   });
@@ -915,9 +895,9 @@ test('opportunity detail shows owner team members current responsibles and trans
   assert.match(detail.text, /\.responsibility-grid\s*\{[\s\S]*gap:\s*8px;/);
   assert.match(detail.text, /\.responsibility-content\s*\{[\s\S]*padding:\s*6px 8px;/);
   assert.match(detail.text, /\.responsibility-content \.list-table th,\s*\.responsibility-content \.list-table td\s*\{[\s\S]*padding:\s*5px 6px;/);
-  assert.match(detail.text, /Current Responsible/);
-  assert.match(detail.text, /Technical Manager/);
-  assert.match(detail.text, /Approve technical solution/);
+  assert.doesNotMatch(detail.text, /Current Responsible/);
+  assert.doesNotMatch(detail.text, /Technical Manager/);
+  assert.doesNotMatch(detail.text, /Approve technical solution/);
   assert.match(detail.text, /Team Members/);
   assert.match(detail.text, /Quote Engineer/);
   assert.match(detail.text, /Quotation Engineer/);
@@ -926,8 +906,7 @@ test('opportunity detail shows owner team members current responsibles and trans
   assert.match(detail.text, /Territory realignment/);
   assert.deepEqual(responsibilityCalls, [
     ['members', 30],
-    ['transfers', 30],
-    ['current', 30]
+    ['transfers', 30]
   ]);
 });
 
@@ -989,9 +968,6 @@ test('administrator adds and removes opportunity team members', async () => {
         return [];
       },
       async listOwnerTransfersByOpportunity() {
-        return [];
-      },
-      async listCurrentResponsiblesByOpportunity() {
         return [];
       },
       async addTeamMember(input) {
@@ -1060,9 +1036,6 @@ test('Sales Manager transfers opportunity owner and can keep previous owner as t
       async listOwnerTransfersByOpportunity() {
         return [];
       },
-      async listCurrentResponsiblesByOpportunity() {
-        return [];
-      },
       async transferOwner(input) {
         transfers.push(input);
         return { id: 51, ...input };
@@ -1098,9 +1071,6 @@ test('non managers cannot manage opportunity responsibility directly', async () 
         return [];
       },
       async listOwnerTransfersByOpportunity() {
-        return [];
-      },
-      async listCurrentResponsiblesByOpportunity() {
         return [];
       },
       async addTeamMember() {

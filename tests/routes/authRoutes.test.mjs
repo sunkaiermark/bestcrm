@@ -24,7 +24,7 @@ test('login page renders username and password form', async () => {
   assert.equal(response.status, 200);
   assert.match(response.text, /class="login-shell"/);
   assert.match(response.text, /class="login-card"/);
-  assert.match(response.text, /font:\s*14px\/1\.4 Arial, "Microsoft YaHei", Helvetica, sans-serif;/);
+  assert.match(response.text, /font:\s*15px\/1\.5 system-ui, "Microsoft YaHei", sans-serif;/);
   assert.match(response.text, /\.login-logo\s*\{[\s\S]*display:\s*block;/);
   assert.match(response.text, /\.login-logo\s*\{[\s\S]*margin:\s*0 auto 22px;/);
   assert.match(response.text, /\.login-logo\s*\{[\s\S]*width:\s*224px;/);
@@ -33,8 +33,8 @@ test('login page renders username and password form', async () => {
   assert.doesNotMatch(response.text, />BESTCRM</);
   assert.doesNotMatch(response.text, /Company CRM/);
   assert.doesNotMatch(response.text, /class="login-subtitle"/);
-  assert.match(response.text, /\.form-field input\s*\{[\s\S]*height:\s*40px;/);
-  assert.match(response.text, /\.login-button\s*\{[\s\S]*height:\s*42px;/);
+  assert.match(response.text, /\.form-field input\s*\{[\s\S]*height:\s*42px;[\s\S]*line-height:\s*1\.4;/);
+  assert.match(response.text, /\.login-button\s*\{[\s\S]*height:\s*44px;[\s\S]*line-height:\s*1;/);
   assert.match(response.text, /class="form-field"/);
   assert.match(response.text, /class="login-button"/);
   assert.match(response.text, /name="username"/);

@@ -5,8 +5,6 @@ export async function getWorkbenchSummary(workbenchRepository, user) {
   const [
     workflowPendingTodos,
     opportunityInitiationTodos,
-    createdOpportunities,
-    assignedOpportunities,
     recentWorkflowMessages,
     stateCounts
   ] = await Promise.all([
@@ -14,16 +12,12 @@ export async function getWorkbenchSummary(workbenchRepository, user) {
     typeof workbenchRepository.listOpportunityInitiationTodos === 'function'
       ? workbenchRepository.listOpportunityInitiationTodos(user.id, 8)
       : [],
-    workbenchRepository.listCreatedOpportunities(user.id, 8),
-    workbenchRepository.listAssignedOpportunities(user.id, 8),
     workbenchRepository.listRecentWorkflowMessages(user.id, isAdministrator, 10),
     workbenchRepository.countByWorkflowState(user.id, isAdministrator)
   ]);
 
   return {
     pendingTodos: [...workflowPendingTodos, ...opportunityInitiationTodos].slice(0, 8),
-    createdOpportunities,
-    assignedOpportunities,
     recentWorkflowMessages,
     stateCounts
   };
