@@ -372,9 +372,9 @@
                       <% if (item.attachment) { %>
                         <div class="inline-actions requirement-row-actions">
                           <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview">Preview</a>
-                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download">Download</a>
+                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener">Download</a>
                           <% if (canDeleteRequirementMaterials) { %>
-                            <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete">
+                            <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this requirement file?')">
                               <button class="danger-action requirement-action-delete" type="submit">Delete</button>
                             </form>
                           <% } %>

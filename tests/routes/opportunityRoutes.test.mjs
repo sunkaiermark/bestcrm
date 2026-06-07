@@ -1261,6 +1261,7 @@ test('opportunity detail groups business attachments into five business panels',
   assert.equal(detail.status, 200);
   assert.match(detail.text, /Requirement Materials[\s\S]*requirement-spec\.pdf/);
   assert.match(detail.text, /requirement-row requirement-row-file[\s\S]*2026-06-05 \d{2}:00[\s\S]*requirement-spec\.pdf[\s\S]*Preview[\s\S]*Download/);
+  assert.match(detail.text, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/51\/download"[^>]*download="requirement-spec\.pdf"[^>]*target="_blank"/);
   assert.match(detail.text, /Commercial Quote[\s\S]*quote-v1\.xlsx/);
   assert.match(detail.text, /Commercial Contract[\s\S]*contract-draft\.docx/);
 });
@@ -1615,6 +1616,7 @@ test('draft opportunity shows delete action for requirement material attachments
 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /Requirement Materials[\s\S]*requirement-spec\.pdf[\s\S]*\/opportunities\/30\/attachments\/55\/delete/);
+  assert.match(detail.text, /onsubmit="return confirm\('Delete this requirement file\?'\)"/);
   assert.match(detail.text, /Requirement Materials[\s\S]*Delete/);
 });
 
