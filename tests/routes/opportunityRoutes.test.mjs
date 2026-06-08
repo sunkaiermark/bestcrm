@@ -1114,6 +1114,125 @@ test('opportunity detail shows attachment upload form and file links', async () 
   assert.doesNotMatch(detail.text, /<th>Uploaded By<\/th>/);
 });
 
+test('opportunity detail shows technical solution text and files in one timeline with local submit action', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'quote01',
+      displayName: 'Quote Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7,
+      quotationEngineerId: 3
+    },
+    attachments: [{
+      id: 55,
+      opportunityId: 30,
+      category: 'technical_solution',
+      originalName: 'technical-solution.pdf',
+      storedPath: '2026/06/technical-solution.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 1024,
+      uploadedBy: 3,
+      uploaderDisplayName: 'Quote Engineer',
+      uploadedAt: '2026-06-05T12:00:00.000Z'
+    }],
+    technicalSolutions: [{
+      id: 71,
+      opportunityId: 30,
+      versionNo: 1,
+      summary: '1. Use skid-mounted evaporation package.\n2. Reserve PLC interface.',
+      parameters: null,
+      implementationPlan: null,
+      status: 'pending',
+      submittedBy: 3,
+      submitterDisplayName: 'Quote Engineer',
+      submittedAt: '2026-06-05T11:30:00.000Z',
+      reviewedBy: null,
+      reviewerDisplayName: '',
+      reviewedAt: null,
+      reviewComment: null
+    }]
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  const technicalSection = detail.text.match(/<h2>Technical Solution<\/h2>[\s\S]*?<h2>Commercial Quote<\/h2>/)[0];
+  assert.match(technicalSection, /name="solutionSummary"[\s\S]*Submit to Technical Manager[\s\S]*technical-solution\.pdf/);
+  assert.match(technicalSection, /2026-06-05 19:30[\s\S]*1\. Use skid-mounted evaporation package\.[\s\S]*2\. Reserve PLC interface\./);
+  assert.match(detail.text, /\.requirement-row-content\s*\{[\s\S]*white-space:\s*pre-wrap;/);
+  assert.match(technicalSection, /2026-06-05 20:00[\s\S]*technical-solution\.pdf[\s\S]*Preview[\s\S]*Download[\s\S]*Delete/);
+  assert.match(technicalSection, /Delete this technical solution file\?/);
+  assert.doesNotMatch(technicalSection, /<th>File<\/th>/);
+  assert.doesNotMatch(technicalSection, /<th>Uploaded At<\/th>/);
+  assert.doesNotMatch(technicalSection, /Version History/);
+  assert.doesNotMatch(detail.text, /Workflow Actions[\s\S]*Submit Technical Solution/);
+});
+
+test('submitted technical solution files cannot be deleted from the detail page or route', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-technical-delete-'));
+  try {
+    await writeFile(path.join(uploadDir, 'technical.txt'), 'technical file', 'utf8');
+    let deleteCalled = false;
+    const attachment = {
+      id: 55,
+      opportunityId: 30,
+      category: 'technical_solution',
+      originalName: 'technical.txt',
+      storedPath: 'technical.txt',
+      mimeType: 'text/plain',
+      fileSize: 14,
+      uploadedBy: 3,
+      uploaderDisplayName: 'Quote Engineer',
+      uploadedAt: '2026-06-05T12:00:00.000Z'
+    };
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      user: {
+        id: 3,
+        username: 'quote01',
+        displayName: 'Quote Engineer',
+        roles: [ROLES.QUOTATION_ENGINEER]
+      },
+      opportunityRepository: {
+        async getOpportunityDetail() {
+          return opportunityDetail({
+            status: STATUSES.TECHNICAL_SOLUTION_PENDING,
+            quotationEngineerId: 3
+          });
+        },
+        async listOpportunities() {
+          return [];
+        }
+      },
+      attachmentRepository: {
+        async listByOpportunity() {
+          return [attachment];
+        },
+        async findById() {
+          return attachment;
+        },
+        async deleteById() {
+          deleteCalled = true;
+        }
+      }
+    });
+
+    const detail = await agent.get('/opportunities/30');
+    const technicalSection = detail.text.match(/<h2>Technical Solution<\/h2>[\s\S]*?<h2>Commercial Quote<\/h2>/)[0];
+    assert.doesNotMatch(technicalSection, /Delete/);
+
+    const response = await agent.post('/opportunities/30/attachments/55/delete');
+    assert.equal(response.status, 403);
+    assert.equal(deleteCalled, false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('opportunity detail renders attachments with date object timestamps', async () => {
   const { agent } = await createLoggedInAgent({
     attachmentRepository: {
@@ -1241,7 +1360,7 @@ test('opportunity detail groups business attachments into five business panels',
   assert.match(detail.text, /Commercial Contract[\s\S]*contract-draft\.docx/);
 });
 
-test('opportunity detail shows technical solution version history', async () => {
+test('opportunity detail shows technical solution submission and review comments in timeline', async () => {
   const { agent } = await createLoggedInAgent({
     technicalSolutionRepository: {
       async listByOpportunity() {
@@ -1274,14 +1393,13 @@ test('opportunity detail shows technical solution version history', async () => 
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Technical Solution[\s\S]*Version History/);
-  assert.match(detail.text, /V2/);
-  assert.match(detail.text, /Updated cabinet control solution/);
-  assert.match(detail.text, /IP65, stainless cabinet/);
-  assert.match(detail.text, /Revise drawings and wiring plan/);
-  assert.match(detail.text, /approved/);
-  assert.match(detail.text, /Quote Engineer/);
-  assert.match(detail.text, /Technical Manager/);
+  const technicalSection = detail.text.match(/<h2>Technical Solution<\/h2>[\s\S]*?<h2>Commercial Quote<\/h2>/)[0];
+  assert.doesNotMatch(technicalSection, /Version History/);
+  assert.doesNotMatch(technicalSection, /V2/);
+  assert.match(technicalSection, /Updated cabinet control solution/);
+  assert.match(technicalSection, /approved/);
+  assert.doesNotMatch(technicalSection, /IP65, stainless cabinet/);
+  assert.doesNotMatch(technicalSection, /Revise drawings and wiring plan/);
 });
 
 test('opportunity detail shows commercial quote version history', async () => {
@@ -1440,10 +1558,11 @@ test('technical solution workflow form captures version details', async () => {
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Submit Technical Solution/);
+  assert.match(detail.text, /Technical Solution Description/);
+  assert.match(detail.text, /Submit to Technical Manager/);
   assert.match(detail.text, /name="solutionSummary"/);
-  assert.match(detail.text, /name="solutionParameters"/);
-  assert.match(detail.text, /name="implementationPlan"/);
+  assert.doesNotMatch(detail.text, /name="solutionParameters"/);
+  assert.doesNotMatch(detail.text, /name="implementationPlan"/);
 });
 
 test('approved opportunity shows supplemental requirement form and history', async () => {
@@ -2117,7 +2236,7 @@ test('commercial quote form shows quote fields and missing attachment hint', asy
   assert.match(detail.text, /Commercial Quote attachment is required before submission/);
 });
 
-test('workflow route blocks technical submission without required attachment', async () => {
+test('workflow route blocks technical submission without description or attachment', async () => {
   const { agent, getOpportunity } = await createWorkflowAgent({
     user: {
       id: 3,
@@ -2141,7 +2260,7 @@ test('workflow route blocks technical submission without required attachment', a
     .send({ action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION, comment: 'ready' });
 
   assert.equal(response.status, 400);
-  assert.match(response.text, /Technical Solution attachment is required/);
+  assert.match(response.text, /Technical solution description or attachment is required/);
   assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
 });
 

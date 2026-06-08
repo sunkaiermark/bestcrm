@@ -15,6 +15,7 @@
   const contractAttachments = orderedAttachments.filter((attachment) => attachment.category === 'contract');
   const canDeleteRequirementMaterials = ['draft', 'initiation_rejected'].includes(opportunity.status);
   const supplementalRequirementUpdates = typeof requirementUpdates === 'undefined' ? [] : requirementUpdates;
+  const technicalSolutionDeleteStatuses = ['technical_solution_in_progress', 'technical_solution_rejected'];
   const formatShortDate = (value) => {
     if (!value) {
       return '';
@@ -63,6 +64,37 @@
     return String(left.key).localeCompare(String(right.key));
   });
   const technicalSolutionVersions = typeof technicalSolutions === 'undefined' ? [] : technicalSolutions;
+  const technicalSolutionTimeline = [
+    ...technicalSolutionVersions.map((solution) => ({
+      key: `solution-${solution.id}`,
+      type: 'Text',
+      text: solution.summary,
+      at: solution.submittedAt,
+      sortAt: requirementTimelineSortValue(solution.submittedAt)
+    })),
+    ...technicalSolutionVersions
+      .filter((solution) => solution.reviewComment)
+      .map((solution) => ({
+        key: `solution-review-${solution.id}`,
+        type: 'Text',
+        text: solution.reviewComment,
+        at: solution.reviewedAt,
+        sortAt: requirementTimelineSortValue(solution.reviewedAt)
+      })),
+    ...technicalSolutionAttachments.map((attachment) => ({
+      key: `technical-file-${attachment.id}`,
+      type: 'File',
+      attachment,
+      text: attachment.originalName,
+      at: attachment.uploadedAt,
+      sortAt: requirementTimelineSortValue(attachment.uploadedAt)
+    }))
+  ].filter((item) => item.text || item.attachment).sort((left, right) => {
+    if (left.sortAt !== right.sortAt) {
+      return left.sortAt.localeCompare(right.sortAt);
+    }
+    return String(left.key).localeCompare(String(right.key));
+  });
   const commercialQuoteVersions = typeof commercialQuotes === 'undefined' ? [] : commercialQuotes;
   const opportunityTeamMembers = typeof teamMembers === 'undefined' ? [] : teamMembers;
   const opportunityOwnerTransfers = typeof ownerTransfers === 'undefined' ? [] : ownerTransfers;
@@ -75,7 +107,9 @@
   const uploadPermissions = typeof canUploadAttachments === 'undefined' ? {} : canUploadAttachments;
   const allWorkflowForms = Array.isArray(workflowForms) ? workflowForms : [];
   const initiationWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_initiation');
-  const remainingWorkflowForms = allWorkflowForms.filter((workflowForm) => workflowForm.action !== 'submit_initiation');
+  const technicalSubmitWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_technical_solution');
+  const remainingWorkflowForms = allWorkflowForms.filter((workflowForm) => workflowForm.action !== 'submit_initiation' && workflowForm.action !== 'submit_technical_solution');
+  const canDeleteTechnicalSolutionAttachments = technicalSolutionDeleteStatuses.includes(opportunity.status);
 %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
         <header class="page-header">
@@ -368,68 +402,47 @@
                   <button type="submit">Upload</button>
                 </form>
               <% } %>
-              <% if (technicalSolutionAttachments.length > 0) { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>File</th>
-                      <th>Uploaded At</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const attachment of technicalSolutionAttachments) { %>
-                      <tr>
-                        <td><%= attachment.originalName %></td>
-                        <td><%= attachment.uploadedAt || '' %></td>
-                        <td>
-                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
-                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
-                        </td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } else { %>
-                <p class="empty">No technical solution files.</p>
+              <% if (technicalSubmitWorkflowForm) { %>
+                <form class="form-panel requirement-input-panel technical-solution-submit-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                  <input type="hidden" name="action" value="<%= technicalSubmitWorkflowForm.action %>">
+                  <label>
+                    Technical Solution Description
+                    <textarea name="solutionSummary" required></textarea>
+                  </label>
+                  <% if (technicalSubmitWorkflowForm.missingRequirements && technicalSubmitWorkflowForm.missingRequirements.length > 0) { %>
+                    <ul class="inline-list">
+                      <% for (const requirement of technicalSubmitWorkflowForm.missingRequirements) { %>
+                        <li><%= requirement %></li>
+                      <% } %>
+                    </ul>
+                  <% } %>
+                  <div class="requirement-input-actions">
+                    <button type="submit" <%= technicalSubmitWorkflowForm.blocked ? 'disabled' : '' %>><%= technicalSubmitWorkflowForm.button %></button>
+                  </div>
+                </form>
               <% } %>
-
-              <h3>Version History</h3>
-              <% if (technicalSolutionVersions.length > 0) { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>Version</th>
-                      <th>Status</th>
-                      <th>Summary</th>
-                      <th>Parameters</th>
-                      <th>Implementation Plan</th>
-                      <th>Submitted By</th>
-                      <th>Submitted At</th>
-                      <th>Reviewed By</th>
-                      <th>Reviewed At</th>
-                      <th>Review Comment</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const solution of technicalSolutionVersions) { %>
-                      <tr>
-                        <td>V<%= solution.versionNo %></td>
-                        <td><%= solution.status %></td>
-                        <td><%= solution.summary %></td>
-                        <td><%= solution.parameters || '' %></td>
-                        <td><%= solution.implementationPlan || '' %></td>
-                        <td><%= solution.submitterDisplayName || '' %></td>
-                        <td><%= solution.submittedAt || '' %></td>
-                        <td><%= solution.reviewerDisplayName || '' %></td>
-                        <td><%= solution.reviewedAt || '' %></td>
-                        <td><%= solution.reviewComment || '' %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
+              <% if (technicalSolutionTimeline.length > 0) { %>
+                <div class="requirement-timeline">
+                  <% for (const item of technicalSolutionTimeline) { %>
+                    <article class="requirement-row <%= item.attachment ? 'requirement-row-file' : 'requirement-row-text' %>">
+                      <span class="requirement-row-time"><%= item.at ? formatShortDate(item.at) : '' %></span>
+                      <span class="requirement-row-content"><%= item.text %></span>
+                      <% if (item.attachment) { %>
+                        <div class="inline-actions requirement-row-actions">
+                          <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview">Preview</a>
+                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener">Download</a>
+                          <% if (canDeleteTechnicalSolutionAttachments) { %>
+                            <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this technical solution file?')">
+                              <button class="danger-action requirement-action-delete" type="submit">Delete</button>
+                            </form>
+                          <% } %>
+                        </div>
+                      <% } %>
+                    </article>
+                  <% } %>
+                </div>
               <% } else { %>
-                <p class="empty">No technical solution versions.</p>
+                <p class="empty">No technical solution records.</p>
               <% } %>
             </div>
           </section>

@@ -71,6 +71,11 @@ const requirementMaterialDeleteStatuses = new Set([
   STATUSES.INITIATION_REJECTED
 ]);
 
+const technicalSolutionDeleteStatuses = new Set([
+  STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+  STATUSES.TECHNICAL_SOLUTION_REJECTED
+]);
+
 const preSubmissionRequirementUpdateStatuses = new Set([
   STATUSES.DRAFT,
   STATUSES.INITIATION_REJECTED
@@ -93,10 +98,6 @@ const supplementalRequirementStatuses = new Set([
 ]);
 
 const attachmentRequirementsByAction = new Map([
-  [ACTIONS.SUBMIT_TECHNICAL_SOLUTION, {
-    category: 'technical_solution',
-    message: 'Technical Solution attachment is required before submission'
-  }],
   [ACTIONS.SUBMIT_COMMERCIAL_QUOTE, {
     category: 'commercial_quote',
     message: 'Commercial Quote attachment is required before submission'
@@ -448,9 +449,14 @@ function inlineDisposition(filename) {
   return `inline; filename="${safeFilename}"`;
 }
 
-function canDeleteRequirementMaterial(opportunity, attachment) {
-  return requirementMaterialCategories.has(attachment.category)
-    && requirementMaterialDeleteStatuses.has(opportunity.status);
+function canDeleteAttachment(opportunity, attachment) {
+  if (requirementMaterialCategories.has(attachment.category)) {
+    return requirementMaterialDeleteStatuses.has(opportunity.status);
+  }
+  if (attachment.category === 'technical_solution') {
+    return technicalSolutionDeleteStatuses.has(opportunity.status);
+  }
+  return false;
 }
 
 function canCreateRequirementUpdate(user, opportunity) {
@@ -1035,8 +1041,8 @@ export function opportunityRoutes({
         res.status(404).send('Attachment not found');
         return;
       }
-      if (!canDeleteRequirementMaterial(opportunity, attachment)) {
-        res.status(403).send('Requirement material cannot be deleted after initiation submission');
+      if (!canDeleteAttachment(opportunity, attachment)) {
+        res.status(403).send('Attachment cannot be deleted after submission');
         return;
       }
       const filePath = resolveStoredPath(uploadDir, attachment.storedPath);

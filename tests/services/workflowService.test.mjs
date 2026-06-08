@@ -411,7 +411,7 @@ test('applyWorkflowAction closes pending todos on withdrawal', async () => {
   ]);
 });
 
-test('submit technical solution requires a technical solution attachment before side effects', async () => {
+test('submit technical solution requires description or technical attachment before side effects', async () => {
   const repositories = createMaterialRepositories({
     id: 10,
     status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
@@ -424,7 +424,7 @@ test('submit technical solution requires a technical solution attachment before 
     action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
     payload: { comment: 'solution ready' },
     repositories
-  }), /Technical Solution attachment is required/);
+  }), /Technical solution description or attachment is required/);
 
   assert.deepEqual(repositories.calls, [
     ['findOpportunity', 10],
@@ -474,6 +474,93 @@ test('submit technical solution stores a pending version before manager approval
       actorUserId: 3,
       targetUserId: 4,
       comment: 'solution ready'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 4, title: 'Approve technical solution' }]
+  ]);
+});
+
+test('submit technical solution accepts description without attachment', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    quotationEngineerId: 3
+  }, []);
+
+  const result = await applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+    payload: {
+      solutionSummary: 'Only text technical solution',
+      comment: 'submit text only'
+    },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.TECHNICAL_SOLUTION_PENDING);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'technical_solution'],
+    ['listAttachments', 10],
+    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_PENDING, technicalManagerId: 4 }],
+    ['createTechnicalSolutionVersion', {
+      opportunityId: 10,
+      summary: 'Only text technical solution',
+      parameters: null,
+      implementationPlan: null,
+      submittedBy: 3
+    }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+      fromStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      toStatus: STATUSES.TECHNICAL_SOLUTION_PENDING,
+      actorUserId: 3,
+      targetUserId: 4,
+      comment: 'submit text only'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 4, title: 'Approve technical solution' }]
+  ]);
+});
+
+test('submit technical solution accepts unsubmitted attachment without description', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    quotationEngineerId: 3
+  }, [{ id: 55, category: 'technical_solution', technicalSolutionId: null }]);
+
+  const result = await applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+    payload: { comment: 'submit file only' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.TECHNICAL_SOLUTION_PENDING);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'technical_solution'],
+    ['listAttachments', 10],
+    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_PENDING, technicalManagerId: 4 }],
+    ['createTechnicalSolutionVersion', {
+      opportunityId: 10,
+      summary: '',
+      parameters: null,
+      implementationPlan: null,
+      submittedBy: 3
+    }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+      fromStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      toStatus: STATUSES.TECHNICAL_SOLUTION_PENDING,
+      actorUserId: 3,
+      targetUserId: 4,
+      comment: 'submit file only'
     }],
     ['closeTodos', 10, 'completed'],
     ['createTodo', { opportunityId: 10, assigneeUserId: 4, title: 'Approve technical solution' }]

@@ -44,10 +44,6 @@ const completedTodoActions = new Set([
 ]);
 
 const attachmentRequirements = new Map([
-  [ACTIONS.SUBMIT_TECHNICAL_SOLUTION, {
-    category: 'technical_solution',
-    message: 'Technical Solution attachment is required'
-  }],
   [ACTIONS.SUBMIT_COMMERCIAL_QUOTE, {
     category: 'commercial_quote',
     message: 'Commercial Quote attachment is required'
@@ -197,16 +193,17 @@ function assertCommercialQuotePayload(payload) {
   }
 }
 
-function assertTechnicalSolutionPayload(payload) {
-  if (!hasNonBlankValue(payload.solutionSummary)) {
-    throw new WorkflowValidationError('Technical solution summary is required');
+function assertTechnicalSolutionPayload(payload, attachments) {
+  const hasTechnicalAttachment = attachments.some((attachment) => attachment.category === 'technical_solution');
+  if (!hasNonBlankValue(payload.solutionSummary) && !hasTechnicalAttachment) {
+    throw new WorkflowValidationError('Technical solution description or attachment is required');
   }
 }
 
 function technicalSolutionInput({ opportunityId, actor, payload }) {
   return {
     opportunityId: Number(opportunityId),
-    summary: String(payload.solutionSummary).trim(),
+    summary: hasNonBlankValue(payload.solutionSummary) ? String(payload.solutionSummary).trim() : '',
     parameters: hasNonBlankValue(payload.solutionParameters) ? String(payload.solutionParameters).trim() : null,
     implementationPlan: hasNonBlankValue(payload.implementationPlan) ? String(payload.implementationPlan).trim() : null,
     submittedBy: actor.id
@@ -242,9 +239,10 @@ async function listAttachmentsForOpportunity(repositories, opportunityId) {
 }
 
 async function assertRequiredMaterials({ action, opportunityId, payload, repositories }) {
+  let attachments = null;
   const attachmentRequirement = attachmentRequirements.get(action);
   if (attachmentRequirement) {
-    const attachments = await listAttachmentsForOpportunity(repositories, opportunityId);
+    attachments = await listAttachmentsForOpportunity(repositories, opportunityId);
     if (!attachments.some((attachment) => attachment.category === attachmentRequirement.category)) {
       throw new WorkflowValidationError(attachmentRequirement.message);
     }
@@ -254,7 +252,8 @@ async function assertRequiredMaterials({ action, opportunityId, payload, reposit
     assertCommercialQuotePayload(payload);
   }
   if (action === ACTIONS.SUBMIT_TECHNICAL_SOLUTION) {
-    assertTechnicalSolutionPayload(payload);
+    attachments = attachments || await listAttachmentsForOpportunity(repositories, opportunityId);
+    assertTechnicalSolutionPayload(payload, attachments);
   }
 }
 
