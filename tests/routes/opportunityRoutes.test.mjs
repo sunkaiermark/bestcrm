@@ -2050,6 +2050,52 @@ test('rejected contract requires a revised attachment before resubmission', asyn
   assert.match(contractSection, /<button type="submit" disabled>Submit Contract Approval<\/button>/);
 });
 
+test('rejected contract history requires a revised attachment even after returning to won pending', async () => {
+  const rejectedAt = '2026-06-05T13:30:00.000Z';
+  const oldAttachment = {
+    id: 57,
+    opportunityId: 30,
+    category: 'contract',
+    originalName: 'contract-v1.docx',
+    storedPath: '2026/06/contract-v1.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    fileSize: 2048,
+    uploadedBy: 7,
+    uploaderDisplayName: 'Sales One',
+    uploadedAt: '2026-06-05T13:00:00.000Z'
+  };
+  const contractApprovals = [{
+    id: 91,
+    opportunityId: 30,
+    status: 'rejected',
+    completedAt: rejectedAt,
+    actedAt: rejectedAt,
+    reviewerUserId: 6,
+    stepAction: 'rejected'
+  }];
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    },
+    opportunity: {
+      status: STATUSES.WON_CONTRACT_PENDING,
+      salespersonId: 7
+    },
+    attachments: [oldAttachment],
+    contractApprovals
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  const contractSection = detail.text.match(/<h2>Commercial Contract<\/h2>[\s\S]*?<h2>Timeline<\/h2>/)[0];
+  assert.match(contractSection, /Revised Contract attachment is required after rejection/);
+  assert.match(contractSection, /<button type="submit" disabled>Submit Contract Approval<\/button>/);
+});
+
 test('rejected contract with revised attachment shows contract resubmission action', async () => {
   const rejectedAt = '2026-06-05T13:30:00.000Z';
   const revisedAttachment = {

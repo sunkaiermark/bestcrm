@@ -1,5 +1,4 @@
 import { ACTIONS, transition } from '../domain/workflow.mjs';
-import { STATUSES } from '../domain/statuses.mjs';
 
 export class WorkflowValidationError extends Error {
   constructor(message) {
@@ -230,8 +229,8 @@ function latestRejectedContractApprovalTime(contractApprovals) {
     .sort((left, right) => right - left)[0] || null;
 }
 
-async function assertRevisedContractAfterRejection({ before, action, opportunityId, attachments, repositories }) {
-  if (action !== ACTIONS.SUBMIT_CONTRACT_APPROVAL || before.status !== STATUSES.CONTRACT_REJECTED) {
+async function assertRevisedContractAfterRejection({ action, opportunityId, attachments, repositories }) {
+  if (action !== ACTIONS.SUBMIT_CONTRACT_APPROVAL) {
     return;
   }
   if (typeof repositories.contractApprovalRepository?.listByOpportunity !== 'function') {
@@ -240,12 +239,15 @@ async function assertRevisedContractAfterRejection({ before, action, opportunity
   const rejectedAt = latestRejectedContractApprovalTime(
     await repositories.contractApprovalRepository.listByOpportunity(opportunityId)
   );
+  if (rejectedAt === null) {
+    return;
+  }
   const hasRevisedContract = attachments.some((attachment) => {
     if (attachment.category !== 'contract') {
       return false;
     }
     const uploadedAt = timestampValue(attachment.uploadedAt);
-    return rejectedAt !== null && uploadedAt !== null && uploadedAt > rejectedAt;
+    return uploadedAt !== null && uploadedAt > rejectedAt;
   });
   if (!hasRevisedContract) {
     throw new WorkflowValidationError('Revised Contract attachment is required after rejection');
@@ -263,7 +265,6 @@ async function assertRequiredMaterials({ action, before, opportunityId, payload,
   }
 
   await assertRevisedContractAfterRejection({
-    before,
     action,
     opportunityId,
     attachments: attachments || [],

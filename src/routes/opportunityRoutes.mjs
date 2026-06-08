@@ -322,9 +322,9 @@ function missingMaterialsForAction(action, attachments, opportunity, contractApp
   if (!hasAttachment) {
     return [requirement.message];
   }
-  if (action === ACTIONS.SUBMIT_CONTRACT_APPROVAL && opportunity.status === STATUSES.CONTRACT_REJECTED) {
+  if (action === ACTIONS.SUBMIT_CONTRACT_APPROVAL) {
     const rejectedAt = latestRejectedContractApprovalTime(contractApprovals);
-    if (!hasContractAttachmentAfter(attachments, rejectedAt)) {
+    if (rejectedAt !== null && !hasContractAttachmentAfter(attachments, rejectedAt)) {
       return ['Revised Contract attachment is required after rejection'];
     }
   }

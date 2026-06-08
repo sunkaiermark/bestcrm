@@ -87,6 +87,10 @@ function createMaterialRepositories(before, attachments = []) {
     }
   };
   repositories.contractApprovalRepository = {
+    async listByOpportunity(opportunityId) {
+      repositories.calls.push(['listContractApprovals', opportunityId]);
+      return [];
+    },
     async createApproval(input) {
       repositories.calls.push(['createContractApproval', input]);
       return { id: 90, status: 'pending', ...input };
@@ -855,6 +859,43 @@ test('submit contract approval after rejection requires a revised contract attac
   ]);
 });
 
+test('submit contract approval after rejected history requires a revised contract attachment', async () => {
+  const rejectedAt = new Date('2026-06-09T08:00:00.000Z');
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.WON_CONTRACT_PENDING,
+    salespersonId: 1
+  }, [
+    { id: 56, category: 'contract', uploadedAt: new Date('2026-06-09T07:59:00.000Z') }
+  ]);
+  repositories.contractApprovalRepository.listByOpportunity = async (opportunityId) => {
+    repositories.calls.push(['listContractApprovals', opportunityId]);
+    return [
+      {
+        id: 90,
+        status: 'rejected',
+        completedAt: rejectedAt,
+        actedAt: rejectedAt
+      }
+    ];
+  };
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+    payload: { comment: 'contract revised' },
+    repositories
+  }), /Revised Contract attachment is required after rejection/);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'contract_approval'],
+    ['listAttachments', 10],
+    ['listContractApprovals', 10]
+  ]);
+});
+
 test('submit contract approval after rejection accepts a revised contract attachment', async () => {
   const rejectedAt = new Date('2026-06-09T08:00:00.000Z');
   const repositories = createMaterialRepositories({
@@ -927,6 +968,7 @@ test('submit contract approval creates approval record for legal reviewer', asyn
     ['findOpportunity', 10],
     ['findActiveApprovalSetting', 'contract_approval'],
     ['listAttachments', 10],
+    ['listContractApprovals', 10],
     ['updateOpportunity', 10, { status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS }],
     ['createContractApproval', { opportunityId: 10, reviewerUserId: 6, submittedBy: 1 }],
     ['createEvent', {
