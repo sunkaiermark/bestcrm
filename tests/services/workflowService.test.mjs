@@ -647,20 +647,20 @@ test('technical manager rejection marks latest pending technical solution versio
   ]);
 });
 
-test('submit commercial quote requires quote details and commercial quote attachment before side effects', async () => {
+test('submit commercial quote requires commercial quote attachment before side effects', async () => {
   const repositories = createMaterialRepositories({
     id: 10,
     status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
     quotationEngineerId: 3
-  }, [{ id: 55, category: 'commercial_quote' }]);
+  }, []);
 
   await assert.rejects(() => applyWorkflowAction({
     actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
     opportunityId: 10,
     action: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
-    payload: { totalPrice: 2000 },
+    payload: {},
     repositories
-  }), /Commercial quote details are required/);
+  }), /Commercial Quote attachment is required/);
 
   assert.deepEqual(repositories.calls, [
     ['findOpportunity', 10],
@@ -669,36 +669,7 @@ test('submit commercial quote requires quote details and commercial quote attach
   ]);
 });
 
-test('submit commercial quote rejects blank required text fields', async () => {
-  const repositories = createMaterialRepositories({
-    id: 10,
-    status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
-    quotationEngineerId: 3
-  }, [{ id: 55, category: 'commercial_quote' }]);
-
-  await assert.rejects(() => applyWorkflowAction({
-    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
-    opportunityId: 10,
-    action: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
-      payload: {
-        quoteItemName: '   ',
-        quoteQuantity: 2,
-        quoteUnitPrice: 1000,
-        totalPrice: 2000,
-        paymentTerms: '   ',
-        validityDate: '2026-07-31'
-      },
-    repositories
-  }), /Commercial quote details are required/);
-
-  assert.deepEqual(repositories.calls, [
-    ['findOpportunity', 10],
-    ['findActiveApprovalSetting', 'commercial_quote'],
-    ['listAttachments', 10]
-  ]);
-});
-
-test('submit commercial quote stores quote details when requirements are complete', async () => {
+test('submit commercial quote stores attachment based quote version without line item details', async () => {
   const repositories = createMaterialRepositories({
     id: 10,
     status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
@@ -710,14 +681,6 @@ test('submit commercial quote stores quote details when requirements are complet
     opportunityId: 10,
     action: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
     payload: {
-      quoteItemName: 'Control cabinet',
-      quoteSpecification: 'PLC control set',
-      quoteUnit: 'set',
-      quoteQuantity: 2,
-      quoteUnitPrice: 1000,
-      totalPrice: 2000,
-      paymentTerms: '30% advance, 70% before delivery',
-      validityDate: '2026-07-31',
       comment: 'quote ready'
     },
     repositories
@@ -731,19 +694,12 @@ test('submit commercial quote stores quote details when requirements are complet
     ['updateOpportunity', 10, { status: STATUSES.COMMERCIAL_QUOTE_PENDING, commercialManagerId: 5 }],
     ['createQuote', {
       opportunityId: 10,
-      totalPrice: 2000,
-      paymentTerms: '30% advance, 70% before delivery',
-      validityDate: '2026-07-31',
+      totalPrice: 0,
+      paymentTerms: null,
+      validityDate: null,
       remarks: 'quote ready',
       submittedBy: 3,
-      items: [{
-        itemName: 'Control cabinet',
-        specification: 'PLC control set',
-        unit: 'set',
-        quantity: 2,
-        unitPrice: 1000,
-        subtotal: 2000
-      }]
+      items: []
     }],
     ['createEvent', {
       opportunityId: 10,
@@ -862,10 +818,99 @@ test('submit contract approval requires a contract attachment before side effect
   ]);
 });
 
+test('submit contract approval after rejection requires a revised contract attachment', async () => {
+  const rejectedAt = new Date('2026-06-09T08:00:00.000Z');
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.CONTRACT_REJECTED,
+    salespersonId: 1
+  }, [
+    { id: 56, category: 'contract', uploadedAt: new Date('2026-06-09T07:59:00.000Z') }
+  ]);
+  repositories.contractApprovalRepository.listByOpportunity = async (opportunityId) => {
+    repositories.calls.push(['listContractApprovals', opportunityId]);
+    return [
+      {
+        id: 90,
+        status: 'rejected',
+        completedAt: rejectedAt,
+        actedAt: rejectedAt
+      }
+    ];
+  };
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+    payload: { comment: 'contract revised' },
+    repositories
+  }), /Revised Contract attachment is required after rejection/);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'contract_approval'],
+    ['listAttachments', 10],
+    ['listContractApprovals', 10]
+  ]);
+});
+
+test('submit contract approval after rejection accepts a revised contract attachment', async () => {
+  const rejectedAt = new Date('2026-06-09T08:00:00.000Z');
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.CONTRACT_REJECTED,
+    salespersonId: 1
+  }, [
+    { id: 56, category: 'contract', uploadedAt: new Date('2026-06-09T07:59:00.000Z') },
+    { id: 57, category: 'contract', uploadedAt: new Date('2026-06-09T08:01:00.000Z') }
+  ]);
+  repositories.contractApprovalRepository.listByOpportunity = async (opportunityId) => {
+    repositories.calls.push(['listContractApprovals', opportunityId]);
+    return [
+      {
+        id: 90,
+        status: 'rejected',
+        completedAt: rejectedAt,
+        actedAt: rejectedAt
+      }
+    ];
+  };
+
+  const result = await applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+    payload: { comment: 'contract revised' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.CONTRACT_APPROVAL_IN_PROGRESS);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'contract_approval'],
+    ['listAttachments', 10],
+    ['listContractApprovals', 10],
+    ['updateOpportunity', 10, { status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS }],
+    ['createContractApproval', { opportunityId: 10, reviewerUserId: 6, submittedBy: 1 }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+      fromStatus: STATUSES.CONTRACT_REJECTED,
+      toStatus: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+      actorUserId: 1,
+      targetUserId: 6,
+      comment: 'contract revised'
+    }],
+    ['closeTodos', 10, 'completed'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 6, title: 'Review contract' }]
+  ]);
+});
+
 test('submit contract approval creates approval record for legal reviewer', async () => {
   const repositories = createMaterialRepositories({
     id: 10,
-    status: STATUSES.WON_CONTRACT_PENDING,
+    status: STATUSES.CUSTOMER_NEGOTIATION,
     salespersonId: 1
   }, [{ id: 56, category: 'contract' }]);
 
@@ -887,7 +932,7 @@ test('submit contract approval creates approval record for legal reviewer', asyn
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
-      fromStatus: STATUSES.WON_CONTRACT_PENDING,
+      fromStatus: STATUSES.CUSTOMER_NEGOTIATION,
       toStatus: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
       actorUserId: 1,
       targetUserId: 6,

@@ -1,4 +1,5 @@
 import { ACTIONS, transition } from '../domain/workflow.mjs';
+import { STATUSES } from '../domain/statuses.mjs';
 
 export class WorkflowValidationError extends Error {
   constructor(message) {
@@ -59,12 +60,6 @@ const contractReviewActions = new Set([
   ACTIONS.REJECT_CONTRACT
 ]);
 
-const quoteDetailFields = [
-  'quoteItemName',
-  'paymentTerms',
-  'validityDate'
-];
-
 const technicalSolutionReviewStatuses = new Map([
   [ACTIONS.APPROVE_TECHNICAL_SOLUTION, 'approved'],
   [ACTIONS.REJECT_TECHNICAL_SOLUTION, 'rejected']
@@ -100,6 +95,14 @@ function hasValue(value) {
 
 function hasNonBlankValue(value) {
   return hasValue(value) && String(value).trim() !== '';
+}
+
+function timestampValue(value) {
+  if (!value) {
+    return null;
+  }
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 function commentFromPayload(payload) {
@@ -183,16 +186,6 @@ function numericPayloadValue(payload, field) {
   return Number.isFinite(value) ? value : null;
 }
 
-function assertCommercialQuotePayload(payload) {
-  const hasRequiredText = quoteDetailFields.every((field) => hasNonBlankValue(payload[field]));
-  const quantity = numericPayloadValue(payload, 'quoteQuantity');
-  const unitPrice = numericPayloadValue(payload, 'quoteUnitPrice');
-  const totalPrice = numericPayloadValue(payload, 'totalPrice');
-  if (!hasRequiredText || !quantity || quantity <= 0 || !unitPrice || unitPrice <= 0 || !totalPrice || totalPrice <= 0) {
-    throw new WorkflowValidationError('Commercial quote details are required');
-  }
-}
-
 function assertTechnicalSolutionPayload(payload, attachments) {
   const hasTechnicalAttachment = attachments.some((attachment) => attachment.category === 'technical_solution');
   if (!hasNonBlankValue(payload.solutionSummary) && !hasTechnicalAttachment) {
@@ -211,23 +204,14 @@ function technicalSolutionInput({ opportunityId, actor, payload }) {
 }
 
 function commercialQuoteInput({ opportunityId, actor, payload }) {
-  const quantity = Number(payload.quoteQuantity);
-  const unitPrice = Number(payload.quoteUnitPrice);
   return {
     opportunityId,
-    totalPrice: Number(payload.totalPrice),
-    paymentTerms: String(payload.paymentTerms).trim(),
-    validityDate: String(payload.validityDate).trim(),
+    totalPrice: 0,
+    paymentTerms: null,
+    validityDate: null,
     remarks: commentFromPayload(payload),
     submittedBy: actor.id,
-    items: [{
-      itemName: String(payload.quoteItemName).trim(),
-      specification: hasValue(payload.quoteSpecification) ? String(payload.quoteSpecification).trim() : null,
-      unit: hasValue(payload.quoteUnit) ? String(payload.quoteUnit).trim() : null,
-      quantity,
-      unitPrice,
-      subtotal: quantity * unitPrice
-    }]
+    items: []
   };
 }
 
@@ -238,7 +222,37 @@ async function listAttachmentsForOpportunity(repositories, opportunityId) {
   return repositories.attachmentRepository.listByOpportunity(opportunityId);
 }
 
-async function assertRequiredMaterials({ action, opportunityId, payload, repositories }) {
+function latestRejectedContractApprovalTime(contractApprovals) {
+  return contractApprovals
+    .filter((approval) => approval.status === 'rejected')
+    .map((approval) => timestampValue(approval.completedAt) || timestampValue(approval.actedAt) || timestampValue(approval.submittedAt))
+    .filter((timestamp) => timestamp !== null)
+    .sort((left, right) => right - left)[0] || null;
+}
+
+async function assertRevisedContractAfterRejection({ before, action, opportunityId, attachments, repositories }) {
+  if (action !== ACTIONS.SUBMIT_CONTRACT_APPROVAL || before.status !== STATUSES.CONTRACT_REJECTED) {
+    return;
+  }
+  if (typeof repositories.contractApprovalRepository?.listByOpportunity !== 'function') {
+    throw new WorkflowValidationError('Contract approval repository is not configured');
+  }
+  const rejectedAt = latestRejectedContractApprovalTime(
+    await repositories.contractApprovalRepository.listByOpportunity(opportunityId)
+  );
+  const hasRevisedContract = attachments.some((attachment) => {
+    if (attachment.category !== 'contract') {
+      return false;
+    }
+    const uploadedAt = timestampValue(attachment.uploadedAt);
+    return rejectedAt !== null && uploadedAt !== null && uploadedAt > rejectedAt;
+  });
+  if (!hasRevisedContract) {
+    throw new WorkflowValidationError('Revised Contract attachment is required after rejection');
+  }
+}
+
+async function assertRequiredMaterials({ action, before, opportunityId, payload, repositories }) {
   let attachments = null;
   const attachmentRequirement = attachmentRequirements.get(action);
   if (attachmentRequirement) {
@@ -248,9 +262,14 @@ async function assertRequiredMaterials({ action, opportunityId, payload, reposit
     }
   }
 
-  if (action === ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
-    assertCommercialQuotePayload(payload);
-  }
+  await assertRevisedContractAfterRejection({
+    before,
+    action,
+    opportunityId,
+    attachments: attachments || [],
+    repositories
+  });
+
   if (action === ACTIONS.SUBMIT_TECHNICAL_SOLUTION) {
     attachments = attachments || await listAttachmentsForOpportunity(repositories, opportunityId);
     assertTechnicalSolutionPayload(payload, attachments);
@@ -439,7 +458,7 @@ export async function applyWorkflowAction({
     roles: actor.roles,
     opportunity: transitionOpportunity
   }, action, effectivePayload);
-  await assertRequiredMaterials({ action, opportunityId, payload: effectivePayload, repositories });
+  await assertRequiredMaterials({ action, before, opportunityId, payload: effectivePayload, repositories });
   const changes = changedWorkflowFields(before, after);
   const updated = await repositories.opportunityRepository.updateWorkflowState(opportunityId, changes);
   const effectiveAfter = updated || { ...before, ...changes };

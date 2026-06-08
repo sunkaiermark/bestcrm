@@ -76,6 +76,17 @@ const technicalSolutionDeleteStatuses = new Set([
   STATUSES.TECHNICAL_SOLUTION_REJECTED
 ]);
 
+const commercialQuoteDeleteStatuses = new Set([
+  STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+  STATUSES.COMMERCIAL_QUOTE_REJECTED
+]);
+
+const contractDeleteStatuses = new Set([
+  STATUSES.CUSTOMER_NEGOTIATION,
+  STATUSES.WON_CONTRACT_PENDING,
+  STATUSES.CONTRACT_REJECTED
+]);
+
 const preSubmissionRequirementUpdateStatuses = new Set([
   STATUSES.DRAFT,
   STATUSES.INITIATION_REJECTED
@@ -128,6 +139,14 @@ function textareaField(name, label, required = true) {
 
 function inputField(name, label, inputType = 'text', required = true) {
   return { type: 'input', name, label, inputType, required };
+}
+
+function timestampValue(value) {
+  if (!value) {
+    return null;
+  }
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
 }
 
 function formForAction(action, usersByRole) {
@@ -203,17 +222,7 @@ function formForAction(action, usersByRole) {
         action,
         title: 'Submit Commercial Quote',
         button: 'Submit to Commercial Manager',
-        fields: [
-          inputField('quoteItemName', 'Quote Item'),
-          inputField('quoteSpecification', 'Specification', 'text', false),
-          inputField('quoteUnit', 'Unit', 'text', false),
-          inputField('quoteQuantity', 'Quantity', 'number'),
-          inputField('quoteUnitPrice', 'Unit Price', 'number'),
-          inputField('totalPrice', 'Total Price', 'number'),
-          textareaField('paymentTerms', 'Payment Terms'),
-          inputField('validityDate', 'Quote Validity Date', 'date'),
-          textareaField('comment', 'Comment', false)
-        ]
+        fields: []
       };
     case ACTIONS.WITHDRAW_COMMERCIAL_QUOTE:
       return {
@@ -258,9 +267,7 @@ function formForAction(action, usersByRole) {
         action,
         title: 'Submit Contract Approval',
         button: 'Submit Contract Approval',
-        fields: [
-          textareaField('comment', 'Comment', false)
-        ]
+        fields: []
       };
     case ACTIONS.WITHDRAW_CONTRACT_APPROVAL:
       return {
@@ -288,13 +295,40 @@ function formForAction(action, usersByRole) {
   }
 }
 
-function missingMaterialsForAction(action, attachments) {
+function latestRejectedContractApprovalTime(contractApprovals) {
+  return contractApprovals
+    .filter((approval) => approval.status === 'rejected')
+    .map((approval) => timestampValue(approval.completedAt) || timestampValue(approval.actedAt) || timestampValue(approval.submittedAt))
+    .filter((timestamp) => timestamp !== null)
+    .sort((left, right) => right - left)[0] || null;
+}
+
+function hasContractAttachmentAfter(attachments, rejectedAt) {
+  return attachments.some((attachment) => {
+    if (attachment.category !== 'contract') {
+      return false;
+    }
+    const uploadedAt = timestampValue(attachment.uploadedAt);
+    return rejectedAt !== null && uploadedAt !== null && uploadedAt > rejectedAt;
+  });
+}
+
+function missingMaterialsForAction(action, attachments, opportunity, contractApprovals) {
   const requirement = attachmentRequirementsByAction.get(action);
   if (!requirement) {
     return [];
   }
   const hasAttachment = attachments.some((attachment) => attachment.category === requirement.category);
-  return hasAttachment ? [] : [requirement.message];
+  if (!hasAttachment) {
+    return [requirement.message];
+  }
+  if (action === ACTIONS.SUBMIT_CONTRACT_APPROVAL && opportunity.status === STATUSES.CONTRACT_REJECTED) {
+    const rejectedAt = latestRejectedContractApprovalTime(contractApprovals);
+    if (!hasContractAttachmentAfter(attachments, rejectedAt)) {
+      return ['Revised Contract attachment is required after rejection'];
+    }
+  }
+  return [];
 }
 
 function activeContractApproval(contractApprovals) {
@@ -323,7 +357,7 @@ function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], co
     .map((action) => formForAction(action, usersByRole))
     .filter(Boolean)
     .map((form) => {
-      const missingRequirements = missingMaterialsForAction(form.action, attachments);
+      const missingRequirements = missingMaterialsForAction(form.action, attachments, opportunity, contractApprovals);
       return {
         ...form,
         missingRequirements,
@@ -455,6 +489,12 @@ function canDeleteAttachment(opportunity, attachment) {
   }
   if (attachment.category === 'technical_solution') {
     return technicalSolutionDeleteStatuses.has(opportunity.status);
+  }
+  if (attachment.category === 'commercial_quote') {
+    return commercialQuoteDeleteStatuses.has(opportunity.status);
+  }
+  if (attachment.category === 'contract') {
+    return contractDeleteStatuses.has(opportunity.status);
   }
   return false;
 }

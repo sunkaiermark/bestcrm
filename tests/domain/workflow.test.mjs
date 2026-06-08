@@ -110,12 +110,26 @@ test('salesperson records lost or won customer result after quote approval', () 
 });
 
 test('salesperson can submit and withdraw contract approval before reviewer action', () => {
+  const submittedFromNegotiation = transition({
+    userId: 1,
+    roles: [ROLES.SALESPERSON],
+    opportunity: { status: STATUSES.CUSTOMER_NEGOTIATION, salespersonId: 1 }
+  }, ACTIONS.SUBMIT_CONTRACT_APPROVAL, { legalReviewerId: 6 });
+  assert.equal(submittedFromNegotiation.status, STATUSES.CONTRACT_APPROVAL_IN_PROGRESS);
+
   const submitted = transition({
     userId: 1,
     roles: [ROLES.SALESPERSON],
     opportunity: { status: STATUSES.WON_CONTRACT_PENDING, salespersonId: 1 }
   }, ACTIONS.SUBMIT_CONTRACT_APPROVAL, { legalReviewerId: 6, comment: 'contract uploaded' });
   assert.equal(submitted.status, STATUSES.CONTRACT_APPROVAL_IN_PROGRESS);
+
+  const resubmitted = transition({
+    userId: 1,
+    roles: [ROLES.SALESPERSON],
+    opportunity: { status: STATUSES.CONTRACT_REJECTED, salespersonId: 1 }
+  }, ACTIONS.SUBMIT_CONTRACT_APPROVAL, { legalReviewerId: 6, comment: 'revised contract uploaded' });
+  assert.equal(resubmitted.status, STATUSES.CONTRACT_APPROVAL_IN_PROGRESS);
 
   const withdrawn = transition({
     userId: 1,

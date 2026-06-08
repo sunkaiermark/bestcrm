@@ -96,6 +96,36 @@
     return String(left.key).localeCompare(String(right.key));
   });
   const commercialQuoteVersions = typeof commercialQuotes === 'undefined' ? [] : commercialQuotes;
+  const commercialQuoteTimeline = [
+    ...commercialQuoteAttachments.map((attachment) => ({
+      key: `commercial-quote-file-${attachment.id}`,
+      type: 'File',
+      attachment,
+      text: attachment.originalName,
+      at: attachment.uploadedAt,
+      sortAt: requirementTimelineSortValue(attachment.uploadedAt)
+    }))
+  ].filter((item) => item.text || item.attachment).sort((left, right) => {
+    if (left.sortAt !== right.sortAt) {
+      return left.sortAt.localeCompare(right.sortAt);
+    }
+    return String(left.key).localeCompare(String(right.key));
+  });
+  const contractTimeline = [
+    ...contractAttachments.map((attachment) => ({
+      key: `contract-file-${attachment.id}`,
+      type: 'File',
+      attachment,
+      text: attachment.originalName,
+      at: attachment.uploadedAt,
+      sortAt: requirementTimelineSortValue(attachment.uploadedAt)
+    }))
+  ].filter((item) => item.text || item.attachment).sort((left, right) => {
+    if (left.sortAt !== right.sortAt) {
+      return left.sortAt.localeCompare(right.sortAt);
+    }
+    return String(left.key).localeCompare(String(right.key));
+  });
   const opportunityTeamMembers = typeof teamMembers === 'undefined' ? [] : teamMembers;
   const opportunityOwnerTransfers = typeof ownerTransfers === 'undefined' ? [] : ownerTransfers;
   const canManageOpportunityResponsibility = typeof canManageResponsibility === 'undefined' ? false : canManageResponsibility;
@@ -108,8 +138,12 @@
   const allWorkflowForms = Array.isArray(workflowForms) ? workflowForms : [];
   const initiationWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_initiation');
   const technicalSubmitWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_technical_solution');
-  const remainingWorkflowForms = allWorkflowForms.filter((workflowForm) => workflowForm.action !== 'submit_initiation' && workflowForm.action !== 'submit_technical_solution');
+  const commercialQuoteWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_commercial_quote');
+  const contractApprovalWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_contract_approval');
+  const remainingWorkflowForms = allWorkflowForms.filter((workflowForm) => workflowForm.action !== 'submit_initiation' && workflowForm.action !== 'submit_technical_solution' && workflowForm.action !== 'submit_commercial_quote' && workflowForm.action !== 'submit_contract_approval');
   const canDeleteTechnicalSolutionAttachments = technicalSolutionDeleteStatuses.includes(opportunity.status);
+  const canDeleteCommercialQuoteAttachments = ['commercial_quote_in_progress', 'commercial_quote_rejected'].includes(opportunity.status);
+  const canDeleteContractAttachments = ['customer_negotiation', 'won_contract_pending', 'contract_rejected'].includes(opportunity.status);
 %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
         <header class="page-header">
@@ -457,78 +491,56 @@
                   <button type="submit">Upload</button>
                 </form>
               <% } %>
-              <% if (commercialQuoteAttachments.length > 0) { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>File</th>
-                      <th>Uploaded At</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const attachment of commercialQuoteAttachments) { %>
-                      <tr>
-                        <td><%= attachment.originalName %></td>
-                        <td><%= attachment.uploadedAt || '' %></td>
-                        <td>
-                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
-                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
-                        </td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
+              <% if (commercialQuoteWorkflowForm) { %>
+                <form class="form-panel requirement-input-panel commercial-quote-submit-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                  <input type="hidden" name="action" value="<%= commercialQuoteWorkflowForm.action %>">
+                  <% if (commercialQuoteWorkflowForm.missingRequirements && commercialQuoteWorkflowForm.missingRequirements.length > 0) { %>
+                    <ul class="inline-list">
+                      <% for (const requirement of commercialQuoteWorkflowForm.missingRequirements) { %>
+                        <li><%= requirement %></li>
+                      <% } %>
+                    </ul>
+                  <% } %>
+                  <% for (const field of commercialQuoteWorkflowForm.fields) { %>
+                    <label>
+                      <%= field.label %>
+                      <% if (field.type === 'userSelect') { %>
+                        <select name="<%= field.name %>" required>
+                          <option value=""></option>
+                          <% for (const user of field.users) { %>
+                            <option value="<%= user.id %>"><%= user.displayName %></option>
+                          <% } %>
+                        </select>
+                      <% } else if (field.type === 'textarea') { %>
+                        <textarea name="<%= field.name %>" <%= field.required ? 'required' : '' %>></textarea>
+                      <% } else { %>
+                        <input name="<%= field.name %>" type="<%= field.inputType %>" <%= field.required ? 'required' : '' %>>
+                      <% } %>
+                    </label>
+                  <% } %>
+                  <button type="submit" <%= commercialQuoteWorkflowForm.blocked ? 'disabled' : '' %>><%= commercialQuoteWorkflowForm.button %></button>
+                </form>
+              <% } %>
+              <% if (commercialQuoteTimeline.length > 0) { %>
+                <div class="requirement-timeline">
+                  <% for (const item of commercialQuoteTimeline) { %>
+                    <article class="requirement-row requirement-row-file">
+                      <div class="requirement-row-time"><%= formatShortDate(item.at) %></div>
+                      <div class="requirement-row-content"><%= item.text %></div>
+                      <div class="inline-actions requirement-row-actions">
+                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview">Preview</a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener">Download</a>
+                        <% if (canDeleteCommercialQuoteAttachments) { %>
+                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this commercial quote file?')">
+                            <button class="danger-action requirement-action-delete" type="submit">Delete</button>
+                          </form>
+                        <% } %>
+                      </div>
+                    </article>
+                  <% } %>
+                </div>
               <% } else { %>
                 <p class="empty">No commercial quote files.</p>
-              <% } %>
-
-              <h3>Version History</h3>
-              <% if (commercialQuoteVersions.length > 0) { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>Version</th>
-                      <th>Status</th>
-                      <th>Total Price</th>
-                      <th>Payment Terms</th>
-                      <th>Validity Date</th>
-                      <th>Items</th>
-                      <th>Submitted By</th>
-                      <th>Submitted At</th>
-                      <th>Reviewed By</th>
-                      <th>Reviewed At</th>
-                      <th>Review Comment</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const quote of commercialQuoteVersions) { %>
-                      <tr>
-                        <td>V<%= quote.versionNo %></td>
-                        <td><%= quote.status %></td>
-                        <td><%= quote.totalPrice %></td>
-                        <td><%= quote.paymentTerms || '' %></td>
-                        <td><%= quote.validityDate || '' %></td>
-                        <td>
-                          <% for (const item of quote.items || []) { %>
-                            <div>
-                              <strong><%= item.itemName %></strong>
-                              <span><%= item.specification || '' %></span>
-                              <span><%= item.quantity %> x <%= item.unitPrice %> = <%= item.subtotal %></span>
-                            </div>
-                          <% } %>
-                        </td>
-                        <td><%= quote.submitterDisplayName || '' %></td>
-                        <td><%= quote.submittedAt || '' %></td>
-                        <td><%= quote.reviewerDisplayName || '' %></td>
-                        <td><%= quote.reviewedAt || '' %></td>
-                        <td><%= quote.reviewComment || '' %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } else { %>
-                <p class="empty">No commercial quote versions.</p>
               <% } %>
             </div>
           </section>
@@ -543,62 +555,56 @@
                   <button type="submit">Upload</button>
                 </form>
               <% } %>
-              <% if (contractAttachments.length > 0) { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>File</th>
-                      <th>Uploaded At</th>
-                      <th>Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const attachment of contractAttachments) { %>
-                      <tr>
-                        <td><%= attachment.originalName %></td>
-                        <td><%= attachment.uploadedAt || '' %></td>
-                        <td>
-                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/preview">Preview</a>
-                          <a href="/opportunities/<%= opportunity.id %>/attachments/<%= attachment.id %>/download">Download</a>
-                        </td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
+              <% if (contractApprovalWorkflowForm) { %>
+                <form class="form-panel requirement-input-panel commercial-quote-submit-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                  <input type="hidden" name="action" value="<%= contractApprovalWorkflowForm.action %>">
+                  <% if (contractApprovalWorkflowForm.missingRequirements && contractApprovalWorkflowForm.missingRequirements.length > 0) { %>
+                    <ul class="inline-list">
+                      <% for (const requirement of contractApprovalWorkflowForm.missingRequirements) { %>
+                        <li><%= requirement %></li>
+                      <% } %>
+                    </ul>
+                  <% } %>
+                  <% for (const field of contractApprovalWorkflowForm.fields) { %>
+                    <label>
+                      <%= field.label %>
+                      <% if (field.type === 'userSelect') { %>
+                        <select name="<%= field.name %>" required>
+                          <option value=""></option>
+                          <% for (const user of field.users) { %>
+                            <option value="<%= user.id %>"><%= user.displayName %></option>
+                          <% } %>
+                        </select>
+                      <% } else if (field.type === 'textarea') { %>
+                        <textarea name="<%= field.name %>" <%= field.required ? 'required' : '' %>></textarea>
+                      <% } else { %>
+                        <input name="<%= field.name %>" type="<%= field.inputType %>" <%= field.required ? 'required' : '' %>>
+                      <% } %>
+                    </label>
+                  <% } %>
+                  <button type="submit" <%= contractApprovalWorkflowForm.blocked ? 'disabled' : '' %>><%= contractApprovalWorkflowForm.button %></button>
+                </form>
+              <% } %>
+              <% if (contractTimeline.length > 0) { %>
+                <div class="requirement-timeline">
+                  <% for (const item of contractTimeline) { %>
+                    <article class="requirement-row requirement-row-file">
+                      <div class="requirement-row-time"><%= formatShortDate(item.at) %></div>
+                      <div class="requirement-row-content"><%= item.text %></div>
+                      <div class="inline-actions requirement-row-actions">
+                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview">Preview</a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener">Download</a>
+                        <% if (canDeleteContractAttachments) { %>
+                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this contract file?')">
+                            <button class="danger-action requirement-action-delete" type="submit">Delete</button>
+                          </form>
+                        <% } %>
+                      </div>
+                    </article>
+                  <% } %>
+                </div>
               <% } else { %>
                 <p class="empty">No contract files.</p>
-              <% } %>
-
-              <h3>Contract Approvals / Version History</h3>
-              <% if (contractApprovals && contractApprovals.length > 0) { %>
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th>Version</th>
-                      <th>Status</th>
-                      <th>Reviewer</th>
-                      <th>Action</th>
-                      <th>Comment</th>
-                      <th>Submitted At</th>
-                      <th>Completed At</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const approval of contractApprovals) { %>
-                      <tr>
-                        <td><%= approval.versionNo ? `V${approval.versionNo}` : '' %></td>
-                        <td><%= approval.status %></td>
-                        <td><%= approval.reviewerDisplayName %></td>
-                        <td><%= approval.stepAction %></td>
-                        <td><%= approval.stepComment || '' %></td>
-                        <td><%= approval.submittedAt || '' %></td>
-                        <td><%= approval.completedAt || '' %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
-              <% } else { %>
-                <p class="empty">No contract approvals.</p>
               <% } %>
             </div>
           </section>

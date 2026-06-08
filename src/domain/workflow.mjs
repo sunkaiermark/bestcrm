@@ -215,7 +215,7 @@ const RULES = [
   },
   {
     action: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
-    fromStatuses: [STATUSES.WON_CONTRACT_PENDING],
+    fromStatuses: [STATUSES.CUSTOMER_NEGOTIATION, STATUSES.WON_CONTRACT_PENDING, STATUSES.CONTRACT_REJECTED],
     role: ROLES.SALESPERSON,
     assigneeField: 'salespersonId',
     apply(opportunity, payload) {

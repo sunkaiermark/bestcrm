@@ -1402,7 +1402,7 @@ test('opportunity detail shows technical solution submission and review comments
   assert.doesNotMatch(technicalSection, /Revise drawings and wiring plan/);
 });
 
-test('opportunity detail shows commercial quote version history', async () => {
+test('opportunity detail hides commercial quote version history because quote rows are dated', async () => {
   const { agent } = await createLoggedInAgent({
     commercialQuoteRepository: {
       async listByOpportunity() {
@@ -1445,18 +1445,15 @@ test('opportunity detail shows commercial quote version history', async () => {
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Commercial Quote[\s\S]*Version History/);
-  assert.match(detail.text, /V2/);
-  assert.match(detail.text, /2100/);
-  assert.match(detail.text, /40% advance, 60% before delivery/);
-  assert.match(detail.text, /Control cabinet/);
-  assert.match(detail.text, /PLC control set/);
-  assert.match(detail.text, /approved/);
-  assert.match(detail.text, /Quote Engineer/);
-  assert.match(detail.text, /Commercial Manager/);
+  const quoteSection = detail.text.match(/<h2>Commercial Quote<\/h2>[\s\S]*?<h2>Commercial Contract<\/h2>/)[0];
+  assert.doesNotMatch(quoteSection, /Version History/);
+  assert.doesNotMatch(quoteSection, /V2/);
+  assert.doesNotMatch(quoteSection, /Quote Engineer/);
+  assert.doesNotMatch(quoteSection, /Commercial Manager/);
+  assert.doesNotMatch(quoteSection, /Total Price|Payment Terms|Items|2100|Control cabinet|PLC control set/);
 });
 
-test('opportunity detail shows contract version history', async () => {
+test('opportunity detail hides contract approval version history because contract rows are dated', async () => {
   const { agent } = await createWorkflowAgent({
     user: {
       id: 7,
@@ -1489,11 +1486,9 @@ test('opportunity detail shows contract version history', async () => {
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Commercial Contract[\s\S]*Version History/);
-  assert.match(detail.text, /V2/);
-  assert.match(detail.text, /rejected/);
-  assert.match(detail.text, /Legal One/);
-  assert.match(detail.text, /missing clause/);
+  const contractSection = detail.text.match(/<h2>Commercial Contract<\/h2>[\s\S]*?<h2>Timeline<\/h2>/)[0];
+  assert.doesNotMatch(contractSection, /Contract Approvals|Version History/);
+  assert.doesNotMatch(contractSection, /V2|Legal One|missing clause/);
 });
 
 test('opportunity detail shows upload forms in each business material panel', async () => {
@@ -1812,6 +1807,400 @@ test('draft opportunity deletes requirement material metadata and stored file', 
     assert.equal(response.headers.location, '/opportunities/30');
     assert.deepEqual(deletedIds, [55]);
     assert.equal(existsSync(path.join(uploadDir, 'requirement.txt')), false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('commercial quote in progress shows quote attachments as dated rows with delete action', async () => {
+  const attachment = {
+    id: 55,
+    opportunityId: 30,
+    category: 'commercial_quote',
+    originalName: 'quote-v1.xlsx',
+    storedPath: '2026/06/quote-v1.xlsx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    fileSize: 2048,
+    uploadedBy: 3,
+    uploaderDisplayName: 'Quote Engineer',
+    uploadedAt: '2026-06-05T11:00:00.000Z'
+  };
+  const { agent } = await createLoggedInAgent({
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return opportunityDetail({ status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS });
+      }
+    },
+    attachmentRepository: {
+      async listByOpportunity() {
+        return [attachment];
+      },
+      async createAttachment() {
+        throw new Error('not used');
+      },
+      async deleteById() {
+        throw new Error('not used');
+      },
+      async findById() {
+        return attachment;
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  const quoteSection = detail.text.match(/<h2>Commercial Quote<\/h2>[\s\S]*?<h2>Commercial Contract<\/h2>/)[0];
+  assert.match(quoteSection, /requirement-row requirement-row-file[\s\S]*2026-06-05 \d{2}:00[\s\S]*quote-v1\.xlsx[\s\S]*Preview[\s\S]*Download[\s\S]*Delete/);
+  assert.match(quoteSection, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/55\/download"[^>]*download="quote-v1\.xlsx"[^>]*target="_blank"/);
+  assert.match(quoteSection, /onsubmit="return confirm\('Delete this commercial quote file\?'\)"/);
+});
+
+test('commercial quote in progress deletes quote attachment metadata and stored file', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-delete-commercial-quote-'));
+  try {
+    await writeFile(path.join(uploadDir, 'quote.txt'), 'quote file', 'utf8');
+    const deletedIds = [];
+    const attachment = {
+      id: 55,
+      opportunityId: 30,
+      category: 'commercial_quote',
+      originalName: 'quote.txt',
+      storedPath: 'quote.txt',
+      mimeType: 'text/plain',
+      fileSize: 10,
+      uploadedBy: 3,
+      uploaderDisplayName: 'Quote Engineer',
+      uploadedAt: '2026-06-05T11:00:00.000Z'
+    };
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      opportunityRepository: {
+        async getOpportunityDetail() {
+          return opportunityDetail({ status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS });
+        }
+      },
+      attachmentRepository: {
+        async listByOpportunity() {
+          return [attachment];
+        },
+        async createAttachment() {
+          throw new Error('not used');
+        },
+        async deleteById(id) {
+          deletedIds.push(Number(id));
+          return { rowCount: 1 };
+        },
+        async findById() {
+          return attachment;
+        }
+      }
+    });
+
+    const response = await agent.post('/opportunities/30/attachments/55/delete').type('form').send();
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/opportunities/30');
+    assert.deepEqual(deletedIds, [55]);
+    assert.equal(existsSync(path.join(uploadDir, 'quote.txt')), false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('approved commercial quote hides and blocks quote attachment deletion', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-delete-approved-quote-'));
+  try {
+    await writeFile(path.join(uploadDir, 'quote.txt'), 'approved quote', 'utf8');
+    let deleteCalled = false;
+    const attachment = {
+      id: 55,
+      opportunityId: 30,
+      category: 'commercial_quote',
+      originalName: 'quote.txt',
+      storedPath: 'quote.txt',
+      mimeType: 'text/plain',
+      fileSize: 14,
+      uploadedBy: 3,
+      uploaderDisplayName: 'Quote Engineer',
+      uploadedAt: '2026-06-05T11:00:00.000Z'
+    };
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      opportunityRepository: {
+        async getOpportunityDetail() {
+          return opportunityDetail({ status: STATUSES.CUSTOMER_NEGOTIATION });
+        }
+      },
+      attachmentRepository: {
+        async listByOpportunity() {
+          return [attachment];
+        },
+        async createAttachment() {
+          throw new Error('not used');
+        },
+        async deleteById() {
+          deleteCalled = true;
+          throw new Error('should not delete approved commercial quote attachment');
+        },
+        async findById() {
+          return attachment;
+        }
+      }
+    });
+
+    const detail = await agent.get('/opportunities/30');
+
+    assert.equal(detail.status, 200);
+    const quoteSection = detail.text.match(/<h2>Commercial Quote<\/h2>[\s\S]*?<h2>Commercial Contract<\/h2>/)[0];
+    assert.doesNotMatch(quoteSection, /\/opportunities\/30\/attachments\/55\/delete/);
+
+    const response = await agent.post('/opportunities/30/attachments/55/delete').type('form').send();
+
+    assert.equal(response.status, 403);
+    assert.equal(deleteCalled, false);
+    assert.equal(existsSync(path.join(uploadDir, 'quote.txt')), true);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('customer negotiation with contract attachment shows contract submit and delete actions', async () => {
+  const attachment = {
+    id: 57,
+    opportunityId: 30,
+    category: 'contract',
+    originalName: 'contract-v1.docx',
+    storedPath: '2026/06/contract-v1.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    fileSize: 2048,
+    uploadedBy: 7,
+    uploaderDisplayName: 'Sales One',
+    uploadedAt: '2026-06-05T13:00:00.000Z'
+  };
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    },
+    opportunity: {
+      status: STATUSES.CUSTOMER_NEGOTIATION,
+      salespersonId: 7
+    },
+    attachments: [attachment]
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  const contractSection = detail.text.match(/<h2>Commercial Contract<\/h2>[\s\S]*?<h2>Timeline<\/h2>/)[0];
+  assert.match(contractSection, /<button type="submit">Upload<\/button>[\s\S]*submit_contract_approval/);
+  assert.doesNotMatch(detail.text, /Workflow Actions[\s\S]*submit_contract_approval/);
+  assert.match(contractSection, /requirement-row requirement-row-file[\s\S]*2026-06-05 \d{2}:00[\s\S]*contract-v1\.docx[\s\S]*Preview[\s\S]*Download[\s\S]*Delete/);
+  assert.match(contractSection, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/57\/download"[^>]*download="contract-v1\.docx"[^>]*target="_blank"/);
+  assert.match(contractSection, /onsubmit="return confirm\('Delete this contract file\?'\)"/);
+  assert.doesNotMatch(contractSection, /Contract Approvals|Version History/);
+});
+
+test('rejected contract requires a revised attachment before resubmission', async () => {
+  const rejectedAt = '2026-06-05T13:30:00.000Z';
+  const oldAttachment = {
+    id: 57,
+    opportunityId: 30,
+    category: 'contract',
+    originalName: 'contract-v1.docx',
+    storedPath: '2026/06/contract-v1.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    fileSize: 2048,
+    uploadedBy: 7,
+    uploaderDisplayName: 'Sales One',
+    uploadedAt: '2026-06-05T13:00:00.000Z'
+  };
+  const contractApprovals = [{
+    id: 91,
+    opportunityId: 30,
+    status: 'rejected',
+    completedAt: rejectedAt,
+    actedAt: rejectedAt,
+    reviewerUserId: 6,
+    stepAction: 'rejected'
+  }];
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    },
+    opportunity: {
+      status: STATUSES.CONTRACT_REJECTED,
+      salespersonId: 7
+    },
+    attachments: [oldAttachment],
+    contractApprovals
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  const contractSection = detail.text.match(/<h2>Commercial Contract<\/h2>[\s\S]*?<h2>Timeline<\/h2>/)[0];
+  assert.match(contractSection, /Revised Contract attachment is required after rejection/);
+  assert.match(contractSection, /<button type="submit" disabled>Submit Contract Approval<\/button>/);
+});
+
+test('rejected contract with revised attachment shows contract resubmission action', async () => {
+  const rejectedAt = '2026-06-05T13:30:00.000Z';
+  const revisedAttachment = {
+    id: 58,
+    opportunityId: 30,
+    category: 'contract',
+    originalName: 'contract-v2.docx',
+    storedPath: '2026/06/contract-v2.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    fileSize: 2048,
+    uploadedBy: 7,
+    uploaderDisplayName: 'Sales One',
+    uploadedAt: '2026-06-05T13:31:00.000Z'
+  };
+  const contractApprovals = [{
+    id: 91,
+    opportunityId: 30,
+    status: 'rejected',
+    completedAt: rejectedAt,
+    actedAt: rejectedAt,
+    reviewerUserId: 6,
+    stepAction: 'rejected'
+  }];
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    },
+    opportunity: {
+      status: STATUSES.CONTRACT_REJECTED,
+      salespersonId: 7
+    },
+    attachments: [revisedAttachment],
+    contractApprovals
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  const contractSection = detail.text.match(/<h2>Commercial Contract<\/h2>[\s\S]*?<h2>Timeline<\/h2>/)[0];
+  assert.doesNotMatch(contractSection, /Revised Contract attachment is required after rejection/);
+  assert.match(contractSection, /submit_contract_approval/);
+  assert.match(contractSection, /<button type="submit" >Submit Contract Approval<\/button>/);
+});
+
+test('customer negotiation deletes contract attachment before submission', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-delete-contract-'));
+  try {
+    await writeFile(path.join(uploadDir, 'contract.txt'), 'contract file', 'utf8');
+    const deletedIds = [];
+    const attachment = {
+      id: 57,
+      opportunityId: 30,
+      category: 'contract',
+      originalName: 'contract.txt',
+      storedPath: 'contract.txt',
+      mimeType: 'text/plain',
+      fileSize: 13,
+      uploadedBy: 7,
+      uploaderDisplayName: 'Sales One',
+      uploadedAt: '2026-06-05T13:00:00.000Z'
+    };
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      opportunityRepository: {
+        async getOpportunityDetail() {
+          return opportunityDetail({ status: STATUSES.CUSTOMER_NEGOTIATION });
+        }
+      },
+      attachmentRepository: {
+        async listByOpportunity() {
+          return [attachment];
+        },
+        async createAttachment() {
+          throw new Error('not used');
+        },
+        async deleteById(id) {
+          deletedIds.push(Number(id));
+          return { rowCount: 1 };
+        },
+        async findById() {
+          return attachment;
+        }
+      }
+    });
+
+    const response = await agent.post('/opportunities/30/attachments/57/delete').type('form').send();
+
+    assert.equal(response.status, 302);
+    assert.equal(response.headers.location, '/opportunities/30');
+    assert.deepEqual(deletedIds, [57]);
+    assert.equal(existsSync(path.join(uploadDir, 'contract.txt')), false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('submitted contract hides and blocks contract attachment deletion', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-delete-submitted-contract-'));
+  try {
+    await writeFile(path.join(uploadDir, 'contract.txt'), 'submitted contract', 'utf8');
+    let deleteCalled = false;
+    const attachment = {
+      id: 57,
+      opportunityId: 30,
+      category: 'contract',
+      originalName: 'contract.txt',
+      storedPath: 'contract.txt',
+      mimeType: 'text/plain',
+      fileSize: 18,
+      uploadedBy: 7,
+      uploaderDisplayName: 'Sales One',
+      uploadedAt: '2026-06-05T13:00:00.000Z'
+    };
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      opportunityRepository: {
+        async getOpportunityDetail() {
+          return opportunityDetail({ status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS });
+        }
+      },
+      attachmentRepository: {
+        async listByOpportunity() {
+          return [attachment];
+        },
+        async createAttachment() {
+          throw new Error('not used');
+        },
+        async deleteById() {
+          deleteCalled = true;
+          throw new Error('should not delete submitted contract attachment');
+        },
+        async findById() {
+          return attachment;
+        }
+      }
+    });
+
+    const detail = await agent.get('/opportunities/30');
+
+    assert.equal(detail.status, 200);
+    const contractSection = detail.text.match(/<h2>Commercial Contract<\/h2>[\s\S]*?<h2>Timeline<\/h2>/)[0];
+    assert.doesNotMatch(contractSection, /\/opportunities\/30\/attachments\/57\/delete/);
+
+    const response = await agent.post('/opportunities/30/attachments/57/delete').type('form').send();
+
+    assert.equal(response.status, 403);
+    assert.equal(deleteCalled, false);
+    assert.equal(existsSync(path.join(uploadDir, 'contract.txt')), true);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
@@ -2207,7 +2596,7 @@ test('Sales Manager approves initiation and assigns quotation engineer from deta
   ]);
 });
 
-test('commercial quote form shows quote fields and missing attachment hint', async () => {
+test('commercial quote form shows attachment based submission and missing attachment hint', async () => {
   const { agent } = await createWorkflowAgent({
     user: {
       id: 3,
@@ -2228,12 +2617,18 @@ test('commercial quote form shows quote fields and missing attachment hint', asy
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /submit_commercial_quote/);
-  assert.match(detail.text, /name="quoteItemName"/);
-  assert.match(detail.text, /name="quoteUnitPrice"/);
-  assert.match(detail.text, /name="totalPrice"/);
+  const quoteSection = detail.text.match(/<h2>Commercial Quote<\/h2>[\s\S]*?<h2>Commercial Contract<\/h2>/)[0];
+  assert.match(quoteSection, /<button type="submit">Upload<\/button>[\s\S]*submit_commercial_quote/);
+  assert.doesNotMatch(quoteSection, /name="quoteItemName"/);
+  assert.doesNotMatch(quoteSection, /name="quoteUnitPrice"/);
+  assert.doesNotMatch(quoteSection, /name="totalPrice"/);
+  assert.doesNotMatch(quoteSection, /name="comment"/);
+  assert.doesNotMatch(quoteSection, />\s*Quote Item\s*</);
+  assert.doesNotMatch(quoteSection, />\s*Total Price\s*</);
+  assert.doesNotMatch(quoteSection, />\s*Comment\s*</);
   assert.doesNotMatch(detail.text, /name="commercialManagerId"/);
-  assert.match(detail.text, /Commercial Quote attachment is required before submission/);
+  assert.match(quoteSection, /Commercial Quote attachment is required before submission/);
+  assert.doesNotMatch(detail.text, /Workflow Actions[\s\S]*submit_commercial_quote/);
 });
 
 test('workflow route blocks technical submission without description or attachment', async () => {
@@ -2351,8 +2746,8 @@ test('legal reviewer can see contract approval records and approve from detail p
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Contract Approvals/);
-  assert.match(detail.text, /Legal One/);
+  const contractSection = detail.text.match(/<h2>Commercial Contract<\/h2>[\s\S]*?<h2>Timeline<\/h2>/)[0];
+  assert.doesNotMatch(contractSection, /Contract Approvals|Version History|Legal One/);
   assert.match(detail.text, /approve_contract/);
   assert.match(detail.text, /reject_contract/);
 
