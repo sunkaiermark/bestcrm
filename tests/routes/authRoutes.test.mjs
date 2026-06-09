@@ -41,6 +41,30 @@ test('login page renders username and password form', async () => {
   assert.match(response.text, /name="password"/);
 });
 
+test('login page can switch between English and Chinese', async () => {
+  const app = createApp({ sessionSecret: 'test-secret' });
+  const agent = request.agent(app);
+
+  const switchResponse = await agent.get('/language?lang=zh&returnTo=/login');
+  assert.equal(switchResponse.status, 302);
+  assert.equal(switchResponse.headers.location, '/login');
+
+  const chineseLogin = await agent.get('/login');
+  assert.equal(chineseLogin.status, 200);
+  assert.match(chineseLogin.text, /用户名/);
+  assert.match(chineseLogin.text, /密码/);
+  assert.match(chineseLogin.text, />登录</);
+  assert.match(chineseLogin.text, /href="\/language\?lang=en&amp;returnTo=%2Flogin"/);
+
+  const englishResponse = await agent.get('/language?lang=en&returnTo=/login');
+  assert.equal(englishResponse.status, 302);
+
+  const englishLogin = await agent.get('/login');
+  assert.match(englishLogin.text, /Username/);
+  assert.match(englishLogin.text, /Password/);
+  assert.match(englishLogin.text, />Login</);
+});
+
 test('valid login creates a session and logout clears it', async () => {
   const passwordHash = await hashPassword('ChangeMe123!');
   const user = {

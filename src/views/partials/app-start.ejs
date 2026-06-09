@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="<%= typeof language === 'undefined' ? 'en' : language %>">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -163,6 +163,28 @@
         font-size: 12px;
         margin-top: 3px;
         overflow-wrap: anywhere;
+      }
+
+      .nav-language-switch {
+        display: flex;
+        gap: 6px;
+        margin-top: 12px;
+        padding: 0 8px;
+      }
+
+      .nav-language-switch a {
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        border-radius: 999px;
+        color: var(--rail-muted);
+        font-size: 12px;
+        font-weight: 700;
+        line-height: 1;
+        padding: 5px 8px;
+      }
+
+      .nav-language-switch a.active {
+        background: var(--rail-active);
+        color: var(--rail-ink);
       }
 
       .nav-group {
@@ -940,33 +962,39 @@
   <body>
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>
     <% const canSeeSystemNav = Array.isArray(currentUser?.roles) && currentUser.roles.includes('administrator'); %>
+    <% const navLanguage = typeof language === 'undefined' ? 'en' : language; %>
+    <% const navReturnTo = encodeURIComponent(typeof currentPath === 'undefined' ? '/workbench' : currentPath); %>
     <div class="app-shell">
-      <aside class="left-nav" aria-label="Primary navigation">
+      <aside class="left-nav" aria-label="<%= t('primaryNavigation') %>">
         <a class="brand" href="/workbench" aria-label="Sunkaier workbench">
           <img class="brand-logo" src="/assets/sunkaier-logo.png" alt="SUNKAIER">
         </a>
         <% if (currentUser) { %>
-          <div class="nav-account" aria-label="Current login account">
+          <div class="nav-account" aria-label="<%= t('currentLoginAccount') %>">
             <div class="nav-account-name"><%= currentUser.displayName %></div>
             <div class="nav-account-roles"><%= currentUser.roles.join(', ') %></div>
           </div>
         <% } %>
+        <div class="nav-language-switch" aria-label="Language">
+          <a class="<%= navLanguage === 'en' ? 'active' : '' %>" href="/language?lang=en&returnTo=<%= navReturnTo %>">English</a>
+          <a class="<%= navLanguage === 'zh' ? 'active' : '' %>" href="/language?lang=zh&returnTo=<%= navReturnTo %>">中文</a>
+        </div>
         <nav class="nav-group">
-          <a class="<%= navClass('workbench') %>" href="/workbench">Workbench</a>
-          <a class="<%= navClass('opportunities') %>" href="/opportunities">Opportunities</a>
-          <a class="<%= navClass('customers') %>" href="/customers">Customers</a>
-          <a class="<%= navClass('contacts') %>" href="/contacts">Contacts</a>
+          <a class="<%= navClass('workbench') %>" href="/workbench"><%= t('workbench') %></a>
+          <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>
+          <a class="<%= navClass('customers') %>" href="/customers"><%= t('customers') %></a>
+          <a class="<%= navClass('contacts') %>" href="/contacts"><%= t('contacts') %></a>
           <% if (canSeeSystemNav) { %>
-            <div class="nav-parent">System</div>
+            <div class="nav-parent"><%= t('system') %></div>
             <div class="nav-subgroup">
-              <a class="<%= navClass('system-users') %>" href="/system/users">Users</a>
-              <a class="<%= navClass('system-roles') %>" href="/system/roles">Roles</a>
-              <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings">Approval Settings</a>
+              <a class="<%= navClass('system-users') %>" href="/system/users"><%= t('users') %></a>
+              <a class="<%= navClass('system-roles') %>" href="/system/roles"><%= t('roles') %></a>
+              <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings"><%= t('approvalSettings') %></a>
             </div>
           <% } %>
         </nav>
         <form class="logout-form" method="post" action="/logout">
-          <button class="logout-button" type="submit">Logout</button>
+          <button class="logout-button" type="submit"><%= t('logout') %></button>
         </form>
       </aside>
 

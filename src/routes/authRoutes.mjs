@@ -1,8 +1,22 @@
 import { Router } from 'express';
 import { sanitizeSessionUser, verifyPassword } from '../services/authService.mjs';
+import { normalizeLanguage } from '../utils/i18n.mjs';
+
+function safeReturnTo(value) {
+  const target = String(value || '/workbench');
+  if (!target.startsWith('/') || target.startsWith('//')) {
+    return '/workbench';
+  }
+  return target;
+}
 
 export function authRoutes(userRepository) {
   const router = Router();
+
+  router.get('/language', (req, res) => {
+    req.session.language = normalizeLanguage(req.query.lang);
+    res.redirect(safeReturnTo(req.query.returnTo));
+  });
 
   router.get('/login', (req, res) => {
     res.render('auth/login', { error: null, username: '' });
@@ -16,7 +30,7 @@ export function authRoutes(userRepository) {
       const valid = user && user.isActive && await verifyPassword(password, user.passwordHash);
 
       if (!valid) {
-        res.status(401).render('auth/login', { error: 'Invalid username or password', username });
+        res.status(401).render('auth/login', { error: res.locals.t('invalidLogin'), username });
         return;
       }
 

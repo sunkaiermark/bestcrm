@@ -149,3 +149,25 @@ test('administrator users see system navigation in the left sidebar', async () =
   assert.match(response.text, /href="\/system\/approval-settings"/);
   assert.match(response.text, /Approval Settings/);
 });
+
+test('left sidebar uses selected Chinese language after login', async () => {
+  const agent = await createWorkbenchAgent({
+    username: 'admin01',
+    displayName: 'System Administrator',
+    roles: [ROLES.ADMINISTRATOR]
+  });
+
+  await agent.get('/language?lang=zh&returnTo=/workbench');
+  const response = await agent.get('/workbench');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /href="\/workbench">工作台<\/a>/);
+  assert.match(response.text, /href="\/opportunities">商机<\/a>/);
+  assert.match(response.text, /href="\/customers">客户<\/a>/);
+  assert.match(response.text, /href="\/contacts">联系人<\/a>/);
+  assert.match(response.text, /class="nav-parent">系统<\/div>/);
+  assert.match(response.text, /href="\/system\/users">用户<\/a>/);
+  assert.match(response.text, /href="\/system\/roles">角色<\/a>/);
+  assert.match(response.text, /href="\/system\/approval-settings">审批人配置<\/a>/);
+  assert.match(response.text, />退出登录<\/button>/);
+});

@@ -29,6 +29,7 @@ import { customerRoutes } from './routes/customerRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
 import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
+import { createTranslator, normalizeLanguage } from './utils/i18n.mjs';
 import { isMainModule } from './utils/moduleEntry.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -319,6 +320,14 @@ export function createApp(options = {}) {
       secure: config.nodeEnv === 'production'
     }
   }));
+  app.use((req, res, next) => {
+    const language = normalizeLanguage(req.session.language);
+    req.language = language;
+    res.locals.language = language;
+    res.locals.currentPath = req.originalUrl || req.url || '/workbench';
+    res.locals.t = createTranslator(language);
+    next();
+  });
   app.use(attachCurrentUser(userRepository));
   app.get('/', (req, res) => {
     res.redirect('/workbench');

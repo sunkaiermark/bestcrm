@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="<%= typeof language === 'undefined' ? 'en' : language %>">
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -54,6 +54,29 @@
         margin: 0 auto 22px;
         max-width: 100%;
         width: 224px;
+      }
+
+      .login-language-switch {
+        display: flex;
+        gap: 8px;
+        justify-content: center;
+        margin: -8px 0 18px;
+      }
+
+      .login-language-switch a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 13px;
+        font-weight: 700;
+        padding: 4px 10px;
+        text-decoration: none;
+      }
+
+      .login-language-switch a.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: white;
       }
 
       .login-form {
@@ -123,22 +146,27 @@
     </style>
   </head>
   <body>
+    <% const loginLanguage = typeof language === 'undefined' ? 'en' : language; %>
     <main class="login-shell">
       <section class="login-card" aria-label="Login">
         <img class="login-logo" src="/assets/sunkaier-logo-login.png" alt="SUNKAIER">
+        <div class="login-language-switch" aria-label="Language">
+          <a class="<%= loginLanguage === 'en' ? 'active' : '' %>" href="/language?lang=en&amp;returnTo=%2Flogin">English</a>
+          <a class="<%= loginLanguage === 'zh' ? 'active' : '' %>" href="/language?lang=zh&amp;returnTo=%2Flogin">中文</a>
+        </div>
       <% if (error) { %>
           <p class="login-alert" role="alert"><%= error %></p>
       <% } %>
         <form class="login-form" method="post" action="/login">
           <label class="form-field">
-          Username
+          <%= t('username') %>
             <input name="username" autocomplete="username" value="<%= username %>" required>
           </label>
           <label class="form-field">
-          Password
+          <%= t('password') %>
             <input name="password" type="password" autocomplete="current-password" required>
           </label>
-          <button class="login-button" type="submit">Login</button>
+          <button class="login-button" type="submit"><%= t('login') %></button>
         </form>
       </section>
     </main>
