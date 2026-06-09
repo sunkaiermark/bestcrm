@@ -204,6 +204,29 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(approvals.text, /action="\/system\/approval-settings\/31\/delete" onsubmit="return confirm\('Delete this approval setting\?'\)"/);
 });
 
+test('system framework text uses selected Chinese language', async () => {
+  const { agent } = await createSystemAgent();
+
+  await agent.get('/language?lang=zh&returnTo=/system/users');
+
+  const users = await agent.get('/system/users');
+  assert.equal(users.status, 200);
+  assert.match(users.text, /<h1>\u7cfb\u7edf\u7528\u6237<\/h1>/);
+  assert.match(users.text, /\u65b0\u5efa\u7528\u6237/);
+  assert.match(users.text, />\u7f16\u8f91<\/a>/);
+  assert.match(users.text, />\u5220\u9664<\/button>/);
+
+  const roles = await agent.get('/system/roles');
+  assert.equal(roles.status, 200);
+  assert.match(roles.text, /<h1>\u7cfb\u7edf\u89d2\u8272<\/h1>/);
+  assert.match(roles.text, /\u65b0\u5efa\u89d2\u8272/);
+
+  const approvals = await agent.get('/system/approval-settings');
+  assert.equal(approvals.status, 200);
+  assert.match(approvals.text, /<h1>\u5ba1\u6279\u4eba\u914d\u7f6e<\/h1>/);
+  assert.match(approvals.text, /\u65b0\u5efa\u914d\u7f6e/);
+});
+
 test('non administrators cannot view system pages', async () => {
   const { agent } = await createSystemAgent({
     username: 'sales01',

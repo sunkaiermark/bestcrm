@@ -1,16 +1,16 @@
 <%- include('../partials/app-start', { title: 'Workbench - BESTCRM', activeNav: 'workbench' }) %>
         <header class="topbar">
           <div>
-            <h1>Workbench</h1>
+            <h1><%= t('workbench') %></h1>
             <div class="user-line"><%= currentUser.displayName %> - <%= currentUser.roles.join(', ') %></div>
           </div>
         </header>
 
         <section aria-labelledby="state-counts">
-          <h2 id="state-counts" class="muted">Counts by workflow state</h2>
+          <h2 id="state-counts" class="muted"><%= t('countsByWorkflowState') %></h2>
           <div class="state-strip">
             <% if (summary.stateCounts.length === 0) { %>
-              <div class="state-item empty">No visible opportunities.</div>
+              <div class="state-item empty"><%= t('noVisibleOpportunities') %></div>
             <% } %>
             <% for (const item of summary.stateCounts) { %>
               <div class="state-item">
@@ -23,17 +23,17 @@
 
         <section class="workbench-list">
           <article class="list-section">
-            <h2<% if (summary.pendingTodos.length > 0) { %> class="todo-alert-heading"<% } %>>My pending todos</h2>
+            <h2<% if (summary.pendingTodos.length > 0) { %> class="todo-alert-heading"<% } %>><%= t('myPendingTodos') %></h2>
             <div class="list-body">
               <% if (summary.pendingTodos.length === 0) { %>
-                <p class="empty">No pending todos.</p>
+                <p class="empty"><%= t('noPendingTodos') %></p>
               <% } else { %>
                 <table class="list-table">
                   <thead>
                     <tr>
-                      <th>Todo</th>
-                      <th>Opportunity</th>
-                      <th>Customer</th>
+                      <th><%= t('todo') %></th>
+                      <th><%= t('opportunity') %></th>
+                      <th><%= t('customer') %></th>
                     </tr>
                   </thead>
                   <tbody>
@@ -51,18 +51,18 @@
           </article>
 
           <article class="list-section">
-            <h2>Recent workflow messages</h2>
+            <h2><%= t('recentWorkflowMessages') %></h2>
             <% if (summary.recentWorkflowMessages.length === 0) { %>
-              <div class="list-body"><p class="empty">No workflow messages.</p></div>
+              <div class="list-body"><p class="empty"><%= t('noWorkflowMessages') %></p></div>
             <% } else { %>
               <div class="list-body">
                 <table class="list-table">
                   <thead>
                     <tr>
-                      <th>Opportunity</th>
-                      <th>Event</th>
-                      <th>Actor</th>
-                      <th>Comment</th>
+                      <th><%= t('opportunity') %></th>
+                      <th><%= t('event') %></th>
+                      <th><%= t('actor') %></th>
+                      <th><%= t('comment') %></th>
                     </tr>
                   </thead>
                   <tbody>

@@ -1,5 +1,5 @@
 <%- include('../partials/app-start', { title: `${mode === 'new' ? 'New User' : 'Edit User'} - BESTCRM`, activeNav: 'system-users' }) %>
-        <p class="breadcrumb"><a href="/system/users">System Users</a> / <%= mode === 'new' ? 'New User' : 'Edit User' %></p>
+        <p class="breadcrumb"><a href="/system/users"><%= t('systemUsers') %></a> / <%= mode === 'new' ? t('newUser') : t('edit') %></p>
         <header class="page-header">
           <h1><%= mode === 'new' ? 'New User' : 'Edit User' %></h1>
         </header>
@@ -7,7 +7,7 @@
         <form class="form-panel" method="post" action="<%= action %>">
           <% if (mode === 'new') { %>
             <label>
-              Username
+              <%= t('username') %>
               <input name="username" value="<%= user.username || '' %>" required>
             </label>
             <label>
@@ -16,7 +16,7 @@
             </label>
           <% } else { %>
             <label>
-              Username
+              <%= t('username') %>
               <input value="<%= user.username %>" disabled>
             </label>
             <label>
@@ -30,11 +30,11 @@
             <input name="displayName" value="<%= user.displayName || '' %>" required>
           </label>
           <label>
-            Email
+            <%= t('email') %>
             <input name="email" type="email" value="<%= user.email || '' %>">
           </label>
           <label>
-            Phone
+            <%= t('phone') %>
             <input name="phone" value="<%= user.phone || '' %>">
           </label>
 
@@ -59,7 +59,7 @@
           </label>
 
           <div class="inline-actions">
-            <button type="submit"><%= mode === 'new' ? 'Create user' : 'Save user' %></button>
+            <button type="submit"><%= mode === 'new' ? t('createUser') : t('saveUser') %></button>
             <a class="secondary-action" href="/system/users">Cancel</a>
           </div>
         </form>

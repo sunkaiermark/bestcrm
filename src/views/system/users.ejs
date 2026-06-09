@@ -1,11 +1,11 @@
 <%- include('../partials/app-start', { title: 'System Users - BESTCRM', activeNav: 'system-users' }) %>
         <header class="page-header">
           <div>
-            <h1>System Users</h1>
-            <div class="muted">Internal login accounts and assigned roles.</div>
+            <h1><%= t('systemUsers') %></h1>
+            <div class="muted"><%= t('systemUsersDescription') %></div>
           </div>
           <% if (canManageUsers) { %>
-            <a class="quick-action" href="/system/users/new">New user</a>
+            <a class="quick-action" href="/system/users/new"><%= t('newUser') %></a>
           <% } %>
         </header>
 
@@ -14,14 +14,14 @@
             <table class="list-table content-fit-table">
               <thead>
                 <tr>
-                  <th>User</th>
-                  <th>Username</th>
-                  <th>Roles</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>Status</th>
+                  <th><%= t('user') %></th>
+                  <th><%= t('username') %></th>
+                  <th><%= t('roles') %></th>
+                  <th><%= t('email') %></th>
+                  <th><%= t('phone') %></th>
+                  <th><%= t('status') %></th>
                   <% if (canManageUsers) { %>
-                    <th>Actions</th>
+                    <th><%= t('actions') %></th>
                   <% } %>
                 </tr>
               </thead>
@@ -43,10 +43,10 @@
                     <% if (canManageUsers) { %>
                       <td class="actions-cell">
                         <div class="inline-actions system-actions">
-                          <a class="secondary-action" href="/system/users/<%= user.id %>/edit">Edit</a>
+                          <a class="secondary-action" href="/system/users/<%= user.id %>/edit"><%= t('edit') %></a>
                           <% if (user.isActive) { %>
                             <form method="post" action="/system/users/<%= user.id %>/delete" onsubmit="return confirm('Delete this user?')">
-                              <button class="danger-action" type="submit">Delete</button>
+                              <button class="danger-action" type="submit"><%= t('delete') %></button>
                             </form>
                           <% } %>
                         </div>

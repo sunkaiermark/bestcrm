@@ -1,5 +1,5 @@
 <%- include('../partials/app-start', { title: 'Opportunity - BESTCRM', activeNav: 'opportunities' }) %>
-        <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
+        <p class="breadcrumb"><a href="/opportunities"><%= t('opportunities') %></a></p>
         <header class="page-header">
           <h1><%= typeof pageTitle === 'undefined' ? 'Opportunity Initiation' : pageTitle %></h1>
         </header>
@@ -7,7 +7,7 @@
         <form id="opportunity-form" method="post" action="<%= action %>"></form>
         <section class="form-panel">
           <label>
-            Customer
+            <%= t('customer') %>
             <select name="customerId" form="opportunity-form" required>
               <% for (const customer of customers) { %>
                 <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
@@ -57,12 +57,12 @@
                   Notes
                   <textarea name="notes"></textarea>
                 </label>
-                <button type="submit">Create customer</button>
+                <button type="submit"><%= t('createCustomer') %></button>
               </form>
             </details>
           <% } %>
           <label>
-            Contact
+            <%= t('contacts') %>
             <select name="primaryContactId" form="opportunity-form">
               <option value=""></option>
               <% for (const contact of contacts) { %>
@@ -78,7 +78,7 @@
             <% } %>
           <% } %>
           <label>
-            Opportunity Name
+            <%= t('opportunityName') %>
             <input name="title" form="opportunity-form" value="<%= opportunity.title || '' %>" required>
           </label>
           <label>
@@ -106,6 +106,6 @@
             Expected Bid Date
             <input name="expectedBidDate" form="opportunity-form" type="date" value="<%= opportunity.expectedBidDate || '' %>">
           </label>
-          <button type="submit" form="opportunity-form"><%= typeof submitLabel === 'undefined' ? 'Save draft' : submitLabel %></button>
+          <button type="submit" form="opportunity-form"><%= typeof submitLabel === 'undefined' ? t('saveDraft') : submitLabel %></button>
         </section>
 <%- include('../partials/app-end') %>

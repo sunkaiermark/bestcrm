@@ -1,11 +1,11 @@
 <%- include('../partials/app-start', { title: 'System Roles - BESTCRM', activeNav: 'system-roles' }) %>
         <header class="page-header">
           <div>
-            <h1>System Roles</h1>
-            <div class="muted">Role definitions used by opportunity workflow permissions.</div>
+            <h1><%= t('systemRoles') %></h1>
+            <div class="muted"><%= t('systemRolesDescription') %></div>
           </div>
           <% if (canManageRoles) { %>
-            <a class="quick-action" href="/system/roles/new">New role</a>
+            <a class="quick-action" href="/system/roles/new"><%= t('newRole') %></a>
           <% } %>
         </header>
 
@@ -14,12 +14,12 @@
             <table class="list-table content-fit-table">
               <thead>
                 <tr>
-                  <th>Role</th>
-                  <th>Code</th>
-                  <th>Description</th>
-                  <th>Status</th>
+                  <th><%= t('role') %></th>
+                  <th><%= t('code') %></th>
+                  <th><%= t('description') %></th>
+                  <th><%= t('status') %></th>
                   <% if (canManageRoles) { %>
-                    <th>Actions</th>
+                    <th><%= t('actions') %></th>
                   <% } %>
                 </tr>
               </thead>
@@ -33,10 +33,10 @@
                     <% if (canManageRoles) { %>
                       <td class="actions-cell">
                         <div class="inline-actions system-actions">
-                          <a class="secondary-action" href="/system/roles/<%= role.id %>/edit">Edit</a>
+                          <a class="secondary-action" href="/system/roles/<%= role.id %>/edit"><%= t('edit') %></a>
                           <% if (role.isActive) { %>
                             <form method="post" action="/system/roles/<%= role.id %>/delete" onsubmit="return confirm('Delete this role?')">
-                              <button class="danger-action" type="submit">Delete</button>
+                              <button class="danger-action" type="submit"><%= t('delete') %></button>
                             </form>
                           <% } %>
                         </div>

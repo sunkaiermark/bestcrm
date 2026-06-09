@@ -1,19 +1,19 @@
 <%- include('../partials/app-start', { title: customer.name + ' - BESTCRM', activeNav: 'customers' }) %>
-        <p class="breadcrumb"><a href="/customers">Customers</a></p>
+        <p class="breadcrumb"><a href="/customers"><%= t('customers') %></a></p>
         <header class="page-header">
           <h1><%= customer.name %></h1>
           <div class="page-actions">
-            <a class="quick-action" href="/customers/<%= customer.id %>/edit">Edit customer</a>
+            <a class="quick-action" href="/customers/<%= customer.id %>/edit"><%= t('editCustomer') %></a>
             <% if (typeof canDeleteCustomer !== 'undefined' && canDeleteCustomer) { %>
               <form method="post" action="/customers/<%= customer.id %>/delete" onsubmit="return confirm('Delete this customer and its contacts?')">
-                <button class="danger-action" type="submit">Delete customer</button>
+                <button class="danger-action" type="submit"><%= t('deleteCustomer') %></button>
               </form>
             <% } %>
           </div>
         </header>
 
         <section class="content-section">
-          <h2>Customer detail</h2>
+          <h2><%= t('customerDetail') %></h2>
           <div class="section-body">
             <div class="basic-info-grid">
               <table class="detail-table">
@@ -23,7 +23,7 @@
                     <td><%= customer.industry %></td>
                   </tr>
                   <tr>
-                    <th scope="row">Country</th>
+                    <th scope="row"><%= t('country') %></th>
                     <td><%= customer.country %></td>
                   </tr>
                   <tr>
@@ -35,7 +35,7 @@
               <table class="detail-table">
                 <tbody>
                   <tr>
-                    <th scope="row">Region</th>
+                    <th scope="row"><%= t('region') %></th>
                     <td><%= customer.region %></td>
                   </tr>
                   <tr>
@@ -55,7 +55,7 @@
               <table class="detail-table detail-table-wide">
                 <tbody>
                   <tr>
-                    <th scope="row">Company Highlights</th>
+                    <th scope="row"><%= t('companyHighlights') %></th>
                     <td><%= customer.companyHighlights %></td>
                   </tr>
                 </tbody>
@@ -73,17 +73,17 @@
         </section>
 
         <section class="content-section">
-          <h2>Contacts</h2>
+          <h2><%= t('contacts') %></h2>
           <div class="section-body">
-            <p><a href="/contacts/new?customerId=<%= customer.id %>">New contact</a></p>
+            <p><a href="/contacts/new?customerId=<%= customer.id %>"><%= t('newContact') %></a></p>
             <% if ((customer.contacts || []).length > 0) { %>
               <table class="list-table content-fit-table">
                 <thead>
                   <tr>
-                    <th>Name</th>
+                    <th><%= t('name') %></th>
                     <th>Title</th>
-                    <th>Phone</th>
-                    <th>Email</th>
+                    <th><%= t('phone') %></th>
+                    <th><%= t('email') %></th>
                   </tr>
                 </thead>
                 <tbody>

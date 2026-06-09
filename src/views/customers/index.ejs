@@ -1,7 +1,7 @@
 <%- include('../partials/app-start', { title: 'Customers - BESTCRM', activeNav: 'customers' }) %>
         <header class="page-header">
-          <h1>Customers</h1>
-          <a class="quick-action" href="/customers/new">New customer</a>
+          <h1><%= t('customers') %></h1>
+          <a class="quick-action" href="/customers/new"><%= t('newCustomer') %></a>
         </header>
 
         <section class="list-section">
@@ -9,11 +9,11 @@
             <table class="list-table content-fit-table">
               <thead>
                 <tr>
-                  <th>Name</th>
+                  <th><%= t('name') %></th>
                   <th>Industry</th>
-                  <th>Country</th>
-                  <th>Region</th>
-                  <th>Contacts</th>
+                  <th><%= t('country') %></th>
+                  <th><%= t('region') %></th>
+                  <th><%= t('contacts') %></th>
                 </tr>
               </thead>
               <tbody>

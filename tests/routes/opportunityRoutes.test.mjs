@@ -593,6 +593,26 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(detail.text, /\.basic-info-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
 });
 
+test('opportunity framework text and common actions use selected Chinese language', async () => {
+  const { agent } = await createLoggedInAgent();
+
+  await agent.get('/language?lang=zh&returnTo=/opportunities');
+
+  const list = await agent.get('/opportunities');
+  assert.equal(list.status, 200);
+  assert.match(list.text, /<h1>\u5546\u673a<\/h1>/);
+  assert.match(list.text, /\u65b0\u5efa\u5546\u673a/);
+  assert.match(list.text, /<th>\u5546\u673a\u540d\u79f0<\/th>/);
+
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /\u8fd4\u56de\u6e05\u5355/);
+  assert.match(detail.text, />\u7f16\u8f91<\/a>/);
+  assert.match(detail.text, />\u4e0a\u4f20<\/button>/);
+  assert.match(detail.text, />\u9884\u89c8<\/a>/);
+  assert.match(detail.text, />\u4e0b\u8f7d<\/a>/);
+});
+
 test('opportunity detail shows list and edit actions but hides delete from non administrators', async () => {
   const { agent } = await createLoggedInAgent();
 

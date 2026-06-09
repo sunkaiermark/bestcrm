@@ -1,5 +1,5 @@
 <%- include('../partials/app-start', { title: 'Contact - BESTCRM', activeNav: 'contacts' }) %>
-        <p class="breadcrumb"><a href="/contacts">Contacts</a></p>
+        <p class="breadcrumb"><a href="/contacts"><%= t('contacts') %></a></p>
         <header class="page-header">
           <h1><%= contact.id ? 'Edit Contact' : 'New Contact' %></h1>
         </header>
@@ -9,7 +9,7 @@
             <input type="hidden" name="returnTo" value="<%= returnTo %>">
           <% } %>
           <label>
-            Customer
+            <%= t('customer') %>
             <select name="customerId" required>
               <% for (const customer of customers) { %>
                 <option value="<%= customer.id %>" <%= String(contact.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
@@ -17,7 +17,7 @@
             </select>
           </label>
           <label>
-            Name
+            <%= t('name') %>
             <input name="name" value="<%= contact.name || '' %>" required>
           </label>
           <label>
@@ -25,11 +25,11 @@
             <input name="title" value="<%= contact.title || '' %>">
           </label>
           <label>
-            Phone
+            <%= t('phone') %>
             <input name="phone" value="<%= contact.phone || '' %>">
           </label>
           <label>
-            Email
+            <%= t('email') %>
             <input name="email" value="<%= contact.email || '' %>">
           </label>
           <label>
@@ -52,6 +52,6 @@
             Notes
             <textarea name="notes"><%= contact.notes || '' %></textarea>
           </label>
-          <button type="submit"><%= contact.id ? 'Save contact' : 'Create contact' %></button>
+          <button type="submit"><%= contact.id ? t('saveContact') : t('createContact') %></button>
         </form>
 <%- include('../partials/app-end') %>

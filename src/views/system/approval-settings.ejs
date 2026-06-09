@@ -1,11 +1,11 @@
 <%- include('../partials/app-start', { title: 'Approval Settings - BESTCRM', activeNav: 'system-approval-settings' }) %>
         <header class="page-header">
           <div>
-            <h1>Approval Settings</h1>
-            <div class="muted">Maintain configured approvers by workflow stage.</div>
+            <h1><%= t('approvalSettings') %></h1>
+            <div class="muted"><%= t('approvalSettingsDescription') %></div>
           </div>
           <% if (canManageSettings) { %>
-            <a class="quick-action" href="/system/approval-settings/new">New setting</a>
+            <a class="quick-action" href="/system/approval-settings/new"><%= t('newSetting') %></a>
           <% } %>
         </header>
 
@@ -14,13 +14,13 @@
             <table class="list-table content-fit-table">
               <thead>
                 <tr>
-                  <th>Stage</th>
-                  <th>Role</th>
-                  <th>Approver</th>
-                  <th>Sort</th>
-                  <th>Status</th>
+                  <th><%= t('stage') %></th>
+                  <th><%= t('role') %></th>
+                  <th><%= t('approver') %></th>
+                  <th><%= t('sort') %></th>
+                  <th><%= t('status') %></th>
                   <% if (canManageSettings) { %>
-                    <th>Actions</th>
+                    <th><%= t('actions') %></th>
                   <% } %>
                 </tr>
               </thead>
@@ -35,10 +35,10 @@
                     <% if (canManageSettings) { %>
                       <td class="actions-cell">
                         <div class="inline-actions system-actions">
-                          <a class="secondary-action" href="/system/approval-settings/<%= setting.id %>/edit">Edit</a>
+                          <a class="secondary-action" href="/system/approval-settings/<%= setting.id %>/edit"><%= t('edit') %></a>
                           <% if (setting.isActive) { %>
                             <form method="post" action="/system/approval-settings/<%= setting.id %>/delete" onsubmit="return confirm('Delete this approval setting?')">
-                              <button class="danger-action" type="submit">Delete</button>
+                              <button class="danger-action" type="submit"><%= t('delete') %></button>
                             </form>
                           <% } %>
                         </div>

@@ -1,5 +1,5 @@
 <%- include('../partials/app-start', { title: `${mode === 'new' ? 'New Role' : 'Edit Role'} - BESTCRM`, activeNav: 'system-roles' }) %>
-        <p class="breadcrumb"><a href="/system/roles">System Roles</a> / <%= mode === 'new' ? 'New Role' : 'Edit Role' %></p>
+        <p class="breadcrumb"><a href="/system/roles"><%= t('systemRoles') %></a> / <%= mode === 'new' ? t('newRole') : t('edit') %></p>
         <header class="page-header">
           <h1><%= mode === 'new' ? 'New Role' : 'Edit Role' %></h1>
         </header>
@@ -22,7 +22,7 @@
             <input name="name" value="<%= role.name || '' %>" required>
           </label>
           <label>
-            Description
+            <%= t('description') %>
             <textarea name="description"><%= role.description || '' %></textarea>
           </label>
 
@@ -32,7 +32,7 @@
           </label>
 
           <div class="inline-actions">
-            <button type="submit"><%= mode === 'new' ? 'Create role' : 'Save role' %></button>
+            <button type="submit"><%= mode === 'new' ? t('createRole') : t('saveRole') %></button>
             <a class="secondary-action" href="/system/roles">Cancel</a>
           </div>
         </form>

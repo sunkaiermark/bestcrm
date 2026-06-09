@@ -165,20 +165,20 @@
     return 'Finish the technical solution and commercial quote approval before submitting contract approval.';
   })();
 %>
-        <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
+        <p class="breadcrumb"><a href="/opportunities"><%= t('opportunities') %></a></p>
         <header class="page-header">
           <div>
             <h1><%= opportunity.title %></h1>
             <div class="user-line"><%= opportunity.opportunityNo %> - <%= opportunity.customerName %></div>
           </div>
           <div class="page-actions">
-            <a class="secondary-action" href="/opportunities">Back to list</a>
+            <a class="secondary-action" href="/opportunities"><%= t('backToList') %></a>
             <% if (typeof canEditOpportunity !== 'undefined' && canEditOpportunity) { %>
-              <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit">Edit</a>
+              <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit"><%= t('edit') %></a>
             <% } %>
             <% if (typeof canDeleteOpportunity !== 'undefined' && canDeleteOpportunity) { %>
               <form method="post" action="/opportunities/<%= opportunity.id %>/delete" onsubmit="return confirm('Delete this opportunity and all uploaded files?')">
-                <button class="danger-action" type="submit">Delete</button>
+                <button class="danger-action" type="submit"><%= t('delete') %></button>
               </form>
             <% } %>
           </div>
@@ -186,7 +186,7 @@
 
         <div class="section-stack">
           <section class="content-section business-section business-section-basic">
-            <h2>Basic Info</h2>
+            <h2><%= t('basicInfo') %></h2>
             <div class="section-body">
               <div class="basic-info-grid">
                 <table class="detail-table">
@@ -196,11 +196,11 @@
                       <td><%= opportunity.opportunityNo %></td>
                     </tr>
                     <tr>
-                      <th scope="row">Owner</th>
+                      <th scope="row"><%= t('owner') %></th>
                       <td><%= ownerName %></td>
                     </tr>
                     <tr>
-                      <th scope="row">Customer</th>
+                      <th scope="row"><%= t('customer') %></th>
                       <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></td>
                     </tr>
                     <tr>
@@ -216,7 +216,7 @@
                 <table class="detail-table">
                   <tbody>
                     <tr>
-                      <th scope="row">Status</th>
+                      <th scope="row"><%= t('status') %></th>
                       <td><%= opportunity.status %></td>
                     </tr>
                     <tr>
@@ -394,7 +394,7 @@
                   </label>
                   <input type="hidden" name="reason" value="Customer requirement update">
                   <div class="requirement-input-actions">
-                    <button type="submit">Save text</button>
+                    <button type="submit"><%= t('save') %></button>
                   </div>
                 </form>
               <% } %>
@@ -402,7 +402,7 @@
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <input type="hidden" name="category" value="requirement">
                   <input type="file" name="attachment" required>
-                  <button type="submit">Upload</button>
+                  <button type="submit"><%= t('upload') %></button>
                 </form>
               <% } %>
               <% if (initiationWorkflowForm) { %>
@@ -428,11 +428,11 @@
                       <span class="requirement-row-content"><%= item.text %></span>
                       <% if (item.attachment) { %>
                         <div class="inline-actions requirement-row-actions">
-                          <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview">Preview</a>
-                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener">Download</a>
+                          <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
+                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                           <% if (canDeleteRequirementMaterials) { %>
                             <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this requirement file?')">
-                              <button class="danger-action requirement-action-delete" type="submit">Delete</button>
+                              <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                             </form>
                           <% } %>
                         </div>
@@ -453,7 +453,7 @@
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <input type="hidden" name="category" value="technical_solution">
                   <input type="file" name="attachment" required>
-                  <button type="submit">Upload</button>
+                  <button type="submit"><%= t('upload') %></button>
                 </form>
               <% } %>
               <% if (technicalSubmitWorkflowForm) { %>
@@ -502,11 +502,11 @@
                       <span class="requirement-row-content"><%= item.text %></span>
                       <% if (item.attachment) { %>
                         <div class="inline-actions requirement-row-actions">
-                          <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview">Preview</a>
-                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener">Download</a>
+                          <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
+                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                           <% if (canDeleteTechnicalSolutionAttachments) { %>
                             <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this technical solution file?')">
-                              <button class="danger-action requirement-action-delete" type="submit">Delete</button>
+                              <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                             </form>
                           <% } %>
                         </div>
@@ -527,7 +527,7 @@
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <input type="hidden" name="category" value="commercial_quote">
                   <input type="file" name="attachment" required>
-                  <button type="submit">Upload</button>
+                  <button type="submit"><%= t('upload') %></button>
                 </form>
               <% } %>
               <% if (commercialQuoteWorkflowForm) { %>
@@ -586,11 +586,11 @@
                       <div class="requirement-row-time"><%= formatShortDate(item.at) %></div>
                       <div class="requirement-row-content"><%= item.text %></div>
                       <div class="inline-actions requirement-row-actions">
-                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview">Preview</a>
-                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener">Download</a>
+                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                         <% if (canDeleteCommercialQuoteAttachments) { %>
                           <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this commercial quote file?')">
-                            <button class="danger-action requirement-action-delete" type="submit">Delete</button>
+                            <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                           </form>
                         <% } %>
                       </div>
@@ -610,7 +610,7 @@
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <input type="hidden" name="category" value="contract">
                   <input type="file" name="attachment" required>
-                  <button type="submit">Upload</button>
+                  <button type="submit"><%= t('upload') %></button>
                 </form>
               <% } %>
               <% if (contractApprovalWorkflowForm) { %>
@@ -674,11 +674,11 @@
                       <div class="requirement-row-time"><%= formatShortDate(item.at) %></div>
                       <div class="requirement-row-content"><%= item.text %></div>
                       <div class="inline-actions requirement-row-actions">
-                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview">Preview</a>
-                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener">Download</a>
+                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                         <% if (canDeleteContractAttachments) { %>
                           <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this contract file?')">
-                            <button class="danger-action requirement-action-delete" type="submit">Delete</button>
+                            <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                           </form>
                         <% } %>
                       </div>

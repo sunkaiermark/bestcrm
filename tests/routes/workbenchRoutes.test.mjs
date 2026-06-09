@@ -129,6 +129,22 @@ test('logged in users see compact workbench list layout', async () => {
   assert.doesNotMatch(response.text, /class="panel-grid"/);
 });
 
+test('workbench framework text uses selected Chinese language', async () => {
+  const agent = await createWorkbenchAgent();
+
+  await agent.get('/language?lang=zh&returnTo=/workbench');
+  const response = await agent.get('/workbench');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /<h1>\u5de5\u4f5c\u53f0<\/h1>/);
+  assert.match(response.text, /\u5de5\u4f5c\u6d41\u72b6\u6001\u7edf\u8ba1/);
+  assert.match(response.text, /\u6211\u7684\u5f85\u529e/);
+  assert.match(response.text, /\u6700\u8fd1\u6d41\u7a0b\u6d88\u606f/);
+  assert.match(response.text, /<th>\u5f85\u529e<\/th>/);
+  assert.match(response.text, /<th>\u5546\u673a<\/th>/);
+  assert.match(response.text, /<th>\u5ba2\u6237<\/th>/);
+});
+
 test('administrator users see system navigation in the left sidebar', async () => {
   const agent = await createWorkbenchAgent({
     username: 'admin01',

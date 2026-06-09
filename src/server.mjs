@@ -29,7 +29,7 @@ import { customerRoutes } from './routes/customerRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
 import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
-import { createTranslator, normalizeLanguage } from './utils/i18n.mjs';
+import { createTranslator, inferLanguageFromAcceptLanguage, normalizeLanguage } from './utils/i18n.mjs';
 import { isMainModule } from './utils/moduleEntry.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -321,7 +321,9 @@ export function createApp(options = {}) {
     }
   }));
   app.use((req, res, next) => {
-    const language = normalizeLanguage(req.session.language);
+    const language = req.session.language
+      ? normalizeLanguage(req.session.language)
+      : inferLanguageFromAcceptLanguage(req.headers['accept-language']);
     req.language = language;
     res.locals.language = language;
     res.locals.currentPath = req.originalUrl || req.url || '/workbench';
