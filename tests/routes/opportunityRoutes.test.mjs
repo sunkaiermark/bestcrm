@@ -613,6 +613,8 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.match(detail.text, />\u9884\u89c8<\/a>/);
   assert.match(detail.text, />\u4e0b\u8f7d<\/a>/);
   assert.match(detail.text, /<td>\u8349\u7a3f<\/td>/);
+  assert.match(detail.text, />\u63d0\u4ea4\u9500\u552e\u7ecf\u7406<\/button>/);
+  assert.doesNotMatch(detail.text, /Submit to Sales Manager/);
 });
 
 test('opportunity detail shows list and edit actions but hides delete from non administrators', async () => {

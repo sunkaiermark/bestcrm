@@ -645,7 +645,7 @@
               <% } else if (contractSubmitUnavailableMessage) { %>
                 <div class="form-panel requirement-input-panel commercial-quote-submit-panel">
                   <p class="empty"><%= contractSubmitUnavailableMessage %></p>
-                  <button type="button" disabled>Submit Contract Approval</button>
+                  <button type="button" disabled><%= t('workflowButton.submit_contract_approval') %></button>
                 </div>
               <% } %>
               <% if (contractMaterialVersions.length > 0) { %>

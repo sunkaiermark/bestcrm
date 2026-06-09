@@ -86,6 +86,24 @@ const dictionaries = {
     'status.technical_solution_rejected': 'Technical solution rejected',
     'status.won_contract_pending': 'Won, contract pending',
     submit: 'Submit',
+    'workflowButton.approve_commercial_quote': 'Approve',
+    'workflowButton.approve_contract': 'Approve Contract',
+    'workflowButton.approve_initiation': 'Approve and Assign',
+    'workflowButton.approve_technical_solution': 'Approve',
+    'workflowButton.mark_lost': 'Archive as Lost',
+    'workflowButton.mark_won': 'Mark Won',
+    'workflowButton.reject_commercial_quote': 'Reject',
+    'workflowButton.reject_contract': 'Reject Contract',
+    'workflowButton.reject_initiation': 'Reject',
+    'workflowButton.reject_technical_solution': 'Reject',
+    'workflowButton.submit_commercial_quote': 'Submit to Commercial Manager',
+    'workflowButton.submit_contract_approval': 'Submit Contract Approval',
+    'workflowButton.submit_initiation': 'Submit to Sales Manager',
+    'workflowButton.submit_technical_solution': 'Submit to Technical Manager',
+    'workflowButton.withdraw_commercial_quote': 'Withdraw',
+    'workflowButton.withdraw_contract_approval': 'Withdraw',
+    'workflowButton.withdraw_initiation': 'Withdraw',
+    'workflowButton.withdraw_technical_solution': 'Withdraw',
     system: 'System',
     systemRoles: 'System Roles',
     systemRolesDescription: 'Role definitions used by opportunity workflow permissions.',
@@ -185,6 +203,24 @@ const dictionaries = {
     'status.technical_solution_rejected': '\u6280\u672f\u65b9\u6848\u88ab\u9a73\u56de',
     'status.won_contract_pending': '\u5df2\u4e2d\u6807\uff0c\u5f85\u5408\u540c',
     submit: '\u63d0\u4ea4',
+    'workflowButton.approve_commercial_quote': '\u6279\u51c6',
+    'workflowButton.approve_contract': '\u6279\u51c6\u5408\u540c',
+    'workflowButton.approve_initiation': '\u6279\u51c6\u5e76\u6307\u6d3e',
+    'workflowButton.approve_technical_solution': '\u6279\u51c6',
+    'workflowButton.mark_lost': '\u5f52\u6863\u4e3a\u672a\u4e2d\u6807',
+    'workflowButton.mark_won': '\u6807\u8bb0\u4e2d\u6807',
+    'workflowButton.reject_commercial_quote': '\u9a73\u56de',
+    'workflowButton.reject_contract': '\u9a73\u56de\u5408\u540c',
+    'workflowButton.reject_initiation': '\u9a73\u56de',
+    'workflowButton.reject_technical_solution': '\u9a73\u56de',
+    'workflowButton.submit_commercial_quote': '\u63d0\u4ea4\u5546\u52a1\u7ecf\u7406',
+    'workflowButton.submit_contract_approval': '\u63d0\u4ea4\u5408\u540c\u5ba1\u6279',
+    'workflowButton.submit_initiation': '\u63d0\u4ea4\u9500\u552e\u7ecf\u7406',
+    'workflowButton.submit_technical_solution': '\u63d0\u4ea4\u6280\u672f\u7ecf\u7406',
+    'workflowButton.withdraw_commercial_quote': '\u64a4\u56de',
+    'workflowButton.withdraw_contract_approval': '\u64a4\u56de',
+    'workflowButton.withdraw_initiation': '\u64a4\u56de',
+    'workflowButton.withdraw_technical_solution': '\u64a4\u56de',
     system: '\u7cfb\u7edf',
     systemRoles: '\u7cfb\u7edf\u89d2\u8272',
     systemRolesDescription: '\u5546\u673a\u6d41\u7a0b\u6743\u9650\u4f7f\u7528\u7684\u89d2\u8272\u5b9a\u4e49\u3002',
@@ -219,5 +255,14 @@ export function createStatusLabeler(language) {
     const key = `status.${status}`;
     const label = t(key);
     return label === key ? status : label;
+  };
+}
+
+export function createWorkflowButtonLabeler(language) {
+  const t = createTranslator(language);
+  return (action, fallback) => {
+    const key = `workflowButton.${action}`;
+    const label = t(key);
+    return label === key ? fallback : label;
   };
 }

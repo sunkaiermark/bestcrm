@@ -24,6 +24,7 @@ import {
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
+import { createWorkflowButtonLabeler } from '../utils/i18n.mjs';
 
 function opportunityVisibilityFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { visibleToUserId: user.id };
@@ -347,8 +348,9 @@ function opportunityWithActiveContractReviewer(opportunity, contractApprovals) {
   };
 }
 
-function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = []) {
+function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = [], language = 'en') {
   const workflowOpportunity = opportunityWithActiveContractReviewer(opportunity, contractApprovals);
+  const workflowButtonLabel = createWorkflowButtonLabeler(language);
   const allowedActions = getAllowedActions({
     userId: user.id,
     roles: user.roles,
@@ -361,6 +363,7 @@ function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], co
       const missingRequirements = missingMaterialsForAction(form.action, attachments, opportunity, contractApprovals);
       return {
         ...form,
+        button: workflowButtonLabel(form.action, form.button),
         missingRequirements,
         blocked: missingRequirements.length > 0
       };
@@ -828,7 +831,7 @@ export function opportunityRoutes({
           : [],
         canManageResponsibility ? listResponsibilityUsers(userRepository) : []
       ]);
-      const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals);
+      const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals, req.language);
       res.render('opportunities/detail', {
         opportunity,
         workflowForms,
