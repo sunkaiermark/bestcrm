@@ -69,6 +69,22 @@ const dictionaries = {
     sort: 'Sort',
     stage: 'Stage',
     status: 'Status',
+    'status.commercial_quote_in_progress': 'Commercial quote in progress',
+    'status.commercial_quote_pending': 'Commercial quote pending',
+    'status.commercial_quote_rejected': 'Commercial quote rejected',
+    'status.contract_approval_in_progress': 'Contract approval in progress',
+    'status.contract_archived': 'Contract archived',
+    'status.contract_rejected': 'Contract rejected',
+    'status.customer_negotiation': 'Customer negotiation',
+    'status.draft': 'Draft',
+    'status.initiation_pending': 'Initiation pending',
+    'status.initiation_rejected': 'Initiation rejected',
+    'status.lost_archived': 'Lost archived',
+    'status.quotation_engineer_assignment_pending': 'Quotation engineer assignment pending',
+    'status.technical_solution_in_progress': 'Technical solution in progress',
+    'status.technical_solution_pending': 'Technical solution pending',
+    'status.technical_solution_rejected': 'Technical solution rejected',
+    'status.won_contract_pending': 'Won, contract pending',
     submit: 'Submit',
     system: 'System',
     systemRoles: 'System Roles',
@@ -152,6 +168,22 @@ const dictionaries = {
     sort: '\u6392\u5e8f',
     stage: '\u8282\u70b9',
     status: '\u72b6\u6001',
+    'status.commercial_quote_in_progress': '\u5546\u52a1\u62a5\u4ef7\u7f16\u5236\u4e2d',
+    'status.commercial_quote_pending': '\u5546\u52a1\u62a5\u4ef7\u5ba1\u6279\u4e2d',
+    'status.commercial_quote_rejected': '\u5546\u52a1\u62a5\u4ef7\u88ab\u9a73\u56de',
+    'status.contract_approval_in_progress': '\u5408\u540c\u5ba1\u6279\u4e2d',
+    'status.contract_archived': '\u5408\u540c\u5f52\u6863',
+    'status.contract_rejected': '\u5408\u540c\u88ab\u9a73\u56de',
+    'status.customer_negotiation': '\u5ba2\u6237\u5546\u52a1\u8c08\u5224',
+    'status.draft': '\u8349\u7a3f',
+    'status.initiation_pending': '\u7acb\u9879\u5ba1\u6279\u4e2d',
+    'status.initiation_rejected': '\u7acb\u9879\u88ab\u9a73\u56de',
+    'status.lost_archived': '\u672a\u4e2d\u6807\u5f52\u6863',
+    'status.quotation_engineer_assignment_pending': '\u5f85\u6307\u6d3e\u62a5\u4ef7\u5de5\u7a0b\u5e08',
+    'status.technical_solution_in_progress': '\u6280\u672f\u65b9\u6848\u7f16\u5236\u4e2d',
+    'status.technical_solution_pending': '\u6280\u672f\u65b9\u6848\u5ba1\u6279\u4e2d',
+    'status.technical_solution_rejected': '\u6280\u672f\u65b9\u6848\u88ab\u9a73\u56de',
+    'status.won_contract_pending': '\u5df2\u4e2d\u6807\uff0c\u5f85\u5408\u540c',
     submit: '\u63d0\u4ea4',
     system: '\u7cfb\u7edf',
     systemRoles: '\u7cfb\u7edf\u89d2\u8272',
@@ -179,4 +211,13 @@ export function inferLanguageFromAcceptLanguage(headerValue) {
 export function createTranslator(language) {
   const normalized = normalizeLanguage(language);
   return (key) => dictionaries[normalized][key] || dictionaries.en[key] || key;
+}
+
+export function createStatusLabeler(language) {
+  const t = createTranslator(language);
+  return (status) => {
+    const key = `status.${status}`;
+    const label = t(key);
+    return label === key ? status : label;
+  };
 }

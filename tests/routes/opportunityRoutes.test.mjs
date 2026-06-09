@@ -587,7 +587,7 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   const basicInfoHtml = detail.text.match(/<section class="content-section business-section business-section-basic">[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(basicInfoHtml, /class="basic-info-grid"/);
   assert.equal((basicInfoHtml.match(/<table class="detail-table">/g) || []).length, 2);
-  assert.match(basicInfoHtml, /<th scope="row">Status<\/th>\s*<td>draft<\/td>/);
+  assert.match(basicInfoHtml, /<th scope="row">Status<\/th>\s*<td>Draft<\/td>/);
   assert.match(basicInfoHtml, /<th scope="row">Delivery Period<\/th>/);
   assert.doesNotMatch(basicInfoHtml, /<th scope="row">Delivery Cycle<\/th>/);
   assert.match(detail.text, /\.basic-info-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
@@ -603,6 +603,7 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.match(list.text, /<h1>\u5546\u673a<\/h1>/);
   assert.match(list.text, /\u65b0\u5efa\u5546\u673a/);
   assert.match(list.text, /<th>\u5546\u673a\u540d\u79f0<\/th>/);
+  assert.match(list.text, /<span class="status">\u8349\u7a3f<\/span>/);
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
@@ -611,6 +612,7 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.match(detail.text, />\u4e0a\u4f20<\/button>/);
   assert.match(detail.text, />\u9884\u89c8<\/a>/);
   assert.match(detail.text, />\u4e0b\u8f7d<\/a>/);
+  assert.match(detail.text, /<td>\u8349\u7a3f<\/td>/);
 });
 
 test('opportunity detail shows list and edit actions but hides delete from non administrators', async () => {
@@ -624,7 +626,7 @@ test('opportunity detail shows list and edit actions but hides delete from non a
   assert.match(detail.text, />Edit</);
   const headerHtml = detail.text.match(/<header class="page-header">[\s\S]*?<\/header>/)?.[0] || '';
   assert.doesNotMatch(headerHtml, /class="status"/);
-  assert.match(detail.text, /<th scope="row">Status<\/th>\s*<td>draft<\/td>/);
+  assert.match(detail.text, /<th scope="row">Status<\/th>\s*<td>Draft<\/td>/);
   assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/delete"/);
 });
 

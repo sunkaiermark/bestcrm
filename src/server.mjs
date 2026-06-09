@@ -29,7 +29,7 @@ import { customerRoutes } from './routes/customerRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
 import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
-import { createTranslator, inferLanguageFromAcceptLanguage, normalizeLanguage } from './utils/i18n.mjs';
+import { createStatusLabeler, createTranslator, inferLanguageFromAcceptLanguage, normalizeLanguage } from './utils/i18n.mjs';
 import { isMainModule } from './utils/moduleEntry.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -328,6 +328,7 @@ export function createApp(options = {}) {
     res.locals.language = language;
     res.locals.currentPath = req.originalUrl || req.url || '/workbench';
     res.locals.t = createTranslator(language);
+    res.locals.statusLabel = createStatusLabeler(language);
     next();
   });
   app.use(attachCurrentUser(userRepository));

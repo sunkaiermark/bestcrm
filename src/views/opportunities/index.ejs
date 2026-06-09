@@ -28,7 +28,7 @@
                     <td class="clickable-cell">
                       <a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.primaryContactName || '' %></a>
                     </td>
-                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><span class="status"><%= opportunity.status %></span></a></td>
+                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><span class="status"><%= statusLabel(opportunity.status) %></span></a></td>
                     <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.estimatedAmount ?? '' %></a></td>
                   </tr>
                 <% } %>

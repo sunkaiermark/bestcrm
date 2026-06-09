@@ -14,7 +14,7 @@
             <% } %>
             <% for (const item of summary.stateCounts) { %>
               <div class="state-item">
-                <span class="state-label"><%= item.status %></span>
+                <span class="state-label"><%= statusLabel(item.status) %></span>
                 <span class="state-count"><%= item.count %></span>
               </div>
             <% } %>

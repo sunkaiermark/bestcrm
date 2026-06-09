@@ -143,6 +143,9 @@ test('workbench framework text uses selected Chinese language', async () => {
   assert.match(response.text, /<th>\u5f85\u529e<\/th>/);
   assert.match(response.text, /<th>\u5546\u673a<\/th>/);
   assert.match(response.text, /<th>\u5ba2\u6237<\/th>/);
+  const stateStripHtml = response.text.match(/<div class="state-strip">[\s\S]*?<\/div>\s*<\/section>/)?.[0] || '';
+  assert.match(stateStripHtml, /\u8349\u7a3f/);
+  assert.match(stateStripHtml, /\u7acb\u9879\u5ba1\u6279\u4e2d/);
 });
 
 test('administrator users see system navigation in the left sidebar', async () => {
