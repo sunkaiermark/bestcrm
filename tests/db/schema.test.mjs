@@ -14,6 +14,8 @@ const opportunityResponsibilityMigrationPath = new URL('../../src/db/migrations/
 const customerCountryMigrationPath = new URL('../../src/db/migrations/011_customer_country.sql', import.meta.url);
 const contactProfileMigrationPath = new URL('../../src/db/migrations/012_contact_profile_fields.sql', import.meta.url);
 const customerProfileMigrationPath = new URL('../../src/db/migrations/013_customer_profile_fields.sql', import.meta.url);
+const opportunityMaterialVersionsMigrationPath = new URL('../../src/db/migrations/014_opportunity_material_versions.sql', import.meta.url);
+const attachmentMaterialVersionMigrationPath = new URL('../../src/db/migrations/015_attachment_material_version.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -152,4 +154,31 @@ test('customer profile migration adds parent company enterprise nature and highl
   assert.match(sql, /ADD COLUMN IF NOT EXISTS parent_company text/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS enterprise_nature text/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS company_highlights text/);
+});
+
+test('opportunity material versions migration creates unified approval version records', async () => {
+  const sql = await readFile(opportunityMaterialVersionsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_material_versions/);
+  assert.match(sql, /opportunity_id bigint NOT NULL REFERENCES opportunities\(id\) ON DELETE CASCADE/);
+  assert.match(sql, /material_type text NOT NULL/);
+  assert.match(sql, /material_type IN \('technical_solution', 'commercial_quote', 'contract'\)/);
+  assert.match(sql, /version_no integer NOT NULL/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'draft'/);
+  assert.match(sql, /status IN \('draft', 'pending', 'approved', 'rejected', 'withdrawn'\)/);
+  assert.match(sql, /submitted_by bigint REFERENCES users\(id\)/);
+  assert.match(sql, /reviewed_by bigint REFERENCES users\(id\)/);
+  assert.match(sql, /UNIQUE \(opportunity_id, material_type, version_no\)/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS opportunity_material_versions_opportunity_type_idx/);
+});
+
+test('attachment material version migration links attachments to unified material versions', async () => {
+  const sql = await readFile(attachmentMaterialVersionMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE attachments/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS opportunity_material_version_id bigint/);
+  assert.match(sql, /REFERENCES opportunity_material_versions\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS attachments_material_version_idx/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS attachments_unbound_material_idx/);
+  assert.match(sql, /WHERE opportunity_material_version_id IS NULL/);
 });

@@ -53,7 +53,8 @@ test('attachment repository lists opportunity attachments with uploader names', 
     file_size: '2048',
     uploaded_by: '7',
     uploader_display_name: 'Sales One',
-    uploaded_at: '2026-06-05T12:00:00.000Z'
+    uploaded_at: '2026-06-05T12:00:00.000Z',
+    opportunity_material_version_id: '12'
   }]);
   const repository = createAttachmentRepository(queryTarget);
 
@@ -69,7 +70,8 @@ test('attachment repository lists opportunity attachments with uploader names', 
     fileSize: 2048,
     uploadedBy: 7,
     uploaderDisplayName: 'Sales One',
-    uploadedAt: '2026-06-05T12:00:00.000Z'
+    uploadedAt: '2026-06-05T12:00:00.000Z',
+    opportunityMaterialVersionId: 12
   }]);
   assert.match(queryTarget.queries[0].sql, /FROM attachments a/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN users uploader/);
@@ -89,7 +91,8 @@ test('attachment repository finds one attachment by id', async () => {
     file_size: '4096',
     uploaded_by: '7',
     uploader_display_name: 'Sales One',
-    uploaded_at: '2026-06-05T12:00:00.000Z'
+    uploaded_at: '2026-06-05T12:00:00.000Z',
+    opportunity_material_version_id: null
   }]);
   const repository = createAttachmentRepository(queryTarget);
 
@@ -98,8 +101,26 @@ test('attachment repository finds one attachment by id', async () => {
   assert.equal(attachment.id, 55);
   assert.equal(attachment.opportunityId, 30);
   assert.equal(attachment.category, 'contract');
+  assert.equal(attachment.opportunityMaterialVersionId, null);
   assert.match(queryTarget.queries[0].sql, /WHERE a\.id = \$1/);
   assert.deepEqual(queryTarget.queries[0].params, [55]);
+});
+
+test('attachment repository binds unbound category attachments to a material version', async () => {
+  const queryTarget = createFakeQueryTarget([{ id: '55' }, { id: '56' }]);
+  const repository = createAttachmentRepository(queryTarget);
+
+  const attachmentIds = await repository.bindUnboundToMaterialVersion({
+    opportunityId: 30,
+    category: 'technical_solution',
+    opportunityMaterialVersionId: 12
+  });
+
+  assert.deepEqual(attachmentIds, [55, 56]);
+  assert.match(queryTarget.queries[0].sql, /UPDATE attachments/);
+  assert.match(queryTarget.queries[0].sql, /opportunity_material_version_id = \$3/);
+  assert.match(queryTarget.queries[0].sql, /opportunity_material_version_id IS NULL/);
+  assert.deepEqual(queryTarget.queries[0].params, [30, 'technical_solution', 12]);
 });
 
 test('attachment repository deletes attachment metadata by id', async () => {

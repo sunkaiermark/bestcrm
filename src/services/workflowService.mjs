@@ -69,6 +69,21 @@ const commercialQuoteReviewStatuses = new Map([
   [ACTIONS.REJECT_COMMERCIAL_QUOTE, 'rejected']
 ]);
 
+const materialSubmissionTypes = new Map([
+  [ACTIONS.SUBMIT_TECHNICAL_SOLUTION, 'technical_solution'],
+  [ACTIONS.SUBMIT_COMMERCIAL_QUOTE, 'commercial_quote'],
+  [ACTIONS.SUBMIT_CONTRACT_APPROVAL, 'contract']
+]);
+
+const materialReviewTypes = new Map([
+  [ACTIONS.APPROVE_TECHNICAL_SOLUTION, 'technical_solution'],
+  [ACTIONS.REJECT_TECHNICAL_SOLUTION, 'technical_solution'],
+  [ACTIONS.APPROVE_COMMERCIAL_QUOTE, 'commercial_quote'],
+  [ACTIONS.REJECT_COMMERCIAL_QUOTE, 'commercial_quote'],
+  [ACTIONS.APPROVE_CONTRACT, 'contract'],
+  [ACTIONS.REJECT_CONTRACT, 'contract']
+]);
+
 const configuredApprovalAssignees = new Map([
   [ACTIONS.SUBMIT_INITIATION, {
     settingKey: 'opportunity_initiation',
@@ -192,6 +207,35 @@ function assertTechnicalSolutionPayload(payload, attachments) {
   }
 }
 
+function isUnboundAttachment(attachment) {
+  return attachment.opportunityMaterialVersionId === null
+    || attachment.opportunityMaterialVersionId === undefined;
+}
+
+function hasUnboundAttachment(attachments, category) {
+  return attachments.some((attachment) => attachment.category === category && isUnboundAttachment(attachment));
+}
+
+function assertRevisedTechnicalSolutionAfterRejection({ before, payload, attachments }) {
+  if (before.status !== 'technical_solution_rejected') {
+    return;
+  }
+  if (hasNonBlankValue(payload.solutionSummary) || hasUnboundAttachment(attachments, 'technical_solution')) {
+    return;
+  }
+  throw new WorkflowValidationError('Revised Technical Solution material is required after rejection');
+}
+
+function assertRevisedCommercialQuoteAfterRejection({ before, attachments }) {
+  if (before.status !== 'commercial_quote_rejected') {
+    return;
+  }
+  if (hasUnboundAttachment(attachments, 'commercial_quote')) {
+    return;
+  }
+  throw new WorkflowValidationError('Revised Commercial Quote attachment is required after rejection');
+}
+
 function technicalSolutionInput({ opportunityId, actor, payload }) {
   return {
     opportunityId: Number(opportunityId),
@@ -212,6 +256,54 @@ function commercialQuoteInput({ opportunityId, actor, payload }) {
     submittedBy: actor.id,
     items: []
   };
+}
+
+function materialVersionRepository(repositories) {
+  if (typeof repositories.opportunityMaterialVersionRepository?.createVersion !== 'function'
+    || typeof repositories.opportunityMaterialVersionRepository?.findLatestByOpportunityAndType !== 'function'
+    || typeof repositories.opportunityMaterialVersionRepository?.reviewVersion !== 'function') {
+    throw new WorkflowValidationError('Opportunity material version repository is not configured');
+  }
+  return repositories.opportunityMaterialVersionRepository;
+}
+
+async function createPendingMaterialVersion({ action, actor, opportunityId, repositories }) {
+  const materialType = materialSubmissionTypes.get(action);
+  if (!materialType) {
+    return null;
+  }
+  const version = await materialVersionRepository(repositories).createVersion({
+    opportunityId: Number(opportunityId),
+    materialType,
+    status: 'pending',
+    submittedBy: actor.id
+  });
+  if (version && typeof repositories.attachmentRepository?.bindUnboundToMaterialVersion === 'function') {
+    await repositories.attachmentRepository.bindUnboundToMaterialVersion({
+      opportunityId: Number(opportunityId),
+      category: materialType,
+      opportunityMaterialVersionId: version.id
+    });
+  }
+  return version;
+}
+
+async function reviewLatestPendingMaterialVersion({ action, actor, opportunityId, payload, repositories, status }) {
+  const materialType = materialReviewTypes.get(action);
+  if (!materialType) {
+    return null;
+  }
+  const repository = materialVersionRepository(repositories);
+  const latest = await repository.findLatestByOpportunityAndType(Number(opportunityId), materialType);
+  if (!latest) {
+    return null;
+  }
+  return repository.reviewVersion({
+    versionId: latest.id,
+    status,
+    reviewedBy: actor.id,
+    reviewComment: commentFromPayload(payload)
+  });
 }
 
 async function listAttachmentsForOpportunity(repositories, opportunityId) {
@@ -247,7 +339,7 @@ async function assertRevisedContractAfterRejection({ action, opportunityId, atta
       return false;
     }
     const uploadedAt = timestampValue(attachment.uploadedAt);
-    return uploadedAt !== null && uploadedAt > rejectedAt;
+    return uploadedAt !== null && uploadedAt > rejectedAt && isUnboundAttachment(attachment);
   });
   if (!hasRevisedContract) {
     throw new WorkflowValidationError('Revised Contract attachment is required after rejection');
@@ -274,6 +366,12 @@ async function assertRequiredMaterials({ action, before, opportunityId, payload,
   if (action === ACTIONS.SUBMIT_TECHNICAL_SOLUTION) {
     attachments = attachments || await listAttachmentsForOpportunity(repositories, opportunityId);
     assertTechnicalSolutionPayload(payload, attachments);
+    assertRevisedTechnicalSolutionAfterRejection({ before, payload, attachments });
+  }
+
+  if (action === ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
+    attachments = attachments || await listAttachmentsForOpportunity(repositories, opportunityId);
+    assertRevisedCommercialQuoteAfterRejection({ before, attachments });
   }
 }
 
@@ -305,6 +403,7 @@ async function persistSubmissionData({ action, actor, opportunityId, payload, re
       actor,
       payload
     }));
+    await createPendingMaterialVersion({ action, actor, opportunityId, repositories });
     return;
   }
 
@@ -317,6 +416,7 @@ async function persistSubmissionData({ action, actor, opportunityId, payload, re
       actor,
       payload
     }));
+    await createPendingMaterialVersion({ action, actor, opportunityId, repositories });
   }
 }
 
@@ -334,6 +434,7 @@ async function persistTechnicalSolutionReviewData({ action, actor, opportunityId
     reviewedBy: actor.id,
     reviewComment: commentFromPayload(payload)
   });
+  await reviewLatestPendingMaterialVersion({ action, actor, opportunityId, payload, repositories, status });
 }
 
 async function persistCommercialQuoteReviewData({ action, actor, opportunityId, payload, repositories }) {
@@ -350,6 +451,7 @@ async function persistCommercialQuoteReviewData({ action, actor, opportunityId, 
     reviewedBy: actor.id,
     reviewComment: commentFromPayload(payload)
   });
+  await reviewLatestPendingMaterialVersion({ action, actor, opportunityId, payload, repositories, status });
 }
 
 async function loadContractApprovalContext(action, opportunityId, repositories) {
@@ -382,6 +484,7 @@ async function persistContractApprovalData({ action, actor, opportunityId, paylo
       reviewerUserId: payload.legalReviewerId,
       submittedBy: actor.id
     });
+    await createPendingMaterialVersion({ action, actor, opportunityId, repositories });
     return;
   }
 
@@ -391,6 +494,14 @@ async function persistContractApprovalData({ action, actor, opportunityId, paylo
       stepId: contractApproval.stepId,
       comment: commentFromPayload(payload)
     });
+    await reviewLatestPendingMaterialVersion({
+      action,
+      actor,
+      opportunityId,
+      payload,
+      repositories,
+      status: 'approved'
+    });
     return;
   }
 
@@ -399,6 +510,14 @@ async function persistContractApprovalData({ action, actor, opportunityId, paylo
       approvalId: contractApproval.id,
       stepId: contractApproval.stepId,
       comment: commentFromPayload(payload)
+    });
+    await reviewLatestPendingMaterialVersion({
+      action,
+      actor,
+      opportunityId,
+      payload,
+      repositories,
+      status: 'rejected'
     });
   }
 }

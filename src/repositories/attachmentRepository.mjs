@@ -12,7 +12,10 @@ function mapAttachmentRow(row) {
     fileSize: Number(row.file_size),
     uploadedBy: Number(row.uploaded_by),
     uploaderDisplayName: row.uploader_display_name || '',
-    uploadedAt: row.uploaded_at
+    uploadedAt: row.uploaded_at,
+    opportunityMaterialVersionId: row.opportunity_material_version_id === null || row.opportunity_material_version_id === undefined
+      ? null
+      : Number(row.opportunity_material_version_id)
   };
 }
 
@@ -27,7 +30,8 @@ const attachmentSelect = `
     a.file_size,
     a.uploaded_by,
     uploader.display_name AS uploader_display_name,
-    a.uploaded_at
+    a.uploaded_at,
+    a.opportunity_material_version_id
   FROM attachments a
   LEFT JOIN users uploader ON uploader.id = a.uploaded_by
 `;
@@ -92,6 +96,22 @@ export function createAttachmentRepository(queryTarget) {
         DELETE FROM attachments
         WHERE id = $1
       `, [id]);
+    },
+
+    async bindUnboundToMaterialVersion(input) {
+      const result = await queryTarget.query(`
+        UPDATE attachments
+        SET opportunity_material_version_id = $3
+        WHERE opportunity_id = $1
+          AND category = $2
+          AND opportunity_material_version_id IS NULL
+        RETURNING id
+      `, [
+        input.opportunityId,
+        input.category,
+        input.opportunityMaterialVersionId
+      ]);
+      return result.rows.map((row) => Number(row.id));
     }
   };
 }

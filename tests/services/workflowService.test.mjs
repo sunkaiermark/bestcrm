@@ -64,6 +64,10 @@ function createMaterialRepositories(before, attachments = []) {
     async listByOpportunity(opportunityId) {
       repositories.calls.push(['listAttachments', opportunityId]);
       return attachments;
+    },
+    async bindUnboundToMaterialVersion(input) {
+      repositories.calls.push(['bindAttachmentsToMaterialVersion', input]);
+      return [];
     }
   };
   repositories.commercialQuoteRepository = {
@@ -106,6 +110,20 @@ function createMaterialRepositories(before, attachments = []) {
     async rejectActive(input) {
       repositories.calls.push(['rejectContractApproval', input]);
       return { ...activeContractApproval, status: 'rejected', stepAction: 'rejected' };
+    }
+  };
+  repositories.opportunityMaterialVersionRepository = {
+    async createVersion(input) {
+      repositories.calls.push(['createMaterialVersion', input]);
+      return { id: 300, versionNo: 1, ...input };
+    },
+    async findLatestByOpportunityAndType(opportunityId, materialType) {
+      repositories.calls.push(['findLatestMaterialVersion', opportunityId, materialType]);
+      return { id: 300, opportunityId, materialType, versionNo: 1, status: 'pending' };
+    },
+    async reviewVersion(input) {
+      repositories.calls.push(['reviewMaterialVersion', input]);
+      return { id: input.versionId, ...input };
     }
   };
   return repositories;
@@ -470,6 +488,17 @@ test('submit technical solution stores a pending version before manager approval
       implementationPlan: 'Prepare drawings and installation sequence',
       submittedBy: 3
     }],
+    ['createMaterialVersion', {
+      opportunityId: 10,
+      materialType: 'technical_solution',
+      status: 'pending',
+      submittedBy: 3
+    }],
+    ['bindAttachmentsToMaterialVersion', {
+      opportunityId: 10,
+      category: 'technical_solution',
+      opportunityMaterialVersionId: 300
+    }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
@@ -515,6 +544,17 @@ test('submit technical solution accepts description without attachment', async (
       implementationPlan: null,
       submittedBy: 3
     }],
+    ['createMaterialVersion', {
+      opportunityId: 10,
+      materialType: 'technical_solution',
+      status: 'pending',
+      submittedBy: 3
+    }],
+    ['bindAttachmentsToMaterialVersion', {
+      opportunityId: 10,
+      category: 'technical_solution',
+      opportunityMaterialVersionId: 300
+    }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
@@ -557,6 +597,17 @@ test('submit technical solution accepts unsubmitted attachment without descripti
       implementationPlan: null,
       submittedBy: 3
     }],
+    ['createMaterialVersion', {
+      opportunityId: 10,
+      materialType: 'technical_solution',
+      status: 'pending',
+      submittedBy: 3
+    }],
+    ['bindAttachmentsToMaterialVersion', {
+      opportunityId: 10,
+      category: 'technical_solution',
+      opportunityMaterialVersionId: 300
+    }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
@@ -568,6 +619,28 @@ test('submit technical solution accepts unsubmitted attachment without descripti
     }],
     ['closeTodos', 10, 'completed'],
     ['createTodo', { opportunityId: 10, assigneeUserId: 4, title: 'Approve technical solution' }]
+  ]);
+});
+
+test('submit technical solution after rejection requires revised text or unbound attachment', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.TECHNICAL_SOLUTION_REJECTED,
+    quotationEngineerId: 3
+  }, [{ id: 55, category: 'technical_solution', opportunityMaterialVersionId: 299 }]);
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+    payload: { comment: 'resubmit old materials' },
+    repositories
+  }), /Revised Technical Solution material is required after rejection/);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'technical_solution'],
+    ['listAttachments', 10]
   ]);
 });
 
@@ -593,6 +666,13 @@ test('technical manager approval marks latest pending technical solution version
     ['updateOpportunity', 10, { status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS }],
     ['reviewTechnicalSolutionVersion', {
       opportunityId: 10,
+      status: 'approved',
+      reviewedBy: 4,
+      reviewComment: 'approved'
+    }],
+    ['findLatestMaterialVersion', 10, 'technical_solution'],
+    ['reviewMaterialVersion', {
+      versionId: 300,
       status: 'approved',
       reviewedBy: 4,
       reviewComment: 'approved'
@@ -633,6 +713,13 @@ test('technical manager rejection marks latest pending technical solution versio
     ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_REJECTED }],
     ['reviewTechnicalSolutionVersion', {
       opportunityId: 10,
+      status: 'rejected',
+      reviewedBy: 4,
+      reviewComment: 'revise calculation'
+    }],
+    ['findLatestMaterialVersion', 10, 'technical_solution'],
+    ['reviewMaterialVersion', {
+      versionId: 300,
       status: 'rejected',
       reviewedBy: 4,
       reviewComment: 'revise calculation'
@@ -705,6 +792,17 @@ test('submit commercial quote stores attachment based quote version without line
       submittedBy: 3,
       items: []
     }],
+    ['createMaterialVersion', {
+      opportunityId: 10,
+      materialType: 'commercial_quote',
+      status: 'pending',
+      submittedBy: 3
+    }],
+    ['bindAttachmentsToMaterialVersion', {
+      opportunityId: 10,
+      category: 'commercial_quote',
+      opportunityMaterialVersionId: 300
+    }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
@@ -716,6 +814,28 @@ test('submit commercial quote stores attachment based quote version without line
     }],
     ['closeTodos', 10, 'completed'],
     ['createTodo', { opportunityId: 10, assigneeUserId: 5, title: 'Approve commercial quote' }]
+  ]);
+});
+
+test('submit commercial quote after rejection requires an unbound revised quote attachment', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.COMMERCIAL_QUOTE_REJECTED,
+    quotationEngineerId: 3
+  }, [{ id: 55, category: 'commercial_quote', opportunityMaterialVersionId: 299 }]);
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
+    payload: { comment: 'resubmit old quote' },
+    repositories
+  }), /Revised Commercial Quote attachment is required after rejection/);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'commercial_quote'],
+    ['listAttachments', 10]
   ]);
 });
 
@@ -742,6 +862,13 @@ test('commercial manager approval marks latest pending commercial quote version 
     ['updateOpportunity', 10, { status: STATUSES.CUSTOMER_NEGOTIATION }],
     ['reviewCommercialQuoteVersion', {
       opportunityId: 10,
+      status: 'approved',
+      reviewedBy: 5,
+      reviewComment: 'approved'
+    }],
+    ['findLatestMaterialVersion', 10, 'commercial_quote'],
+    ['reviewMaterialVersion', {
+      versionId: 300,
       status: 'approved',
       reviewedBy: 5,
       reviewComment: 'approved'
@@ -782,6 +909,13 @@ test('commercial manager rejection marks latest pending commercial quote version
     ['updateOpportunity', 10, { status: STATUSES.COMMERCIAL_QUOTE_REJECTED }],
     ['reviewCommercialQuoteVersion', {
       opportunityId: 10,
+      status: 'rejected',
+      reviewedBy: 5,
+      reviewComment: 'revise price'
+    }],
+    ['findLatestMaterialVersion', 10, 'commercial_quote'],
+    ['reviewMaterialVersion', {
+      versionId: 300,
       status: 'rejected',
       reviewedBy: 5,
       reviewComment: 'revise price'
@@ -896,6 +1030,48 @@ test('submit contract approval after rejected history requires a revised contrac
   ]);
 });
 
+test('submit contract approval after rejection rejects a bound attachment even when uploaded later', async () => {
+  const rejectedAt = new Date('2026-06-09T08:00:00.000Z');
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.WON_CONTRACT_PENDING,
+    salespersonId: 1
+  }, [
+    {
+      id: 57,
+      category: 'contract',
+      uploadedAt: new Date('2026-06-09T08:01:00.000Z'),
+      opportunityMaterialVersionId: 299
+    }
+  ]);
+  repositories.contractApprovalRepository.listByOpportunity = async (opportunityId) => {
+    repositories.calls.push(['listContractApprovals', opportunityId]);
+    return [
+      {
+        id: 90,
+        status: 'rejected',
+        completedAt: rejectedAt,
+        actedAt: rejectedAt
+      }
+    ];
+  };
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+    payload: { comment: 'contract revised' },
+    repositories
+  }), /Revised Contract attachment is required after rejection/);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findActiveApprovalSetting', 'contract_approval'],
+    ['listAttachments', 10],
+    ['listContractApprovals', 10]
+  ]);
+});
+
 test('submit contract approval after rejection accepts a revised contract attachment', async () => {
   const rejectedAt = new Date('2026-06-09T08:00:00.000Z');
   const repositories = createMaterialRepositories({
@@ -934,6 +1110,17 @@ test('submit contract approval after rejection accepts a revised contract attach
     ['listContractApprovals', 10],
     ['updateOpportunity', 10, { status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS }],
     ['createContractApproval', { opportunityId: 10, reviewerUserId: 6, submittedBy: 1 }],
+    ['createMaterialVersion', {
+      opportunityId: 10,
+      materialType: 'contract',
+      status: 'pending',
+      submittedBy: 1
+    }],
+    ['bindAttachmentsToMaterialVersion', {
+      opportunityId: 10,
+      category: 'contract',
+      opportunityMaterialVersionId: 300
+    }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
@@ -971,6 +1158,17 @@ test('submit contract approval creates approval record for legal reviewer', asyn
     ['listContractApprovals', 10],
     ['updateOpportunity', 10, { status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS }],
     ['createContractApproval', { opportunityId: 10, reviewerUserId: 6, submittedBy: 1 }],
+    ['createMaterialVersion', {
+      opportunityId: 10,
+      materialType: 'contract',
+      status: 'pending',
+      submittedBy: 1
+    }],
+    ['bindAttachmentsToMaterialVersion', {
+      opportunityId: 10,
+      category: 'contract',
+      opportunityMaterialVersionId: 300
+    }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
@@ -1007,6 +1205,13 @@ test('legal reviewer approves contract and archives opportunity', async () => {
     ['findActiveContractApproval', 10],
     ['updateOpportunity', 10, { status: STATUSES.CONTRACT_ARCHIVED, archivedAt: result.archivedAt }],
     ['approveContractApproval', { approvalId: 90, stepId: 91, comment: 'legal approved' }],
+    ['findLatestMaterialVersion', 10, 'contract'],
+    ['reviewMaterialVersion', {
+      versionId: 300,
+      status: 'approved',
+      reviewedBy: 6,
+      reviewComment: 'legal approved'
+    }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.APPROVE_CONTRACT,
@@ -1041,6 +1246,13 @@ test('legal reviewer rejects contract and returns opportunity to salesperson', a
     ['findActiveContractApproval', 10],
     ['updateOpportunity', 10, { status: STATUSES.WON_CONTRACT_PENDING }],
     ['rejectContractApproval', { approvalId: 90, stepId: 91, comment: 'missing liability clause' }],
+    ['findLatestMaterialVersion', 10, 'contract'],
+    ['reviewMaterialVersion', {
+      versionId: 300,
+      status: 'rejected',
+      reviewedBy: 6,
+      reviewComment: 'missing liability clause'
+    }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.REJECT_CONTRACT,
