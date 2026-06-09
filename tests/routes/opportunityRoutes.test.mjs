@@ -14,6 +14,7 @@ import { hashPassword } from '../../src/services/authService.mjs';
 async function createLoggedInAgent(extraOptions = {}) {
   const {
     user: userOverrides = {},
+    language,
     opportunityRepository: opportunityRepositoryOverrides = {},
     attachmentRepository: attachmentRepositoryOverrides = {},
     ...appOptions
@@ -268,6 +269,9 @@ async function createLoggedInAgent(extraOptions = {}) {
     ...appOptions
   });
   const agent = request.agent(app);
+  if (language) {
+    await agent.get(`/language?lang=${language}&returnTo=/login`);
+  }
   await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
   return { agent, created, createdCustomers, createdContacts, uploadedAttachments, requirementUpdates, workflowEvents, todoClosures, todosToCreate, workflowUpdates };
 }
@@ -595,9 +599,7 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
 });
 
 test('opportunity framework text and common actions use selected Chinese language', async () => {
-  const { agent } = await createLoggedInAgent();
-
-  await agent.get('/language?lang=zh&returnTo=/opportunities');
+  const { agent } = await createLoggedInAgent({ language: 'zh' });
 
   const list = await agent.get('/opportunities');
   assert.equal(list.status, 200);

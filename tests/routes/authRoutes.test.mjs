@@ -39,6 +39,7 @@ test('login page renders username and password form', async () => {
   assert.match(response.text, /class="login-button"/);
   assert.match(response.text, /name="username"/);
   assert.match(response.text, /name="password"/);
+  assert.match(response.text, /class="login-language-switch"/);
 });
 
 test('login page can switch between English and Chinese', async () => {
@@ -63,6 +64,39 @@ test('login page can switch between English and Chinese', async () => {
   assert.match(englishLogin.text, /Username/);
   assert.match(englishLogin.text, /Password/);
   assert.match(englishLogin.text, />Login</);
+});
+
+test('logged in users keep login language and cannot switch from the sidebar', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const user = {
+    id: 7,
+    username: 'sales01',
+    passwordHash,
+    displayName: 'Sales One',
+    isActive: true,
+    roles: [ROLES.SALESPERSON]
+  };
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    userRepository: buildUserRepository(user)
+  });
+  const agent = request.agent(app);
+
+  await agent.get('/language?lang=zh&returnTo=/login');
+  await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
+
+  const workbench = await agent.get('/workbench');
+  assert.equal(workbench.status, 200);
+  assert.match(workbench.text, /<h1>\u5de5\u4f5c\u53f0<\/h1>/);
+  assert.doesNotMatch(workbench.text, /class="nav-language-switch"/);
+
+  const blockedSwitch = await agent.get('/language?lang=en&returnTo=/workbench');
+  assert.equal(blockedSwitch.status, 302);
+  assert.equal(blockedSwitch.headers.location, '/workbench');
+
+  const stillChinese = await agent.get('/workbench');
+  assert.match(stillChinese.text, /<h1>\u5de5\u4f5c\u53f0<\/h1>/);
+  assert.doesNotMatch(stillChinese.text, /<h1>Workbench<\/h1>/);
 });
 
 test('valid login creates a session and logout clears it', async () => {

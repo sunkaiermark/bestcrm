@@ -158,28 +158,6 @@
         overflow-wrap: anywhere;
       }
 
-      .nav-language-switch {
-        display: flex;
-        gap: 6px;
-        margin-top: 12px;
-        padding: 0 8px;
-      }
-
-      .nav-language-switch a {
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 999px;
-        color: var(--rail-muted);
-        font-size: 12px;
-        font-weight: 700;
-        line-height: 1;
-        padding: 5px 8px;
-      }
-
-      .nav-language-switch a.active {
-        background: var(--rail-active);
-        color: var(--rail-ink);
-      }
-
       .nav-group {
         display: grid;
         gap: 4px;
@@ -955,8 +933,6 @@
   <body>
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>
     <% const canSeeSystemNav = Array.isArray(currentUser?.roles) && currentUser.roles.includes('administrator'); %>
-    <% const navLanguage = typeof language === 'undefined' ? 'en' : language; %>
-    <% const navReturnTo = encodeURIComponent(typeof currentPath === 'undefined' ? '/workbench' : currentPath); %>
     <div class="app-shell">
       <aside class="left-nav" aria-label="<%= t('primaryNavigation') %>">
         <a class="brand" href="/workbench" aria-label="Sunkaier workbench">
@@ -967,10 +943,6 @@
             <div class="nav-account-name"><%= currentUser.displayName %></div>
           </div>
         <% } %>
-        <div class="nav-language-switch" aria-label="Language">
-          <a class="<%= navLanguage === 'en' ? 'active' : '' %>" href="/language?lang=en&returnTo=<%= navReturnTo %>">English</a>
-          <a class="<%= navLanguage === 'zh' ? 'active' : '' %>" href="/language?lang=zh&returnTo=<%= navReturnTo %>">中文</a>
-        </div>
         <nav class="nav-group">
           <a class="<%= navClass('workbench') %>" href="/workbench"><%= t('workbench') %></a>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>

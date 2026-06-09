@@ -64,6 +64,7 @@ async function createSystemAgent(options = {}) {
     isActive: true
   };
   const calls = [];
+  const { language } = options;
   const app = createApp({
     sessionSecret: 'test-secret',
     userRepository: {
@@ -140,6 +141,9 @@ async function createSystemAgent(options = {}) {
     }
   });
   const agent = request.agent(app);
+  if (language) {
+    await agent.get(`/language?lang=${language}&returnTo=/login`);
+  }
   await agent.post('/login').type('form').send({ username: currentUser.username, password: 'ChangeMe123!' });
   return { agent, calls };
 }
@@ -205,9 +209,7 @@ test('logged in users can view system user role and approval setting details', a
 });
 
 test('system framework text uses selected Chinese language', async () => {
-  const { agent } = await createSystemAgent();
-
-  await agent.get('/language?lang=zh&returnTo=/system/users');
+  const { agent } = await createSystemAgent({ language: 'zh' });
 
   const users = await agent.get('/system/users');
   assert.equal(users.status, 200);

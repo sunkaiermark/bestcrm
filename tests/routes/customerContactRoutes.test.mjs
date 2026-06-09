@@ -8,6 +8,7 @@ import { createApp } from '../../src/server.mjs';
 async function createLoggedInAgent(options = {}) {
   const {
     user: userOverrides = {},
+    language,
     customerRepository: customerRepositoryOverrides = {},
     contactRepository: contactRepositoryOverrides = {}
   } = options;
@@ -130,6 +131,9 @@ async function createLoggedInAgent(options = {}) {
     }
   });
   const agent = request.agent(app);
+  if (language) {
+    await agent.get(`/language?lang=${language}&returnTo=/login`);
+  }
   await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
   return { agent, deletedCustomers, deletedContacts, createdContacts };
 }
@@ -282,9 +286,7 @@ test('logged in salesperson can view contact list and detail', async () => {
 });
 
 test('customer and contact framework text uses selected Chinese language', async () => {
-  const { agent } = await createLoggedInAgent();
-
-  await agent.get('/language?lang=zh&returnTo=/customers');
+  const { agent } = await createLoggedInAgent({ language: 'zh' });
 
   const customers = await agent.get('/customers');
   assert.equal(customers.status, 200);

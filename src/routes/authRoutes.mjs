@@ -14,7 +14,9 @@ export function authRoutes(userRepository) {
   const router = Router();
 
   router.get('/language', (req, res) => {
-    req.session.language = normalizeLanguage(req.query.lang);
+    if (!req.currentUser) {
+      req.session.language = normalizeLanguage(req.query.lang);
+    }
     res.redirect(safeReturnTo(req.query.returnTo));
   });
 

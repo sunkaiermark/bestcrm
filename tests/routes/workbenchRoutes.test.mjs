@@ -80,6 +80,9 @@ async function createWorkbenchAgent(options = {}) {
     }
   });
   const agent = request.agent(app);
+  if (options.language) {
+    await agent.get(`/language?lang=${options.language}&returnTo=/login`);
+  }
   await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
   return agent;
 }
@@ -100,6 +103,8 @@ test('logged in users see compact workbench list layout', async () => {
 
   assert.equal(response.status, 200);
   assert.match(response.text, /Workbench/);
+  assert.doesNotMatch(response.text, /class="user-line"/);
+  assert.doesNotMatch(response.text, /Sales One - salesperson/);
   const topbarHtml = response.text.match(/<header class="topbar">[\s\S]*?<\/header>/)?.[0] || '';
   assert.doesNotMatch(topbarHtml, /New opportunity/);
   assert.doesNotMatch(topbarHtml, /href="\/opportunities\/new"/);
@@ -130,9 +135,8 @@ test('logged in users see compact workbench list layout', async () => {
 });
 
 test('workbench framework text uses selected Chinese language', async () => {
-  const agent = await createWorkbenchAgent();
+  const agent = await createWorkbenchAgent({ language: 'zh' });
 
-  await agent.get('/language?lang=zh&returnTo=/workbench');
   const response = await agent.get('/workbench');
 
   assert.equal(response.status, 200);
@@ -173,10 +177,10 @@ test('left sidebar uses selected Chinese language after login', async () => {
   const agent = await createWorkbenchAgent({
     username: 'admin01',
     displayName: 'System Administrator',
-    roles: [ROLES.ADMINISTRATOR]
+    roles: [ROLES.ADMINISTRATOR],
+    language: 'zh'
   });
 
-  await agent.get('/language?lang=zh&returnTo=/workbench');
   const response = await agent.get('/workbench');
 
   assert.equal(response.status, 200);
