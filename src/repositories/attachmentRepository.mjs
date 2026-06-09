@@ -1,3 +1,5 @@
+import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
+
 function mapAttachmentRow(row) {
   if (!row) {
     return null;
@@ -6,7 +8,7 @@ function mapAttachmentRow(row) {
     id: Number(row.id),
     opportunityId: Number(row.opportunity_id),
     category: row.category,
-    originalName: row.original_name,
+    originalName: normalizeUploadedFilename(row.original_name),
     storedPath: row.stored_path,
     mimeType: row.mime_type,
     fileSize: Number(row.file_size),

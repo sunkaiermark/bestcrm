@@ -23,6 +23,7 @@ import {
 } from '../services/opportunityService.mjs';
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
+import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 
 function opportunityVisibilityFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { visibleToUserId: user.id };
@@ -1058,7 +1059,7 @@ export function opportunityRoutes({
       await attachmentRepository.createAttachment({
         opportunityId: req.opportunity.id,
         category,
-        originalName: req.file.originalname,
+        originalName: normalizeUploadedFilename(req.file.originalname),
         storedPath: storedPathForFile(uploadDir, req.file),
         mimeType: req.file.mimetype || 'application/octet-stream',
         fileSize: req.file.size,

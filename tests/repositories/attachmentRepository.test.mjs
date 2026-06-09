@@ -80,6 +80,27 @@ test('attachment repository lists opportunity attachments with uploader names', 
   assert.deepEqual(queryTarget.queries[0].params, [30]);
 });
 
+test('attachment repository normalizes mojibake Chinese attachment names', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    id: '55',
+    opportunity_id: '30',
+    category: 'commercial_quote',
+    original_name: 'å\x88©å°\x94å\x8C\x96å­¦å\x90«ç\x9B\x90åº\x9Fæ°´ç\x84\x9Aç\x83§ç³»ç»\x9Fæ\x8A\x80æ\x9C¯æ\x96¹æ¡\x88260608.pdf',
+    stored_path: '2026/06/quote.pdf',
+    mime_type: 'application/pdf',
+    file_size: '2048',
+    uploaded_by: '7',
+    uploader_display_name: 'Sales One',
+    uploaded_at: '2026-06-05T12:00:00.000Z',
+    opportunity_material_version_id: null
+  }]);
+  const repository = createAttachmentRepository(queryTarget);
+
+  const attachments = await repository.listByOpportunity(30);
+
+  assert.equal(attachments[0].originalName, '利尔化学含盐废水焚烧系统技术方案260608.pdf');
+});
+
 test('attachment repository finds one attachment by id', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '55',

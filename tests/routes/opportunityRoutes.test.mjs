@@ -2411,6 +2411,28 @@ test('page form uploads attachment metadata and stores file', async () => {
   }
 });
 
+test('page form preserves Chinese attachment filenames', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-upload-cn-'));
+  try {
+    const { agent, uploadedAttachments } = await createLoggedInAgent({ uploadDir });
+
+    const response = await agent
+      .post('/opportunities/30/attachments')
+      .field('category', 'commercial_quote')
+      .attach('attachment', Buffer.from('technical file'), {
+        filename: '利尔化学含盐废水焚烧系统技术方案260608.pdf',
+        contentType: 'application/pdf'
+      });
+
+    assert.equal(response.status, 302);
+    assert.equal(uploadedAttachments.length, 1);
+    assert.equal(uploadedAttachments[0].originalName, '利尔化学含盐废水焚烧系统技术方案260608.pdf');
+    assert.doesNotMatch(uploadedAttachments[0].originalName, /Ã|Â|Å|æ|ç|å/);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('page form stores requirement material attachment category', async () => {
   const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-requirement-upload-'));
   try {
