@@ -91,10 +91,15 @@
           </label>
           <label>
             Project Type
-            <input name="projectType" form="opportunity-form" value="<%= opportunity.projectType || '' %>">
+            <select name="projectType" form="opportunity-form">
+              <option value="">Select project type</option>
+              <% for (const projectType of ['新增', '扩建', '改造', '维修']) { %>
+                <option value="<%= projectType %>" <%= opportunity.projectType === projectType ? 'selected' : '' %>><%= projectType %></option>
+              <% } %>
+            </select>
           </label>
           <label>
-            Delivery Cycle
+            Delivery Period
             <input name="deliveryCycle" form="opportunity-form" value="<%= opportunity.deliveryCycle || '' %>">
           </label>
           <label>

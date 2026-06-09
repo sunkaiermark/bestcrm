@@ -152,6 +152,18 @@
   const canDeleteTechnicalSolutionAttachments = technicalSolutionDeleteStatuses.includes(opportunity.status);
   const canDeleteCommercialQuoteAttachments = ['commercial_quote_in_progress', 'commercial_quote_rejected'].includes(opportunity.status);
   const canDeleteContractAttachments = ['customer_negotiation', 'won_contract_pending', 'contract_rejected'].includes(opportunity.status);
+  const contractSubmitUnavailableMessage = (() => {
+    if (contractApprovalWorkflowForm || !uploadPermissions.contract || contractAttachments.length === 0) {
+      return '';
+    }
+    if (opportunity.status === 'contract_approval_in_progress') {
+      return 'Contract approval has already been submitted.';
+    }
+    if (opportunity.status === 'contract_archived') {
+      return 'Contract approval is archived.';
+    }
+    return 'Finish the technical solution and commercial quote approval before submitting contract approval.';
+  })();
 %>
         <p class="breadcrumb"><a href="/opportunities">Opportunities</a></p>
         <header class="page-header">
@@ -216,7 +228,7 @@
                       <td><%= opportunity.projectType %></td>
                     </tr>
                     <tr>
-                      <th scope="row">Delivery Cycle</th>
+                      <th scope="row">Delivery Period</th>
                       <td><%= opportunity.deliveryCycle %></td>
                     </tr>
                     <tr>
@@ -630,6 +642,11 @@
                   <% } %>
                   <button type="submit" <%= contractApprovalWorkflowForm.blocked ? 'disabled' : '' %>><%= contractApprovalWorkflowForm.button %></button>
                 </form>
+              <% } else if (contractSubmitUnavailableMessage) { %>
+                <div class="form-panel requirement-input-panel commercial-quote-submit-panel">
+                  <p class="empty"><%= contractSubmitUnavailableMessage %></p>
+                  <button type="button" disabled>Submit Contract Approval</button>
+                </div>
               <% } %>
               <% if (contractMaterialVersions.length > 0) { %>
                 <div class="material-version-strip">

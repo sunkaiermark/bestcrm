@@ -570,6 +570,13 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.doesNotMatch(form.text, /action="\/opportunities\/contacts"/);
   assert.match(form.text, /Opportunity Name\s*<input name="title"/);
   assert.doesNotMatch(form.text, /Title\s*<input name="title"/);
+  assert.match(form.text, /Delivery Period\s*<input name="deliveryCycle"/);
+  assert.doesNotMatch(form.text, /Delivery Cycle\s*<input name="deliveryCycle"/);
+  assert.match(form.text, /<select name="projectType" form="opportunity-form">/);
+  for (const projectType of ['新增', '扩建', '改造', '维修']) {
+    assert.match(form.text, new RegExp(`<option value="${projectType}"[^>]*>${projectType}<\\/option>`));
+  }
+  assert.doesNotMatch(form.text, /Project Type\s*<input name="projectType"/);
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
@@ -581,6 +588,8 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(basicInfoHtml, /class="basic-info-grid"/);
   assert.equal((basicInfoHtml.match(/<table class="detail-table">/g) || []).length, 2);
   assert.match(basicInfoHtml, /<th scope="row">Status<\/th>\s*<td>draft<\/td>/);
+  assert.match(basicInfoHtml, /<th scope="row">Delivery Period<\/th>/);
+  assert.doesNotMatch(basicInfoHtml, /<th scope="row">Delivery Cycle<\/th>/);
   assert.match(detail.text, /\.basic-info-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
 });
 
@@ -2087,6 +2096,42 @@ test('customer negotiation with contract attachment shows contract submit and de
   assert.match(contractSection, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/57\/download"[^>]*download="contract-v1\.docx"[^>]*target="_blank"/);
   assert.match(contractSection, /onsubmit="return confirm\('Delete this contract file\?'\)"/);
   assert.doesNotMatch(contractSection, /Contract Approvals|Version History/);
+});
+
+test('contract attachment before negotiation shows disabled submit guidance', async () => {
+  const attachment = {
+    id: 57,
+    opportunityId: 30,
+    category: 'contract',
+    originalName: 'contract-v1.docx',
+    storedPath: '2026/06/contract-v1.docx',
+    mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    fileSize: 2048,
+    uploadedBy: 7,
+    uploaderDisplayName: 'Sales One',
+    uploadedAt: '2026-06-05T13:00:00.000Z'
+  };
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7
+    },
+    attachments: [attachment]
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  const contractSection = detail.text.match(/<h2>Commercial Contract<\/h2>[\s\S]*?<h2>Timeline<\/h2>/)[0];
+  assert.match(contractSection, /Finish the technical solution and commercial quote approval before submitting contract approval/);
+  assert.match(contractSection, /<button type="button" disabled>Submit Contract Approval<\/button>/);
+  assert.doesNotMatch(contractSection, /<input type="hidden" name="action" value="submit_contract_approval">/);
 });
 
 test('rejected contract requires a revised attachment before resubmission', async () => {
