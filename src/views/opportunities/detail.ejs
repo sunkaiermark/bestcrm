@@ -126,6 +126,14 @@
     }
     return String(left.key).localeCompare(String(right.key));
   });
+  const materialApprovalVersions = typeof materialVersions === 'undefined' ? [] : materialVersions;
+  const materialVersionsFor = (materialType) => materialApprovalVersions
+    .filter((version) => version.materialType === materialType)
+    .sort((left, right) => Number(left.versionNo || 0) - Number(right.versionNo || 0));
+  const technicalMaterialVersions = materialVersionsFor('technical_solution');
+  const commercialQuoteMaterialVersions = materialVersionsFor('commercial_quote');
+  const contractMaterialVersions = materialVersionsFor('contract');
+  const materialVersionStatusClass = (status) => String(status || 'draft').replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
   const opportunityTeamMembers = typeof teamMembers === 'undefined' ? [] : teamMembers;
   const opportunityOwnerTransfers = typeof ownerTransfers === 'undefined' ? [] : ownerTransfers;
   const canManageOpportunityResponsibility = typeof canManageResponsibility === 'undefined' ? false : canManageResponsibility;
@@ -455,6 +463,25 @@
                   </div>
                 </form>
               <% } %>
+              <% if (technicalMaterialVersions.length > 0) { %>
+                <div class="material-version-strip">
+                  <% for (const version of technicalMaterialVersions) { %>
+                    <article class="material-version-card">
+                      <span class="material-version-badge">V<%= version.versionNo %></span>
+                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= version.status %></span>
+                      <% if (version.submittedAt || version.submitterDisplayName) { %>
+                        <span>Submitted <%= formatShortDate(version.submittedAt) %><%= version.submitterDisplayName ? ` by ${version.submitterDisplayName}` : '' %></span>
+                      <% } %>
+                      <% if (version.reviewedAt || version.reviewerDisplayName) { %>
+                        <span>Reviewed <%= formatShortDate(version.reviewedAt) %><%= version.reviewerDisplayName ? ` by ${version.reviewerDisplayName}` : '' %></span>
+                      <% } %>
+                      <% if (version.reviewComment) { %>
+                        <span class="material-version-comment"><%= version.reviewComment %></span>
+                      <% } %>
+                    </article>
+                  <% } %>
+                </div>
+              <% } %>
               <% if (technicalSolutionTimeline.length > 0) { %>
                 <div class="requirement-timeline">
                   <% for (const item of technicalSolutionTimeline) { %>
@@ -521,6 +548,25 @@
                   <button type="submit" <%= commercialQuoteWorkflowForm.blocked ? 'disabled' : '' %>><%= commercialQuoteWorkflowForm.button %></button>
                 </form>
               <% } %>
+              <% if (commercialQuoteMaterialVersions.length > 0) { %>
+                <div class="material-version-strip">
+                  <% for (const version of commercialQuoteMaterialVersions) { %>
+                    <article class="material-version-card">
+                      <span class="material-version-badge">V<%= version.versionNo %></span>
+                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= version.status %></span>
+                      <% if (version.submittedAt || version.submitterDisplayName) { %>
+                        <span>Submitted <%= formatShortDate(version.submittedAt) %><%= version.submitterDisplayName ? ` by ${version.submitterDisplayName}` : '' %></span>
+                      <% } %>
+                      <% if (version.reviewedAt || version.reviewerDisplayName) { %>
+                        <span>Reviewed <%= formatShortDate(version.reviewedAt) %><%= version.reviewerDisplayName ? ` by ${version.reviewerDisplayName}` : '' %></span>
+                      <% } %>
+                      <% if (version.reviewComment) { %>
+                        <span class="material-version-comment"><%= version.reviewComment %></span>
+                      <% } %>
+                    </article>
+                  <% } %>
+                </div>
+              <% } %>
               <% if (commercialQuoteTimeline.length > 0) { %>
                 <div class="requirement-timeline">
                   <% for (const item of commercialQuoteTimeline) { %>
@@ -584,6 +630,25 @@
                   <% } %>
                   <button type="submit" <%= contractApprovalWorkflowForm.blocked ? 'disabled' : '' %>><%= contractApprovalWorkflowForm.button %></button>
                 </form>
+              <% } %>
+              <% if (contractMaterialVersions.length > 0) { %>
+                <div class="material-version-strip">
+                  <% for (const version of contractMaterialVersions) { %>
+                    <article class="material-version-card">
+                      <span class="material-version-badge">V<%= version.versionNo %></span>
+                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= version.status %></span>
+                      <% if (version.submittedAt || version.submitterDisplayName) { %>
+                        <span>Submitted <%= formatShortDate(version.submittedAt) %><%= version.submitterDisplayName ? ` by ${version.submitterDisplayName}` : '' %></span>
+                      <% } %>
+                      <% if (version.reviewedAt || version.reviewerDisplayName) { %>
+                        <span>Reviewed <%= formatShortDate(version.reviewedAt) %><%= version.reviewerDisplayName ? ` by ${version.reviewerDisplayName}` : '' %></span>
+                      <% } %>
+                      <% if (version.reviewComment) { %>
+                        <span class="material-version-comment"><%= version.reviewComment %></span>
+                      <% } %>
+                    </article>
+                  <% } %>
+                </div>
               <% } %>
               <% if (contractTimeline.length > 0) { %>
                 <div class="requirement-timeline">

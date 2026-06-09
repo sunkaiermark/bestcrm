@@ -437,6 +437,10 @@ async function createWorkflowAgent({
       async listByOpportunity() {
         return attachments;
       },
+      async bindUnboundToMaterialVersion(input) {
+        calls.push(['bindUnboundToMaterialVersion', input]);
+        return { rowCount: attachments.length };
+      },
       async createAttachment() {
         throw new Error('not used');
       },
@@ -489,6 +493,23 @@ async function createWorkflowAgent({
       async rejectActive(input) {
         calls.push(['rejectContractApproval', input]);
         return { id: input.approvalId, status: 'rejected' };
+      }
+    },
+    opportunityMaterialVersionRepository: {
+      async createVersion(input) {
+        calls.push(['createMaterialVersion', input]);
+        return { id: 300, versionNo: 1, ...input };
+      },
+      async findLatestByOpportunityAndType(opportunityId, materialType) {
+        calls.push(['findLatestMaterialVersion', Number(opportunityId), materialType]);
+        return { id: 300, opportunityId: Number(opportunityId), materialType, status: 'pending', versionNo: 1 };
+      },
+      async reviewVersion(input) {
+        calls.push(['reviewMaterialVersion', input]);
+        return { id: input.versionId, ...input };
+      },
+      async listByOpportunity() {
+        return [];
       }
     },
     workflowTransaction
@@ -1400,6 +1421,70 @@ test('opportunity detail shows technical solution submission and review comments
   assert.match(technicalSection, /approved/);
   assert.doesNotMatch(technicalSection, /IP65, stainless cabinet/);
   assert.doesNotMatch(technicalSection, /Revise drawings and wiring plan/);
+});
+
+test('opportunity detail shows compact material approval versions by business section', async () => {
+  const { agent } = await createLoggedInAgent({
+    opportunityMaterialVersionRepository: {
+      async listByOpportunity() {
+        return [
+          {
+            id: 101,
+            opportunityId: 30,
+            materialType: 'technical_solution',
+            versionNo: 1,
+            status: 'approved',
+            submittedBy: 3,
+            submitterDisplayName: 'Quote Engineer',
+            submittedAt: '2026-06-05T11:30:00.000Z',
+            reviewedBy: 4,
+            reviewerDisplayName: 'Technical Manager',
+            reviewedAt: '2026-06-05T12:00:00.000Z',
+            reviewComment: 'approved'
+          },
+          {
+            id: 102,
+            opportunityId: 30,
+            materialType: 'commercial_quote',
+            versionNo: 2,
+            status: 'pending',
+            submittedBy: 3,
+            submitterDisplayName: 'Quote Engineer',
+            submittedAt: '2026-06-06T09:00:00.000Z',
+            reviewedBy: null,
+            reviewerDisplayName: '',
+            reviewedAt: null,
+            reviewComment: null
+          },
+          {
+            id: 103,
+            opportunityId: 30,
+            materialType: 'contract',
+            versionNo: 1,
+            status: 'rejected',
+            submittedBy: 7,
+            submitterDisplayName: 'Sales One',
+            submittedAt: '2026-06-07T09:00:00.000Z',
+            reviewedBy: 6,
+            reviewerDisplayName: 'Legal One',
+            reviewedAt: '2026-06-07T10:00:00.000Z',
+            reviewComment: 'missing clause'
+          }
+        ];
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  const technicalSection = detail.text.match(/<h2>Technical Solution<\/h2>[\s\S]*?<h2>Commercial Quote<\/h2>/)[0];
+  const quoteSection = detail.text.match(/<h2>Commercial Quote<\/h2>[\s\S]*?<h2>Commercial Contract<\/h2>/)[0];
+  const contractSection = detail.text.match(/<h2>Commercial Contract<\/h2>[\s\S]*?<h2>Timeline<\/h2>/)[0];
+  assert.match(technicalSection, /material-version-strip[\s\S]*V1[\s\S]*approved[\s\S]*Quote Engineer[\s\S]*Technical Manager/);
+  assert.match(quoteSection, /material-version-strip[\s\S]*V2[\s\S]*pending[\s\S]*Quote Engineer/);
+  assert.match(contractSection, /material-version-strip[\s\S]*V1[\s\S]*rejected[\s\S]*Sales One[\s\S]*Legal One[\s\S]*missing clause/);
+  assert.doesNotMatch(detail.text, /Version History/);
 });
 
 test('opportunity detail hides commercial quote version history because quote rows are dated', async () => {
@@ -2746,6 +2831,17 @@ test('workflow route submits technical solution as a version for approval', asyn
       implementationPlan: 'Prepare drawings',
       submittedBy: 3
     }],
+    ['createMaterialVersion', {
+      opportunityId: 30,
+      materialType: 'technical_solution',
+      status: 'pending',
+      submittedBy: 3
+    }],
+    ['bindUnboundToMaterialVersion', {
+      opportunityId: 30,
+      category: 'technical_solution',
+      opportunityMaterialVersionId: 300
+    }],
     ['createEvent', {
       opportunityId: 30,
       eventType: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
@@ -2810,6 +2906,13 @@ test('legal reviewer can see contract approval records and approve from detail p
     ['findActiveContractApproval', 30],
     ['updateOpportunity', 30, { status: STATUSES.CONTRACT_ARCHIVED, archivedAt: getOpportunity().archivedAt }],
     ['approveContractApproval', { approvalId: 90, stepId: 91, comment: 'legal approved' }],
+    ['findLatestMaterialVersion', 30, 'contract'],
+    ['reviewMaterialVersion', {
+      versionId: 300,
+      status: 'approved',
+      reviewedBy: 6,
+      reviewComment: 'legal approved'
+    }],
     ['createEvent', {
       opportunityId: 30,
       eventType: ACTIONS.APPROVE_CONTRACT,

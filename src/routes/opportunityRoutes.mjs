@@ -582,6 +582,7 @@ export function opportunityRoutes({
   commercialQuoteRepository,
   technicalSolutionRepository,
   requirementUpdateRepository,
+  opportunityMaterialVersionRepository,
   contractApprovalRepository,
   opportunityResponsibilityRepository,
   approvalSettingRepository,
@@ -790,6 +791,7 @@ export function opportunityRoutes({
         requirementUpdates,
         technicalSolutions,
         commercialQuotes,
+        materialVersions,
         teamMembers,
         ownerTransfers,
         responsibilityUsers
@@ -811,6 +813,9 @@ export function opportunityRoutes({
           : [],
         typeof commercialQuoteRepository?.listByOpportunity === 'function'
           ? commercialQuoteRepository.listByOpportunity(opportunity.id)
+          : [],
+        typeof opportunityMaterialVersionRepository?.listByOpportunity === 'function'
+          ? opportunityMaterialVersionRepository.listByOpportunity(opportunity.id)
           : [],
         Array.isArray(opportunity.teamMembers)
           ? opportunity.teamMembers
@@ -834,6 +839,7 @@ export function opportunityRoutes({
         requirementUpdates,
         technicalSolutions,
         commercialQuotes,
+        materialVersions,
         canManageResponsibility,
         responsibilityUsers,
         salesOwnerOptions: responsibilityUsers.filter((user) => userHasRole(user, ROLES.SALESPERSON)),
@@ -1154,6 +1160,7 @@ export function opportunityRoutes({
           attachmentRepository,
           commercialQuoteRepository,
           technicalSolutionRepository,
+          opportunityMaterialVersionRepository,
           contractApprovalRepository,
           approvalSettingRepository,
           workflowTransaction

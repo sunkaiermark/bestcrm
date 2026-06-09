@@ -734,6 +734,64 @@
         white-space: nowrap;
       }
 
+      .material-version-strip {
+        display: grid;
+        gap: 6px;
+        margin: 8px 0 10px;
+      }
+
+      .material-version-card {
+        align-items: center;
+        background: rgba(255, 255, 255, 0.42);
+        border: 1px solid rgba(217, 225, 231, 0.9);
+        border-radius: 6px;
+        color: var(--muted);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 7px 9px;
+      }
+
+      .material-version-badge,
+      .material-version-status {
+        border-radius: 999px;
+        display: inline-flex;
+        font-size: 12px;
+        font-weight: 800;
+        line-height: 1;
+        padding: 4px 7px;
+      }
+
+      .material-version-badge {
+        background: #dbeafe;
+        color: #1e40af;
+      }
+
+      .material-version-status {
+        background: #e8eef3;
+        color: #334155;
+      }
+
+      .material-version-status-approved {
+        background: #dcfce7;
+        color: #166534;
+      }
+
+      .material-version-status-pending {
+        background: #fef3c7;
+        color: #92400e;
+      }
+
+      .material-version-status-rejected {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .material-version-comment {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
       .requirement-timeline {
         display: grid;
         gap: 0;
