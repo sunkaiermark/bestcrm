@@ -287,7 +287,8 @@ function assertAppSidebar(html, activeHref) {
   assert.match(html, /class="nav-account"/);
   assert.match(html, /class="nav-account-name"[\s\S]*Sales One/);
   assert.doesNotMatch(html, /class="nav-account-meta"/);
-  assert.match(html, /class="nav-account-roles"[\s\S]*salesperson/);
+  assert.doesNotMatch(html, /class="nav-account-roles"/);
+  assert.doesNotMatch(html, /salesperson/);
   assert.match(html, /\.nav-account\s*\{/);
   assert.match(html, /\.nav-group\s*\{[\s\S]*margin-top:\s*18px;/);
   assert.match(html, /href="\/workbench"/);

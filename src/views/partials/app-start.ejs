@@ -158,13 +158,6 @@
         overflow-wrap: anywhere;
       }
 
-      .nav-account-roles {
-        color: var(--rail-muted);
-        font-size: 12px;
-        margin-top: 3px;
-        overflow-wrap: anywhere;
-      }
-
       .nav-language-switch {
         display: flex;
         gap: 6px;
@@ -972,7 +965,6 @@
         <% if (currentUser) { %>
           <div class="nav-account" aria-label="<%= t('currentLoginAccount') %>">
             <div class="nav-account-name"><%= currentUser.displayName %></div>
-            <div class="nav-account-roles"><%= currentUser.roles.join(', ') %></div>
           </div>
         <% } %>
         <div class="nav-language-switch" aria-label="Language">
