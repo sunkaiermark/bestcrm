@@ -30,7 +30,13 @@
                   <tr>
                     <td><%= user.displayName %></td>
                     <td><%= user.username %></td>
-                    <td><%= user.roles.join(', ') %></td>
+                    <td>
+                      <div class="role-list">
+                        <% for (const role of user.roles) { %>
+                          <div class="role-list-item"><%= role %></div>
+                        <% } %>
+                      </div>
+                    </td>
                     <td><%= user.email || '-' %></td>
                     <td><%= user.phone || '-' %></td>
                     <td><span class="status"><%= user.isActive ? 'active' : 'inactive' %></span></td>

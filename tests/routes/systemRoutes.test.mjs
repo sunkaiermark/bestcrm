@@ -172,6 +172,8 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(users.text, /sales_manager01/);
   assert.match(users.text, /Sales Manager/);
   assert.match(users.text, /sales_manager/);
+  assert.match(users.text, /class="role-list"[\s\S]*class="role-list-item"[\s\S]*sales_manager/);
+  assert.doesNotMatch(users.text, /administrator, sales_manager/);
   assert.match(users.text, /<table class="list-table content-fit-table">/);
   assert.match(users.text, /\.content-fit-table thead th\s*\{[\s\S]*background:\s*#1e3a5f;/);
   assert.match(users.text, /<td class="actions-cell">[\s\S]*<div class="inline-actions system-actions">/);
