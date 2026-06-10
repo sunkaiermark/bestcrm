@@ -16,6 +16,36 @@ function buildUserRepository(user) {
   };
 }
 
+function createLoginSecurityRepository() {
+  const states = new Map();
+  const auditEvents = [];
+  return {
+    states,
+    auditEvents,
+    async findStates(keys) {
+      return keys.map((key) => states.get(key)).filter(Boolean);
+    },
+    async recordAuditEvent(event) {
+      auditEvents.push(event);
+    },
+    async recordFailedAttempt({ keys, lockedUntil }) {
+      for (const key of keys) {
+        const current = states.get(key) || { identityKey: key, failedCount: 0, lockedUntil: null };
+        states.set(key, {
+          ...current,
+          failedCount: current.failedCount + 1,
+          lockedUntil
+        });
+      }
+    },
+    async resetAttempts(keys) {
+      for (const key of keys) {
+        states.delete(key);
+      }
+    }
+  };
+}
+
 function extractCsrfToken(html) {
   return html.match(/name="_csrf"\s+value="([^"]+)"/)?.[1] || '';
 }
@@ -255,4 +285,80 @@ test('invalid login does not create a session', async () => {
 
   const meResponse = await agent.get('/session/me');
   assert.equal(meResponse.status, 401);
+});
+
+test('login failures are locked after five attempts and audited', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const loginSecurityRepository = createLoginSecurityRepository();
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    loginSecurityRepository,
+    userRepository: buildUserRepository({
+      id: 7,
+      username: 'sales01',
+      passwordHash,
+      displayName: 'Sales One',
+      isActive: true,
+      roles: [ROLES.SALESPERSON]
+    })
+  });
+  const agent = request.agent(app);
+
+  for (let index = 0; index < 5; index += 1) {
+    const response = await agent
+      .post('/login')
+      .type('form')
+      .send({ username: 'sales01', password: 'WrongPassword' });
+    assert.equal(response.status, 401);
+  }
+
+  assert.equal(loginSecurityRepository.states.get('user:sales01').failedCount, 5);
+  assert.ok(loginSecurityRepository.states.get('user:sales01').lockedUntil);
+  assert.equal(loginSecurityRepository.auditEvents.filter((event) => event.result === 'failure').length, 5);
+
+  const lockedResponse = await agent
+    .post('/login')
+    .type('form')
+    .send({ username: 'sales01', password: 'ChangeMe123!' });
+
+  assert.equal(lockedResponse.status, 401);
+  assert.match(lockedResponse.text, /Invalid username or password/);
+  assert.equal(loginSecurityRepository.auditEvents.at(-1).result, 'locked');
+
+  const meResponse = await agent.get('/session/me');
+  assert.equal(meResponse.status, 401);
+});
+
+test('successful login clears failure counters and writes audit event', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const loginSecurityRepository = createLoginSecurityRepository();
+  loginSecurityRepository.states.set('user:sales01', {
+    identityKey: 'user:sales01',
+    failedCount: 2,
+    lockedUntil: null
+  });
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    loginSecurityRepository,
+    userRepository: buildUserRepository({
+      id: 7,
+      username: 'sales01',
+      passwordHash,
+      displayName: 'Sales One',
+      isActive: true,
+      roles: [ROLES.SALESPERSON]
+    })
+  });
+  const agent = request.agent(app);
+
+  const response = await agent
+    .post('/login')
+    .type('form')
+    .send({ username: 'sales01', password: 'ChangeMe123!' });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/');
+  assert.equal(loginSecurityRepository.states.has('user:sales01'), false);
+  assert.equal(loginSecurityRepository.auditEvents.at(-1).result, 'success');
+  assert.equal(loginSecurityRepository.auditEvents.at(-1).userId, 7);
 });

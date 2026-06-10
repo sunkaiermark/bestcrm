@@ -14,6 +14,7 @@ import { createCommercialQuoteRepository } from './repositories/commercialQuoteR
 import { createContractApprovalRepository } from './repositories/contractApprovalRepository.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
+import { createLoginSecurityRepository } from './repositories/loginSecurityRepository.mjs';
 import { createOpportunityMaterialVersionRepository } from './repositories/opportunityMaterialVersionRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
@@ -32,6 +33,7 @@ import { systemRoutes } from './routes/systemRoutes.mjs';
 import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
 import { createMessageLabeler, createStatusLabeler, createTodoTitleLabeler, createTranslator, createWorkflowEventLabeler, inferLanguageFromAcceptLanguage, normalizeLanguage } from './utils/i18n.mjs';
 import { isMainModule } from './utils/moduleEntry.mjs';
+import { createLoginSecurityService } from './services/loginSecurityService.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -275,11 +277,22 @@ const emptyWorkbenchRepository = {
   }
 };
 
+const emptyLoginSecurityRepository = {
+  async findStates() {
+    return [];
+  },
+  async recordFailedAttempt() {},
+  async resetAttempts() {},
+  async recordAuditEvent() {}
+};
+
 export function createApp(options = {}) {
   const config = { ...loadConfig(), ...options };
   const shouldCreatePool = !options.userRepository && config.databaseUrl;
   const pool = options.pool || (shouldCreatePool ? createPool(config) : null);
   const userRepository = options.userRepository || (pool ? createUserRepository(pool) : emptyUserRepository);
+  const loginSecurityRepository = options.loginSecurityRepository || (pool ? createLoginSecurityRepository(pool) : emptyLoginSecurityRepository);
+  const loginSecurityService = options.loginSecurityService || createLoginSecurityService(loginSecurityRepository);
   const roleRepository = options.roleRepository || (pool ? createRoleRepository(pool) : emptyRoleRepository);
   const approvalSettingRepository = options.approvalSettingRepository || (pool ? createApprovalSettingRepository(pool) : emptyApprovalSettingRepository);
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
@@ -342,7 +355,7 @@ export function createApp(options = {}) {
   app.get('/', (req, res) => {
     res.redirect('/workbench');
   });
-  app.use(authRoutes(userRepository));
+  app.use(authRoutes(userRepository, { loginSecurityService }));
   app.use(workbenchRoutes({ workbenchRepository }));
   app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository }));
   app.use(customerRoutes({ customerRepository }));

@@ -10,7 +10,7 @@ function safeReturnTo(value) {
   return target;
 }
 
-export function authRoutes(userRepository) {
+export function authRoutes(userRepository, { loginSecurityService } = {}) {
   const router = Router();
 
   router.get('/language', (req, res) => {
@@ -29,13 +29,39 @@ export function authRoutes(userRepository) {
       const username = String(req.body.username || '').trim();
       const password = String(req.body.password || '');
       const user = await userRepository.findByUsernameWithRoles(username);
-      const valid = user && user.isActive && await verifyPassword(password, user.passwordHash);
+      const ipAddress = req.ip || req.socket?.remoteAddress || '';
+      const userAgent = req.get('user-agent') || '';
+      const locked = loginSecurityService
+        ? await loginSecurityService.isLocked({ username, ipAddress })
+        : false;
 
-      if (!valid) {
+      if (locked) {
+        if (loginSecurityService) {
+          await loginSecurityService.recordLocked({ username, user, ipAddress, userAgent });
+        }
         res.status(401).render('auth/login', { error: res.locals.t('invalidLogin'), username });
         return;
       }
 
+      const valid = user && user.isActive && await verifyPassword(password, user.passwordHash);
+
+      if (!valid) {
+        if (loginSecurityService) {
+          await loginSecurityService.recordFailure({
+            username,
+            user,
+            ipAddress,
+            userAgent,
+            reason: user && !user.isActive ? 'inactive_user' : 'invalid_credentials'
+          });
+        }
+        res.status(401).render('auth/login', { error: res.locals.t('invalidLogin'), username });
+        return;
+      }
+
+      if (loginSecurityService) {
+        await loginSecurityService.recordSuccess({ username, user, ipAddress, userAgent });
+      }
       req.session.userId = user.id;
       res.redirect('/');
     } catch (error) {

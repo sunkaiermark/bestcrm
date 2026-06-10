@@ -16,6 +16,7 @@ const contactProfileMigrationPath = new URL('../../src/db/migrations/012_contact
 const customerProfileMigrationPath = new URL('../../src/db/migrations/013_customer_profile_fields.sql', import.meta.url);
 const opportunityMaterialVersionsMigrationPath = new URL('../../src/db/migrations/014_opportunity_material_versions.sql', import.meta.url);
 const attachmentMaterialVersionMigrationPath = new URL('../../src/db/migrations/015_attachment_material_version.sql', import.meta.url);
+const loginSecurityMigrationPath = new URL('../../src/db/migrations/016_login_security.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -181,4 +182,20 @@ test('attachment material version migration links attachments to unified materia
   assert.match(sql, /CREATE INDEX IF NOT EXISTS attachments_material_version_idx/);
   assert.match(sql, /CREATE INDEX IF NOT EXISTS attachments_unbound_material_idx/);
   assert.match(sql, /WHERE opportunity_material_version_id IS NULL/);
+});
+
+test('login security migration creates lockout state and audit log tables', async () => {
+  const sql = await readFile(loginSecurityMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS login_attempt_states/);
+  assert.match(sql, /identity_key text PRIMARY KEY/);
+  assert.match(sql, /failed_count integer NOT NULL DEFAULT 0/);
+  assert.match(sql, /locked_until timestamptz/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS login_audit_events/);
+  assert.match(sql, /username text NOT NULL/);
+  assert.match(sql, /user_id bigint REFERENCES users\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /ip_address text/);
+  assert.match(sql, /user_agent text/);
+  assert.match(sql, /result text NOT NULL/);
+  assert.match(sql, /reason text/);
 });
