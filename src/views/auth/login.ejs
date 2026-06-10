@@ -159,6 +159,7 @@
           <p class="login-alert" role="alert"><%= error %></p>
       <% } %>
         <form class="login-form" method="post" action="/login">
+          <%- csrfField() %>
           <label class="form-field">
           <%= t('username') %>
             <input name="username" autocomplete="username" value="<%= username %>" required>

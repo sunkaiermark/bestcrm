@@ -46,6 +46,7 @@
                           <a class="secondary-action" href="/system/users/<%= user.id %>/edit"><%= t('edit') %></a>
                           <% if (user.isActive) { %>
                             <form method="post" action="/system/users/<%= user.id %>/delete" onsubmit="return confirm('Delete this user?')">
+                              <%- csrfField() %>
                               <button class="danger-action" type="submit"><%= t('delete') %></button>
                             </form>
                           <% } %>

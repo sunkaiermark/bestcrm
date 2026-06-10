@@ -6,6 +6,7 @@
             <a class="quick-action" href="/customers/<%= customer.id %>/edit"><%= t('editCustomer') %></a>
             <% if (typeof canDeleteCustomer !== 'undefined' && canDeleteCustomer) { %>
               <form method="post" action="/customers/<%= customer.id %>/delete" onsubmit="return confirm('Delete this customer and its contacts?')">
+                <%- csrfField() %>
                 <button class="danger-action" type="submit"><%= t('deleteCustomer') %></button>
               </form>
             <% } %>

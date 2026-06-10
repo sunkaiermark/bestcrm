@@ -1049,6 +1049,13 @@ export function opportunityRoutes({
     }
   }, upload.single('attachment'), async (req, res, next) => {
     try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        if (req.file?.path) {
+          await rm(req.file.path, { force: true });
+        }
+        res.status(403).send('Invalid CSRF token');
+        return;
+      }
       if (!req.file) {
         res.status(400).send('Attachment file is required');
         return;

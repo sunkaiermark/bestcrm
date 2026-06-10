@@ -38,6 +38,7 @@
                           <a class="secondary-action" href="/system/approval-settings/<%= setting.id %>/edit"><%= t('edit') %></a>
                           <% if (setting.isActive) { %>
                             <form method="post" action="/system/approval-settings/<%= setting.id %>/delete" onsubmit="return confirm('Delete this approval setting?')">
+                              <%- csrfField() %>
                               <button class="danger-action" type="submit"><%= t('delete') %></button>
                             </form>
                           <% } %>

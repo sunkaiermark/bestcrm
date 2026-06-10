@@ -36,6 +36,7 @@
                           <a class="secondary-action" href="/system/roles/<%= role.id %>/edit"><%= t('edit') %></a>
                           <% if (role.isActive) { %>
                             <form method="post" action="/system/roles/<%= role.id %>/delete" onsubmit="return confirm('Delete this role?')">
+                              <%- csrfField() %>
                               <button class="danger-action" type="submit"><%= t('delete') %></button>
                             </form>
                           <% } %>

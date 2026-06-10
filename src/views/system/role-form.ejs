@@ -5,6 +5,7 @@
         </header>
 
         <form class="form-panel" method="post" action="<%= action %>">
+          <%- csrfField() %>
           <% if (mode === 'new') { %>
             <label>
               Role code

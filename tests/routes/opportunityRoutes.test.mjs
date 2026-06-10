@@ -11,6 +11,10 @@ import { STATUSES } from '../../src/domain/statuses.mjs';
 import { createApp } from '../../src/server.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 
+function extractCsrfToken(html) {
+  return html.match(/name="_csrf"\s+value="([^"]+)"/)?.[1] || '';
+}
+
 async function createLoggedInAgent(extraOptions = {}) {
   const {
     user: userOverrides = {},
@@ -272,7 +276,12 @@ async function createLoggedInAgent(extraOptions = {}) {
   if (language) {
     await agent.get(`/language?lang=${language}&returnTo=/login`);
   }
-  await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
+  const loginPayload = { username: user.username, password: 'ChangeMe123!' };
+  if (appOptions.csrfProtection) {
+    const loginForm = await agent.get('/login');
+    loginPayload._csrf = extractCsrfToken(loginForm.text);
+  }
+  await agent.post('/login').type('form').send(loginPayload);
   return { agent, created, createdCustomers, createdContacts, uploadedAttachments, requirementUpdates, workflowEvents, todoClosures, todosToCreate, workflowUpdates };
 }
 
@@ -2627,6 +2636,34 @@ test('page form creates opportunity draft referencing customer and contact', asy
   assert.equal(created[0].customerId, 10);
   assert.equal(created[0].primaryContactId, 20);
   assert.equal(created[0].status, STATUSES.DRAFT);
+});
+
+test('csrf protected opportunity form submits with the rendered token', async () => {
+  const { agent, created } = await createLoggedInAgent({ csrfProtection: true });
+
+  const form = await agent.get('/opportunities/new');
+  const csrfToken = extractCsrfToken(form.text);
+
+  assert.ok(csrfToken);
+
+  const response = await agent
+    .post('/opportunities')
+    .type('form')
+    .send({
+      _csrf: csrfToken,
+      title: 'Factory upgrade',
+      customerId: '10',
+      primaryContactId: '20',
+      requirement: 'Upgrade production line',
+      estimatedAmount: '120000.50',
+      projectType: 'automation',
+      deliveryCycle: '45 days',
+      expectedBidDate: '2026-07-10'
+    });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/31');
+  assert.equal(created[0].title, 'Factory upgrade');
 });
 
 test('JSON API creates opportunity draft', async () => {

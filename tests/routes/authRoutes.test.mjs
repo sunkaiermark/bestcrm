@@ -16,6 +16,10 @@ function buildUserRepository(user) {
   };
 }
 
+function extractCsrfToken(html) {
+  return html.match(/name="_csrf"\s+value="([^"]+)"/)?.[1] || '';
+}
+
 test('login page renders username and password form', async () => {
   const app = createApp({ sessionSecret: 'test-secret' });
 
@@ -40,6 +44,61 @@ test('login page renders username and password form', async () => {
   assert.match(response.text, /name="username"/);
   assert.match(response.text, /name="password"/);
   assert.match(response.text, /class="login-language-switch"/);
+});
+
+test('csrf protection rejects login posts without a valid token when enabled', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const app = createApp({
+    csrfProtection: true,
+    sessionSecret: 'test-secret',
+    userRepository: buildUserRepository({
+      id: 7,
+      username: 'sales01',
+      passwordHash,
+      displayName: 'Sales One',
+      isActive: true,
+      roles: [ROLES.SALESPERSON]
+    })
+  });
+
+  const response = await request(app)
+    .post('/login')
+    .type('form')
+    .send({ username: 'sales01', password: 'ChangeMe123!' });
+
+  assert.equal(response.status, 403);
+  assert.match(response.text, /Invalid CSRF token/);
+}
+);
+
+test('csrf protection accepts login posts with the current form token', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const app = createApp({
+    csrfProtection: true,
+    sessionSecret: 'test-secret',
+    userRepository: buildUserRepository({
+      id: 7,
+      username: 'sales01',
+      passwordHash,
+      displayName: 'Sales One',
+      isActive: true,
+      roles: [ROLES.SALESPERSON]
+    })
+  });
+  const agent = request.agent(app);
+
+  const form = await agent.get('/login');
+  const csrfToken = extractCsrfToken(form.text);
+
+  assert.ok(csrfToken);
+
+  const response = await agent
+    .post('/login')
+    .type('form')
+    .send({ username: 'sales01', password: 'ChangeMe123!', _csrf: csrfToken });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/');
 });
 
 test('login page can switch between English and Chinese', async () => {

@@ -7,6 +7,7 @@ import { createPool } from './db/pool.mjs';
 import { createSessionStore } from './db/sessionStore.mjs';
 import { createWorkflowTransaction } from './db/workflowTransaction.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
+import { csrfProtection } from './middleware/csrf.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
 import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
 import { createCommercialQuoteRepository } from './repositories/commercialQuoteRepository.mjs';
@@ -319,6 +320,9 @@ export function createApp(options = {}) {
       sameSite: 'lax',
       secure: config.nodeEnv === 'production'
     }
+  }));
+  app.use(csrfProtection({
+    enabled: 'csrfProtection' in options ? options.csrfProtection : config.nodeEnv === 'production'
   }));
   app.use((req, res, next) => {
     const language = req.session.language

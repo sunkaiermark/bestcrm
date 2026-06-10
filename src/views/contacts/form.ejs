@@ -5,6 +5,7 @@
         </header>
 
         <form class="form-panel" method="post" action="<%= action %>">
+          <%- csrfField() %>
           <% if (typeof returnTo !== 'undefined' && returnTo) { %>
             <input type="hidden" name="returnTo" value="<%= returnTo %>">
           <% } %>

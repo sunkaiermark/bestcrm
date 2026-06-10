@@ -4,7 +4,9 @@
           <h1><%= typeof pageTitle === 'undefined' ? 'Opportunity Initiation' : pageTitle %></h1>
         </header>
 
-        <form id="opportunity-form" method="post" action="<%= action %>"></form>
+        <form id="opportunity-form" method="post" action="<%= action %>">
+          <%- csrfField() %>
+        </form>
         <section class="form-panel">
           <label>
             <%= t('customer') %>
@@ -18,6 +20,7 @@
             <details class="inline-create-panel">
               <summary>Add new customer here</summary>
               <form method="post" action="/opportunities/customers">
+                <%- csrfField() %>
                 <label>
                   Customer Name
                   <input name="name" required>

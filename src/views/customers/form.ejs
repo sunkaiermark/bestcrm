@@ -5,6 +5,7 @@
         </header>
 
         <form class="form-panel" method="post" action="<%= action %>">
+          <%- csrfField() %>
           <label>
             Name
             <input name="name" value="<%= customer.name || '' %>" required>

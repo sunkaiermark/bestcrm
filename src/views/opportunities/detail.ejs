@@ -178,6 +178,7 @@
             <% } %>
             <% if (typeof canDeleteOpportunity !== 'undefined' && canDeleteOpportunity) { %>
               <form method="post" action="/opportunities/<%= opportunity.id %>/delete" onsubmit="return confirm('Delete this opportunity and all uploaded files?')">
+                <%- csrfField() %>
                 <button class="danger-action" type="submit"><%= t('delete') %></button>
               </form>
             <% } %>
@@ -274,6 +275,7 @@
                                 <% if (canManageOpportunityResponsibility) { %>
                                   <td>
                                     <form method="post" action="/opportunities/<%= opportunity.id %>/team-members/<%= member.id %>/remove">
+                                      <%- csrfField() %>
                                       <button class="danger-action" type="submit">Remove</button>
                                     </form>
                                   </td>
@@ -289,6 +291,7 @@
                         <details class="responsibility-disclosure">
                           <summary>Add Team Member</summary>
                           <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/team-members" data-team-member-form>
+                            <%- csrfField() %>
                             <label>
                               User
                               <select name="userId" required>
@@ -329,6 +332,7 @@
                         <details class="responsibility-disclosure">
                           <summary>Transfer Owner</summary>
                           <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/owner-transfer">
+                            <%- csrfField() %>
                             <label>
                               New Owner
                               <select name="toOwnerUserId" required>
@@ -388,6 +392,7 @@
             <div class="section-body">
               <% if (canAddRequirementUpdate) { %>
                 <form class="form-panel requirement-input-panel" method="post" action="/opportunities/<%= opportunity.id %>/requirement-updates">
+                  <%- csrfField() %>
                   <label>
                     Requirement Description
                     <textarea name="requirementText" required></textarea>
@@ -400,6 +405,7 @@
               <% } %>
               <% if (uploadPermissions.requirement) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <%- csrfField() %>
                   <input type="hidden" name="category" value="requirement">
                   <input type="file" name="attachment" required>
                   <button type="submit"><%= t('upload') %></button>
@@ -415,6 +421,7 @@
                     </ul>
                   <% } %>
                   <form method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                    <%- csrfField() %>
                     <input type="hidden" name="action" value="<%= initiationWorkflowForm.action %>">
                     <button type="submit" <%= initiationWorkflowForm.blocked ? 'disabled' : '' %>><%= initiationWorkflowForm.button %></button>
                   </form>
@@ -432,6 +439,7 @@
                           <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                           <% if (canDeleteRequirementMaterials) { %>
                             <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this requirement file?')">
+                              <%- csrfField() %>
                               <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                             </form>
                           <% } %>
@@ -451,6 +459,7 @@
             <div class="section-body">
               <% if (uploadPermissions.technical_solution) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <%- csrfField() %>
                   <input type="hidden" name="category" value="technical_solution">
                   <input type="file" name="attachment" required>
                   <button type="submit"><%= t('upload') %></button>
@@ -458,6 +467,7 @@
               <% } %>
               <% if (technicalSubmitWorkflowForm) { %>
                 <form class="form-panel requirement-input-panel technical-solution-submit-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                  <%- csrfField() %>
                   <input type="hidden" name="action" value="<%= technicalSubmitWorkflowForm.action %>">
                   <label>
                     Technical Solution Description
@@ -506,6 +516,7 @@
                           <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                           <% if (canDeleteTechnicalSolutionAttachments) { %>
                             <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this technical solution file?')">
+                              <%- csrfField() %>
                               <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                             </form>
                           <% } %>
@@ -525,6 +536,7 @@
             <div class="section-body">
               <% if (uploadPermissions.commercial_quote) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <%- csrfField() %>
                   <input type="hidden" name="category" value="commercial_quote">
                   <input type="file" name="attachment" required>
                   <button type="submit"><%= t('upload') %></button>
@@ -532,6 +544,7 @@
               <% } %>
               <% if (commercialQuoteWorkflowForm) { %>
                 <form class="form-panel requirement-input-panel commercial-quote-submit-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                  <%- csrfField() %>
                   <input type="hidden" name="action" value="<%= commercialQuoteWorkflowForm.action %>">
                   <% if (commercialQuoteWorkflowForm.missingRequirements && commercialQuoteWorkflowForm.missingRequirements.length > 0) { %>
                     <ul class="inline-list">
@@ -590,6 +603,7 @@
                         <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                         <% if (canDeleteCommercialQuoteAttachments) { %>
                           <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this commercial quote file?')">
+                            <%- csrfField() %>
                             <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                           </form>
                         <% } %>
@@ -608,6 +622,7 @@
             <div class="section-body">
               <% if (uploadPermissions.contract) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <%- csrfField() %>
                   <input type="hidden" name="category" value="contract">
                   <input type="file" name="attachment" required>
                   <button type="submit"><%= t('upload') %></button>
@@ -615,6 +630,7 @@
               <% } %>
               <% if (contractApprovalWorkflowForm) { %>
                 <form class="form-panel requirement-input-panel commercial-quote-submit-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                  <%- csrfField() %>
                   <input type="hidden" name="action" value="<%= contractApprovalWorkflowForm.action %>">
                   <% if (contractApprovalWorkflowForm.missingRequirements && contractApprovalWorkflowForm.missingRequirements.length > 0) { %>
                     <ul class="inline-list">
@@ -678,6 +694,7 @@
                         <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                         <% if (canDeleteContractAttachments) { %>
                           <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this contract file?')">
+                            <%- csrfField() %>
                             <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                           </form>
                         <% } %>
@@ -734,6 +751,7 @@
                         </ul>
                       <% } %>
                       <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                        <%- csrfField() %>
                         <input type="hidden" name="action" value="<%= workflowForm.action %>">
                         <% for (const field of workflowForm.fields) { %>
                           <label>
