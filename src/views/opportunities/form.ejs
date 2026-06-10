@@ -1,7 +1,7 @@
-<%- include('../partials/app-start', { title: 'Opportunity - BESTCRM', activeNav: 'opportunities' }) %>
+<%- include('../partials/app-start', { title: `${t('opportunity')} - BESTCRM`, activeNav: 'opportunities' }) %>
         <p class="breadcrumb"><a href="/opportunities"><%= t('opportunities') %></a></p>
         <header class="page-header">
-          <h1><%= typeof pageTitle === 'undefined' ? 'Opportunity Initiation' : pageTitle %></h1>
+          <h1><%= typeof pageTitle === 'undefined' ? t('opportunityInitiation') : pageTitle %></h1>
         </header>
 
         <form id="opportunity-form" method="post" action="<%= action %>">
@@ -18,46 +18,46 @@
           </label>
           <% if (typeof allowInlineCreate === 'undefined' || allowInlineCreate) { %>
             <details class="inline-create-panel">
-              <summary>Add new customer here</summary>
+              <summary><%= t('addNewCustomerHere') %></summary>
               <form method="post" action="/opportunities/customers">
                 <%- csrfField() %>
                 <label>
-                  Customer Name
+                  <%= t('customerName') %>
                   <input name="name" required>
                 </label>
                 <label>
-                  Industry
+                  <%= t('industry') %>
                   <select name="industry">
-                    <option value="">Select industry</option>
+                    <option value=""><%= t('selectIndustry') %></option>
                     <% for (const industry of (typeof industryOptions !== 'undefined' ? industryOptions : [])) { %>
                       <option value="<%= industry %>"><%= industry %></option>
                     <% } %>
                   </select>
                 </label>
                 <label>
-                  Country
+                  <%= t('country') %>
                   <select name="country">
-                    <option value="">Select country</option>
+                    <option value=""><%= t('selectCountry') %></option>
                     <% for (const country of (typeof countryOptions !== 'undefined' ? countryOptions : [])) { %>
                       <option value="<%= country %>"><%= country %></option>
                     <% } %>
                   </select>
                 </label>
                 <label>
-                  Region
+                  <%= t('region') %>
                   <select name="region">
-                    <option value="">Select region</option>
+                    <option value=""><%= t('selectRegion') %></option>
                     <% for (const region of (typeof regionOptions !== 'undefined' ? regionOptions : [])) { %>
                       <option value="<%= region %>"><%= region %></option>
                     <% } %>
                   </select>
                 </label>
                 <label>
-                  Address
+                  <%= t('address') %>
                   <input name="address">
                 </label>
                 <label>
-                  Notes
+                  <%= t('customerOutline') %>
                   <textarea name="notes"></textarea>
                 </label>
                 <button type="submit"><%= t('createCustomer') %></button>
@@ -75,9 +75,9 @@
           </label>
           <% if (typeof allowInlineCreate === 'undefined' || allowInlineCreate) { %>
             <% if (customers.length) { %>
-              <p><a class="secondary-action" href="<%= typeof newContactUrl !== 'undefined' ? newContactUrl : '/contacts/new?returnTo=opportunity-initiation' %>">Add new contact here</a></p>
+              <p><a class="secondary-action" href="<%= typeof newContactUrl !== 'undefined' ? newContactUrl : '/contacts/new?returnTo=opportunity-initiation' %>"><%= t('addNewContactHere') %></a></p>
             <% } else { %>
-              <p class="empty">Add a customer before creating a contact.</p>
+              <p class="empty"><%= t('addCustomerBeforeContact') %></p>
             <% } %>
           <% } %>
           <label>
@@ -85,28 +85,28 @@
             <input name="title" form="opportunity-form" value="<%= opportunity.title || '' %>" required>
           </label>
           <label>
-            Requirement
+            <%= t('requirement') %>
             <textarea name="requirement" form="opportunity-form" required><%= opportunity.requirement || '' %></textarea>
           </label>
           <label>
-            Estimated Amount
+            <%= t('estimatedAmount') %>
             <input name="estimatedAmount" form="opportunity-form" value="<%= opportunity.estimatedAmount || '' %>">
           </label>
           <label>
-            Project Type
+            <%= t('projectType') %>
             <select name="projectType" form="opportunity-form">
-              <option value="">Select project type</option>
+              <option value=""><%= t('selectProjectType') %></option>
               <% for (const projectType of ['新增', '扩建', '改造', '维修']) { %>
                 <option value="<%= projectType %>" <%= opportunity.projectType === projectType ? 'selected' : '' %>><%= projectType %></option>
               <% } %>
             </select>
           </label>
           <label>
-            Delivery Period
+            <%= t('deliveryPeriod') %>
             <input name="deliveryCycle" form="opportunity-form" value="<%= opportunity.deliveryCycle || '' %>">
           </label>
           <label>
-            Expected Bid Date
+            <%= t('expectedBidDate') %>
             <input name="expectedBidDate" form="opportunity-form" type="date" value="<%= opportunity.expectedBidDate || '' %>">
           </label>
           <button type="submit" form="opportunity-form"><%= typeof submitLabel === 'undefined' ? t('saveDraft') : submitLabel %></button>

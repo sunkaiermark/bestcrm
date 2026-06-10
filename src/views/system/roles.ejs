@@ -1,4 +1,4 @@
-<%- include('../partials/app-start', { title: 'System Roles - BESTCRM', activeNav: 'system-roles' }) %>
+<%- include('../partials/app-start', { title: `${t('systemRoles')} - BESTCRM`, activeNav: 'system-roles' }) %>
         <header class="page-header">
           <div>
             <h1><%= t('systemRoles') %></h1>
@@ -29,13 +29,13 @@
                     <td><%= role.name %></td>
                     <td><%= role.code %></td>
                     <td><%= role.description || '-' %></td>
-                    <td><span class="status"><%= role.isActive ? 'active' : 'inactive' %></span></td>
+                    <td><span class="status"><%= role.isActive ? t('active') : t('inactive') %></span></td>
                     <% if (canManageRoles) { %>
                       <td class="actions-cell">
                         <div class="inline-actions system-actions">
                           <a class="secondary-action" href="/system/roles/<%= role.id %>/edit"><%= t('edit') %></a>
                           <% if (role.isActive) { %>
-                            <form method="post" action="/system/roles/<%= role.id %>/delete" onsubmit="return confirm('Delete this role?')">
+                            <form method="post" action="/system/roles/<%= role.id %>/delete" onsubmit="return confirm('<%= t('deleteRoleConfirm') %>')">
                               <%- csrfField() %>
                               <button class="danger-action" type="submit"><%= t('delete') %></button>
                             </form>

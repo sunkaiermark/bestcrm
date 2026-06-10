@@ -1,4 +1,4 @@
-<%- include('../partials/app-start', { title: 'Opportunities - BESTCRM', activeNav: 'opportunities' }) %>
+<%- include('../partials/app-start', { title: `${t('opportunities')} - BESTCRM`, activeNav: 'opportunities' }) %>
         <header class="page-header">
           <h1><%= t('opportunities') %></h1>
           <a class="quick-action" href="/opportunities/new"><%= t('newOpportunity') %></a>
@@ -9,13 +9,13 @@
             <table class="list-table opportunity-list-table">
               <thead>
                 <tr>
-                  <th>No.</th>
+                  <th><%= t('no') %></th>
                   <th><%= t('opportunityName') %></th>
                   <th><%= t('customer') %></th>
                   <th><%= t('owner') %></th>
                   <th><%= t('contacts') %></th>
                   <th><%= t('status') %></th>
-                  <th>Estimated Amount</th>
+                  <th><%= t('estimatedAmount') %></th>
                 </tr>
               </thead>
               <tbody>

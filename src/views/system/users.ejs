@@ -1,4 +1,4 @@
-<%- include('../partials/app-start', { title: 'System Users - BESTCRM', activeNav: 'system-users' }) %>
+<%- include('../partials/app-start', { title: `${t('systemUsers')} - BESTCRM`, activeNav: 'system-users' }) %>
         <header class="page-header">
           <div>
             <h1><%= t('systemUsers') %></h1>
@@ -39,13 +39,13 @@
                     </td>
                     <td><%= user.email || '-' %></td>
                     <td><%= user.phone || '-' %></td>
-                    <td><span class="status"><%= user.isActive ? 'active' : 'inactive' %></span></td>
+                    <td><span class="status"><%= user.isActive ? t('active') : t('inactive') %></span></td>
                     <% if (canManageUsers) { %>
                       <td class="actions-cell">
                         <div class="inline-actions system-actions">
                           <a class="secondary-action" href="/system/users/<%= user.id %>/edit"><%= t('edit') %></a>
                           <% if (user.isActive) { %>
-                            <form method="post" action="/system/users/<%= user.id %>/delete" onsubmit="return confirm('Delete this user?')">
+                            <form method="post" action="/system/users/<%= user.id %>/delete" onsubmit="return confirm('<%= t('deleteUserConfirm') %>')">
                               <%- csrfField() %>
                               <button class="danger-action" type="submit"><%= t('delete') %></button>
                             </form>

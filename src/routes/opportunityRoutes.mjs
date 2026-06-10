@@ -24,7 +24,7 @@ import {
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
-import { createWorkflowButtonLabeler } from '../utils/i18n.mjs';
+import { createMessageLabeler, createWorkflowButtonLabeler, createWorkflowFieldLabeler, createWorkflowTitleLabeler } from '../utils/i18n.mjs';
 
 function opportunityVisibilityFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { visibleToUserId: user.id };
@@ -351,6 +351,9 @@ function opportunityWithActiveContractReviewer(opportunity, contractApprovals) {
 function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = [], language = 'en') {
   const workflowOpportunity = opportunityWithActiveContractReviewer(opportunity, contractApprovals);
   const workflowButtonLabel = createWorkflowButtonLabeler(language);
+  const workflowTitleLabel = createWorkflowTitleLabeler(language);
+  const workflowFieldLabel = createWorkflowFieldLabeler(language);
+  const workflowMessageLabel = createMessageLabeler(language);
   const allowedActions = getAllowedActions({
     userId: user.id,
     roles: user.roles,
@@ -360,10 +363,16 @@ function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], co
     .map((action) => formForAction(action, usersByRole))
     .filter(Boolean)
     .map((form) => {
-      const missingRequirements = missingMaterialsForAction(form.action, attachments, opportunity, contractApprovals);
+      const missingRequirements = missingMaterialsForAction(form.action, attachments, opportunity, contractApprovals)
+        .map((requirement) => workflowMessageLabel(requirement));
       return {
         ...form,
+        title: workflowTitleLabel(form.action, form.title),
         button: workflowButtonLabel(form.action, form.button),
+        fields: form.fields.map((field) => ({
+          ...field,
+          label: workflowFieldLabel(field.name, field.label)
+        })),
         missingRequirements,
         blocked: missingRequirements.length > 0
       };
@@ -1023,7 +1032,7 @@ export function opportunityRoutes({
       res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
       if (error instanceof WorkflowValidationError) {
-        res.status(error.statusCode).send(error.message);
+        res.status(error.statusCode).send(res.locals.messageLabel(error.message));
         return;
       }
       next(error);
@@ -1188,7 +1197,7 @@ export function opportunityRoutes({
         return;
       }
       if (error instanceof WorkflowValidationError) {
-        res.status(error.statusCode).send(error.message);
+        res.status(error.statusCode).send(res.locals.messageLabel(error.message));
         return;
       }
       next(error);

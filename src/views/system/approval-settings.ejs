@@ -1,4 +1,4 @@
-<%- include('../partials/app-start', { title: 'Approval Settings - BESTCRM', activeNav: 'system-approval-settings' }) %>
+<%- include('../partials/app-start', { title: `${t('approvalSettings')} - BESTCRM`, activeNav: 'system-approval-settings' }) %>
         <header class="page-header">
           <div>
             <h1><%= t('approvalSettings') %></h1>
@@ -31,13 +31,13 @@
                     <td><%= setting.roleName %> <span class="muted">(<%= setting.roleCode %>)</span></td>
                     <td><%= setting.userDisplayName %> <span class="muted">(<%= setting.username %>)</span></td>
                     <td><%= setting.sortOrder %></td>
-                    <td><span class="status"><%= setting.isActive ? 'active' : 'inactive' %></span></td>
+                    <td><span class="status"><%= setting.isActive ? t('active') : t('inactive') %></span></td>
                     <% if (canManageSettings) { %>
                       <td class="actions-cell">
                         <div class="inline-actions system-actions">
                           <a class="secondary-action" href="/system/approval-settings/<%= setting.id %>/edit"><%= t('edit') %></a>
                           <% if (setting.isActive) { %>
-                            <form method="post" action="/system/approval-settings/<%= setting.id %>/delete" onsubmit="return confirm('Delete this approval setting?')">
+                            <form method="post" action="/system/approval-settings/<%= setting.id %>/delete" onsubmit="return confirm('<%= t('deleteApprovalSettingConfirm') %>')">
                               <%- csrfField() %>
                               <button class="danger-action" type="submit"><%= t('delete') %></button>
                             </form>
@@ -49,7 +49,7 @@
                 <% } %>
                 <% if (!settings.length) { %>
                   <tr>
-                    <td colspan="<%= canManageSettings ? 6 : 5 %>" class="empty">No approval settings configured.</td>
+                    <td colspan="<%= canManageSettings ? 6 : 5 %>" class="empty"><%= t('noApprovalSettings') %></td>
                   </tr>
                 <% } %>
               </tbody>

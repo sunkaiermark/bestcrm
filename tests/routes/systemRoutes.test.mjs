@@ -227,6 +227,20 @@ test('system framework text uses selected Chinese language', async () => {
   assert.equal(approvals.status, 200);
   assert.match(approvals.text, /<h1>\u5ba1\u6279\u4eba\u914d\u7f6e<\/h1>/);
   assert.match(approvals.text, /\u65b0\u5efa\u914d\u7f6e/);
+
+  const userForm = await agent.get('/system/users/new');
+  assert.equal(userForm.status, 200);
+  assert.match(userForm.text, /\u521d\u59cb\u5bc6\u7801/);
+  assert.match(userForm.text, /\u663e\u793a\u540d\u79f0/);
+  assert.match(userForm.text, /\u6fc0\u6d3b\u767b\u5f55\u8d26\u53f7/);
+  assert.match(userForm.text, /\u53d6\u6d88/);
+
+  const roleForm = await agent.get('/system/roles/new');
+  assert.equal(roleForm.status, 200);
+  assert.match(roleForm.text, /\u89d2\u8272\u7f16\u7801/);
+  assert.match(roleForm.text, /\u89d2\u8272\u540d\u79f0/);
+  assert.match(roleForm.text, /\u6fc0\u6d3b\u89d2\u8272/);
+  assert.match(roleForm.text, /\u53d6\u6d88/);
 });
 
 test('non administrators cannot view system pages', async () => {

@@ -37,7 +37,7 @@
     {
       key: 'initial',
       type: 'Text',
-      timeLabel: 'Initial Requirement',
+      timeLabel: t('initialRequirement'),
       text: opportunity.requirement,
       at: '',
       sortAt: ''
@@ -157,12 +157,12 @@
       return '';
     }
     if (opportunity.status === 'contract_approval_in_progress') {
-      return 'Contract approval has already been submitted.';
+      return t('contractApprovalAlreadySubmitted');
     }
     if (opportunity.status === 'contract_archived') {
-      return 'Contract approval is archived.';
+      return t('contractApprovalArchived');
     }
-    return 'Finish the technical solution and commercial quote approval before submitting contract approval.';
+    return t('contractApprovalPrerequisite');
   })();
 %>
         <p class="breadcrumb"><a href="/opportunities"><%= t('opportunities') %></a></p>
@@ -177,7 +177,7 @@
               <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit"><%= t('edit') %></a>
             <% } %>
             <% if (typeof canDeleteOpportunity !== 'undefined' && canDeleteOpportunity) { %>
-              <form method="post" action="/opportunities/<%= opportunity.id %>/delete" onsubmit="return confirm('Delete this opportunity and all uploaded files?')">
+              <form method="post" action="/opportunities/<%= opportunity.id %>/delete" onsubmit="return confirm('<%= t('deleteOpportunityConfirm') %>')">
                 <%- csrfField() %>
                 <button class="danger-action" type="submit"><%= t('delete') %></button>
               </form>
@@ -193,7 +193,7 @@
                 <table class="detail-table">
                   <tbody>
                     <tr>
-                      <th scope="row">No.</th>
+                      <th scope="row"><%= t('no') %></th>
                       <td><%= opportunity.opportunityNo %></td>
                     </tr>
                     <tr>
@@ -205,7 +205,7 @@
                       <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerName %></a></td>
                     </tr>
                     <tr>
-                      <th scope="row">Primary Contact</th>
+                      <th scope="row"><%= t('primaryContact') %></th>
                       <td>
                         <% if (opportunity.primaryContactId) { %>
                           <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
@@ -221,19 +221,19 @@
                       <td><%= statusLabel(opportunity.status) %></td>
                     </tr>
                     <tr>
-                      <th scope="row">Estimated Amount</th>
+                      <th scope="row"><%= t('estimatedAmount') %></th>
                       <td><%= opportunity.estimatedAmount ?? '' %></td>
                     </tr>
                     <tr>
-                      <th scope="row">Project Type</th>
+                      <th scope="row"><%= t('projectType') %></th>
                       <td><%= opportunity.projectType %></td>
                     </tr>
                     <tr>
-                      <th scope="row">Delivery Period</th>
+                      <th scope="row"><%= t('deliveryPeriod') %></th>
                       <td><%= opportunity.deliveryCycle %></td>
                     </tr>
                     <tr>
-                      <th scope="row">Expected Bid Date</th>
+                      <th scope="row"><%= t('expectedBidDate') %></th>
                       <td><%= opportunity.expectedBidDate || '' %></td>
                     </tr>
                   </tbody>
@@ -243,24 +243,24 @@
           </section>
 
           <section class="content-section">
-            <h2>Responsibility</h2>
+            <h2><%= t('responsibility') %></h2>
             <div class="section-body">
               <div class="responsibility-grid">
                 <div class="responsibility-column">
                   <div class="responsibility-block">
-                    <h3>Team Members</h3>
+                    <h3><%= t('teamMembers') %></h3>
                     <div class="responsibility-content">
                       <% if (opportunityTeamMembers.length > 0) { %>
                         <table class="list-table content-fit-table">
                           <thead>
                             <tr>
-                              <th>Member</th>
-                              <th>Role</th>
-                              <th>Permission</th>
-                              <th>Added By</th>
-                              <th>Added At</th>
+                              <th><%= t('member') %></th>
+                              <th><%= t('role') %></th>
+                              <th><%= t('permission') %></th>
+                              <th><%= t('addedBy') %></th>
+                              <th><%= t('addedAt') %></th>
                               <% if (canManageOpportunityResponsibility) { %>
-                                <th>Actions</th>
+                                <th><%= t('actions') %></th>
                               <% } %>
                             </tr>
                           </thead>
@@ -276,7 +276,7 @@
                                   <td>
                                     <form method="post" action="/opportunities/<%= opportunity.id %>/team-members/<%= member.id %>/remove">
                                       <%- csrfField() %>
-                                      <button class="danger-action" type="submit">Remove</button>
+                                      <button class="danger-action" type="submit"><%= t('remove') %></button>
                                     </form>
                                   </td>
                                 <% } %>
@@ -285,15 +285,15 @@
                           </tbody>
                         </table>
                       <% } else { %>
-                        <p class="empty">No team members.</p>
+                        <p class="empty"><%= t('noTeamMembers') %></p>
                       <% } %>
                       <% if (canManageOpportunityResponsibility) { %>
                         <details class="responsibility-disclosure">
-                          <summary>Add Team Member</summary>
+                          <summary><%= t('addTeamMember') %></summary>
                           <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/team-members" data-team-member-form>
                             <%- csrfField() %>
                             <label>
-                              User
+                              <%= t('user') %>
                               <select name="userId" required>
                                 <option value=""></option>
                                 <% for (const user of activeResponsibilityUsers) { %>
@@ -302,7 +302,7 @@
                               </select>
                             </label>
                             <label>
-                              Role
+                              <%= t('role') %>
                               <select name="roleCode" required>
                                 <% for (const role of activeResponsibilityRoleOptions) { %>
                                   <option value="<%= role.code %>" data-role-code="<%= role.code %>"><%= role.name %></option>
@@ -310,13 +310,13 @@
                               </select>
                             </label>
                             <label>
-                              Permission
+                              <%= t('permission') %>
                               <select name="permissionLevel" required>
-                                <option value="view">View</option>
-                                <option value="edit">Edit</option>
+                                <option value="view"><%= t('view') %></option>
+                                <option value="edit"><%= t('edit') %></option>
                               </select>
                             </label>
-                            <button type="submit">Add Team Member</button>
+                            <button type="submit"><%= t('addTeamMember') %></button>
                           </form>
                         </details>
                       <% } %>
@@ -326,15 +326,15 @@
 
                 <div class="responsibility-column">
                   <div class="responsibility-block">
-                    <h3>Owner Transfer History</h3>
+                    <h3><%= t('ownerTransferHistory') %></h3>
                     <div class="responsibility-content">
                       <% if (canManageOpportunityResponsibility) { %>
                         <details class="responsibility-disclosure">
-                          <summary>Transfer Owner</summary>
+                          <summary><%= t('transferOwner') %></summary>
                           <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/owner-transfer">
                             <%- csrfField() %>
                             <label>
-                              New Owner
+                              <%= t('newOwner') %>
                               <select name="toOwnerUserId" required>
                                 <option value=""></option>
                                 <% for (const user of activeSalesOwnerOptions) { %>
@@ -343,14 +343,14 @@
                               </select>
                             </label>
                             <label>
-                              Reason
+                              <%= t('reason') %>
                               <textarea name="reason" required></textarea>
                             </label>
                             <label class="checkbox-label">
                               <input type="checkbox" name="keepPreviousOwnerAsMember">
-                              Keep previous owner as team member
+                              <%= t('keepPreviousOwnerAsMember') %>
                             </label>
-                            <button type="submit">Transfer Owner</button>
+                            <button type="submit"><%= t('transferOwner') %></button>
                           </form>
                         </details>
                       <% } %>
@@ -358,11 +358,11 @@
                         <table class="list-table content-fit-table">
                           <thead>
                             <tr>
-                              <th>From Owner</th>
-                              <th>To Owner</th>
-                              <th>Changed By</th>
-                              <th>Reason</th>
-                              <th>Transferred At</th>
+                              <th><%= t('fromOwner') %></th>
+                              <th><%= t('toOwner') %></th>
+                              <th><%= t('changedBy') %></th>
+                              <th><%= t('reason') %></th>
+                              <th><%= t('transferredAt') %></th>
                             </tr>
                           </thead>
                           <tbody>
@@ -378,7 +378,7 @@
                           </tbody>
                         </table>
                       <% } else { %>
-                        <p class="empty">No owner transfer history.</p>
+                        <p class="empty"><%= t('noOwnerTransferHistory') %></p>
                       <% } %>
                     </div>
                   </div>
@@ -388,16 +388,16 @@
           </section>
 
           <section class="content-section business-section business-section-requirement">
-            <h2>Requirement Materials</h2>
+            <h2><%= t('requirementMaterials') %></h2>
             <div class="section-body">
               <% if (canAddRequirementUpdate) { %>
                 <form class="form-panel requirement-input-panel" method="post" action="/opportunities/<%= opportunity.id %>/requirement-updates">
                   <%- csrfField() %>
                   <label>
-                    Requirement Description
+                    <%= t('requirementDescription') %>
                     <textarea name="requirementText" required></textarea>
                   </label>
-                  <input type="hidden" name="reason" value="Customer requirement update">
+                  <input type="hidden" name="reason" value="<%= t('customerRequirementUpdateReason') %>">
                   <div class="requirement-input-actions">
                     <button type="submit"><%= t('save') %></button>
                   </div>
@@ -438,7 +438,7 @@
                           <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
                           <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                           <% if (canDeleteRequirementMaterials) { %>
-                            <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this requirement file?')">
+                            <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteRequirementFileConfirm') %>')">
                               <%- csrfField() %>
                               <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                             </form>
@@ -449,13 +449,13 @@
                   <% } %>
                 </div>
               <% } else { %>
-                <p class="empty">No requirement records.</p>
+                <p class="empty"><%= t('noRequirementRecords') %></p>
               <% } %>
             </div>
           </section>
 
           <section class="content-section business-section business-section-technical">
-            <h2>Technical Solution</h2>
+            <h2><%= t('technicalSolution') %></h2>
             <div class="section-body">
               <% if (uploadPermissions.technical_solution) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
@@ -470,7 +470,7 @@
                   <%- csrfField() %>
                   <input type="hidden" name="action" value="<%= technicalSubmitWorkflowForm.action %>">
                   <label>
-                    Technical Solution Description
+                    <%= t('technicalSolutionDescription') %>
                     <textarea name="solutionSummary" required></textarea>
                   </label>
                   <% if (technicalSubmitWorkflowForm.missingRequirements && technicalSubmitWorkflowForm.missingRequirements.length > 0) { %>
@@ -490,12 +490,12 @@
                   <% for (const version of technicalMaterialVersions) { %>
                     <article class="material-version-card">
                       <span class="material-version-badge">V<%= version.versionNo %></span>
-                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= version.status %></span>
+                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= t(`materialStatus.${version.status}`) %></span>
                       <% if (version.submittedAt || version.submitterDisplayName) { %>
-                        <span>Submitted <%= formatShortDate(version.submittedAt) %><%= version.submitterDisplayName ? ` by ${version.submitterDisplayName}` : '' %></span>
+                        <span><%= t('submitted') %> <%= formatShortDate(version.submittedAt) %><% if (version.submitterDisplayName) { %> <%= t('by') %> <%= version.submitterDisplayName %><% } %></span>
                       <% } %>
                       <% if (version.reviewedAt || version.reviewerDisplayName) { %>
-                        <span>Reviewed <%= formatShortDate(version.reviewedAt) %><%= version.reviewerDisplayName ? ` by ${version.reviewerDisplayName}` : '' %></span>
+                        <span><%= t('reviewed') %> <%= formatShortDate(version.reviewedAt) %><% if (version.reviewerDisplayName) { %> <%= t('by') %> <%= version.reviewerDisplayName %><% } %></span>
                       <% } %>
                       <% if (version.reviewComment) { %>
                         <span class="material-version-comment"><%= version.reviewComment %></span>
@@ -515,7 +515,7 @@
                           <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
                           <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                           <% if (canDeleteTechnicalSolutionAttachments) { %>
-                            <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this technical solution file?')">
+                            <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteTechnicalSolutionFileConfirm') %>')">
                               <%- csrfField() %>
                               <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                             </form>
@@ -526,13 +526,13 @@
                   <% } %>
                 </div>
               <% } else { %>
-                <p class="empty">No technical solution records.</p>
+                <p class="empty"><%= t('noTechnicalSolutionRecords') %></p>
               <% } %>
             </div>
           </section>
 
           <section class="content-section business-section business-section-quote">
-            <h2>Commercial Quote</h2>
+            <h2><%= t('commercialQuote') %></h2>
             <div class="section-body">
               <% if (uploadPermissions.commercial_quote) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
@@ -578,12 +578,12 @@
                   <% for (const version of commercialQuoteMaterialVersions) { %>
                     <article class="material-version-card">
                       <span class="material-version-badge">V<%= version.versionNo %></span>
-                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= version.status %></span>
+                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= t(`materialStatus.${version.status}`) %></span>
                       <% if (version.submittedAt || version.submitterDisplayName) { %>
-                        <span>Submitted <%= formatShortDate(version.submittedAt) %><%= version.submitterDisplayName ? ` by ${version.submitterDisplayName}` : '' %></span>
+                        <span><%= t('submitted') %> <%= formatShortDate(version.submittedAt) %><% if (version.submitterDisplayName) { %> <%= t('by') %> <%= version.submitterDisplayName %><% } %></span>
                       <% } %>
                       <% if (version.reviewedAt || version.reviewerDisplayName) { %>
-                        <span>Reviewed <%= formatShortDate(version.reviewedAt) %><%= version.reviewerDisplayName ? ` by ${version.reviewerDisplayName}` : '' %></span>
+                        <span><%= t('reviewed') %> <%= formatShortDate(version.reviewedAt) %><% if (version.reviewerDisplayName) { %> <%= t('by') %> <%= version.reviewerDisplayName %><% } %></span>
                       <% } %>
                       <% if (version.reviewComment) { %>
                         <span class="material-version-comment"><%= version.reviewComment %></span>
@@ -602,7 +602,7 @@
                         <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
                         <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                         <% if (canDeleteCommercialQuoteAttachments) { %>
-                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this commercial quote file?')">
+                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteCommercialQuoteFileConfirm') %>')">
                             <%- csrfField() %>
                             <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                           </form>
@@ -612,13 +612,13 @@
                   <% } %>
                 </div>
               <% } else { %>
-                <p class="empty">No commercial quote files.</p>
+                <p class="empty"><%= t('noCommercialQuoteFiles') %></p>
               <% } %>
             </div>
           </section>
 
           <section class="content-section business-section business-section-contract">
-            <h2>Commercial Contract</h2>
+            <h2><%= t('commercialContract') %></h2>
             <div class="section-body">
               <% if (uploadPermissions.contract) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
@@ -669,12 +669,12 @@
                   <% for (const version of contractMaterialVersions) { %>
                     <article class="material-version-card">
                       <span class="material-version-badge">V<%= version.versionNo %></span>
-                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= version.status %></span>
+                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= t(`materialStatus.${version.status}`) %></span>
                       <% if (version.submittedAt || version.submitterDisplayName) { %>
-                        <span>Submitted <%= formatShortDate(version.submittedAt) %><%= version.submitterDisplayName ? ` by ${version.submitterDisplayName}` : '' %></span>
+                        <span><%= t('submitted') %> <%= formatShortDate(version.submittedAt) %><% if (version.submitterDisplayName) { %> <%= t('by') %> <%= version.submitterDisplayName %><% } %></span>
                       <% } %>
                       <% if (version.reviewedAt || version.reviewerDisplayName) { %>
-                        <span>Reviewed <%= formatShortDate(version.reviewedAt) %><%= version.reviewerDisplayName ? ` by ${version.reviewerDisplayName}` : '' %></span>
+                        <span><%= t('reviewed') %> <%= formatShortDate(version.reviewedAt) %><% if (version.reviewerDisplayName) { %> <%= t('by') %> <%= version.reviewerDisplayName %><% } %></span>
                       <% } %>
                       <% if (version.reviewComment) { %>
                         <span class="material-version-comment"><%= version.reviewComment %></span>
@@ -693,7 +693,7 @@
                         <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
                         <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
                         <% if (canDeleteContractAttachments) { %>
-                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('Delete this contract file?')">
+                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteContractFileConfirm') %>')">
                             <%- csrfField() %>
                             <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
                           </form>
@@ -703,21 +703,21 @@
                   <% } %>
                 </div>
               <% } else { %>
-                <p class="empty">No contract files.</p>
+                <p class="empty"><%= t('noContractFiles') %></p>
               <% } %>
             </div>
           </section>
 
           <section class="content-section">
-            <h2>Timeline</h2>
+            <h2><%= t('timeline') %></h2>
             <div class="section-body">
               <% if (timelineEvents && timelineEvents.length > 0) { %>
                 <ol class="inline-list">
                   <% for (const event of timelineEvents) { %>
                     <li>
-                      <strong><%= event.eventType %></strong>
-                      <span><%= event.fromStatus || '' %></span>
-                      <span><%= event.toStatus || '' %></span>
+                      <strong><%= workflowEventLabel(event.eventType) %></strong>
+                      <span><%= statusLabel(event.fromStatus) %></span>
+                      <span><%= statusLabel(event.toStatus) %></span>
                       <span><%= event.actorDisplayName %></span>
                       <% if (event.targetDisplayName) { %>
                         <span><%= event.targetDisplayName %></span>
@@ -730,14 +730,14 @@
                   <% } %>
                 </ol>
               <% } else { %>
-                <p class="empty">No timeline events.</p>
+                <p class="empty"><%= t('noTimelineEvents') %></p>
               <% } %>
             </div>
           </section>
 
           <% if (remainingWorkflowForms.length > 0) { %>
             <section>
-              <h2>Workflow Actions</h2>
+              <h2><%= t('workflowActions') %></h2>
               <div class="section-stack">
                 <% for (const workflowForm of remainingWorkflowForms) { %>
                   <section class="action-section">

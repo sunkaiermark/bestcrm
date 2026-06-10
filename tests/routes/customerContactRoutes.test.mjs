@@ -294,22 +294,35 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.match(customers.text, /\u65b0\u5efa\u5ba2\u6237/);
   assert.match(customers.text, /<th>\u540d\u79f0<\/th>/);
   assert.match(customers.text, /<th>\u56fd\u5bb6<\/th>/);
+  assert.match(customers.text, /<th>\u884c\u4e1a<\/th>/);
 
   const customerDetail = await agent.get('/customers/10');
   assert.equal(customerDetail.status, 200);
   assert.match(customerDetail.text, /\u7f16\u8f91\u5ba2\u6237/);
   assert.match(customerDetail.text, /\u5ba2\u6237\u8be6\u60c5/);
+  assert.match(customerDetail.text, />\u884c\u4e1a<\/th>/);
+  assert.match(customerDetail.text, />\u6bcd\u516c\u53f8<\/th>/);
+  assert.match(customerDetail.text, />\u4f01\u4e1a\u6027\u8d28<\/th>/);
+  assert.match(customerDetail.text, />\u5730\u5740<\/th>/);
+  assert.match(customerDetail.text, />\u5ba2\u6237\u6982\u8981<\/th>/);
   assert.match(customerDetail.text, />\u8054\u7cfb\u4eba<\/h2>/);
 
   const contacts = await agent.get('/contacts');
   assert.equal(contacts.status, 200);
   assert.match(contacts.text, /<h1>\u8054\u7cfb\u4eba<\/h1>/);
   assert.match(contacts.text, /\u65b0\u5efa\u8054\u7cfb\u4eba/);
+  assert.match(contacts.text, /<th>\u804c\u52a1<\/th>/);
 
   const contactDetail = await agent.get('/contacts/20');
   assert.equal(contactDetail.status, 200);
   assert.match(contactDetail.text, /\u7f16\u8f91\u8054\u7cfb\u4eba/);
   assert.match(contactDetail.text, /\u8054\u7cfb\u4eba\u8be6\u60c5/);
+  assert.match(contactDetail.text, />\u804c\u52a1<\/th>/);
+  assert.match(contactDetail.text, />\u5fae\u4fe1<\/th>/);
+  assert.match(contactDetail.text, />\u6559\u80b2\u80cc\u666f<\/th>/);
+  assert.match(contactDetail.text, />\u5de5\u4f5c\u7ecf\u5386<\/th>/);
+  assert.match(contactDetail.text, />\u7a81\u51fa\u6210\u5c31<\/th>/);
+  assert.match(contactDetail.text, />\u5907\u6ce8<\/th>/);
 });
 
 test('contact creation can return to opportunity initiation with the new contact selected', async () => {

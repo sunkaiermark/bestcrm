@@ -1,13 +1,13 @@
-<%- include('../partials/app-start', { title: `${mode === 'new' ? 'New Approval Setting' : 'Edit Approval Setting'} - BESTCRM`, activeNav: 'system-approval-settings' }) %>
+<%- include('../partials/app-start', { title: `${mode === 'new' ? t('newApprovalSetting') : t('editApprovalSetting')} - BESTCRM`, activeNav: 'system-approval-settings' }) %>
         <p class="breadcrumb"><a href="/system/approval-settings"><%= t('approvalSettings') %></a> / <%= mode === 'new' ? t('newSetting') : t('edit') %></p>
         <header class="page-header">
-          <h1><%= mode === 'new' ? 'New Approval Setting' : 'Edit Approval Setting' %></h1>
+          <h1><%= mode === 'new' ? t('newSetting') : t('edit') %></h1>
         </header>
 
         <form class="form-panel" method="post" action="<%= action %>">
           <%- csrfField() %>
           <label>
-            Workflow stage
+            <%= t('workflowStage') %>
             <select name="settingKey" required>
               <% for (const option of stageOptions) { %>
                 <option value="<%= option.key %>" <%= setting.settingKey === option.key ? 'selected' : '' %>><%= option.stage %></option>
@@ -40,12 +40,12 @@
 
           <label class="checkbox-row">
             <input name="isActive" type="checkbox" <%= setting.isActive ? 'checked' : '' %>>
-            <span>Active approval setting</span>
+            <span><%= t('activeApprovalSetting') %></span>
           </label>
 
           <div class="inline-actions">
             <button type="submit"><%= mode === 'new' ? t('createSetting') : t('saveSetting') %></button>
-            <a class="secondary-action" href="/system/approval-settings">Cancel</a>
+            <a class="secondary-action" href="/system/approval-settings"><%= t('cancel') %></a>
           </div>
         </form>
 <%- include('../partials/app-end') %>

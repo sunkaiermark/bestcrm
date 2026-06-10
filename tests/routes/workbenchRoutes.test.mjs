@@ -121,8 +121,8 @@ test('logged in users see compact workbench list layout', async () => {
   assert.match(response.text, /Submit opportunity initiation/);
   assert.match(response.text, /href="\/opportunities\/32">800003 - Draft package/);
   assert.match(response.text, /Factory upgrade/);
-  assert.match(response.text, /submit_initiation/);
-  assert.match(response.text, /draft/);
+  assert.match(response.text, /Opportunity initiation submitted/);
+  assert.match(response.text, /Draft/);
   assert.match(response.text, /left-nav/);
   assert.doesNotMatch(response.text, /class="nav-parent">System/);
   assert.doesNotMatch(response.text, /href="\/system\/users"/);
@@ -147,6 +147,10 @@ test('workbench framework text uses selected Chinese language', async () => {
   assert.match(response.text, /<th>\u5f85\u529e<\/th>/);
   assert.match(response.text, /<th>\u5546\u673a<\/th>/);
   assert.match(response.text, /<th>\u5ba2\u6237<\/th>/);
+  assert.match(response.text, /\u5ba1\u6279\u5546\u673a\u7acb\u9879/);
+  assert.match(response.text, /\u63d0\u4ea4\u5546\u673a\u7acb\u9879/);
+  assert.doesNotMatch(response.text, /Approve opportunity initiation/);
+  assert.doesNotMatch(response.text, /Submit opportunity initiation/);
   const stateStripHtml = response.text.match(/<div class="state-strip">[\s\S]*?<\/div>\s*<\/section>/)?.[0] || '';
   assert.match(stateStripHtml, /\u8349\u7a3f/);
   assert.match(stateStripHtml, /\u7acb\u9879\u5ba1\u6279\u4e2d/);

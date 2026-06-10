@@ -1,4 +1,4 @@
-<%- include('../partials/app-start', { title: 'Workbench - BESTCRM', activeNav: 'workbench' }) %>
+<%- include('../partials/app-start', { title: `${t('workbench')} - BESTCRM`, activeNav: 'workbench' }) %>
         <header class="topbar">
         <div>
           <h1><%= t('workbench') %></h1>
@@ -38,7 +38,7 @@
                   <tbody>
                     <% for (const todo of summary.pendingTodos) { %>
                       <tr>
-                        <td><%= todo.title %></td>
+                        <td><%= todoTitleLabel(todo.title) %></td>
                         <td><a href="/opportunities/<%= todo.opportunityId %>"><%= todo.opportunityNo %> - <%= todo.opportunityTitle %></a></td>
                         <td><%= todo.customerName %></td>
                       </tr>
@@ -68,8 +68,8 @@
                     <% for (const message of summary.recentWorkflowMessages) { %>
                       <tr>
                         <td><a href="/opportunities/<%= message.opportunityId %>"><%= message.opportunityNo %> - <%= message.opportunityTitle %></a></td>
-                        <td><span class="status"><%= message.eventType %></span> <span class="muted"><%= message.fromStatus || '' %> -> <%= message.toStatus || '' %></span></td>
-                        <td><%= message.actorDisplayName %><% if (message.targetDisplayName) { %> to <%= message.targetDisplayName %><% } %></td>
+                        <td><span class="status"><%= workflowEventLabel(message.eventType) %></span> <span class="muted"><%= statusLabel(message.fromStatus) %> -> <%= statusLabel(message.toStatus) %></span></td>
+                        <td><%= message.actorDisplayName %><% if (message.targetDisplayName) { %> <%= t('to') %> <%= message.targetDisplayName %><% } %></td>
                         <td><%= message.comment || '' %></td>
                       </tr>
                     <% } %>

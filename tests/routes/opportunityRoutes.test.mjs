@@ -625,8 +625,26 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.match(detail.text, />\u9884\u89c8<\/a>/);
   assert.match(detail.text, />\u4e0b\u8f7d<\/a>/);
   assert.match(detail.text, /<td>\u8349\u7a3f<\/td>/);
+  assert.match(detail.text, /\u8d23\u4efb\u4eba/);
+  assert.match(detail.text, /\u534f\u540c\u4eba/);
+  assert.match(detail.text, /\u8d1f\u8d23\u4eba\u8f6c\u79fb\u5386\u53f2/);
+  assert.match(detail.text, /\u9700\u6c42\u8d44\u6599/);
+  assert.match(detail.text, /\u6280\u672f\u65b9\u6848/);
+  assert.match(detail.text, /\u5546\u52a1\u62a5\u4ef7/);
+  assert.match(detail.text, /\u5546\u52a1\u5408\u540c/);
+  assert.match(detail.text, /\u65f6\u95f4\u8f74/);
+  assert.match(detail.text, /\u63d0\u4ea4\u5546\u673a\u7acb\u9879/);
   assert.match(detail.text, />\u63d0\u4ea4\u9500\u552e\u7ecf\u7406<\/button>/);
   assert.doesNotMatch(detail.text, /Submit to Sales Manager/);
+
+  const form = await agent.get('/opportunities/new');
+  assert.equal(form.status, 200);
+  assert.match(form.text, /\u6dfb\u52a0\u65b0\u5ba2\u6237/);
+  assert.match(form.text, /\u6dfb\u52a0\u65b0\u8054\u7cfb\u4eba/);
+  assert.match(form.text, /\u9700\u6c42/);
+  assert.match(form.text, /\u9884\u4f30\u91d1\u989d\s*<input name="estimatedAmount"/);
+  assert.match(form.text, /\u9879\u76ee\u7c7b\u578b\s*<select name="projectType"/);
+  assert.match(form.text, /\u4ea4\u4ed8\u5468\u671f\s*<input name="deliveryCycle"/);
 });
 
 test('opportunity detail shows list and edit actions but hides delete from non administrators', async () => {
@@ -900,9 +918,9 @@ test('opportunity detail keeps workflow todos out of the detail page and shows t
   assert.doesNotMatch(detail.text, /Pending Todos/);
   assert.doesNotMatch(detail.text, /Approve opportunity initiation/);
   assert.match(detail.text, /Timeline/);
-  assert.match(detail.text, /submit_initiation/);
-  assert.match(detail.text, /draft/);
-  assert.match(detail.text, /initiation_pending/);
+  assert.match(detail.text, /Opportunity initiation submitted/);
+  assert.match(detail.text, /Draft/);
+  assert.match(detail.text, /Initiation pending/);
   assert.match(detail.text, /Sales Manager/);
   assert.match(detail.text, /ready for review/);
 });

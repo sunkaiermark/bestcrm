@@ -5,7 +5,7 @@
           <div class="page-actions">
             <a class="quick-action" href="/customers/<%= customer.id %>/edit"><%= t('editCustomer') %></a>
             <% if (typeof canDeleteCustomer !== 'undefined' && canDeleteCustomer) { %>
-              <form method="post" action="/customers/<%= customer.id %>/delete" onsubmit="return confirm('Delete this customer and its contacts?')">
+              <form method="post" action="/customers/<%= customer.id %>/delete" onsubmit="return confirm('<%= t('deleteCustomerConfirm') %>')">
                 <%- csrfField() %>
                 <button class="danger-action" type="submit"><%= t('deleteCustomer') %></button>
               </form>
@@ -20,7 +20,7 @@
               <table class="detail-table">
                 <tbody>
                   <tr>
-                    <th scope="row">Industry</th>
+                    <th scope="row"><%= t('industry') %></th>
                     <td><%= customer.industry %></td>
                   </tr>
                   <tr>
@@ -28,7 +28,7 @@
                     <td><%= customer.country %></td>
                   </tr>
                   <tr>
-                    <th scope="row">Parent Company</th>
+                    <th scope="row"><%= t('parentCompany') %></th>
                     <td><%= customer.parentCompany %></td>
                   </tr>
                 </tbody>
@@ -40,7 +40,7 @@
                     <td><%= customer.region %></td>
                   </tr>
                   <tr>
-                    <th scope="row">Address</th>
+                    <th scope="row"><%= t('address') %></th>
                     <td><%= customer.address %></td>
                   </tr>
                 </tbody>
@@ -48,7 +48,7 @@
               <table class="detail-table detail-table-wide">
                 <tbody>
                   <tr>
-                    <th scope="row">Enterprise Nature</th>
+                    <th scope="row"><%= t('enterpriseNature') %></th>
                     <td><%= customer.enterpriseNature %></td>
                   </tr>
                 </tbody>
@@ -64,7 +64,7 @@
               <table class="detail-table detail-table-wide">
                 <tbody>
                   <tr>
-                    <th scope="row">Notes</th>
+                    <th scope="row"><%= t('customerOutline') %></th>
                     <td><%= customer.notes %></td>
                   </tr>
                 </tbody>
@@ -82,7 +82,7 @@
                 <thead>
                   <tr>
                     <th><%= t('name') %></th>
-                    <th>Title</th>
+                    <th><%= t('title') %></th>
                     <th><%= t('phone') %></th>
                     <th><%= t('email') %></th>
                   </tr>
@@ -99,7 +99,7 @@
                 </tbody>
               </table>
             <% } else { %>
-              <p class="empty">No contacts.</p>
+              <p class="empty"><%= t('noContacts') %></p>
             <% } %>
           </div>
         </section>

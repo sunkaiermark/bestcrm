@@ -5,7 +5,7 @@
           <div class="page-actions">
             <a class="quick-action" href="/contacts/<%= contact.id %>/edit"><%= t('editContact') %></a>
             <% if (typeof canDeleteContact !== 'undefined' && canDeleteContact) { %>
-              <form method="post" action="/contacts/<%= contact.id %>/delete" onsubmit="return confirm('Delete this contact?')">
+              <form method="post" action="/contacts/<%= contact.id %>/delete" onsubmit="return confirm('<%= t('deleteContactConfirm') %>')">
                 <%- csrfField() %>
                 <button class="danger-action" type="submit"><%= t('deleteContact') %></button>
               </form>
@@ -24,7 +24,7 @@
                     <td><a href="/customers/<%= contact.customerId %>"><%= contact.customerName %></a></td>
                   </tr>
                   <tr>
-                    <th scope="row">Title</th>
+                    <th scope="row"><%= t('title') %></th>
                     <td><%= contact.title %></td>
                   </tr>
                   <tr>
@@ -36,7 +36,7 @@
                     <td><%= contact.email %></td>
                   </tr>
                   <tr>
-                    <th scope="row">WeChat</th>
+                    <th scope="row"><%= t('wechat') %></th>
                     <td><%= contact.wechat %></td>
                   </tr>
                 </tbody>
@@ -44,19 +44,19 @@
               <table class="detail-table">
                 <tbody>
                   <tr>
-                    <th scope="row">Education Background</th>
+                    <th scope="row"><%= t('educationBackground') %></th>
                     <td><%= contact.educationBackground %></td>
                   </tr>
                   <tr>
-                    <th scope="row">Work Experience</th>
+                    <th scope="row"><%= t('workExperience') %></th>
                     <td><%= contact.workExperience %></td>
                   </tr>
                   <tr>
-                    <th scope="row">Key Achievements</th>
+                    <th scope="row"><%= t('keyAchievements') %></th>
                     <td><%= contact.keyAchievements %></td>
                   </tr>
                   <tr>
-                    <th scope="row">Notes</th>
+                    <th scope="row"><%= t('notes') %></th>
                     <td><%= contact.notes %></td>
                   </tr>
                 </tbody>
