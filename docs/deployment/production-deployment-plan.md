@@ -5,7 +5,7 @@ It assumes one Linux server running Node.js, PostgreSQL, Nginx, and systemd.
 
 ## Deployment Goals
 
-- Run BESTCRM on a public HTTPS domain.
+- Run BESTCRM on a public server by IP first, then move to a public HTTPS domain when a domain is available.
 - Keep PostgreSQL private and inaccessible from the public internet.
 - Store uploaded CRM files in a persistent server directory.
 - Support version rollback through Git tags.
@@ -18,7 +18,7 @@ It assumes one Linux server running Node.js, PostgreSQL, Nginx, and systemd.
 Internet
   |
   v
-Nginx HTTPS :443
+Nginx HTTP :80
   |
   v
 BESTCRM Node.js app :3000
@@ -56,7 +56,7 @@ Create `/etc/bestcrm/bestcrm.env`:
 ```bash
 NODE_ENV=production
 PORT=3000
-BASE_URL=https://crm.example.com
+BASE_URL=http://YOUR_SERVER_PUBLIC_IP
 DATABASE_URL=postgres://bestcrm:REPLACE_WITH_STRONG_PASSWORD@127.0.0.1:5432/bestcrm
 SESSION_SECRET=REPLACE_WITH_LONG_RANDOM_SECRET
 UPLOAD_DIR=/var/bestcrm/uploads
@@ -69,6 +69,35 @@ Important:
 - `SESSION_SECRET` must be long, random, and never committed to Git.
 - `DATABASE_URL` must use a strong database password.
 - `UPLOAD_DIR` must be backed up.
+- If there is no domain yet, use `http://YOUR_SERVER_PUBLIC_IP` for `BASE_URL`.
+- After a real domain and HTTPS certificate are ready, change `BASE_URL` to the HTTPS domain.
+
+## Public IP First Deployment
+
+If there is no domain yet, deploy with the public server IP first:
+
+```bash
+BASE_URL=http://YOUR_SERVER_PUBLIC_IP
+```
+
+Use Nginx with a catch-all server name:
+
+```nginx
+server_name _;
+```
+
+This allows internal company users to access:
+
+```text
+http://YOUR_SERVER_PUBLIC_IP
+```
+
+Important:
+
+- This is acceptable for the first production start if the server is only used by trusted internal users.
+- Login passwords and uploaded documents travel over plain HTTP until HTTPS is added.
+- For long-term production use, add a domain and HTTPS certificate as soon as practical.
+- After adding a domain, update Nginx `server_name`, update `BASE_URL`, reload Nginx, and restart BESTCRM.
 
 ## First Deployment Steps
 
@@ -194,7 +223,7 @@ Create `/etc/nginx/sites-available/bestcrm`:
 ```nginx
 server {
     listen 80;
-    server_name crm.example.com;
+    server_name _;
 
     client_max_body_size 25m;
 
@@ -217,7 +246,9 @@ sudo nginx -t
 sudo systemctl reload nginx
 ```
 
-Add HTTPS certificate using your preferred certificate tool. After HTTPS is active, `BASE_URL` should be the HTTPS URL.
+If there is no domain, keep this HTTP-only configuration temporarily.
+
+After a domain is available, replace `server_name _;` with the domain, add an HTTPS certificate using your preferred certificate tool, and update `BASE_URL` to the HTTPS URL.
 
 ## Backup Plan
 
@@ -319,8 +350,9 @@ If the failed version changed the database and rollback needs old schema/data, r
 
 ## Production Checklist
 
-- [ ] Domain points to the server.
-- [ ] HTTPS certificate is active.
+- [ ] Public server IP is reachable.
+- [ ] If a domain is available, domain points to the server.
+- [ ] If a domain is available, HTTPS certificate is active.
 - [ ] `NODE_ENV=production` is set.
 - [ ] `SESSION_SECRET` is set and strong.
 - [ ] PostgreSQL is not public.
@@ -339,7 +371,8 @@ If the failed version changed the database and rollback needs old schema/data, r
 
 These should be confirmed before executing deployment:
 
-- Final domain name.
+- Server public IP.
+- Final domain name, if available.
 - Cloud server provider and operating system.
 - Whether PostgreSQL will be local or managed.
 - Exact first administrator username and temporary password.
