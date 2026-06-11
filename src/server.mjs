@@ -331,7 +331,7 @@ export function createApp(options = {}) {
     cookie: {
       httpOnly: true,
       sameSite: 'lax',
-      secure: config.nodeEnv === 'production'
+      secure: config.sessionCookieSecure
     }
   }));
   app.use(csrfProtection({
