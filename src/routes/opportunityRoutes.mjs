@@ -23,6 +23,7 @@ import {
 } from '../services/opportunityService.mjs';
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
+import { inlineContentDisposition } from '../utils/contentDisposition.mjs';
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import { createMessageLabeler, createWorkflowButtonLabeler, createWorkflowFieldLabeler, createWorkflowTitleLabeler } from '../utils/i18n.mjs';
 
@@ -489,11 +490,6 @@ function previewMimeType(mimeType) {
     return mimeType;
   }
   return 'application/octet-stream';
-}
-
-function inlineDisposition(filename) {
-  const safeFilename = String(filename || 'attachment').replaceAll('"', "'");
-  return `inline; filename="${safeFilename}"`;
 }
 
 function canDeleteAttachment(opportunity, attachment) {
@@ -1151,7 +1147,7 @@ export function opportunityRoutes({
         return;
       }
       res.type(previewMimeType(attachment.mimeType));
-      res.setHeader('Content-Disposition', inlineDisposition(attachment.originalName));
+      res.setHeader('Content-Disposition', inlineContentDisposition(attachment.originalName));
       res.sendFile(filePath);
     } catch (error) {
       next(error);
