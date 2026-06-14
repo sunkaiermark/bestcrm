@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { mkdirSync } from 'node:fs';
-import { rm } from 'node:fs/promises';
+import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import multer from 'multer';
@@ -23,6 +23,7 @@ import {
 } from '../services/opportunityService.mjs';
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
+import { attachmentPreviewKind, extractDocxPlainText, renderDxfPreview } from '../utils/attachmentPreview.mjs';
 import { inlineContentDisposition } from '../utils/contentDisposition.mjs';
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import { createMessageLabeler, createWorkflowButtonLabeler, createWorkflowFieldLabeler, createWorkflowTitleLabeler } from '../utils/i18n.mjs';
@@ -1144,6 +1145,60 @@ export function opportunityRoutes({
       }
       if (disposition === 'download') {
         res.download(filePath, attachment.originalName);
+        return;
+      }
+      const kind = attachmentPreviewKind(attachment);
+      const downloadUrl = `/opportunities/${opportunity.id}/attachments/${attachment.id}/download`;
+      if (kind === 'unsupported-dwg') {
+        res.status(200).render('attachments/unsupported-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          messageKey: 'dwgPreviewRequiresDxfOrPdf'
+        });
+        return;
+      }
+      if (kind === 'unsupported-doc') {
+        res.status(200).render('attachments/unsupported-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          messageKey: 'docPreviewRequiresDocx'
+        });
+        return;
+      }
+      if (kind === 'dxf') {
+        const dxfText = await readFile(filePath, 'utf8');
+        res.status(200).render('attachments/dxf-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          preview: renderDxfPreview(dxfText)
+        });
+        return;
+      }
+      if (kind === 'docx') {
+        const docxBuffer = await readFile(filePath);
+        res.status(200).render('attachments/docx-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          paragraphs: extractDocxPlainText(docxBuffer)
+        });
+        return;
+      }
+      if (kind === 'download-only') {
+        res.status(200).render('attachments/unsupported-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          messageKey: 'previewNotAvailableDownload'
+        });
         return;
       }
       res.type(previewMimeType(attachment.mimeType));

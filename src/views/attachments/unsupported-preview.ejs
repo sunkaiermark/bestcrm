@@ -1,0 +1,20 @@
+<%- include('../partials/app-start', { title: `${attachment.originalName} - ${t('preview')} - BESTCRM`, activeNav }) %>
+        <header class="page-header">
+          <div>
+            <div class="eyebrow"><%= t('opportunities') %></div>
+            <h1><%= t('previewNotAvailable') %></h1>
+            <div class="muted"><%= opportunity.opportunityNo %> - <%= opportunity.title %></div>
+          </div>
+          <div class="page-actions">
+            <a class="quick-action secondary-action" href="/opportunities/<%= opportunity.id %>"><%= t('backToOpportunity') %></a>
+            <a class="quick-action" href="<%= downloadUrl %>"><%= t('download') %></a>
+          </div>
+        </header>
+
+        <section class="content-section">
+          <h2><%= attachment.originalName %></h2>
+          <div class="section-body">
+            <p class="muted"><%= t(messageKey) %></p>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>
