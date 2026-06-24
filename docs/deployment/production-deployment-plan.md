@@ -1,6 +1,7 @@
 # BESTCRM Production Deployment Plan
 
 This plan is for deploying BESTCRM to a public cloud server for company use.
+For routine updates, backups, and rollback after production starts, use `docs/operation-runbook.md` as the operating procedure.
 It assumes one Linux server running Node.js, PostgreSQL, Nginx, and systemd.
 
 ## Deployment Goals

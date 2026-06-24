@@ -4,7 +4,7 @@ import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { createSystemApprovalSetting, deactivateSystemApprovalSetting, updateSystemApprovalSetting } from '../services/systemApprovalSettingService.mjs';
 import { createSystemRole, deactivateSystemRole, updateSystemRole } from '../services/systemRoleService.mjs';
-import { createSystemUser, deactivateSystemUser, updateSystemUser } from '../services/systemUserService.mjs';
+import { createSystemUser, deactivateSystemUser, resetSystemUserPassword, unlockSystemUserLogin, updateSystemUser } from '../services/systemUserService.mjs';
 
 function canManageSystem(user) {
   return hasRole(user, ROLES.ADMINISTRATOR);
@@ -52,7 +52,7 @@ function defaultApprovalSetting(options) {
   };
 }
 
-export function systemRoutes({ userRepository, roleRepository, approvalSettingRepository }) {
+export function systemRoutes({ userRepository, roleRepository, approvalSettingRepository, loginSecurityRepository }) {
   const router = Router();
 
   router.use('/system', requireLogin, (req, res, next) => {
@@ -136,6 +136,38 @@ export function systemRoutes({ userRepository, roleRepository, approvalSettingRe
     try {
       const roles = await listActiveRoles(roleRepository);
       const user = await updateSystemUser(userRepository, req.currentUser, req.params.id, req.body, { allowedRoleCodes: activeRoleCodes(roles) });
+      if (!user) {
+        res.status(404).send('User not found');
+        return;
+      }
+      res.redirect('/system/users');
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/system/users/:id/reset-password', async (req, res, next) => {
+    if (!requireSystemAdministrator(req, res)) {
+      return;
+    }
+    try {
+      const user = await resetSystemUserPassword(userRepository, req.currentUser, req.params.id, req.body.password);
+      if (!user) {
+        res.status(404).send('User not found');
+        return;
+      }
+      res.redirect('/system/users');
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/system/users/:id/unlock-login', async (req, res, next) => {
+    if (!requireSystemAdministrator(req, res)) {
+      return;
+    }
+    try {
+      const user = await unlockSystemUserLogin(userRepository, loginSecurityRepository, req.currentUser, req.params.id);
       if (!user) {
         res.status(404).send('User not found');
         return;

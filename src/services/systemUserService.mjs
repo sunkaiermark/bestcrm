@@ -71,6 +71,40 @@ export async function updateSystemUser(userRepository, actor, userId, input, opt
   return userRepository.updateUser(userId, base);
 }
 
+export async function resetSystemUserPassword(userRepository, actor, userId, password) {
+  requireAdmin(actor);
+  const newPassword = String(password || '');
+  if (!newPassword) {
+    throw new Error('Missing required user fields');
+  }
+  const user = await userRepository.findByIdWithRoles(userId);
+  if (!user) {
+    return null;
+  }
+  return userRepository.updateUser(userId, {
+    displayName: user.displayName,
+    email: user.email,
+    phone: user.phone,
+    isActive: user.isActive,
+    roles: user.roles,
+    passwordHash: await hashPassword(newPassword)
+  });
+}
+
+export async function unlockSystemUserLogin(userRepository, loginSecurityRepository, actor, userId) {
+  requireAdmin(actor);
+  const user = await userRepository.findByIdWithRoles(userId);
+  if (!user) {
+    return null;
+  }
+  if (loginSecurityRepository.resetAttemptsForUsername) {
+    await loginSecurityRepository.resetAttemptsForUsername(user.username);
+  } else {
+    await loginSecurityRepository.resetAttempts([`user:${String(user.username || '').trim().toLowerCase()}`]);
+  }
+  return { id: Number(userId) };
+}
+
 export async function deactivateSystemUser(userRepository, actor, userId) {
   requireAdmin(actor);
   return userRepository.deactivateUser(userId);

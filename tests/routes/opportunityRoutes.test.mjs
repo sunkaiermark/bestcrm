@@ -1439,7 +1439,9 @@ test('opportunity detail groups business attachments into five business panels',
   assert.equal(detail.status, 200);
   assert.match(detail.text, /Requirement Materials[\s\S]*requirement-spec\.pdf/);
   assert.match(detail.text, /requirement-row requirement-row-file[\s\S]*2026-06-05 \d{2}:00[\s\S]*requirement-spec\.pdf[\s\S]*Preview[\s\S]*Download/);
-  assert.match(detail.text, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/51\/download"[^>]*download="requirement-spec\.pdf"[^>]*target="_blank"/);
+  assert.match(detail.text, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/51\/download"/);
+  assert.doesNotMatch(detail.text, /class="requirement-action-download"[^>]*download=/);
+  assert.doesNotMatch(detail.text, /class="requirement-action-download"[^>]*target="_blank"/);
   assert.match(detail.text, /Commercial Quote[\s\S]*quote-v1\.xlsx/);
   assert.match(detail.text, /Commercial Contract[\s\S]*contract-draft\.docx/);
 });
@@ -2000,7 +2002,9 @@ test('commercial quote in progress shows quote attachments as dated rows with de
   assert.equal(detail.status, 200);
   const quoteSection = detail.text.match(/<h2>Commercial Quote<\/h2>[\s\S]*?<h2>Commercial Contract<\/h2>/)[0];
   assert.match(quoteSection, /requirement-row requirement-row-file[\s\S]*2026-06-05 \d{2}:00[\s\S]*quote-v1\.xlsx[\s\S]*Preview[\s\S]*Download[\s\S]*Delete/);
-  assert.match(quoteSection, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/55\/download"[^>]*download="quote-v1\.xlsx"[^>]*target="_blank"/);
+  assert.match(quoteSection, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/55\/download"/);
+  assert.doesNotMatch(quoteSection, /class="requirement-action-download"[^>]*download=/);
+  assert.doesNotMatch(quoteSection, /class="requirement-action-download"[^>]*target="_blank"/);
   assert.match(quoteSection, /onsubmit="return confirm\('Delete this commercial quote file\?'\)"/);
 });
 
@@ -2147,7 +2151,9 @@ test('customer negotiation with contract attachment shows contract submit and de
   assert.match(contractSection, /<button type="submit">Upload<\/button>[\s\S]*submit_contract_approval/);
   assert.doesNotMatch(detail.text, /Workflow Actions[\s\S]*submit_contract_approval/);
   assert.match(contractSection, /requirement-row requirement-row-file[\s\S]*2026-06-05 \d{2}:00[\s\S]*contract-v1\.docx[\s\S]*Preview[\s\S]*Download[\s\S]*Delete/);
-  assert.match(contractSection, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/57\/download"[^>]*download="contract-v1\.docx"[^>]*target="_blank"/);
+  assert.match(contractSection, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/57\/download"/);
+  assert.doesNotMatch(contractSection, /class="requirement-action-download"[^>]*download=/);
+  assert.doesNotMatch(contractSection, /class="requirement-action-download"[^>]*target="_blank"/);
   assert.match(contractSection, /onsubmit="return confirm\('Delete this contract file\?'\)"/);
   assert.doesNotMatch(contractSection, /Contract Approvals|Version History/);
 });

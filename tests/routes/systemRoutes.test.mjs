@@ -138,6 +138,21 @@ async function createSystemAgent(options = {}) {
         calls.push({ method: 'deactivateApprovalSetting', id: Number(id) });
         return { id: Number(id) };
       }
+    },
+    loginSecurityRepository: {
+      async findStates() {
+        return [];
+      },
+      async resetAttempts(keys) {
+        if (keys.length === 1) {
+          calls.push({ method: 'resetLoginAttempts', keys });
+        }
+      },
+      async resetAttemptsForUsername(username) {
+        calls.push({ method: 'resetLoginAttemptsForUsername', username });
+      },
+      async recordAuditEvent() {
+      }
     }
   });
   const agent = request.agent(app);
@@ -181,6 +196,8 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(users.text, /<table class="list-table content-fit-table">/);
   assert.match(users.text, /\.content-fit-table thead th\s*\{[\s\S]*background:\s*#1e3a5f;/);
   assert.match(users.text, /<td class="actions-cell">[\s\S]*<div class="inline-actions system-actions">/);
+  assert.match(users.text, /action="\/system\/users\/11\/reset-password"/);
+  assert.match(users.text, /action="\/system\/users\/11\/unlock-login"/);
   assert.match(users.text, /action="\/system\/users\/11\/delete" onsubmit="return confirm\('Delete this user\?'\)"/);
   assert.match(users.text, /\.system-actions\s*\{[\s\S]*flex-wrap:\s*nowrap;/);
   assert.match(users.text, /\.system-actions\s*\{[\s\S]*justify-content:\s*space-between;/);
@@ -337,6 +354,31 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.deepEqual(calls[3], { method: 'deactivateUser', id: 11 });
 });
 
+test('administrator can reset user password and unlock login attempts', async () => {
+  const { agent, calls } = await createSystemAgent();
+
+  const reset = await agent.post('/system/users/11/reset-password').type('form').send({
+    password: 'NewTemp123!'
+  });
+  assert.equal(reset.status, 302);
+  assert.equal(reset.headers.location, '/system/users');
+  assert.equal(calls[0].method, 'updateUser');
+  assert.equal(calls[0].id, 11);
+  assert.equal(calls[0].input.displayName, 'Sales Manager');
+  assert.equal(calls[0].input.isActive, true);
+  assert.deepEqual(calls[0].input.roles, [ROLES.SALES_MANAGER]);
+  assert.notEqual(calls[0].input.passwordHash, 'NewTemp123!');
+  assert.equal(await verifyPassword('NewTemp123!', calls[0].input.passwordHash), true);
+
+  const unlock = await agent.post('/system/users/11/unlock-login').type('form').send();
+  assert.equal(unlock.status, 302);
+  assert.equal(unlock.headers.location, '/system/users');
+  assert.deepEqual(calls[1], {
+    method: 'resetLoginAttemptsForUsername',
+    username: 'sales_manager01'
+  });
+});
+
 test('non administrators cannot manage system users', async () => {
   const { agent, calls } = await createSystemAgent({
     username: 'sales01',
@@ -349,6 +391,8 @@ test('non administrators cannot manage system users', async () => {
     () => agent.post('/system/users').type('form').send({ username: 'x' }),
     () => agent.get('/system/users/11/edit'),
     () => agent.post('/system/users/11').type('form').send({ displayName: 'x' }),
+    () => agent.post('/system/users/11/reset-password').type('form').send({ password: 'NewTemp123!' }),
+    () => agent.post('/system/users/11/unlock-login').type('form').send(),
     () => agent.post('/system/users/11/delete').type('form').send()
   ]) {
     const response = await requestCall();

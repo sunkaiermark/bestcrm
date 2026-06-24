@@ -48,6 +48,23 @@ export function createLoginSecurityRepository(pool) {
       await pool.query('DELETE FROM login_attempt_states WHERE identity_key = ANY($1::text[])', [keys]);
     },
 
+    async resetAttemptsForUsername(username) {
+      const normalizedUsername = String(username || '').trim().toLowerCase();
+      if (!normalizedUsername) {
+        return;
+      }
+      await pool.query(`
+        DELETE FROM login_attempt_states
+        WHERE identity_key = $1
+          OR identity_key IN (
+            SELECT DISTINCT 'ip:' || ip_address
+            FROM login_audit_events
+            WHERE lower(trim(username)) = $2
+              AND ip_address IS NOT NULL
+          )
+      `, [`user:${normalizedUsername}`, normalizedUsername]);
+    },
+
     async recordAuditEvent(event) {
       await pool.query(`
         INSERT INTO login_audit_events (

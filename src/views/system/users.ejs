@@ -44,6 +44,15 @@
                       <td class="actions-cell">
                         <div class="inline-actions system-actions">
                           <a class="secondary-action" href="/system/users/<%= user.id %>/edit"><%= t('edit') %></a>
+                          <form method="post" action="/system/users/<%= user.id %>/reset-password" onsubmit="const password = prompt('<%= t('resetPasswordPrompt') %>'); if (!password) return false; this.elements.password.value = password; return confirm('<%= t('resetPasswordConfirm') %>');">
+                            <%- csrfField() %>
+                            <input name="password" type="hidden">
+                            <button class="secondary-action" type="submit"><%= t('resetPassword') %></button>
+                          </form>
+                          <form method="post" action="/system/users/<%= user.id %>/unlock-login" onsubmit="return confirm('<%= t('unlockLoginConfirm') %>')">
+                            <%- csrfField() %>
+                            <button class="secondary-action" type="submit"><%= t('unlockLogin') %></button>
+                          </form>
                           <% if (user.isActive) { %>
                             <form method="post" action="/system/users/<%= user.id %>/delete" onsubmit="return confirm('<%= t('deleteUserConfirm') %>')">
                               <%- csrfField() %>

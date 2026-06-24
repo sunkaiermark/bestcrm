@@ -132,6 +132,9 @@ const dictionaries = {
     region: 'Region',
     reason: 'Reason',
     remove: 'Remove',
+    resetPassword: 'Reset Password',
+    resetPasswordConfirm: 'Reset this user password?',
+    resetPasswordPrompt: 'Enter the new temporary password',
     requirement: 'Requirement',
     requirementDescription: 'Requirement Description',
     requirementMaterials: 'Requirement Materials',
@@ -291,6 +294,8 @@ const dictionaries = {
     upload: 'Upload',
     user: 'User',
     users: 'Users',
+    unlockLogin: 'Unlock Login',
+    unlockLoginConfirm: 'Unlock this user login?',
     username: 'Username',
     workbench: 'Workbench'
   },
@@ -427,6 +432,9 @@ const dictionaries = {
     region: '\u5730\u533a',
     reason: '\u539f\u56e0',
     remove: '\u79fb\u9664',
+    resetPassword: '\u91cd\u7f6e\u5bc6\u7801',
+    resetPasswordConfirm: '\u786e\u8ba4\u91cd\u7f6e\u8be5\u7528\u6237\u5bc6\u7801\uff1f',
+    resetPasswordPrompt: '\u8bf7\u8f93\u5165\u65b0\u4e34\u65f6\u5bc6\u7801',
     requirement: '\u9700\u6c42',
     requirementDescription: '\u9700\u6c42\u63cf\u8ff0',
     requirementMaterials: '\u9700\u6c42\u8d44\u6599',
@@ -586,6 +594,8 @@ const dictionaries = {
     upload: '\u4e0a\u4f20',
     user: '\u7528\u6237',
     users: '\u7528\u6237',
+    unlockLogin: '\u89e3\u9664\u9501\u5b9a',
+    unlockLoginConfirm: '\u786e\u8ba4\u89e3\u9664\u8be5\u7528\u6237\u767b\u5f55\u9501\u5b9a\uff1f',
     username: '\u7528\u6237\u540d',
     workbench: '\u5de5\u4f5c\u53f0'
   }

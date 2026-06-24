@@ -24,7 +24,7 @@ import {
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import { attachmentPreviewKind, extractDocxPlainText, renderDxfPreview } from '../utils/attachmentPreview.mjs';
-import { inlineContentDisposition } from '../utils/contentDisposition.mjs';
+import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import { createMessageLabeler, createWorkflowButtonLabeler, createWorkflowFieldLabeler, createWorkflowTitleLabeler } from '../utils/i18n.mjs';
 
@@ -1144,7 +1144,9 @@ export function opportunityRoutes({
         return;
       }
       if (disposition === 'download') {
-        res.download(filePath, attachment.originalName);
+        res.type(attachment.mimeType || 'application/octet-stream');
+        res.setHeader('Content-Disposition', attachmentContentDisposition(attachment.originalName));
+        res.sendFile(filePath);
         return;
       }
       const kind = attachmentPreviewKind(attachment);

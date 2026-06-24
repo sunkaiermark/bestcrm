@@ -85,3 +85,14 @@ test('resetAttempts removes attempt state for identity keys', async () => {
   assert.match(pool.queries[0].sql, /DELETE FROM login_attempt_states/);
   assert.deepEqual(pool.queries[0].params, [['user:sales01', 'ip:127.0.0.1']]);
 });
+
+test('resetAttemptsForUsername removes user and audited IP attempt states', async () => {
+  const pool = createFakePool();
+  const repository = createLoginSecurityRepository(pool);
+
+  await repository.resetAttemptsForUsername(' Sales01 ');
+
+  assert.match(pool.queries[0].sql, /DELETE FROM login_attempt_states/);
+  assert.match(pool.queries[0].sql, /FROM login_audit_events/);
+  assert.deepEqual(pool.queries[0].params, ['user:sales01', 'sales01']);
+});

@@ -357,7 +357,7 @@ export function createApp(options = {}) {
   });
   app.use(authRoutes(userRepository, { loginSecurityService }));
   app.use(workbenchRoutes({ workbenchRepository }));
-  app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository }));
+  app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository, loginSecurityRepository }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
   app.use(opportunityRoutes({

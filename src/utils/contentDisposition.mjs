@@ -28,3 +28,7 @@ function encodeHeaderFilename(filename) {
 export function inlineContentDisposition(filename) {
   return `inline; filename="${fallbackFilename(filename)}"; filename*=UTF-8''${encodeHeaderFilename(filename)}`;
 }
+
+export function attachmentContentDisposition(filename) {
+  return `attachment; filename="${fallbackFilename(filename)}"; filename*=UTF-8''${encodeHeaderFilename(filename)}`;
+}

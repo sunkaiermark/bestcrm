@@ -436,7 +436,7 @@
                       <% if (item.attachment) { %>
                         <div class="inline-actions requirement-row-actions">
                           <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
-                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
+                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
                           <% if (canDeleteRequirementMaterials) { %>
                             <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteRequirementFileConfirm') %>')">
                               <%- csrfField() %>
@@ -513,7 +513,7 @@
                       <% if (item.attachment) { %>
                         <div class="inline-actions requirement-row-actions">
                           <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
-                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
+                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
                           <% if (canDeleteTechnicalSolutionAttachments) { %>
                             <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteTechnicalSolutionFileConfirm') %>')">
                               <%- csrfField() %>
@@ -600,7 +600,7 @@
                       <div class="requirement-row-content"><%= item.text %></div>
                       <div class="inline-actions requirement-row-actions">
                         <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
-                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
                         <% if (canDeleteCommercialQuoteAttachments) { %>
                           <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteCommercialQuoteFileConfirm') %>')">
                             <%- csrfField() %>
@@ -691,7 +691,7 @@
                       <div class="requirement-row-content"><%= item.text %></div>
                       <div class="inline-actions requirement-row-actions">
                         <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
-                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download" download="<%= item.attachment.originalName %>" target="_blank" rel="noopener"><%= t('download') %></a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
                         <% if (canDeleteContractAttachments) { %>
                           <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteContractFileConfirm') %>')">
                             <%- csrfField() %>
