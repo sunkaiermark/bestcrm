@@ -108,6 +108,35 @@
         outline: none;
       }
 
+      .password-field {
+        display: flex;
+        align-items: stretch;
+      }
+
+      .password-field input {
+        border-radius: 6px 0 0 6px;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .password-toggle {
+        min-width: 82px;
+        height: 42px;
+        border: 1px solid var(--line);
+        border-left: 0;
+        border-radius: 0 6px 6px 0;
+        background: #eef6ff;
+        color: #0b3f78;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        padding: 0 12px;
+      }
+
+      .password-toggle:hover {
+        background: #dbeafe;
+      }
+
       .login-button {
         width: 100%;
         height: 44px;
@@ -166,11 +195,35 @@
           </label>
           <label class="form-field">
           <%= t('password') %>
-            <input name="password" type="password" autocomplete="current-password" required>
+            <span class="password-field">
+              <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+              <button
+                class="password-toggle"
+                type="button"
+                aria-controls="login-password"
+                aria-pressed="false"
+                data-show-label="<%= t('showPassword') %>"
+                data-hide-label="<%= t('hidePassword') %>"
+              ><%= t('showPassword') %></button>
+            </span>
           </label>
           <button class="login-button" type="submit"><%= t('login') %></button>
         </form>
       </section>
     </main>
+    <script>
+      const passwordInput = document.getElementById('login-password');
+      const passwordToggle = document.querySelector('.password-toggle');
+      if (passwordInput && passwordToggle) {
+        passwordToggle.addEventListener('click', () => {
+          const shouldShow = passwordInput.type === 'password';
+          passwordInput.type = shouldShow ? 'text' : 'password';
+          passwordToggle.setAttribute('aria-pressed', String(shouldShow));
+          passwordToggle.textContent = shouldShow
+            ? passwordToggle.dataset.hideLabel
+            : passwordToggle.dataset.showLabel;
+        });
+      }
+    </script>
   </body>
 </html>

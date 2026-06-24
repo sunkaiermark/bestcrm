@@ -68,11 +68,15 @@ test('login page renders username and password form', async () => {
   assert.doesNotMatch(response.text, /Company CRM/);
   assert.doesNotMatch(response.text, /class="login-subtitle"/);
   assert.match(response.text, /\.form-field input\s*\{[\s\S]*height:\s*42px;[\s\S]*line-height:\s*1\.4;/);
+  assert.match(response.text, /\.password-toggle\s*\{[\s\S]*height:\s*42px;/);
   assert.match(response.text, /\.login-button\s*\{[\s\S]*height:\s*44px;[\s\S]*line-height:\s*1;/);
   assert.match(response.text, /class="form-field"/);
   assert.match(response.text, /class="login-button"/);
   assert.match(response.text, /name="username"/);
-  assert.match(response.text, /name="password"/);
+  assert.match(response.text, /id="login-password"\s+name="password"/);
+  assert.match(response.text, /class="password-toggle"/);
+  assert.match(response.text, /aria-controls="login-password"/);
+  assert.match(response.text, />Show<\/button>/);
   assert.match(response.text, /class="login-language-switch"/);
 });
 
@@ -152,6 +156,7 @@ test('login page can switch between English and Chinese', async () => {
   const englishLogin = await agent.get('/login');
   assert.match(englishLogin.text, /Username/);
   assert.match(englishLogin.text, /Password/);
+  assert.match(englishLogin.text, />Show<\/button>/);
   assert.match(englishLogin.text, />Login</);
 });
 
