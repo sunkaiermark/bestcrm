@@ -17,6 +17,7 @@ const customerProfileMigrationPath = new URL('../../src/db/migrations/013_custom
 const opportunityMaterialVersionsMigrationPath = new URL('../../src/db/migrations/014_opportunity_material_versions.sql', import.meta.url);
 const attachmentMaterialVersionMigrationPath = new URL('../../src/db/migrations/015_attachment_material_version.sql', import.meta.url);
 const loginSecurityMigrationPath = new URL('../../src/db/migrations/016_login_security.sql', import.meta.url);
+const salesWorkMigrationPath = new URL('../../src/db/migrations/017_sales_work.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -198,4 +199,25 @@ test('login security migration creates lockout state and audit log tables', asyn
   assert.match(sql, /user_agent text/);
   assert.match(sql, /result text NOT NULL/);
   assert.match(sql, /reason text/);
+});
+
+test('sales work migration creates plan and log records', async () => {
+  const sql = await readFile(salesWorkMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS sales_work_plans/);
+  assert.match(sql, /salesperson_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /plan_date date NOT NULL/);
+  assert.match(sql, /customer_id bigint REFERENCES customers\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /contact_id bigint REFERENCES contacts\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /opportunity_id bigint REFERENCES opportunities\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /activity_type text NOT NULL/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'planned'/);
+  assert.match(sql, /status IN \('planned', 'completed', 'cancelled'\)/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS sales_work_plans_salesperson_date_idx/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS sales_work_logs/);
+  assert.match(sql, /log_date date NOT NULL/);
+  assert.match(sql, /content text NOT NULL/);
+  assert.match(sql, /next_plan_date date/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS sales_work_logs_salesperson_date_idx/);
 });
