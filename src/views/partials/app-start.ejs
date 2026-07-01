@@ -412,8 +412,8 @@
 
       .opportunity-list-table {
         min-width: 100%;
-        table-layout: auto;
-        width: auto;
+        table-layout: fixed;
+        width: 100%;
       }
 
       .opportunity-list-table thead th {
@@ -424,13 +424,42 @@
 
       .opportunity-list-table th,
       .opportunity-list-table td {
+        overflow: hidden;
+        text-overflow: ellipsis;
         white-space: nowrap;
-        width: 1%;
+      }
+
+      .opportunity-list-table th:nth-child(1),
+      .opportunity-list-table td:nth-child(1) {
+        width: 9%;
+      }
+
+      .opportunity-list-table th:nth-child(2),
+      .opportunity-list-table td:nth-child(2) {
+        width: 28%;
       }
 
       .opportunity-list-table th:nth-child(3),
       .opportunity-list-table td:nth-child(3) {
-        width: auto;
+        width: 20%;
+      }
+
+      .opportunity-list-table th:nth-child(4),
+      .opportunity-list-table td:nth-child(4),
+      .opportunity-list-table th:nth-child(5),
+      .opportunity-list-table td:nth-child(5) {
+        width: 11%;
+      }
+
+      .opportunity-list-table th:nth-child(6),
+      .opportunity-list-table td:nth-child(6) {
+        width: 9%;
+      }
+
+      .opportunity-list-table th:nth-child(7),
+      .opportunity-list-table td:nth-child(7) {
+        text-align: right;
+        width: 12%;
       }
 
       .content-fit-table {
