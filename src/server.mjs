@@ -20,6 +20,7 @@ import { createOpportunityRepository } from './repositories/opportunityRepositor
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
 import { createRequirementUpdateRepository } from './repositories/requirementUpdateRepository.mjs';
 import { createRoleRepository } from './repositories/roleRepository.mjs';
+import { createSalesWorkRepository } from './repositories/salesWorkRepository.mjs';
 import { createTechnicalSolutionRepository } from './repositories/technicalSolutionRepository.mjs';
 import { createTodoRepository } from './repositories/todoRepository.mjs';
 import { createUserRepository } from './repositories/userRepository.mjs';
@@ -29,6 +30,7 @@ import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
+import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
 import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
 import { createMessageLabeler, createStatusLabeler, createTodoTitleLabeler, createTranslator, createWorkflowEventLabeler, inferLanguageFromAcceptLanguage, normalizeLanguage } from './utils/i18n.mjs';
@@ -277,6 +279,36 @@ const emptyWorkbenchRepository = {
   }
 };
 
+const emptySalesWorkRepository = {
+  async listPlans() {
+    return [];
+  },
+  async findPlanById() {
+    return null;
+  },
+  async createPlan() {
+    throw new Error('Sales work repository is not configured');
+  },
+  async updatePlan() {
+    throw new Error('Sales work repository is not configured');
+  },
+  async updatePlanStatus() {
+    throw new Error('Sales work repository is not configured');
+  },
+  async listLogs() {
+    return [];
+  },
+  async createLog() {
+    throw new Error('Sales work repository is not configured');
+  },
+  async updateLog() {
+    throw new Error('Sales work repository is not configured');
+  },
+  async summarizeSalesWork() {
+    return [];
+  }
+};
+
 const emptyLoginSecurityRepository = {
   async findStates() {
     return [];
@@ -310,6 +342,7 @@ export function createApp(options = {}) {
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
+  const salesWorkRepository = options.salesWorkRepository || (pool ? createSalesWorkRepository(pool) : emptySalesWorkRepository);
   const workflowTransaction = 'workflowTransaction' in options
     ? options.workflowTransaction
     : pool ? createWorkflowTransaction(pool) : null;
@@ -360,6 +393,12 @@ export function createApp(options = {}) {
   app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository, loginSecurityRepository }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
+  app.use(salesWorkRoutes({
+    salesWorkRepository,
+    customerRepository,
+    contactRepository,
+    opportunityRepository
+  }));
   app.use(opportunityRoutes({
     customerRepository,
     contactRepository,

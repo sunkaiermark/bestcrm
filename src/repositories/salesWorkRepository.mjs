@@ -212,6 +212,25 @@ export function createSalesWorkRepository(queryTarget) {
       return result.rows.map(mapSalesWorkPlanRow);
     },
 
+    async findPlanById(id) {
+      const result = await queryTarget.query(`
+        SELECT
+          swp.*,
+          salesperson.display_name AS salesperson_display_name,
+          c.name AS customer_name,
+          ct.name AS contact_name,
+          o.opportunity_no,
+          o.title AS opportunity_title
+        FROM sales_work_plans swp
+        JOIN users salesperson ON salesperson.id = swp.salesperson_user_id
+        LEFT JOIN customers c ON c.id = swp.customer_id
+        LEFT JOIN contacts ct ON ct.id = swp.contact_id
+        LEFT JOIN opportunities o ON o.id = swp.opportunity_id
+        WHERE swp.id = $1
+      `, [Number(id)]);
+      return mapSalesWorkPlanRow(result.rows[0]);
+    },
+
     async updatePlanStatus(id, input) {
       const result = await queryTarget.query(`
         UPDATE sales_work_plans
@@ -225,6 +244,37 @@ export function createSalesWorkRepository(queryTarget) {
       `, [
         input.status,
         input.resultSummary || '',
+        input.nextStep || '',
+        id
+      ]);
+      return mapSalesWorkPlanRow(result.rows[0]);
+    },
+
+    async updatePlan(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE sales_work_plans
+        SET
+          plan_date = $1,
+          customer_id = $2,
+          contact_id = $3,
+          opportunity_id = $4,
+          activity_type = $5,
+          subject = $6,
+          objective = $7,
+          planned_action = $8,
+          next_step = $9,
+          updated_at = now()
+        WHERE id = $10
+        RETURNING *
+      `, [
+        input.planDate,
+        input.customerId || null,
+        input.contactId || null,
+        input.opportunityId || null,
+        input.activityType,
+        input.subject,
+        input.objective || '',
+        input.plannedAction || '',
         input.nextStep || '',
         id
       ]);
@@ -300,6 +350,41 @@ export function createSalesWorkRepository(queryTarget) {
         ORDER BY swl.log_date DESC, swl.id DESC
       `, params);
       return result.rows.map(mapSalesWorkLogRow);
+    },
+
+    async updateLog(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE sales_work_logs
+        SET
+          log_date = $1,
+          customer_id = $2,
+          contact_id = $3,
+          opportunity_id = $4,
+          activity_type = $5,
+          subject = $6,
+          content = $7,
+          customer_feedback = $8,
+          result = $9,
+          next_step = $10,
+          next_plan_date = $11,
+          updated_at = now()
+        WHERE id = $12
+        RETURNING *
+      `, [
+        input.logDate,
+        input.customerId || null,
+        input.contactId || null,
+        input.opportunityId || null,
+        input.activityType,
+        input.subject,
+        input.content,
+        input.customerFeedback || '',
+        input.result || '',
+        input.nextStep || '',
+        input.nextPlanDate || null,
+        id
+      ]);
+      return mapSalesWorkLogRow(result.rows[0]);
     },
 
     async summarizeSalesWork(filter = {}) {

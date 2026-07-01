@@ -135,6 +135,19 @@ test('sales work repository lists plan records with linked CRM names', async () 
   assert.deepEqual(queryTarget.queries[0].params, [7, '2026-06-01', '2026-06-30', 'planned']);
 });
 
+test('sales work repository finds one plan by id with linked CRM names', async () => {
+  const queryTarget = createFakeQueryTarget([planRow]);
+  const repository = createSalesWorkRepository(queryTarget);
+
+  const plan = await repository.findPlanById(11);
+
+  assert.equal(plan.id, 11);
+  assert.equal(plan.customerName, 'Acme');
+  assert.match(queryTarget.queries[0].sql, /FROM sales_work_plans swp/);
+  assert.match(queryTarget.queries[0].sql, /WHERE swp\.id = \$1/);
+  assert.deepEqual(queryTarget.queries[0].params, [11]);
+});
+
 test('sales work repository updates plan status and result fields', async () => {
   const queryTarget = createFakeQueryTarget([{ ...planRow, status: 'completed', result_summary: 'Meeting completed' }]);
   const repository = createSalesWorkRepository(queryTarget);
@@ -153,6 +166,40 @@ test('sales work repository updates plan status and result fields', async () => 
     'completed',
     'Meeting completed',
     'Create technical proposal',
+    11
+  ]);
+});
+
+test('sales work repository updates plan editable fields', async () => {
+  const queryTarget = createFakeQueryTarget([{ ...planRow, subject: 'Updated visit', plan_date: '2026-06-25' }]);
+  const repository = createSalesWorkRepository(queryTarget);
+
+  const plan = await repository.updatePlan(11, {
+    planDate: '2026-06-25',
+    customerId: 20,
+    contactId: 30,
+    opportunityId: 40,
+    activityType: 'meeting',
+    subject: 'Updated visit',
+    objective: 'Confirm final scope',
+    plannedAction: 'Meet procurement',
+    nextStep: 'Send meeting minutes'
+  });
+
+  assert.equal(plan.subject, 'Updated visit');
+  assert.match(queryTarget.queries[0].sql, /UPDATE sales_work_plans/);
+  assert.match(queryTarget.queries[0].sql, /plan_date = \$1/);
+  assert.match(queryTarget.queries[0].sql, /updated_at = now\(\)/);
+  assert.deepEqual(queryTarget.queries[0].params, [
+    '2026-06-25',
+    20,
+    30,
+    40,
+    'meeting',
+    'Updated visit',
+    'Confirm final scope',
+    'Meet procurement',
+    'Send meeting minutes',
     11
   ]);
 });
@@ -192,6 +239,44 @@ test('sales work repository creates and lists log records', async () => {
   assert.match(queryTarget.queries[1].sql, /WHERE swl\.salesperson_user_id = \$1/);
   assert.match(queryTarget.queries[1].sql, /swl\.opportunity_id = \$2/);
   assert.deepEqual(queryTarget.queries[1].params, [7, 40]);
+});
+
+test('sales work repository updates log editable fields', async () => {
+  const queryTarget = createFakeQueryTarget([{ ...logRow, subject: 'Updated meeting' }]);
+  const repository = createSalesWorkRepository(queryTarget);
+
+  const log = await repository.updateLog(21, {
+    logDate: '2026-06-25',
+    customerId: 20,
+    contactId: 30,
+    opportunityId: 40,
+    activityType: 'meeting',
+    subject: 'Updated meeting',
+    content: 'Confirmed technical scope.',
+    customerFeedback: 'Need formal quotation.',
+    result: 'Commercial quote required',
+    nextStep: 'Upload quote',
+    nextPlanDate: '2026-06-26'
+  });
+
+  assert.equal(log.subject, 'Updated meeting');
+  assert.match(queryTarget.queries[0].sql, /UPDATE sales_work_logs/);
+  assert.match(queryTarget.queries[0].sql, /log_date = \$1/);
+  assert.match(queryTarget.queries[0].sql, /updated_at = now\(\)/);
+  assert.deepEqual(queryTarget.queries[0].params, [
+    '2026-06-25',
+    20,
+    30,
+    40,
+    'meeting',
+    'Updated meeting',
+    'Confirmed technical scope.',
+    'Need formal quotation.',
+    'Commercial quote required',
+    'Upload quote',
+    '2026-06-26',
+    21
+  ]);
 });
 
 test('sales work repository summarizes plans and logs for reports', async () => {

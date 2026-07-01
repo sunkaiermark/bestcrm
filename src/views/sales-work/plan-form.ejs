@@ -1,0 +1,67 @@
+<%- include('../partials/app-start', { title: `${plan.id ? t('editPlan') : t('newPlan')} - BESTCRM`, activeNav: 'sales-work' }) %>
+        <p class="breadcrumb"><a href="/sales-work/plans"><%= t('workPlans') %></a></p>
+        <header class="page-header">
+          <h1><%= plan.id ? t('editPlan') : t('newPlan') %></h1>
+        </header>
+
+        <form class="form-panel" method="post" action="<%= action %>">
+          <%- csrfField() %>
+          <label>
+            <%= t('planDate') %>
+            <input type="date" name="planDate" value="<%= plan.planDate || '' %>" required>
+          </label>
+          <label>
+            <%= t('customer') %>
+            <select name="customerId">
+              <option value=""><%= t('selectCustomer') %></option>
+              <% for (const customer of customers) { %>
+                <option value="<%= customer.id %>"<%= Number(plan.customerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.name %></option>
+              <% } %>
+            </select>
+          </label>
+          <label>
+            <%= t('contacts') %>
+            <select name="contactId">
+              <option value=""><%= t('selectContact') %></option>
+              <% for (const contact of contacts) { %>
+                <option value="<%= contact.id %>"<%= Number(plan.contactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` - ${contact.customerName}` : '' %></option>
+              <% } %>
+            </select>
+          </label>
+          <label>
+            <%= t('opportunity') %>
+            <select name="opportunityId">
+              <option value=""><%= t('selectOpportunity') %></option>
+              <% for (const opportunity of opportunities) { %>
+                <option value="<%= opportunity.id %>"<%= Number(plan.opportunityId) === Number(opportunity.id) ? ' selected' : '' %>><%= opportunity.opportunityNo %> - <%= opportunity.title %></option>
+              <% } %>
+            </select>
+          </label>
+          <label>
+            <%= t('activityType') %>
+            <select name="activityType" required>
+              <option value=""><%= t('selectActivityType') %></option>
+              <% for (const activityType of activityTypes) { %>
+                <option value="<%= activityType %>"<%= (plan.activityType || '') === activityType ? ' selected' : '' %>><%= t(`salesActivity.${activityType}`) %></option>
+              <% } %>
+            </select>
+          </label>
+          <label>
+            <%= t('subject') %>
+            <input name="subject" value="<%= plan.subject || '' %>" required>
+          </label>
+          <label>
+            <%= t('objective') %>
+            <textarea name="objective"><%= plan.objective || '' %></textarea>
+          </label>
+          <label>
+            <%= t('plannedAction') %>
+            <textarea name="plannedAction"><%= plan.plannedAction || '' %></textarea>
+          </label>
+          <label>
+            <%= t('nextStep') %>
+            <textarea name="nextStep"><%= plan.nextStep || '' %></textarea>
+          </label>
+          <button type="submit"><%= t('save') %></button>
+        </form>
+<%- include('../partials/app-end') %>
