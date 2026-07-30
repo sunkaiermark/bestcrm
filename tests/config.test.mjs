@@ -8,6 +8,15 @@ test('development config can use the local session secret default', () => {
   assert.equal(config.sessionSecret, 'dev-session-secret');
 });
 
+test('config reads optional inquiry intake secret', () => {
+  const config = loadConfig({
+    NODE_ENV: 'development',
+    INQUIRY_INTAKE_SECRET: 'website-intake-secret'
+  });
+
+  assert.equal(config.inquiryIntakeSecret, 'website-intake-secret');
+});
+
 test('production config requires an explicit session secret', () => {
   assert.throws(
     () => loadConfig({ NODE_ENV: 'production' }),

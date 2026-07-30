@@ -60,6 +60,7 @@ PORT=3000
 BASE_URL=http://YOUR_SERVER_PUBLIC_IP
 DATABASE_URL=postgres://bestcrm:REPLACE_WITH_STRONG_PASSWORD@127.0.0.1:5432/bestcrm
 SESSION_SECRET=REPLACE_WITH_LONG_RANDOM_SECRET
+INQUIRY_INTAKE_SECRET=REPLACE_WITH_LONG_RANDOM_WEBSITE_INTAKE_SECRET
 UPLOAD_DIR=/var/bestcrm/uploads
 MAX_UPLOAD_MB=25
 ```
@@ -68,6 +69,7 @@ Important:
 
 - `NODE_ENV=production` is mandatory.
 - `SESSION_SECRET` must be long, random, and never committed to Git.
+- `INQUIRY_INTAKE_SECRET` must be long, random, shared only with the trusted `sunkaier.com` server-side form forwarder, and never exposed in browser JavaScript.
 - `DATABASE_URL` must use a strong database password.
 - `UPLOAD_DIR` must be backed up.
 - If there is no domain yet, use `http://YOUR_SERVER_PUBLIC_IP` for `BASE_URL`.

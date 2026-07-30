@@ -30,6 +30,7 @@ import { createWorkflowEventRepository } from './repositories/workflowEventRepos
 import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
+import { inquiryIntakeRoutes } from './routes/inquiryIntakeRoutes.mjs';
 import { inquiryRoutes } from './routes/inquiryRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
@@ -378,7 +379,16 @@ export function createApp(options = {}) {
   app.set('views', path.join(dirname, 'views'));
   app.use('/assets', express.static(path.join(dirname, 'public', 'assets')));
   app.use(express.urlencoded({ extended: false }));
-  app.use(express.json());
+  app.use(express.json({
+    verify(req, res, buf) {
+      req.rawBody = Buffer.from(buf);
+    }
+  }));
+  app.use(inquiryIntakeRoutes({
+    inquiryRepository,
+    intakeSecret: config.inquiryIntakeSecret,
+    now: options.inquiryIntakeNow
+  }));
   app.use(session({
     name: 'bestcrm.sid',
     secret: config.sessionSecret,

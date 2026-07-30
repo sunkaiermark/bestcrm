@@ -18,6 +18,7 @@ export function loadConfig(env = process.env) {
     databaseUrl: env.DATABASE_URL || '',
     sessionSecret: sessionSecret || 'dev-session-secret',
     sessionCookieSecure,
+    inquiryIntakeSecret: env.INQUIRY_INTAKE_SECRET || '',
     uploadDir: env.UPLOAD_DIR || './var/uploads',
     maxUploadMb: Number(env.MAX_UPLOAD_MB || 25)
   };

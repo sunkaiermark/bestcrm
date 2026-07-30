@@ -100,7 +100,10 @@ Behavior:
 Add a signed public endpoint after the local inbox is validated:
 
 - `POST /api/inquiries/website`
-- Shared secret or request signature.
+- HMAC-SHA256 signature using `INQUIRY_INTAKE_SECRET`.
+- Required headers: `x-bestcrm-timestamp` and `x-bestcrm-signature`.
+- Signature payload: `<timestamp>.<raw JSON body>`.
+- `x-bestcrm-signature` format: `sha256=<hex digest>`.
 - Spam protection and payload size limits.
 - Website keeps only submission responsibility; CRM handles review and conversion.
 
