@@ -128,6 +128,7 @@ function targetUserForAction(action, before, after, payload) {
     case ACTIONS.SUBMIT_INITIATION:
       return after.salesManagerId;
     case ACTIONS.APPROVE_INITIATION:
+    case ACTIONS.CHANGE_QUOTATION_ENGINEER:
     case ACTIONS.REJECT_TECHNICAL_SOLUTION:
     case ACTIONS.REJECT_COMMERCIAL_QUOTE:
       return after.quotationEngineerId;
@@ -152,12 +153,31 @@ function targetUserForAction(action, before, after, payload) {
   }
 }
 
+function quotationEngineerTodoForStatus(after) {
+  switch (after.status) {
+    case 'technical_solution_in_progress':
+      return { opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Prepare technical solution' };
+    case 'technical_solution_rejected':
+      return { opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Revise technical solution' };
+    case 'commercial_quote_in_progress':
+      return { opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Prepare commercial quote' };
+    case 'commercial_quote_rejected':
+      return { opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Revise commercial quote' };
+    default:
+      return null;
+  }
+}
+
 function nextTodosForAction(action, after, payload) {
   switch (action) {
     case ACTIONS.SUBMIT_INITIATION:
       return [{ opportunityId: after.id, assigneeUserId: after.salesManagerId, title: 'Approve opportunity initiation' }];
     case ACTIONS.APPROVE_INITIATION:
       return [{ opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Prepare technical solution' }];
+    case ACTIONS.CHANGE_QUOTATION_ENGINEER: {
+      const todo = quotationEngineerTodoForStatus(after);
+      return todo ? [todo] : [];
+    }
     case ACTIONS.REJECT_INITIATION:
       return [{ opportunityId: after.id, assigneeUserId: after.salespersonId, title: 'Revise opportunity initiation' }];
     case ACTIONS.SUBMIT_TECHNICAL_SOLUTION:
@@ -528,6 +548,14 @@ export function buildWorkflowEffects({ actor, action, before, after, payload = {
     : completedTodoActions.has(action)
       ? 'completed'
       : null;
+  const todosToClose = closeStatus ? [{ opportunityId: before.id, status: closeStatus }] : [];
+  if (action === ACTIONS.CHANGE_QUOTATION_ENGINEER && before.quotationEngineerId) {
+    todosToClose.push({
+      opportunityId: before.id,
+      assigneeUserId: before.quotationEngineerId,
+      status: 'reassigned'
+    });
+  }
 
   return {
     event: {
@@ -540,7 +568,7 @@ export function buildWorkflowEffects({ actor, action, before, after, payload = {
       comment: commentFromPayload(payload)
     },
     todosToCreate: nextTodosForAction(action, after, payload),
-    todosToClose: closeStatus ? [{ opportunityId: before.id, status: closeStatus }] : []
+    todosToClose
   };
 }
 
@@ -590,7 +618,18 @@ export async function applyWorkflowAction({
 
   await repositories.workflowEventRepository.create(effects.event);
   for (const todo of effects.todosToClose) {
-    await repositories.todoRepository.closePendingForOpportunity(todo.opportunityId, todo.status);
+    if (todo.assigneeUserId) {
+      if (typeof repositories.todoRepository.closePendingForOpportunityAndAssignee !== 'function') {
+        throw new WorkflowValidationError('Todo repository is not configured for assignee reassignment');
+      }
+      await repositories.todoRepository.closePendingForOpportunityAndAssignee(
+        todo.opportunityId,
+        todo.assigneeUserId,
+        todo.status
+      );
+    } else {
+      await repositories.todoRepository.closePendingForOpportunity(todo.opportunityId, todo.status);
+    }
   }
   for (const todo of effects.todosToCreate) {
     await repositories.todoRepository.create(todo);

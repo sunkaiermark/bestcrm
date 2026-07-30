@@ -14,6 +14,7 @@ import { createCommercialQuoteRepository } from './repositories/commercialQuoteR
 import { createContractApprovalRepository } from './repositories/contractApprovalRepository.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
+import { createInquiryRepository } from './repositories/inquiryRepository.mjs';
 import { createLoginSecurityRepository } from './repositories/loginSecurityRepository.mjs';
 import { createOpportunityMaterialVersionRepository } from './repositories/opportunityMaterialVersionRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
@@ -29,6 +30,7 @@ import { createWorkflowEventRepository } from './repositories/workflowEventRepos
 import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
+import { inquiryRoutes } from './routes/inquiryRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
@@ -138,6 +140,24 @@ const emptyContactRepository = {
   },
   async deleteById() {
     throw new Error('Contact repository is not configured');
+  }
+};
+
+const emptyInquiryRepository = {
+  async listInquiries() {
+    return [];
+  },
+  async findById() {
+    return null;
+  },
+  async createInquiry() {
+    throw new Error('Inquiry repository is not configured');
+  },
+  async updateReview() {
+    throw new Error('Inquiry repository is not configured');
+  },
+  async markConverted() {
+    throw new Error('Inquiry repository is not configured');
   }
 };
 
@@ -264,6 +284,9 @@ const emptyTodoRepository = {
   },
   async closePendingForOpportunity() {
     throw new Error('Todo repository is not configured');
+  },
+  async closePendingForOpportunityAndAssignee() {
+    throw new Error('Todo repository is not configured');
   }
 };
 
@@ -329,6 +352,7 @@ export function createApp(options = {}) {
   const approvalSettingRepository = options.approvalSettingRepository || (pool ? createApprovalSettingRepository(pool) : emptyApprovalSettingRepository);
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
   const contactRepository = options.contactRepository || (pool ? createContactRepository(pool) : emptyContactRepository);
+  const inquiryRepository = options.inquiryRepository || (pool ? createInquiryRepository(pool) : emptyInquiryRepository);
   const attachmentRepository = options.attachmentRepository || (pool ? createAttachmentRepository(pool) : emptyAttachmentRepository);
   const commercialQuoteRepository = options.commercialQuoteRepository || (pool ? createCommercialQuoteRepository(pool) : emptyCommercialQuoteRepository);
   const technicalSolutionRepository = options.technicalSolutionRepository || (pool ? createTechnicalSolutionRepository(pool) : emptyTechnicalSolutionRepository);
@@ -393,6 +417,13 @@ export function createApp(options = {}) {
   app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository, loginSecurityRepository }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
+  app.use(inquiryRoutes({
+    inquiryRepository,
+    customerRepository,
+    contactRepository,
+    opportunityRepository,
+    userRepository
+  }));
   app.use(salesWorkRoutes({
     salesWorkRepository,
     customerRepository,

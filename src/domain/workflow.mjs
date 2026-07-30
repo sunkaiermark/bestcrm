@@ -6,6 +6,7 @@ export const ACTIONS = Object.freeze({
   WITHDRAW_INITIATION: 'withdraw_initiation',
   APPROVE_INITIATION: 'approve_initiation',
   REJECT_INITIATION: 'reject_initiation',
+  CHANGE_QUOTATION_ENGINEER: 'change_quotation_engineer',
   ADD_REQUIREMENT_UPDATE: 'add_requirement_update',
   SUBMIT_TECHNICAL_SOLUTION: 'submit_technical_solution',
   WITHDRAW_TECHNICAL_SOLUTION: 'withdraw_technical_solution',
@@ -47,6 +48,19 @@ function roleAndAssigneeAllowed(context, rule) {
 
   return statusAllowed && roleAllowed && assigneeAllowed;
 }
+
+const quotationEngineerChangeStatuses = [
+  STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+  STATUSES.TECHNICAL_SOLUTION_PENDING,
+  STATUSES.TECHNICAL_SOLUTION_REJECTED,
+  STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+  STATUSES.COMMERCIAL_QUOTE_PENDING,
+  STATUSES.COMMERCIAL_QUOTE_REJECTED,
+  STATUSES.CUSTOMER_NEGOTIATION,
+  STATUSES.WON_CONTRACT_PENDING,
+  STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+  STATUSES.CONTRACT_REJECTED
+];
 
 const RULES = [
   {
@@ -91,6 +105,26 @@ const RULES = [
     assigneeField: 'salesManagerId',
     apply(opportunity) {
       return { ...opportunity, status: STATUSES.INITIATION_REJECTED };
+    }
+  },
+  {
+    action: ACTIONS.CHANGE_QUOTATION_ENGINEER,
+    fromStatuses: quotationEngineerChangeStatuses,
+    role: ROLES.SALES_MANAGER,
+    assigneeField: 'salesManagerId',
+    apply(opportunity, payload) {
+      const quotationEngineerId = requirePayloadValue(payload, 'quotationEngineerId');
+      const currentQuotationEngineerId = Number(opportunity.quotationEngineerId);
+      const nextQuotationEngineerId = Number(quotationEngineerId);
+      if (!Number.isFinite(currentQuotationEngineerId)
+        || !Number.isFinite(nextQuotationEngineerId)
+        || currentQuotationEngineerId === nextQuotationEngineerId) {
+        actionNotAllowed();
+      }
+      return {
+        ...opportunity,
+        quotationEngineerId: nextQuotationEngineerId
+      };
     }
   },
   {

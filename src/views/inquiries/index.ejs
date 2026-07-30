@@ -1,0 +1,71 @@
+<%- include('../partials/app-start', { title: `${t('inquiries')} - BESTCRM`, activeNav: 'inquiries' }) %>
+        <header class="page-header">
+          <div>
+            <p class="breadcrumb"><%= t('inquiryInbox') %></p>
+            <h1><%= t('inquiries') %></h1>
+          </div>
+          <a class="quick-action" href="/inquiries/new"><%= t('newInquiry') %></a>
+        </header>
+
+        <section class="list-section">
+          <form class="form-panel" method="get" action="/inquiries">
+            <label>
+              <%= t('source') %>
+              <select name="source">
+                <option value=""><%= t('allSources') %></option>
+                <% for (const source of sources) { %>
+                  <option value="<%= source %>"<%= filters.source === source ? ' selected' : '' %>><%= t(`inquirySource.${source}`) %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('status') %>
+              <select name="status">
+                <option value=""><%= t('allStatuses') %></option>
+                <% for (const status of statuses) { %>
+                  <option value="<%= status %>"<%= filters.status === status ? ' selected' : '' %>><%= t(`inquiryStatus.${status}`) %></option>
+                <% } %>
+              </select>
+            </label>
+            <button type="submit"><%= t('filter') %></button>
+          </form>
+
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead>
+                <tr>
+                  <th><%= t('receivedAt') %></th>
+                  <th><%= t('source') %></th>
+                  <th><%= t('status') %></th>
+                  <th><%= t('priority') %></th>
+                  <th><%= t('subject') %></th>
+                  <th><%= t('companyName') %></th>
+                  <th><%= t('contact') %></th>
+                  <th><%= t('productInterest') %></th>
+                  <th><%= t('assignedTo') %></th>
+                  <th><%= t('actions') %></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const inquiry of inquiries) { %>
+                  <tr>
+                    <td><%= inquiry.sourceReceivedAt || inquiry.createdAt || '' %></td>
+                    <td><%= t(`inquirySource.${inquiry.source}`) %></td>
+                    <td><span class="status"><%= t(`inquiryStatus.${inquiry.status}`) %></span></td>
+                    <td><%= t(`inquiryPriority.${inquiry.priority}`) %></td>
+                    <td class="clickable-cell"><a class="cell-link" href="/inquiries/<%= inquiry.id %>"><%= inquiry.subject || `#${inquiry.id}` %></a></td>
+                    <td><%= inquiry.companyName || '' %></td>
+                    <td><%= inquiry.contactName || inquiry.contactEmail || '' %></td>
+                    <td><%= inquiry.productInterest || '' %></td>
+                    <td><%= inquiry.assignedDisplayName || '' %></td>
+                    <td><a class="secondary-action" href="/inquiries/<%= inquiry.id %>"><%= t('view') %></a></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+            <% if (!inquiries.length) { %>
+              <p class="empty"><%= t('noInquiries') %></p>
+            <% } %>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

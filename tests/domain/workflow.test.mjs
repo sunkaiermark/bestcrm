@@ -29,6 +29,27 @@ test('Sales Manager approval assigns quotation engineer and moves to technical w
   assert.equal(next.quotationEngineerId, 3);
 });
 
+test('Sales Manager can change quotation engineer after initial assignment', () => {
+  const context = {
+    userId: 2,
+    roles: [ROLES.SALES_MANAGER],
+    opportunity: {
+      status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+      salespersonId: 1,
+      salesManagerId: 2,
+      quotationEngineerId: 3
+    }
+  };
+
+  assert.deepEqual(getAllowedActions(context), [ACTIONS.CHANGE_QUOTATION_ENGINEER]);
+
+  const next = transition(context, ACTIONS.CHANGE_QUOTATION_ENGINEER, { quotationEngineerId: 8 });
+
+  assert.equal(next.status, STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS);
+  assert.equal(next.quotationEngineerId, 8);
+  assert.throws(() => transition(context, ACTIONS.CHANGE_QUOTATION_ENGINEER, { quotationEngineerId: 3 }), /Action not allowed/);
+});
+
 test('Sales Manager rejection returns initiation to rejected state', () => {
   const next = transition({
     userId: 2,

@@ -18,6 +18,7 @@ const opportunityMaterialVersionsMigrationPath = new URL('../../src/db/migration
 const attachmentMaterialVersionMigrationPath = new URL('../../src/db/migrations/015_attachment_material_version.sql', import.meta.url);
 const loginSecurityMigrationPath = new URL('../../src/db/migrations/016_login_security.sql', import.meta.url);
 const salesWorkMigrationPath = new URL('../../src/db/migrations/017_sales_work.sql', import.meta.url);
+const inquiryInboxMigrationPath = new URL('../../src/db/migrations/018_inquiry_inbox.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -220,4 +221,21 @@ test('sales work migration creates plan and log records', async () => {
   assert.match(sql, /content text NOT NULL/);
   assert.match(sql, /next_plan_date date/);
   assert.match(sql, /CREATE INDEX IF NOT EXISTS sales_work_logs_salesperson_date_idx/);
+});
+
+test('inquiry inbox migration creates controlled intake records', async () => {
+  const sql = await readFile(inquiryInboxMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiries/);
+  assert.match(sql, /source text NOT NULL DEFAULT 'manual'/);
+  assert.match(sql, /source IN \('manual', 'website', 'email', 'chatwoot'\)/);
+  assert.match(sql, /requirement_text text NOT NULL/);
+  assert.match(sql, /raw_payload jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.match(sql, /priority IN \('low', 'normal', 'high', 'urgent'\)/);
+  assert.match(sql, /status IN \('new', 'reviewing', 'converted', 'duplicate', 'spam', 'archived'\)/);
+  assert.match(sql, /assigned_user_id bigint REFERENCES users\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /matched_customer_id bigint REFERENCES customers\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /converted_opportunity_id bigint REFERENCES opportunities\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS inquiries_status_created_idx/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS inquiries_source_reference_idx/);
 });

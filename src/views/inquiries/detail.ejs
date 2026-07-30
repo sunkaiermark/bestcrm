@@ -1,0 +1,154 @@
+<%- include('../partials/app-start', { title: `${inquiry.subject || t('inquiry')} - BESTCRM`, activeNav: 'inquiries' }) %>
+        <p class="breadcrumb"><a href="/inquiries"><%= t('inquiries') %></a></p>
+        <header class="page-header">
+          <div>
+            <p class="breadcrumb"><%= t(`inquirySource.${inquiry.source}`) %></p>
+            <h1><%= inquiry.subject || inquiry.companyName || `${t('inquiry')} #${inquiry.id}` %></h1>
+          </div>
+          <% if (inquiry.convertedOpportunityId) { %>
+            <a class="quick-action" href="/opportunities/<%= inquiry.convertedOpportunityId %>"><%= t('viewOpportunity') %></a>
+          <% } %>
+        </header>
+
+        <section class="content-section">
+          <h2><%= t('inquiryDetail') %></h2>
+          <div class="basic-info-grid">
+            <table class="detail-table">
+              <tbody>
+                <tr><th scope="row"><%= t('source') %></th><td><%= t(`inquirySource.${inquiry.source}`) %></td></tr>
+                <tr><th scope="row"><%= t('sourceReference') %></th><td><%= inquiry.sourceReference || '' %></td></tr>
+                <tr><th scope="row"><%= t('receivedAt') %></th><td><%= inquiry.sourceReceivedAt || inquiry.createdAt || '' %></td></tr>
+                <tr><th scope="row"><%= t('status') %></th><td><span class="status"><%= t(`inquiryStatus.${inquiry.status}`) %></span></td></tr>
+                <tr><th scope="row"><%= t('priority') %></th><td><%= t(`inquiryPriority.${inquiry.priority}`) %></td></tr>
+              </tbody>
+            </table>
+            <table class="detail-table">
+              <tbody>
+                <tr><th scope="row"><%= t('companyName') %></th><td><%= inquiry.companyName || '' %></td></tr>
+                <tr><th scope="row"><%= t('contactName') %></th><td><%= inquiry.contactName || '' %></td></tr>
+                <tr><th scope="row"><%= t('email') %></th><td><%= inquiry.contactEmail || '' %></td></tr>
+                <tr><th scope="row"><%= t('phone') %></th><td><%= inquiry.contactPhone || '' %></td></tr>
+                <tr><th scope="row"><%= t('country') %></th><td><%= inquiry.country || '' %></td></tr>
+              </tbody>
+            </table>
+            <table class="detail-table detail-table-wide">
+              <tbody>
+                <tr><th scope="row"><%= t('productInterest') %></th><td><%= inquiry.productInterest || '' %></td></tr>
+                <tr><th scope="row"><%= t('requirement') %></th><td><%= inquiry.requirementText || '' %></td></tr>
+                <tr><th scope="row"><%= t('reviewNote') %></th><td><%= inquiry.reviewNote || '' %></td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="content-section">
+          <h2><%= t('reviewInquiry') %></h2>
+          <form class="form-panel" method="post" action="/inquiries/<%= inquiry.id %>/review">
+            <%- csrfField() %>
+            <label>
+              <%= t('status') %>
+              <select name="status">
+                <% for (const status of statuses.filter((value) => value !== 'converted')) { %>
+                  <option value="<%= status %>"<%= inquiry.status === status ? ' selected' : '' %>><%= t(`inquiryStatus.${status}`) %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('priority') %>
+              <select name="priority">
+                <% for (const priority of priorities) { %>
+                  <option value="<%= priority %>"<%= inquiry.priority === priority ? ' selected' : '' %>><%= t(`inquiryPriority.${priority}`) %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('assignedTo') %>
+              <select name="assignedUserId">
+                <% for (const user of assignableUsers) { %>
+                  <option value="<%= user.id %>"<%= Number(inquiry.assignedUserId) === Number(user.id) ? ' selected' : '' %>><%= user.displayName || user.username %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('matchedCustomer') %>
+              <select name="matchedCustomerId">
+                <option value=""><%= t('selectCustomer') %></option>
+                <% for (const customer of customers) { %>
+                  <option value="<%= customer.id %>"<%= Number(inquiry.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.name %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('matchedContact') %>
+              <select name="matchedContactId">
+                <option value=""><%= t('selectContact') %></option>
+                <% for (const contact of contacts) { %>
+                  <option value="<%= contact.id %>"<%= Number(inquiry.matchedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` - ${contact.customerName}` : '' %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('reviewNote') %>
+              <textarea name="reviewNote"><%= inquiry.reviewNote || '' %></textarea>
+            </label>
+            <button type="submit"><%= t('save') %></button>
+          </form>
+        </section>
+
+        <% if (!inquiry.convertedOpportunityId) { %>
+          <section class="content-section">
+            <h2><%= t('convertToOpportunity') %></h2>
+            <form class="form-panel" method="post" action="/inquiries/<%= inquiry.id %>/convert">
+              <%- csrfField() %>
+              <label>
+                <%= t('customer') %>
+                <select name="customerId" required>
+                  <option value=""><%= t('selectCustomer') %></option>
+                  <% for (const customer of customers) { %>
+                    <option value="<%= customer.id %>"<%= Number(inquiry.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.name %></option>
+                  <% } %>
+                </select>
+              </label>
+              <label>
+                <%= t('primaryContact') %>
+                <select name="primaryContactId">
+                  <option value=""><%= t('selectContact') %></option>
+                  <% for (const contact of contacts) { %>
+                    <option value="<%= contact.id %>"<%= Number(inquiry.matchedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` - ${contact.customerName}` : '' %></option>
+                  <% } %>
+                </select>
+              </label>
+              <label>
+                <%= t('opportunityName') %>
+                <input name="title" value="<%= inquiry.subject || inquiry.productInterest || inquiry.companyName || '' %>" required>
+              </label>
+              <label>
+                <%= t('requirement') %>
+                <textarea name="requirement" required><%= inquiry.requirementText || '' %></textarea>
+              </label>
+              <label>
+                <%= t('estimatedAmount') %>
+                <input type="number" step="0.01" name="estimatedAmount">
+              </label>
+              <label>
+                <%= t('projectType') %>
+                <input name="projectType" value="<%= inquiry.productInterest || '' %>">
+              </label>
+              <label>
+                <%= t('deliveryPeriod') %>
+                <input name="deliveryCycle">
+              </label>
+              <label>
+                <%= t('expectedBidDate') %>
+                <input type="date" name="expectedBidDate">
+              </label>
+              <button type="submit"><%= t('convertToOpportunity') %></button>
+            </form>
+          </section>
+        <% } %>
+
+        <section class="content-section">
+          <h2><%= t('rawPayload') %></h2>
+          <pre><%= JSON.stringify(inquiry.rawPayload || {}, null, 2) %></pre>
+        </section>
+<%- include('../partials/app-end') %>

@@ -560,7 +560,7 @@
                         <select name="<%= field.name %>" required>
                           <option value=""></option>
                           <% for (const user of field.users) { %>
-                            <option value="<%= user.id %>"><%= user.displayName %></option>
+                            <option value="<%= user.id %>" <%= Number(field.value) === Number(user.id) ? 'selected' : '' %>><%= user.displayName %></option>
                           <% } %>
                         </select>
                       <% } else if (field.type === 'textarea') { %>
@@ -646,7 +646,7 @@
                         <select name="<%= field.name %>" required>
                           <option value=""></option>
                           <% for (const user of field.users) { %>
-                            <option value="<%= user.id %>"><%= user.displayName %></option>
+                            <option value="<%= user.id %>" <%= Number(field.value) === Number(user.id) ? 'selected' : '' %>><%= user.displayName %></option>
                           <% } %>
                         </select>
                       <% } else if (field.type === 'textarea') { %>
@@ -760,7 +760,7 @@
                               <select name="<%= field.name %>" required>
                                 <option value=""></option>
                                 <% for (const user of field.users) { %>
-                                  <option value="<%= user.id %>"><%= user.displayName %></option>
+                                  <option value="<%= user.id %>" <%= Number(field.value) === Number(user.id) ? 'selected' : '' %>><%= user.displayName %></option>
                                 <% } %>
                               </select>
                             <% } else if (field.type === 'textarea') { %>

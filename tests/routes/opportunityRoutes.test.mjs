@@ -199,6 +199,10 @@ async function createLoggedInAgent(extraOptions = {}) {
         todoClosures.push({ opportunityId, status });
         return { rowCount: 1 };
       },
+      async closePendingForOpportunityAndAssignee(opportunityId, assigneeUserId, status) {
+        todoClosures.push({ opportunityId, assigneeUserId, status });
+        return { rowCount: 1 };
+      },
       async create(todo) {
         todosToCreate.push(todo);
         return { id: 89, ...todo };
@@ -287,11 +291,11 @@ async function createLoggedInAgent(extraOptions = {}) {
 
 function assertAppSidebar(html, activeHref) {
   assert.match(html, /class="left-nav"/);
-  assert.match(html, /font:\s*14px\/1\.4 Arial, "Microsoft YaHei", Helvetica, sans-serif;/);
-  assert.match(html, /th\s*\{[\s\S]*font-size:\s*12px;/);
-  assert.match(html, /h1\s*\{[\s\S]*font-size:\s*22px;/);
-  assert.match(html, /\.nav-subgroup \.nav-link\s*\{[\s\S]*font-size:\s*13px;/);
-  assert.match(html, /\.status\s*\{[\s\S]*font-size:\s*12px;/);
+  assert.match(html, /font:\s*20px\/1\.45 Arial, "Microsoft YaHei", Helvetica, sans-serif;/);
+  assert.match(html, /th\s*\{[\s\S]*font-size:\s*20px;/);
+  assert.match(html, /h1\s*\{[\s\S]*font-size:\s*24px;/);
+  assert.match(html, /\.nav-subgroup \.nav-link\s*\{[\s\S]*font-size:\s*20px;/);
+  assert.match(html, /\.status\s*\{[\s\S]*font-size:\s*20px;/);
   assert.match(html, /--rail:\s*#0B0F6E;/);
   assert.match(html, /--rail-ink:\s*#ffffff;/);
   assert.match(html, /--rail-active:\s*#1e40af;/);
@@ -444,6 +448,10 @@ async function createWorkflowAgent({
       },
       async closePendingForOpportunity(opportunityId, status) {
         calls.push(['closeTodos', opportunityId, status]);
+        return { rowCount: 1 };
+      },
+      async closePendingForOpportunityAndAssignee(opportunityId, assigneeUserId, status) {
+        calls.push(['closeTodosForAssignee', opportunityId, assigneeUserId, status]);
         return { rowCount: 1 };
       }
     },
@@ -2879,6 +2887,61 @@ test('Sales Manager approves initiation and assigns quotation engineer from deta
     }],
     ['closeTodos', 30, 'completed'],
     ['createTodo', { opportunityId: 30, assigneeUserId: 3, title: 'Prepare technical solution' }]
+  ]);
+});
+
+test('Sales Manager changes quotation engineer after assignment from detail page', async () => {
+  const { agent, calls, getOpportunity } = await createWorkflowAgent({
+    user: {
+      id: 2,
+      username: 'manager01',
+      displayName: 'Sales Manager',
+      roles: [ROLES.SALES_MANAGER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7,
+      salesManagerId: 2,
+      quotationEngineerId: 3
+    },
+    roleUsers: {
+      [ROLES.QUOTATION_ENGINEER]: [
+        { id: 3, displayName: 'Quote Engineer One', username: 'quote01', roles: [ROLES.QUOTATION_ENGINEER] },
+        { id: 8, displayName: 'Quote Engineer Two', username: 'quote02', roles: [ROLES.QUOTATION_ENGINEER] }
+      ]
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /change_quotation_engineer/);
+  assert.match(detail.text, /Quote Engineer One/);
+  assert.match(detail.text, /Quote Engineer Two/);
+  assert.match(detail.text, /value="3" selected/);
+
+  const response = await agent
+    .post('/opportunities/30/workflow')
+    .type('form')
+    .send({ action: ACTIONS.CHANGE_QUOTATION_ENGINEER, quotationEngineerId: '8', comment: 'handover' });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/30');
+  assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+  assert.equal(getOpportunity().quotationEngineerId, 8);
+  assert.deepEqual(calls.filter((call) => call[0] !== 'listUsersByRole'), [
+    ['findOpportunity', 30],
+    ['updateOpportunity', 30, { quotationEngineerId: 8 }],
+    ['createEvent', {
+      opportunityId: 30,
+      eventType: ACTIONS.CHANGE_QUOTATION_ENGINEER,
+      fromStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      actorUserId: 2,
+      targetUserId: 8,
+      comment: 'handover'
+    }],
+    ['closeTodosForAssignee', 30, 3, 'reassigned'],
+    ['createTodo', { opportunityId: 30, assigneeUserId: 8, title: 'Prepare technical solution' }]
   ]);
 });
 

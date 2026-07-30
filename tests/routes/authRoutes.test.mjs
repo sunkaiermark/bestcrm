@@ -58,7 +58,7 @@ test('login page renders username and password form', async () => {
   assert.equal(response.status, 200);
   assert.match(response.text, /class="login-shell"/);
   assert.match(response.text, /class="login-card"/);
-  assert.match(response.text, /font:\s*15px\/1\.5 system-ui, "Microsoft YaHei", sans-serif;/);
+  assert.match(response.text, /font:\s*20px\/1\.5 system-ui, "Microsoft YaHei", sans-serif;/);
   assert.match(response.text, /\.login-logo\s*\{[\s\S]*display:\s*block;/);
   assert.match(response.text, /\.login-logo\s*\{[\s\S]*margin:\s*0 auto 22px;/);
   assert.match(response.text, /\.login-logo\s*\{[\s\S]*width:\s*224px;/);

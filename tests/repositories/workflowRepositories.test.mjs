@@ -142,6 +142,12 @@ test('todo repository creates and closes pending todos', async () => {
   assert.match(queryTarget.queries[1].sql, /status = \$2/);
   assert.match(queryTarget.queries[1].sql, /completed_at = now\(\)/);
   assert.deepEqual(queryTarget.queries[1].params, [10, 'withdrawn']);
+
+  await repository.closePendingForOpportunityAndAssignee(10, 3, 'reassigned');
+  assert.match(queryTarget.queries[2].sql, /UPDATE todos/);
+  assert.match(queryTarget.queries[2].sql, /assignee_user_id = \$2/);
+  assert.match(queryTarget.queries[2].sql, /status = \$3/);
+  assert.deepEqual(queryTarget.queries[2].params, [10, 3, 'reassigned']);
 });
 
 test('todo repository lists opportunity todos with assignee names', async () => {

@@ -133,8 +133,8 @@ async function loadUsersByRole(userRepository) {
   return Object.fromEntries(entries);
 }
 
-function userSelectField(name, label, users) {
-  return { type: 'userSelect', name, label, users };
+function userSelectField(name, label, users, value = null) {
+  return { type: 'userSelect', name, label, users, value };
 }
 
 function textareaField(name, label, required = true) {
@@ -153,7 +153,7 @@ function timestampValue(value) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function formForAction(action, usersByRole) {
+function formForAction(action, usersByRole, opportunity = {}) {
   switch (action) {
     case ACTIONS.SUBMIT_INITIATION:
       return {
@@ -187,6 +187,21 @@ function formForAction(action, usersByRole) {
         title: 'Reject Initiation',
         button: 'Reject',
         fields: [textareaField('reason', 'Reason')]
+      };
+    case ACTIONS.CHANGE_QUOTATION_ENGINEER:
+      return {
+        action,
+        title: 'Change Quotation Engineer',
+        button: 'Change Quotation Engineer',
+        fields: [
+          userSelectField(
+            'quotationEngineerId',
+            'Quotation Engineer',
+            usersByRole[ROLES.QUOTATION_ENGINEER] || [],
+            opportunity.quotationEngineerId
+          ),
+          textareaField('comment', 'Comment', false)
+        ]
       };
     case ACTIONS.SUBMIT_TECHNICAL_SOLUTION:
       return {
@@ -362,7 +377,7 @@ function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], co
     opportunity: workflowOpportunity
   });
   return allowedActions
-    .map((action) => formForAction(action, usersByRole))
+    .map((action) => formForAction(action, usersByRole, opportunity))
     .filter(Boolean)
     .map((form) => {
       const missingRequirements = missingMaterialsForAction(form.action, attachments, opportunity, contractApprovals)

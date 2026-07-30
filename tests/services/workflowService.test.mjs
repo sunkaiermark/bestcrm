@@ -45,6 +45,10 @@ function createRecordingRepositories(before) {
       async closePendingForOpportunity(opportunityId, status) {
         calls.push(['closeTodos', opportunityId, status]);
         return { rowCount: 1 };
+      },
+      async closePendingForOpportunityAndAssignee(opportunityId, assigneeUserId, status) {
+        calls.push(['closeTodosForAssignee', opportunityId, assigneeUserId, status]);
+        return { rowCount: 1 };
       }
     }
   };
@@ -153,6 +157,44 @@ test('Sales Manager approval creates todo and timeline event', () => {
   });
 });
 
+test('quotation engineer change reassigns active quotation engineer todo', () => {
+  const effects = buildWorkflowEffects({
+    actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
+    action: ACTIONS.CHANGE_QUOTATION_ENGINEER,
+    before: {
+      id: 10,
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 1,
+      salesManagerId: 2,
+      quotationEngineerId: 3
+    },
+    after: {
+      id: 10,
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 1,
+      salesManagerId: 2,
+      quotationEngineerId: 8
+    },
+    payload: { quotationEngineerId: 8, comment: 'handover' }
+  });
+
+  assert.deepEqual(effects.todosToClose, [
+    { opportunityId: 10, assigneeUserId: 3, status: 'reassigned' }
+  ]);
+  assert.deepEqual(effects.todosToCreate, [
+    { opportunityId: 10, assigneeUserId: 8, title: 'Prepare technical solution' }
+  ]);
+  assert.deepEqual(effects.event, {
+    opportunityId: 10,
+    eventType: ACTIONS.CHANGE_QUOTATION_ENGINEER,
+    fromStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    actorUserId: 2,
+    targetUserId: 8,
+    comment: 'handover'
+  });
+});
+
 test('submissions create reviewer todos', () => {
   const initiation = buildWorkflowEffects({
     actor: { id: 1, roles: [ROLES.SALESPERSON] },
@@ -244,6 +286,42 @@ test('applyWorkflowAction updates opportunity creates event and creates todos', 
     }],
     ['closeTodos', 10, 'completed'],
     ['createTodo', { opportunityId: 10, assigneeUserId: 3, title: 'Prepare technical solution' }]
+  ]);
+});
+
+test('applyWorkflowAction changes quotation engineer without changing workflow status', async () => {
+  const repositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    salespersonId: 1,
+    salesManagerId: 2,
+    quotationEngineerId: 3
+  });
+
+  const result = await applyWorkflowAction({
+    actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.CHANGE_QUOTATION_ENGINEER,
+    payload: { quotationEngineerId: 8, comment: 'handover' },
+    repositories
+  });
+
+  assert.equal(result.status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+  assert.equal(result.quotationEngineerId, 8);
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['updateOpportunity', 10, { quotationEngineerId: 8 }],
+    ['createEvent', {
+      opportunityId: 10,
+      eventType: ACTIONS.CHANGE_QUOTATION_ENGINEER,
+      fromStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      actorUserId: 2,
+      targetUserId: 8,
+      comment: 'handover'
+    }],
+    ['closeTodosForAssignee', 10, 3, 'reassigned'],
+    ['createTodo', { opportunityId: 10, assigneeUserId: 8, title: 'Prepare technical solution' }]
   ]);
 });
 
