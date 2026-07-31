@@ -126,6 +126,7 @@ test('inquiry repository creates review and conversion updates', async () => {
     reviewNote: ''
   });
   assert.match(queryTarget.queries[0].sql, /INSERT INTO inquiries/);
+  assert.match(queryTarget.queries[0].sql, /ON CONFLICT \(source, source_reference\)/);
   assert.deepEqual(queryTarget.queries[0].params.slice(0, 4), ['manual', '', null, 'Manual RFQ']);
   assert.equal(queryTarget.queries[0].params[11], '{}');
 
@@ -150,4 +151,41 @@ test('inquiry repository creates review and conversion updates', async () => {
   });
   assert.match(queryTarget.queries[2].sql, /status = 'converted'/);
   assert.deepEqual(queryTarget.queries[2].params, [20, 30, 40, 7, 12]);
+});
+
+test('inquiry repository returns an existing inquiry for duplicate source reference', async () => {
+  const queryTarget = createFakeQueryTarget([
+    [],
+    [{ ...inquiryRow, source: 'website', source_reference: 'form-1' }]
+  ]);
+  const repository = createInquiryRepository(queryTarget);
+
+  const inquiry = await repository.createInquiry({
+    source: 'website',
+    sourceReference: 'form-1',
+    sourceReceivedAt: null,
+    subject: 'Website RFQ',
+    companyName: 'Acme',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '',
+    country: 'Singapore',
+    productInterest: 'Dryer',
+    requirementText: 'Need dryer quote',
+    rawPayload: {},
+    priority: 'normal',
+    status: 'new',
+    assignedUserId: null,
+    matchedCustomerId: null,
+    matchedContactId: null,
+    createdBy: null,
+    reviewNote: ''
+  });
+
+  assert.equal(inquiry.id, 11);
+  assert.equal(inquiry.source, 'website');
+  assert.equal(inquiry.sourceReference, 'form-1');
+  assert.equal(inquiry.wasDuplicate, true);
+  assert.match(queryTarget.queries[1].sql, /i\.source = \$1 AND i\.source_reference = \$2/);
+  assert.deepEqual(queryTarget.queries[1].params, ['website', 'form-1']);
 });

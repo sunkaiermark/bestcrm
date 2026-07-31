@@ -161,6 +161,8 @@ export function createInquiryRepository(queryTarget) {
           review_note
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19)
+        ON CONFLICT (source, source_reference) WHERE source_reference <> ''
+        DO NOTHING
         RETURNING *
       `, [
         input.source,
@@ -183,7 +185,25 @@ export function createInquiryRepository(queryTarget) {
         input.createdBy,
         input.reviewNote
       ]);
-      return mapInquiryRow(result.rows[0]);
+      const created = mapInquiryRow(result.rows[0]);
+      if (created) {
+        created.wasDuplicate = false;
+        return created;
+      }
+      if (!input.sourceReference) {
+        throw new Error('Inquiry was not created');
+      }
+      const existing = await queryTarget.query(`
+        ${inquirySelect}
+        WHERE i.source = $1 AND i.source_reference = $2
+        LIMIT 1
+      `, [input.source, input.sourceReference]);
+      const duplicate = mapInquiryRow(existing.rows[0]);
+      if (!duplicate) {
+        throw new Error('Duplicate inquiry could not be loaded');
+      }
+      duplicate.wasDuplicate = true;
+      return duplicate;
     },
 
     async updateReview(id, input) {

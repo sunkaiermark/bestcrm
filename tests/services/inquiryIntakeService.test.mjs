@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  normalizeChatwootInquiryPayload,
   normalizeWebsiteInquiryPayload,
   signInquiryIntakeBody,
   verifyInquiryIntakeSignature
@@ -86,6 +87,50 @@ test('normalizeWebsiteInquiryPayload maps common sunkaier.com form fields', () =
       priority: 'bad'
     },
     priority: 'normal',
+    status: 'new',
+    assignedUserId: null,
+    matchedCustomerId: null,
+    matchedContactId: null,
+    createdBy: null,
+    reviewNote: ''
+  });
+});
+
+test('normalizeChatwootInquiryPayload maps handoff summary and sender fields', () => {
+  assert.deepEqual(normalizeChatwootInquiryPayload({
+    conversationId: '117236-9001',
+    receivedAt: '2026-07-31T04:00:00.000Z',
+    company: 'Beta',
+    senderName: 'Bob',
+    senderEmail: 'BOB@EXAMPLE.COM',
+    senderPhone: '+65 6000 0000',
+    product: 'Industrial Mixer',
+    handoffSummary: 'Needs a mixer quotation.',
+    priority: 'urgent'
+  }), {
+    source: 'chatwoot',
+    sourceReference: '117236-9001',
+    sourceReceivedAt: '2026-07-31T04:00:00.000Z',
+    subject: 'Chatwoot conversation #117236-9001',
+    companyName: 'Beta',
+    contactName: 'Bob',
+    contactEmail: 'bob@example.com',
+    contactPhone: '+65 6000 0000',
+    country: '',
+    productInterest: 'Industrial Mixer',
+    requirementText: 'Needs a mixer quotation.',
+    rawPayload: {
+      conversationId: '117236-9001',
+      receivedAt: '2026-07-31T04:00:00.000Z',
+      company: 'Beta',
+      senderName: 'Bob',
+      senderEmail: 'BOB@EXAMPLE.COM',
+      senderPhone: '+65 6000 0000',
+      product: 'Industrial Mixer',
+      handoffSummary: 'Needs a mixer quotation.',
+      priority: 'urgent'
+    },
+    priority: 'urgent',
     status: 'new',
     assignedUserId: null,
     matchedCustomerId: null,

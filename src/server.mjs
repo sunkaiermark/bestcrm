@@ -387,6 +387,7 @@ export function createApp(options = {}) {
   app.use(inquiryIntakeRoutes({
     inquiryRepository,
     intakeSecret: config.inquiryIntakeSecret,
+    chatwootIntakeSecret: config.chatwootInquiryIntakeSecret,
     now: options.inquiryIntakeNow
   }));
   app.use(session({

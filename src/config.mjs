@@ -19,6 +19,7 @@ export function loadConfig(env = process.env) {
     sessionSecret: sessionSecret || 'dev-session-secret',
     sessionCookieSecure,
     inquiryIntakeSecret: env.INQUIRY_INTAKE_SECRET || '',
+    chatwootInquiryIntakeSecret: env.CHATWOOT_INQUIRY_INTAKE_SECRET || '',
     uploadDir: env.UPLOAD_DIR || './var/uploads',
     maxUploadMb: Number(env.MAX_UPLOAD_MB || 25)
   };

@@ -19,6 +19,7 @@ const attachmentMaterialVersionMigrationPath = new URL('../../src/db/migrations/
 const loginSecurityMigrationPath = new URL('../../src/db/migrations/016_login_security.sql', import.meta.url);
 const salesWorkMigrationPath = new URL('../../src/db/migrations/017_sales_work.sql', import.meta.url);
 const inquiryInboxMigrationPath = new URL('../../src/db/migrations/018_inquiry_inbox.sql', import.meta.url);
+const inquirySourceReferenceUniqueMigrationPath = new URL('../../src/db/migrations/019_inquiry_source_reference_unique.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -238,4 +239,12 @@ test('inquiry inbox migration creates controlled intake records', async () => {
   assert.match(sql, /converted_opportunity_id bigint REFERENCES opportunities\(id\) ON DELETE SET NULL/);
   assert.match(sql, /CREATE INDEX IF NOT EXISTS inquiries_status_created_idx/);
   assert.match(sql, /CREATE INDEX IF NOT EXISTS inquiries_source_reference_idx/);
+});
+
+test('inquiry source reference migration prevents duplicate external intake', async () => {
+  const sql = await readFile(inquirySourceReferenceUniqueMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS inquiries_source_reference_unique_idx/);
+  assert.match(sql, /ON inquiries\(source, source_reference\)/);
+  assert.match(sql, /WHERE source_reference <> ''/);
 });

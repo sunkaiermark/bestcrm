@@ -93,8 +93,52 @@ export function normalizeWebsiteInquiryPayload(payload = {}) {
   };
 }
 
+export function normalizeChatwootInquiryPayload(payload = {}) {
+  const priority = isInquiryPriority(payload.priority) ? payload.priority : 'normal';
+  const conversationId = text(payload.conversationId || payload.conversation_id || payload.id);
+  return {
+    source: 'chatwoot',
+    sourceReference: text(payload.sourceReference || conversationId),
+    sourceReceivedAt: isoTimestampOrNull(payload.sourceReceivedAt || payload.receivedAt || payload.createdAt),
+    subject: text(payload.subject || payload.title || (conversationId ? `Chatwoot conversation #${conversationId}` : '')),
+    companyName: text(payload.companyName || payload.company),
+    contactName: text(payload.contactName || payload.name || payload.senderName),
+    contactEmail: text(payload.contactEmail || payload.email || payload.senderEmail).toLowerCase(),
+    contactPhone: text(payload.contactPhone || payload.phone || payload.whatsapp || payload.senderPhone),
+    country: text(payload.country),
+    productInterest: text(payload.productInterest || payload.product || payload.productName || payload.interest),
+    requirementText: text(
+      payload.requirementText
+      || payload.handoffSummary
+      || payload.summary
+      || payload.requirement
+      || payload.message
+      || payload.description
+    ),
+    rawPayload: payload && typeof payload === 'object' ? payload : {},
+    priority,
+    status: 'new',
+    assignedUserId: null,
+    matchedCustomerId: null,
+    matchedContactId: null,
+    createdBy: null,
+    reviewNote: ''
+  };
+}
+
 export async function createWebsiteInquiry(inquiryRepository, payload) {
   const normalized = normalizeWebsiteInquiryPayload(payload);
+  if (!normalized.requirementText) {
+    throw new Error('Requirement is required');
+  }
+  return inquiryRepository.createInquiry(normalized);
+}
+
+export async function createChatwootInquiry(inquiryRepository, payload) {
+  const normalized = normalizeChatwootInquiryPayload(payload);
+  if (!normalized.sourceReference) {
+    throw new Error('Conversation reference is required');
+  }
   if (!normalized.requirementText) {
     throw new Error('Requirement is required');
   }

@@ -11,10 +11,12 @@ test('development config can use the local session secret default', () => {
 test('config reads optional inquiry intake secret', () => {
   const config = loadConfig({
     NODE_ENV: 'development',
-    INQUIRY_INTAKE_SECRET: 'website-intake-secret'
+    INQUIRY_INTAKE_SECRET: 'website-intake-secret',
+    CHATWOOT_INQUIRY_INTAKE_SECRET: 'chatwoot-intake-secret'
   });
 
   assert.equal(config.inquiryIntakeSecret, 'website-intake-secret');
+  assert.equal(config.chatwootInquiryIntakeSecret, 'chatwoot-intake-secret');
 });
 
 test('production config requires an explicit session secret', () => {
