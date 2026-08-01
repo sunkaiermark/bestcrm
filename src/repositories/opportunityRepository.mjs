@@ -1,3 +1,5 @@
+import { ARCHIVED_STATUSES } from '../domain/statuses.mjs';
+
 function numberOrNull(value) {
   if (value === null || value === undefined) {
     return null;
@@ -105,6 +107,26 @@ function visibleOpportunityPredicate(userParam) {
   )`;
 }
 
+function statusPlaceholders(params, statuses) {
+  return statuses.map((status) => {
+    params.push(status);
+    return `$${params.length}`;
+  }).join(', ');
+}
+
+function addArchiveScopeFilter(where, params, filter) {
+  if (filter.archiveScope === 'all') {
+    return;
+  }
+  if (filter.archiveScope === 'archived') {
+    where.push(`o.status IN (${statusPlaceholders(params, ARCHIVED_STATUSES)})`);
+    return;
+  }
+  if (!filter.status) {
+    where.push(`o.status NOT IN (${statusPlaceholders(params, ARCHIVED_STATUSES)})`);
+  }
+}
+
 export function createOpportunityRepository(queryTarget) {
   return {
     async listOpportunities(filter = {}) {
@@ -126,6 +148,7 @@ export function createOpportunityRepository(queryTarget) {
         params.push(filter.visibleToUserId);
         where.push(visibleOpportunityPredicate(`$${params.length}`));
       }
+      addArchiveScopeFilter(where, params, filter);
       const result = await queryTarget.query(`
         ${opportunitySelect}
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}

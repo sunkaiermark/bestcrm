@@ -615,6 +615,35 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(detail.text, /\.basic-info-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
 });
 
+test('opportunity list supports active archived and all scopes', async () => {
+  const filters = [];
+  const { agent } = await createLoggedInAgent({
+    opportunityRepository: {
+      async listOpportunities(filter) {
+        filters.push(filter);
+        return [];
+      }
+    }
+  });
+
+  const defaultList = await agent.get('/opportunities');
+  assert.equal(defaultList.status, 200);
+  assert.equal(filters[0].archiveScope, 'active');
+  assert.equal(filters[0].visibleToUserId, 7);
+  assert.match(defaultList.text, /Current opportunities/);
+  assert.match(defaultList.text, /No visible opportunities/);
+
+  const archivedList = await agent.get('/opportunities?archiveScope=archived');
+  assert.equal(archivedList.status, 200);
+  assert.equal(filters[1].archiveScope, 'archived');
+  assert.match(archivedList.text, /<option value="archived" selected>Archived opportunities<\/option>/);
+
+  const allList = await agent.get('/opportunities?archiveScope=all');
+  assert.equal(allList.status, 200);
+  assert.equal(filters[2].archiveScope, 'all');
+  assert.match(allList.text, /<option value="all" selected>All opportunities<\/option>/);
+});
+
 test('opportunity framework text and common actions use selected Chinese language', async () => {
   const { agent } = await createLoggedInAgent({ language: 'zh' });
 

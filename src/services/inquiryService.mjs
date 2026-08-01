@@ -42,6 +42,8 @@ export function inquiryListFilterFor(user, query = {}) {
   const filter = {};
   if (isInquiryStatus(query.status)) {
     filter.status = query.status;
+  } else {
+    filter.excludeStatuses = ['spam', 'archived'];
   }
   if (isInquirySource(query.source)) {
     filter.source = query.source;

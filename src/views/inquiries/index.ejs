@@ -21,7 +21,7 @@
             <label>
               <%= t('status') %>
               <select name="status">
-                <option value=""><%= t('allStatuses') %></option>
+                <option value=""><%= t('activeInquiryStatuses') %></option>
                 <% for (const status of statuses) { %>
                   <option value="<%= status %>"<%= filters.status === status ? ' selected' : '' %>><%= t(`inquiryStatus.${status}`) %></option>
                 <% } %>

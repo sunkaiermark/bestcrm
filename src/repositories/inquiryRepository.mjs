@@ -100,6 +100,17 @@ function addFilter(where, params, clause, value) {
   where.push(clause.replace('?', `$${params.length}`));
 }
 
+function addNotInFilter(where, params, column, values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return;
+  }
+  const placeholders = values.map((value) => {
+    params.push(value);
+    return `$${params.length}`;
+  });
+  where.push(`${column} NOT IN (${placeholders.join(', ')})`);
+}
+
 export function createInquiryRepository(queryTarget) {
   return {
     async listInquiries(filter = {}) {
@@ -108,6 +119,7 @@ export function createInquiryRepository(queryTarget) {
       addFilter(where, params, 'i.status = ?', filter.status);
       addFilter(where, params, 'i.source = ?', filter.source);
       addFilter(where, params, 'i.assigned_user_id = ?', filter.assignedUserId);
+      addNotInFilter(where, params, 'i.status', filter.excludeStatuses);
       if (filter.visibleToUserId) {
         params.push(filter.visibleToUserId);
         where.push(`(i.assigned_user_id = $${params.length} OR i.created_by = $${params.length})`);

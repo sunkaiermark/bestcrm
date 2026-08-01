@@ -77,7 +77,8 @@ test('opportunity repository lists opportunities with customer and contact names
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN contacts pc/);
   assert.match(queryTarget.queries[0].sql, /JOIN users salesperson/);
   assert.match(queryTarget.queries[0].sql, /WHERE o\.salesperson_id = \$1/);
-  assert.deepEqual(queryTarget.queries[0].params, [7]);
+  assert.match(queryTarget.queries[0].sql, /o\.status NOT IN \(\$2, \$3\)/);
+  assert.deepEqual(queryTarget.queries[0].params, [7, STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
 });
 
 test('opportunity repository filters visible opportunities for owners assignees and active team members', async () => {
@@ -95,7 +96,43 @@ test('opportunity repository filters visible opportunities for owners assignees 
   assert.match(queryTarget.queries[0].sql, /om\.opportunity_id = o\.id/);
   assert.match(queryTarget.queries[0].sql, /om\.user_id = \$1/);
   assert.match(queryTarget.queries[0].sql, /om\.is_active = true/);
-  assert.deepEqual(queryTarget.queries[0].params, [8]);
+  assert.match(queryTarget.queries[0].sql, /o\.status NOT IN \(\$2, \$3\)/);
+  assert.deepEqual(queryTarget.queries[0].params, [8, STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
+});
+
+test('opportunity repository excludes archived opportunities by default', async () => {
+  const queryTarget = createFakeQueryTarget([opportunityRow]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  await repository.listOpportunities();
+
+  assert.match(queryTarget.queries[0].sql, /WHERE o\.status NOT IN \(\$1, \$2\)/);
+  assert.deepEqual(queryTarget.queries[0].params, [STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
+});
+
+test('opportunity repository can list only archived opportunities', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    ...opportunityRow,
+    status: STATUSES.CONTRACT_ARCHIVED,
+    archived_at: '2026-07-31T10:00:00.000Z'
+  }]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  const opportunities = await repository.listOpportunities({ archiveScope: 'archived' });
+
+  assert.equal(opportunities[0].status, STATUSES.CONTRACT_ARCHIVED);
+  assert.match(queryTarget.queries[0].sql, /WHERE o\.status IN \(\$1, \$2\)/);
+  assert.deepEqual(queryTarget.queries[0].params, [STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
+});
+
+test('opportunity repository can list all opportunities including archived', async () => {
+  const queryTarget = createFakeQueryTarget([opportunityRow]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  await repository.listOpportunities({ archiveScope: 'all' });
+
+  assert.doesNotMatch(queryTarget.queries[0].sql, /o\.status (?:NOT )?IN/);
+  assert.deepEqual(queryTarget.queries[0].params, []);
 });
 
 test('opportunity repository gets detail with customer and contact names', async () => {

@@ -16,3 +16,8 @@ export const STATUSES = Object.freeze({
   CONTRACT_REJECTED: 'contract_rejected',
   CONTRACT_ARCHIVED: 'contract_archived'
 });
+
+export const ARCHIVED_STATUSES = Object.freeze([
+  STATUSES.LOST_ARCHIVED,
+  STATUSES.CONTRACT_ARCHIVED
+]);

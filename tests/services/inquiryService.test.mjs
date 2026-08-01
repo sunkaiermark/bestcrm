@@ -36,6 +36,10 @@ test('inquiry list filter limits salesperson visibility', () => {
     assignedUserId: 7,
     status: 'spam'
   });
+  assert.deepEqual(inquiryListFilterFor(salesperson, {}), {
+    excludeStatuses: ['spam', 'archived'],
+    visibleToUserId: 7
+  });
 });
 
 test('createInquiry normalizes input and requires requirement text', async () => {

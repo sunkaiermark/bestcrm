@@ -14,11 +14,11 @@ Phase 1 is local CRM-only:
 - Add list, create, detail, review, and convert pages inside BESTCRM.
 - Allow manual inquiry creation for local validation.
 - Convert a reviewed inquiry into a draft opportunity after selecting an existing customer/contact.
+- Poll `sales@sunkaier.com` through the mailbox provider for local validation.
 
 Out of scope for Phase 1:
 
 - Public website form submission.
-- Mailbox polling for `sales@sunkaier.com`.
 - AI auto-creation of customers, contacts, quotes, or final opportunities.
 - Production deployment.
 
@@ -109,12 +109,16 @@ Add a signed public endpoint after the local inbox is validated:
 
 ### sales@sunkaier.com
 
-Add a separate worker after website form integration:
+Use the mailbox provider as the mail server and let BESTCRM poll it:
 
-- API provider if Google Workspace or Microsoft 365 is used.
-- IMAP polling only if no provider API is available.
-- Deduplicate by message id.
+- `sales@sunkaier.com` continues receiving mail at the mailbox provider.
+- BESTCRM runs a separate email intake worker, not an SMTP server.
+- IMAP polling is the default generic provider path.
+- Deduplicate by message id, falling back to mailbox UID when needed.
 - Store email body and attachment metadata on the inquiry before conversion.
+- Keep the worker disabled until IMAP host, account, and app password are configured.
+- Classify messages during import. RFQ, quotation, technical inquiry, proposal review, and relevant equipment terms stay `new`; known Google Ads notifications, newsletters, finance/logistics documents, supplier inventory offers, and SEO outreach become `archived` or `spam`.
+- The inquiry inbox default view excludes `archived` and `spam`, while explicit status filters still allow review of filtered records.
 
 ### Chatwoot
 

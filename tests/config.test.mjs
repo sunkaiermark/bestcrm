@@ -12,11 +12,33 @@ test('config reads optional inquiry intake secret', () => {
   const config = loadConfig({
     NODE_ENV: 'development',
     INQUIRY_INTAKE_SECRET: 'website-intake-secret',
-    CHATWOOT_INQUIRY_INTAKE_SECRET: 'chatwoot-intake-secret'
+    CHATWOOT_INQUIRY_INTAKE_SECRET: 'chatwoot-intake-secret',
+    EMAIL_INTAKE_ENABLED: 'true',
+    EMAIL_INTAKE_HOST: 'imap.example.com',
+    EMAIL_INTAKE_PORT: '993',
+    EMAIL_INTAKE_SECURE: 'true',
+    EMAIL_INTAKE_USER: 'sales@sunkaier.com',
+    EMAIL_INTAKE_PASSWORD: 'app-password',
+    EMAIL_INTAKE_MAILBOX: 'INBOX',
+    EMAIL_INTAKE_POLL_INTERVAL_MS: '300000',
+    EMAIL_INTAKE_MAX_MESSAGES: '20',
+    EMAIL_INTAKE_MARK_SEEN: 'true'
   });
 
   assert.equal(config.inquiryIntakeSecret, 'website-intake-secret');
   assert.equal(config.chatwootInquiryIntakeSecret, 'chatwoot-intake-secret');
+  assert.deepEqual(config.emailIntake, {
+    enabled: true,
+    host: 'imap.example.com',
+    port: 993,
+    secure: true,
+    user: 'sales@sunkaier.com',
+    password: 'app-password',
+    mailbox: 'INBOX',
+    pollIntervalMs: 300000,
+    maxMessages: 20,
+    markSeen: true
+  });
 });
 
 test('production config requires an explicit session secret', () => {

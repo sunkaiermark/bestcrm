@@ -96,6 +96,16 @@ test('inquiry repository lists mapped inquiries with visibility filter', async (
   assert.deepEqual(queryTarget.queries[0].params, ['new', 'email', 7]);
 });
 
+test('inquiry repository excludes filtered statuses when requested', async () => {
+  const queryTarget = createFakeQueryTarget([inquiryRow]);
+  const repository = createInquiryRepository(queryTarget);
+
+  await repository.listInquiries({ excludeStatuses: ['spam', 'archived'] });
+
+  assert.match(queryTarget.queries[0].sql, /i\.status NOT IN \(\$1, \$2\)/);
+  assert.deepEqual(queryTarget.queries[0].params, ['spam', 'archived']);
+});
+
 test('inquiry repository creates review and conversion updates', async () => {
   const queryTarget = createFakeQueryTarget([
     [{ ...inquiryRow, id: '12' }],

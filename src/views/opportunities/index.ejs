@@ -5,6 +5,18 @@
         </header>
 
         <section class="list-section">
+          <form class="form-panel opportunity-filter-panel" method="get" action="/opportunities">
+            <label>
+              <%= t('opportunityScope') %>
+              <select name="archiveScope">
+                <option value="active"<%= archiveScope === 'active' ? ' selected' : '' %>><%= t('currentOpportunities') %></option>
+                <option value="archived"<%= archiveScope === 'archived' ? ' selected' : '' %>><%= t('archivedOpportunities') %></option>
+                <option value="all"<%= archiveScope === 'all' ? ' selected' : '' %>><%= t('allOpportunities') %></option>
+              </select>
+            </label>
+            <button type="submit"><%= t('filter') %></button>
+          </form>
+
           <div class="list-body">
             <table class="list-table opportunity-list-table">
               <thead>
@@ -34,6 +46,9 @@
                 <% } %>
               </tbody>
             </table>
+            <% if (!opportunities.length) { %>
+              <p class="empty"><%= t('noVisibleOpportunities') %></p>
+            <% } %>
           </div>
         </section>
 <%- include('../partials/app-end') %>
