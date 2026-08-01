@@ -6,6 +6,10 @@ function requiredText(value) {
   return String(value || '').trim();
 }
 
+function shouldStoreAttachmentsForInquiry(inquiry) {
+  return !['archived', 'spam'].includes(inquiry?.status);
+}
+
 export function validateEmailIntakeConfig(config) {
   const emailIntake = config.emailIntake || {};
   const missing = [];
@@ -84,13 +88,22 @@ export async function pollEmailInquiries({
         continue;
       }
       const inquiry = await inquiryRepository.createInquiry(normalized);
-      const attachments = await storeEmailInquiryAttachments({
-        inquiryAttachmentRepository,
-        inquiryId: inquiry.id,
-        attachments: parsedEmail.attachments,
-        uploadDir: config.uploadDir,
-        maxUploadMb: config.maxUploadMb
-      });
+      const attachments = shouldStoreAttachmentsForInquiry(inquiry)
+        ? await storeEmailInquiryAttachments({
+          inquiryAttachmentRepository,
+          inquiryId: inquiry.id,
+          attachments: parsedEmail.attachments,
+          uploadDir: config.uploadDir,
+          maxUploadMb: config.maxUploadMb
+        })
+        : {
+          stored: [],
+          skipped: parsedEmail.attachments.map((attachment, index) => ({
+            sourceIndex: index,
+            reason: 'non_inquiry_status',
+            status: inquiry.status
+          }))
+        };
       if (markSeen) {
         await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
       }

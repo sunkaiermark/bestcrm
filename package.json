@@ -11,7 +11,8 @@
     "db:seed": "node src/db/seed.mjs",
     "email:poll": "node scripts/poll-email-inquiries.mjs",
     "email:poll:once": "node scripts/poll-email-inquiries.mjs --once",
-    "email:classify": "node scripts/classify-email-inquiries.mjs"
+    "email:classify": "node scripts/classify-email-inquiries.mjs",
+    "email:cleanup-attachments": "node scripts/cleanup-email-inquiry-attachments.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

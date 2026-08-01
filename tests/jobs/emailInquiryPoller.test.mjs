@@ -65,6 +65,30 @@ function rawEmailWithAttachment(id) {
   ].join('\r\n'));
 }
 
+function rawGoogleAdsEmailWithAttachment(id) {
+  return Buffer.from([
+    `Message-ID: <${id}@example.com>`,
+    'Date: Sat, 01 Aug 2026 04:00:00 +0000',
+    'From: Google Ads <ads-noreply@google.com>',
+    'To: sales@sunkaier.com',
+    'Subject: Google Ads account notice',
+    'MIME-Version: 1.0',
+    'Content-Type: multipart/mixed; boundary="bestcrm-test-boundary"',
+    '',
+    '--bestcrm-test-boundary',
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    'Google Ads notification.',
+    '--bestcrm-test-boundary',
+    'Content-Type: application/pdf; name="notice.pdf"',
+    'Content-Disposition: attachment; filename="notice.pdf"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from('not-an-inquiry').toString('base64'),
+    '--bestcrm-test-boundary--'
+  ].join('\r\n'));
+}
+
 test('validateEmailIntakeConfig requires database and IMAP credentials', () => {
   assert.throws(
     () => validateEmailIntakeConfig({ databaseUrl: '', emailIntake: {} }),
@@ -212,6 +236,58 @@ test('pollEmailInquiries stores email attachment files in the inquiry attachment
     assert.match(createdAttachments[0].storedPath, /^email-inquiries\//);
     const stored = await readFile(path.resolve(uploadDir, createdAttachments[0].storedPath), 'utf8');
     assert.equal(stored, 'fake-pdf-content');
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('pollEmailInquiries skips attachment storage for archived or spam messages', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-skip-'));
+  const client = {
+    async connect() {},
+    async mailboxOpen() {},
+    async search() {
+      return [401];
+    },
+    async fetchOne(uid) {
+      return { uid: Number(uid), source: rawGoogleAdsEmailWithAttachment(`notice-${uid}`) };
+    },
+    async messageFlagsAdd() {},
+    async logout() {}
+  };
+  const created = [];
+  const attachmentCalls = [];
+  const inquiryRepository = {
+    async createInquiry(input) {
+      created.push(input);
+      return { id: 98, ...input };
+    }
+  };
+  const inquiryAttachmentRepository = {
+    async listByInquiry() {
+      attachmentCalls.push(['listByInquiry']);
+      return [];
+    },
+    async createAttachment(input) {
+      attachmentCalls.push(['createAttachment', input]);
+      return { id: 1, ...input };
+    }
+  };
+
+  try {
+    const result = await pollEmailInquiries({
+      config: config({ uploadDir }),
+      inquiryRepository,
+      inquiryAttachmentRepository,
+      imapClientFactory: () => client
+    });
+
+    assert.equal(created[0].status, 'archived');
+    assert.equal(created[0].rawPayload.emailFilter.reason, 'google_ads_notification');
+    assert.deepEqual(attachmentCalls, []);
+    assert.deepEqual(result.imported, [
+      { uid: 401, inquiryId: 98, duplicate: false, attachments: 0, skippedAttachments: 1 }
+    ]);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
