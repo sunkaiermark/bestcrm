@@ -1,12 +1,18 @@
 <%- include('../partials/app-start', { title: `${attachment.originalName} - ${t('preview')} - BESTCRM`, activeNav }) %>
+        <%
+          const previewContextLabelKey = typeof contextLabelKey !== 'undefined' ? contextLabelKey : 'opportunities';
+          const previewContextText = typeof contextText !== 'undefined' ? contextText : `${opportunity.opportunityNo} - ${opportunity.title}`;
+          const previewBackUrl = typeof backUrl !== 'undefined' ? backUrl : `/opportunities/${opportunity.id}`;
+          const previewBackLabelKey = typeof backLabelKey !== 'undefined' ? backLabelKey : 'backToOpportunity';
+        %>
         <header class="page-header">
           <div>
-            <div class="eyebrow"><%= t('opportunities') %></div>
+            <div class="eyebrow"><%= t(previewContextLabelKey) %></div>
             <h1><%= t('cadPreview') %></h1>
-            <div class="muted"><%= opportunity.opportunityNo %> - <%= opportunity.title %></div>
+            <div class="muted"><%= previewContextText %></div>
           </div>
           <div class="page-actions">
-            <a class="quick-action secondary-action" href="/opportunities/<%= opportunity.id %>"><%= t('backToOpportunity') %></a>
+            <a class="quick-action secondary-action" href="<%= previewBackUrl %>"><%= t(previewBackLabelKey) %></a>
             <a class="quick-action" href="<%= downloadUrl %>"><%= t('download') %></a>
           </div>
         </header>

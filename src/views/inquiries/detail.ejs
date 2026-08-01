@@ -42,6 +42,41 @@
         </section>
 
         <section class="content-section">
+          <h2><%= t('inquiryAttachments') %></h2>
+          <% if ((inquiryAttachments || []).length > 0) { %>
+            <div class="table-scroll">
+              <table class="data-table">
+                <thead>
+                  <tr>
+                    <th scope="col"><%= t('fileName') %></th>
+                    <th scope="col"><%= t('fileSize') %></th>
+                    <th scope="col"><%= t('receivedAt') %></th>
+                    <th scope="col"><%= t('actions') %></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% for (const attachment of inquiryAttachments) { %>
+                    <tr>
+                      <td><%= attachment.originalName %></td>
+                      <td><%= attachment.fileSize %></td>
+                      <td><%= attachment.uploadedAt || '' %></td>
+                      <td>
+                        <div class="inline-actions">
+                          <a href="/inquiries/<%= inquiry.id %>/attachments/<%= attachment.id %>/preview"><%= t('preview') %></a>
+                          <a href="/inquiries/<%= inquiry.id %>/attachments/<%= attachment.id %>/download"><%= t('download') %></a>
+                        </div>
+                      </td>
+                    </tr>
+                  <% } %>
+                </tbody>
+              </table>
+            </div>
+          <% } else { %>
+            <p class="muted"><%= t('noInquiryAttachments') %></p>
+          <% } %>
+        </section>
+
+        <section class="content-section">
           <h2><%= t('reviewInquiry') %></h2>
           <form class="form-panel" method="post" action="/inquiries/<%= inquiry.id %>/review">
             <%- csrfField() %>

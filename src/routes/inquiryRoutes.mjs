@@ -1,7 +1,9 @@
 import { Router } from 'express';
+import { readFile } from 'node:fs/promises';
 import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
+import { resolveStoredPath } from '../services/attachmentFileService.mjs';
 import {
   canAccessInquiryInbox,
   canViewInquiry,
@@ -11,6 +13,8 @@ import {
   inquiryListFilterFor,
   updateInquiryReview
 } from '../services/inquiryService.mjs';
+import { attachmentPreviewKind, extractDocxPlainText, renderDxfPreview } from '../utils/attachmentPreview.mjs';
+import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
 
 function forbidden(res) {
   res.status(403).send('Forbidden');
@@ -93,10 +97,13 @@ function handleInquiryError(error, res, next) {
 
 export function inquiryRoutes({
   inquiryRepository,
+  inquiryAttachmentRepository,
   customerRepository,
   contactRepository,
   opportunityRepository,
-  userRepository
+  attachmentRepository,
+  userRepository,
+  uploadDir = './var/uploads'
 }) {
   const router = Router();
 
@@ -156,8 +163,12 @@ export function inquiryRoutes({
         return;
       }
       const options = await loadCrmOptions({ customerRepository, contactRepository, userRepository }, req.currentUser);
+      const inquiryAttachments = typeof inquiryAttachmentRepository?.listByInquiry === 'function'
+        ? await inquiryAttachmentRepository.listByInquiry(inquiry.id)
+        : [];
       renderInquiryDetail(res, {
         inquiry,
+        inquiryAttachments,
         ...options
       });
     } catch (error) {
@@ -190,14 +201,104 @@ export function inquiryRoutes({
       }
       const opportunity = await convertInquiryToOpportunity({
         inquiryRepository,
+        inquiryAttachmentRepository,
         customerRepository,
         contactRepository,
-        opportunityRepository
+        opportunityRepository,
+        attachmentRepository,
+        uploadDir
       }, req.currentUser, inquiry, req.body);
       res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
       handleInquiryError(error, res, next);
     }
+  });
+
+  async function sendInquiryAttachment(req, res, next, disposition) {
+    try {
+      const inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
+      if (!inquiry) {
+        return;
+      }
+      const attachment = await inquiryAttachmentRepository.findById(req.params.attachmentId);
+      if (!attachment || attachment.inquiryId !== inquiry.id) {
+        res.status(404).send('Attachment not found');
+        return;
+      }
+      const filePath = resolveStoredPath(uploadDir, attachment.storedPath);
+      if (!filePath) {
+        res.status(404).send('Attachment not found');
+        return;
+      }
+      if (disposition === 'download') {
+        res.type(attachment.mimeType || 'application/octet-stream');
+        res.setHeader('Content-Disposition', attachmentContentDisposition(attachment.originalName));
+        res.sendFile(filePath);
+        return;
+      }
+      const kind = attachmentPreviewKind(attachment);
+      const downloadUrl = `/inquiries/${inquiry.id}/attachments/${attachment.id}/download`;
+      const previewContext = {
+        activeNav: 'inquiries',
+        inquiry,
+        attachment,
+        downloadUrl,
+        contextLabelKey: 'inquiries',
+        contextText: inquiry.subject || inquiry.companyName || `${res.locals.t('inquiry')} #${inquiry.id}`,
+        backUrl: `/inquiries/${inquiry.id}`,
+        backLabelKey: 'backToInquiry'
+      };
+      if (kind === 'unsupported-dwg') {
+        res.status(200).render('attachments/unsupported-preview', {
+          ...previewContext,
+          messageKey: 'dwgPreviewRequiresDxfOrPdf'
+        });
+        return;
+      }
+      if (kind === 'unsupported-doc') {
+        res.status(200).render('attachments/unsupported-preview', {
+          ...previewContext,
+          messageKey: 'docPreviewRequiresDocx'
+        });
+        return;
+      }
+      if (kind === 'dxf') {
+        const dxfText = await readFile(filePath, 'utf8');
+        res.status(200).render('attachments/dxf-preview', {
+          ...previewContext,
+          preview: renderDxfPreview(dxfText)
+        });
+        return;
+      }
+      if (kind === 'docx') {
+        const docxBuffer = await readFile(filePath);
+        res.status(200).render('attachments/docx-preview', {
+          ...previewContext,
+          paragraphs: extractDocxPlainText(docxBuffer)
+        });
+        return;
+      }
+      if (kind === 'download-only') {
+        res.status(200).render('attachments/unsupported-preview', {
+          ...previewContext,
+          messageKey: 'previewNotAvailableDownload'
+        });
+        return;
+      }
+      res.type(attachment.mimeType || 'application/octet-stream');
+      res.setHeader('Content-Disposition', inlineContentDisposition(attachment.originalName));
+      res.sendFile(filePath);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  router.get('/inquiries/:id/attachments/:attachmentId/download', (req, res, next) => {
+    sendInquiryAttachment(req, res, next, 'download');
+  });
+
+  router.get('/inquiries/:id/attachments/:attachmentId/preview', (req, res, next) => {
+    sendInquiryAttachment(req, res, next, 'preview');
   });
 
   return router;

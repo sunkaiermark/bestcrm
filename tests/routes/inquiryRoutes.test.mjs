@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
@@ -44,7 +47,10 @@ async function createLoggedInAgent(options = {}) {
   const {
     user: userOverrides = {},
     language,
-    inquiryRepository: inquiryRepositoryOverrides = {}
+    inquiryRepository: inquiryRepositoryOverrides = {},
+    inquiryAttachmentRepository: inquiryAttachmentRepositoryOverrides = {},
+    attachmentRepository: attachmentRepositoryOverrides = {},
+    uploadDir = './var/uploads'
   } = options;
   const user = {
     id: 7,
@@ -99,6 +105,21 @@ async function createLoggedInAgent(options = {}) {
       },
       ...inquiryRepositoryOverrides
     },
+    inquiryAttachmentRepository: {
+      async listByInquiry(inquiryId) {
+        calls.push(['listInquiryAttachments', Number(inquiryId)]);
+        return [];
+      },
+      async findById(id) {
+        calls.push(['findInquiryAttachment', Number(id)]);
+        return null;
+      },
+      async createAttachment(input) {
+        calls.push(['createInquiryAttachment', input]);
+        return { id: 50, ...input };
+      },
+      ...inquiryAttachmentRepositoryOverrides
+    },
     customerRepository: {
       async listCustomers(filter) {
         calls.push(['listCustomers', filter]);
@@ -124,7 +145,15 @@ async function createLoggedInAgent(options = {}) {
         calls.push(['createOpportunity', input]);
         return { id: 40, ...input };
       }
-    }
+    },
+    attachmentRepository: {
+      async createAttachment(input) {
+        calls.push(['createAttachment', input]);
+        return { id: 60, ...input };
+      },
+      ...attachmentRepositoryOverrides
+    },
+    uploadDir
   });
   const agent = request.agent(app);
   if (language) {
@@ -249,6 +278,52 @@ test('inquiry detail supports review and conversion forms', async () => {
   assert.match(response.text, /name="customerId"/);
 });
 
+test('inquiry detail shows imported email attachments with preview and download links', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-inquiry-route-'));
+  const storedPath = 'email-inquiries/process.txt';
+  const fullPath = path.join(uploadDir, storedPath);
+  const inquiryAttachment = {
+    id: 71,
+    inquiryId: 11,
+    sourceIndex: 0,
+    originalName: 'process.txt',
+    storedPath,
+    mimeType: 'text/plain',
+    fileSize: 18,
+    uploadedAt: '2026-08-01T05:00:00.000Z'
+  };
+
+  try {
+    await mkdir(path.dirname(fullPath), { recursive: true });
+    await writeFile(fullPath, 'process attachment', 'utf8');
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      inquiryAttachmentRepository: {
+        async listByInquiry() {
+          return [inquiryAttachment];
+        },
+        async findById(id) {
+          return Number(id) === inquiryAttachment.id ? inquiryAttachment : null;
+        }
+      }
+    });
+
+    const detail = await agent.get('/inquiries/11');
+    assert.equal(detail.status, 200);
+    assert.match(detail.text, /Inquiry Attachments/);
+    assert.match(detail.text, /process\.txt/);
+    assert.match(detail.text, /\/inquiries\/11\/attachments\/71\/preview/);
+    assert.match(detail.text, /\/inquiries\/11\/attachments\/71\/download/);
+
+    const download = await agent.get('/inquiries/11/attachments/71/download');
+    assert.equal(download.status, 200);
+    assert.match(download.headers['content-disposition'], /attachment/);
+    assert.equal(download.text, 'process attachment');
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('salesperson reviews inquiry and converts it to opportunity', async () => {
   const { agent, calls } = await createLoggedInAgent();
 
@@ -310,4 +385,72 @@ test('salesperson reviews inquiry and converts it to opportunity', async () => {
       reviewedBy: 7
     }]
   ]);
+});
+
+test('converting an inquiry copies imported email attachments to opportunity requirement files', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-inquiry-convert-'));
+  const storedPath = 'email-inquiries/source-process.pdf';
+  const fullPath = path.join(uploadDir, storedPath);
+  const copiedAttachments = [];
+  const inquiryAttachment = {
+    id: 72,
+    inquiryId: 11,
+    sourceIndex: 0,
+    originalName: 'source-process.pdf',
+    storedPath,
+    mimeType: 'application/pdf',
+    fileSize: 16,
+    uploadedAt: '2026-08-01T05:00:00.000Z'
+  };
+
+  try {
+    await mkdir(path.dirname(fullPath), { recursive: true });
+    await writeFile(fullPath, 'source-pdf-bytes', 'utf8');
+    const { agent, calls } = await createLoggedInAgent({
+      uploadDir,
+      inquiryAttachmentRepository: {
+        async listByInquiry(inquiryId) {
+          calls.push(['listInquiryAttachments', Number(inquiryId)]);
+          return [inquiryAttachment];
+        }
+      },
+      attachmentRepository: {
+        async createAttachment(input) {
+          calls.push(['createAttachment', input]);
+          copiedAttachments.push(input);
+          return { id: 90, ...input };
+        }
+      }
+    });
+
+    const converted = await agent
+      .post('/inquiries/11/convert')
+      .type('form')
+      .send({
+        customerId: '20',
+        primaryContactId: '30',
+        title: 'Acme evaporator project',
+        requirement: 'Need wastewater evaporation package',
+        projectType: 'Evaporator'
+      });
+
+    assert.equal(converted.status, 302);
+    assert.equal(converted.headers.location, '/opportunities/40');
+    assert.equal(copiedAttachments.length, 1);
+    assert.equal(copiedAttachments[0].opportunityId, 40);
+    assert.equal(copiedAttachments[0].category, 'requirement');
+    assert.equal(copiedAttachments[0].originalName, 'source-process.pdf');
+    assert.equal(copiedAttachments[0].mimeType, 'application/pdf');
+    assert.equal(copiedAttachments[0].uploadedBy, 7);
+    assert.match(copiedAttachments[0].storedPath, /^converted-inquiries\//);
+    const copied = await readFile(path.resolve(uploadDir, copiedAttachments[0].storedPath), 'utf8');
+    assert.equal(copied, 'source-pdf-bytes');
+    assert.deepEqual(calls.filter((call) => ['createOpportunity', 'createAttachment', 'markConverted'].includes(call[0])).map((call) => call[0]), [
+      'createOpportunity',
+      'createAttachment',
+      'markConverted'
+    ]);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
 });

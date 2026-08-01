@@ -1,5 +1,6 @@
 import { ImapFlow } from 'imapflow';
-import { parseEmailInquirySource } from '../services/emailInquiryService.mjs';
+import { storeEmailInquiryAttachments } from '../services/emailInquiryAttachmentService.mjs';
+import { parseEmailInquirySourceWithAttachments } from '../services/emailInquiryService.mjs';
 
 function requiredText(value) {
   return String(value || '').trim();
@@ -47,6 +48,7 @@ async function fetchMessage(client, uid) {
 export async function pollEmailInquiries({
   config,
   inquiryRepository,
+  inquiryAttachmentRepository,
   imapClientFactory = createEmailImapClient,
   logger = console
 }) {
@@ -71,23 +73,33 @@ export async function pollEmailInquiries({
         logger.warn?.(`Skipping email UID ${uid}: missing source`);
         continue;
       }
-      const normalized = await parseEmailInquirySource(message.source, {
+      const parsedEmail = await parseEmailInquirySourceWithAttachments(message.source, {
         uid: message.uid || uid,
         mailbox,
         internalDate: message.internalDate
       });
+      const normalized = parsedEmail.inquiry;
       if (!normalized.sourceReference || !normalized.requirementText) {
         logger.warn?.(`Skipping email UID ${uid}: missing required inquiry fields`);
         continue;
       }
       const inquiry = await inquiryRepository.createInquiry(normalized);
+      const attachments = await storeEmailInquiryAttachments({
+        inquiryAttachmentRepository,
+        inquiryId: inquiry.id,
+        attachments: parsedEmail.attachments,
+        uploadDir: config.uploadDir,
+        maxUploadMb: config.maxUploadMb
+      });
       if (markSeen) {
         await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
       }
       imported.push({
         uid,
         inquiryId: inquiry.id,
-        duplicate: Boolean(inquiry.wasDuplicate)
+        duplicate: Boolean(inquiry.wasDuplicate),
+        attachments: attachments.stored.length,
+        skippedAttachments: attachments.skipped.length
       });
     }
   } finally {

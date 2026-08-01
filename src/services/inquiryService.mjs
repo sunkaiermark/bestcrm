@@ -2,6 +2,7 @@ import { INQUIRY_PRIORITIES, INQUIRY_SOURCES, INQUIRY_STATUSES, isInquiryPriorit
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
 import { canMaintainCustomer } from './customerService.mjs';
+import { copyInquiryAttachmentsToOpportunity } from './emailInquiryAttachmentService.mjs';
 import { createOpportunityDraft } from './opportunityService.mjs';
 
 function forbidden() {
@@ -171,6 +172,14 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     deliveryCycle: input.deliveryCycle,
     expectedBidDate: input.expectedBidDate,
     status: STATUSES.DRAFT
+  });
+  await copyInquiryAttachmentsToOpportunity({
+    inquiryAttachmentRepository: repositories.inquiryAttachmentRepository,
+    attachmentRepository: repositories.attachmentRepository,
+    inquiryId: inquiry.id,
+    opportunityId: opportunity.id,
+    actor,
+    uploadDir: repositories.uploadDir || './var/uploads'
   });
   await repositories.inquiryRepository.markConverted(inquiry.id, {
     matchedCustomerId: customerId,

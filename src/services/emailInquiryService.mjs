@@ -132,6 +132,14 @@ export async function parseEmailInquirySource(source, meta = {}) {
   return normalizeEmailInquiryPayload(parsed, meta);
 }
 
+export async function parseEmailInquirySourceWithAttachments(source, meta = {}) {
+  const parsed = await simpleParser(source);
+  return {
+    inquiry: normalizeEmailInquiryPayload(parsed, meta),
+    attachments: Array.isArray(parsed.attachments) ? parsed.attachments : []
+  };
+}
+
 export async function createEmailInquiry(inquiryRepository, parsed, meta = {}) {
   const normalized = normalizeEmailInquiryPayload(parsed, meta);
   if (!normalized.sourceReference) {

@@ -1,6 +1,7 @@
 import { setTimeout as delay } from 'node:timers/promises';
 import { loadConfig } from '../src/config.mjs';
 import { createPool } from '../src/db/pool.mjs';
+import { createInquiryAttachmentRepository } from '../src/repositories/inquiryAttachmentRepository.mjs';
 import { createInquiryRepository } from '../src/repositories/inquiryRepository.mjs';
 import { pollEmailInquiries } from '../src/jobs/emailInquiryPoller.mjs';
 
@@ -14,6 +15,7 @@ if (!config.emailIntake.enabled) {
 
 const pool = createPool(config);
 const inquiryRepository = createInquiryRepository(pool);
+const inquiryAttachmentRepository = createInquiryAttachmentRepository(pool);
 let stopping = false;
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
@@ -25,7 +27,8 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
 async function runOnce() {
   const result = await pollEmailInquiries({
     config,
-    inquiryRepository
+    inquiryRepository,
+    inquiryAttachmentRepository
   });
   console.log(JSON.stringify({
     event: 'email_inquiry_poll_complete',

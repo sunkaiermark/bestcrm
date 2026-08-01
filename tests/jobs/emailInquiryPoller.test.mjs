@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import {
   pollEmailInquiries,
   validateEmailIntakeConfig
@@ -18,7 +21,9 @@ function config(overrides = {}) {
       maxMessages: 10,
       markSeen: true,
       ...overrides
-    }
+    },
+    uploadDir: overrides.uploadDir || './var/uploads',
+    maxUploadMb: overrides.maxUploadMb || 25
   };
 }
 
@@ -32,6 +37,31 @@ function rawEmail(id, subject = 'RFQ') {
     '',
     'Company: Acme Co',
     'Need quote.'
+  ].join('\r\n'));
+}
+
+function rawEmailWithAttachment(id) {
+  return Buffer.from([
+    `Message-ID: <${id}@example.com>`,
+    'Date: Sat, 01 Aug 2026 04:00:00 +0000',
+    'From: Alice <alice@example.com>',
+    'To: sales@sunkaier.com',
+    'Subject: RFQ with attachment',
+    'MIME-Version: 1.0',
+    'Content-Type: multipart/mixed; boundary="bestcrm-test-boundary"',
+    '',
+    '--bestcrm-test-boundary',
+    'Content-Type: text/plain; charset=utf-8',
+    '',
+    'Company: Acme Co',
+    'Need quote with attached process data.',
+    '--bestcrm-test-boundary',
+    'Content-Type: application/pdf; name="process.pdf"',
+    'Content-Disposition: attachment; filename="process.pdf"',
+    'Content-Transfer-Encoding: base64',
+    '',
+    Buffer.from('fake-pdf-content').toString('base64'),
+    '--bestcrm-test-boundary--'
   ].join('\r\n'));
 }
 
@@ -87,8 +117,8 @@ test('pollEmailInquiries imports unseen messages and marks them seen', async () 
   assert.deepEqual(result, {
     scanned: 2,
     imported: [
-      { uid: 101, inquiryId: 11, duplicate: false },
-      { uid: 102, inquiryId: 12, duplicate: false }
+      { uid: 101, inquiryId: 11, duplicate: false, attachments: 0, skippedAttachments: 0 },
+      { uid: 102, inquiryId: 12, duplicate: false, attachments: 0, skippedAttachments: 0 }
     ]
   });
   assert.deepEqual(calls.filter((call) => call[0] === 'messageFlagsAdd'), [
@@ -128,6 +158,61 @@ test('pollEmailInquiries respects maxMessages and markSeen false', async () => {
     imapClientFactory: () => client
   });
 
-  assert.deepEqual(result.imported, [{ uid: 201, inquiryId: 201, duplicate: true }]);
+  assert.deepEqual(result.imported, [{ uid: 201, inquiryId: 201, duplicate: true, attachments: 0, skippedAttachments: 0 }]);
   assert.deepEqual(seen, []);
+});
+
+test('pollEmailInquiries stores email attachment files in the inquiry attachment repository', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-'));
+  const createdAttachments = [];
+  const client = {
+    async connect() {},
+    async mailboxOpen() {},
+    async search() {
+      return [301];
+    },
+    async fetchOne(uid) {
+      return { uid: Number(uid), source: rawEmailWithAttachment(`rfq-${uid}`) };
+    },
+    async messageFlagsAdd() {},
+    async logout() {}
+  };
+  const inquiryRepository = {
+    async createInquiry(input) {
+      return { id: 88, ...input };
+    }
+  };
+  const inquiryAttachmentRepository = {
+    async listByInquiry() {
+      return [];
+    },
+    async createAttachment(input) {
+      createdAttachments.push(input);
+      return { id: createdAttachments.length, ...input };
+    }
+  };
+
+  try {
+    const result = await pollEmailInquiries({
+      config: config({ uploadDir }),
+      inquiryRepository,
+      inquiryAttachmentRepository,
+      imapClientFactory: () => client
+    });
+
+    assert.deepEqual(result.imported, [
+      { uid: 301, inquiryId: 88, duplicate: false, attachments: 1, skippedAttachments: 0 }
+    ]);
+    assert.equal(createdAttachments.length, 1);
+    assert.equal(createdAttachments[0].inquiryId, 88);
+    assert.equal(createdAttachments[0].sourceIndex, 0);
+    assert.equal(createdAttachments[0].originalName, 'process.pdf');
+    assert.equal(createdAttachments[0].mimeType, 'application/pdf');
+    assert.equal(createdAttachments[0].fileSize, 'fake-pdf-content'.length);
+    assert.match(createdAttachments[0].storedPath, /^email-inquiries\//);
+    const stored = await readFile(path.resolve(uploadDir, createdAttachments[0].storedPath), 'utf8');
+    assert.equal(stored, 'fake-pdf-content');
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
 });
