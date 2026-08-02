@@ -272,6 +272,10 @@ test('inquiry detail supports review and conversion forms', async () => {
   assert.equal(response.status, 200);
   assert.match(response.text, /Inquiry Detail/);
   assert.match(response.text, /Need wastewater evaporation package/);
+  assert.match(response.text, /class="detail-text-cell">Need wastewater evaporation package/);
+  assert.match(response.text, /\.detail-table\s*\{[\s\S]*table-layout:\s*fixed;/);
+  assert.match(response.text, /\.detail-table td\s*\{[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*word-break:\s*break-word;/);
+  assert.match(response.text, /\.detail-text-cell\s*\{[\s\S]*white-space:\s*pre-wrap;/);
   assert.match(response.text, /action="\/inquiries\/11\/review"/);
   assert.match(response.text, /action="\/inquiries\/11\/convert"/);
   assert.match(response.text, /name="matchedCustomerId"/);

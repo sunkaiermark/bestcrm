@@ -527,6 +527,7 @@
       .detail-table {
         background: rgba(255, 255, 255, 0.38);
         border: 1px solid var(--line);
+        table-layout: fixed;
         width: 100%;
       }
 
@@ -539,6 +540,16 @@
       .detail-table tr:last-child th,
       .detail-table tr:last-child td {
         border-bottom: 0;
+      }
+
+      .detail-table td {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        word-break: break-word;
+      }
+
+      .detail-text-cell {
+        white-space: pre-wrap;
       }
 
       .detail-table th {

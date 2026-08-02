@@ -34,8 +34,8 @@
             <table class="detail-table detail-table-wide">
               <tbody>
                 <tr><th scope="row"><%= t('productInterest') %></th><td><%= inquiry.productInterest || '' %></td></tr>
-                <tr><th scope="row"><%= t('requirement') %></th><td><%= inquiry.requirementText || '' %></td></tr>
-                <tr><th scope="row"><%= t('reviewNote') %></th><td><%= inquiry.reviewNote || '' %></td></tr>
+                <tr><th scope="row"><%= t('requirement') %></th><td class="detail-text-cell"><%= inquiry.requirementText || '' %></td></tr>
+                <tr><th scope="row"><%= t('reviewNote') %></th><td class="detail-text-cell"><%= inquiry.reviewNote || '' %></td></tr>
               </tbody>
             </table>
           </div>
