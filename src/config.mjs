@@ -44,6 +44,32 @@ export function loadConfig(env = process.env) {
       maxMessages: numberEnv(env.EMAIL_INTAKE_MAX_MESSAGES, 20),
       markSeen: booleanEnv(env.EMAIL_INTAKE_MARK_SEEN, true)
     },
+    notificationDelivery: {
+      enabled: booleanEnv(env.NOTIFICATION_DELIVERY_ENABLED, false),
+      pollIntervalMs: numberEnv(env.NOTIFICATION_DELIVERY_POLL_INTERVAL_MS, 10 * 1000),
+      batchSize: numberEnv(env.NOTIFICATION_DELIVERY_BATCH_SIZE, 20),
+      webPush: {
+        publicKey: env.WEB_PUSH_PUBLIC_KEY || '',
+        privateKey: env.WEB_PUSH_PRIVATE_KEY || '',
+        subject: env.WEB_PUSH_SUBJECT || 'mailto:sales@sunkaier.com'
+      },
+      smtp: {
+        host: env.SMTP_HOST || '',
+        port: numberEnv(env.SMTP_PORT, booleanEnv(env.SMTP_SECURE, true) ? 465 : 587),
+        secure: booleanEnv(env.SMTP_SECURE, true),
+        user: env.SMTP_USER || '',
+        password: env.SMTP_PASSWORD || '',
+        from: env.SMTP_FROM || 'BESTCRM <sales@sunkaier.com>'
+      },
+      sms: {
+        secretId: env.TENCENT_SMS_SECRET_ID || '',
+        secretKey: env.TENCENT_SMS_SECRET_KEY || '',
+        region: env.TENCENT_SMS_REGION || 'ap-guangzhou',
+        sdkAppId: env.TENCENT_SMS_SDK_APP_ID || '',
+        signName: env.TENCENT_SMS_SIGN_NAME || '',
+        templateId: env.TENCENT_SMS_TEMPLATE_ID || ''
+      }
+    },
     uploadDir: env.UPLOAD_DIR || './var/uploads',
     maxUploadMb: numberEnv(env.MAX_UPLOAD_MB, 3072)
   };

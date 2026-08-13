@@ -1,0 +1,93 @@
+<%- include('../partials/app-start', { title: t('notifications'), activeNav }) %>
+
+<header class="page-header">
+  <div>
+    <div class="eyebrow"><%= t('notificationCenter') %></div>
+    <h1><%= t('notifications') %></h1>
+  </div>
+  <% if (unreadCount > 0) { %>
+    <form method="post" action="/notifications/read-all">
+      <%- csrfField() %>
+      <button class="secondary-action" type="submit"><%= t('markAllRead') %></button>
+    </form>
+  <% } %>
+</header>
+
+<section class="notification-settings" aria-labelledby="notification-settings-title">
+  <div class="section-heading-row">
+    <div>
+      <h2 id="notification-settings-title"><%= t('notificationSettings') %></h2>
+      <p class="muted"><%= t('notificationSettingsDescription') %></p>
+    </div>
+    <button
+      class="secondary-action"
+      id="push-subscribe-button"
+      type="button"
+      data-web-push-available="<%= webPushAvailable ? 'true' : 'false' %>"
+      <%= webPushAvailable ? '' : 'disabled' %>
+    ><%= t('enableBrowserPush') %></button>
+  </div>
+
+  <form class="notification-preference-form" method="post" action="/notifications/preferences">
+    <%- csrfField() %>
+    <label class="toggle-row">
+      <input type="checkbox" name="realtimeEnabled" <%= preference.realtimeEnabled ? 'checked' : '' %>>
+      <span><strong><%= t('realtimeReminders') %></strong><small><%= t('realtimeRemindersDescription') %></small></span>
+    </label>
+    <label class="toggle-row">
+      <input type="checkbox" name="webPushEnabled" <%= preference.webPushEnabled ? 'checked' : '' %>>
+      <span><strong><%= t('browserPush') %></strong><small><%= t('browserPushDescription') %></small></span>
+    </label>
+    <label class="toggle-row">
+      <input type="checkbox" name="emailEnabled" <%= preference.emailEnabled ? 'checked' : '' %>>
+      <span><strong><%= t('emailFallback') %></strong><small><%= t('emailFallbackDescription') %></small></span>
+    </label>
+    <label class="toggle-row">
+      <input type="checkbox" name="smsEnabled" <%= preference.smsEnabled ? 'checked' : '' %>>
+      <span><strong><%= t('criticalSms') %></strong><small><%= t('criticalSmsDescription') %></small></span>
+    </label>
+    <label class="notification-delay-field">
+      <span><%= t('emailFallbackDelay') %></span>
+      <input type="number" name="emailDelayMinutes" min="0" max="1440" step="1" value="<%= preference.emailDelayMinutes %>">
+    </label>
+    <button type="submit"><%= t('saveNotificationSettings') %></button>
+  </form>
+  <p id="push-subscribe-status" class="muted" role="status" aria-live="polite"></p>
+</section>
+
+<section class="notification-list" aria-labelledby="notification-list-title">
+  <div class="section-heading-row">
+    <h2 id="notification-list-title"><%= t('notificationHistory') %></h2>
+    <span class="notification-unread-summary"><%= unreadCount %> <%= t('unread') %></span>
+  </div>
+  <% if (!notifications.length) { %>
+    <p class="empty-state"><%= t('noNotifications') %></p>
+  <% } %>
+  <% notifications.forEach((notification) => { %>
+    <article class="notification-row <%= notification.readAt ? 'read' : 'unread' %> priority-<%= notification.priority %>">
+      <div class="notification-row-main">
+        <div class="notification-row-heading">
+          <strong><%= notification.title %></strong>
+          <span class="notification-priority"><%= t(`notificationPriority.${notification.priority}`) %></span>
+        </div>
+        <p><%= notification.body %></p>
+        <div class="notification-meta">
+          <% if (notification.actorDisplayName) { %><span><%= notification.actorDisplayName %></span><% } %>
+          <time datetime="<%= new Date(notification.createdAt).toISOString() %>"><%= new Date(notification.createdAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US') %></time>
+        </div>
+      </div>
+      <div class="notification-row-action">
+        <% if (notification.readAt) { %>
+          <a class="secondary-action button-link" href="<%= notification.actionUrl || '/notifications' %>"><%= t('open') %></a>
+        <% } else { %>
+          <form method="post" action="/notifications/<%= notification.id %>/read">
+            <%- csrfField() %>
+            <button type="submit"><%= t('openAndMarkRead') %></button>
+          </form>
+        <% } %>
+      </div>
+    </article>
+  <% }) %>
+</section>
+
+<%- include('../partials/app-end') %>

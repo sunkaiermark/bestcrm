@@ -134,9 +134,10 @@ function targetUserForAction(action, before, after, payload) {
       return after.quotationEngineerId;
     case ACTIONS.REJECT_INITIATION:
     case ACTIONS.APPROVE_COMMERCIAL_QUOTE:
+      return after.salespersonId;
     case ACTIONS.MARK_WON:
     case ACTIONS.MARK_LOST:
-      return after.salespersonId;
+      return after.salesManagerId || null;
     case ACTIONS.SUBMIT_TECHNICAL_SOLUTION:
       return after.technicalManagerId;
     case ACTIONS.APPROVE_TECHNICAL_SOLUTION:

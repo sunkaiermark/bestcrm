@@ -3,6 +3,8 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="<%= csrfToken %>">
+    <meta name="web-push-public-key" content="<%= typeof webPushPublicKey === 'undefined' ? '' : webPushPublicKey %>">
     <title><%= title %></title>
     <style>
       :root {
@@ -239,6 +241,27 @@
       h1 {
         margin: 0;
         font-size: 24px;
+      }
+
+      .notification-nav-link {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+        justify-content: space-between;
+      }
+
+      .notification-badge {
+        align-items: center;
+        background: #dc2626;
+        border-radius: 999px;
+        color: #ffffff;
+        display: inline-flex;
+        font-size: 14px;
+        font-weight: 700;
+        height: 24px;
+        justify-content: center;
+        min-width: 24px;
+        padding: 0 6px;
       }
 
       h2 {
@@ -994,18 +1017,237 @@
         padding: 10px;
       }
 
+      .notification-settings,
+      .notification-list {
+        border-top: 1px solid var(--line);
+        margin-top: 18px;
+        padding: 18px 0;
+      }
+
+      .section-heading-row,
+      .notification-row,
+      .notification-row-heading,
+      .notification-meta {
+        align-items: center;
+        display: flex;
+      }
+
+      .section-heading-row,
+      .notification-row,
+      .notification-row-heading {
+        justify-content: space-between;
+      }
+
+      .section-heading-row {
+        gap: 18px;
+      }
+
+      .section-heading-row h2,
+      .notification-row p {
+        margin: 0;
+      }
+
+      .notification-preference-form {
+        display: grid;
+        gap: 0;
+        grid-template-columns: minmax(0, 1fr);
+        margin-top: 14px;
+        max-width: 920px;
+      }
+
+      .toggle-row {
+        align-items: flex-start;
+        border-top: 1px solid var(--line);
+        display: flex;
+        gap: 10px;
+        margin: 0;
+        padding: 12px 0;
+      }
+
+      .toggle-row input {
+        margin-top: 5px;
+        width: auto;
+      }
+
+      .toggle-row span,
+      .toggle-row small {
+        display: block;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .toggle-row small {
+        color: var(--muted);
+        font-weight: 400;
+      }
+
+      .notification-delay-field {
+        max-width: 320px;
+      }
+
+      .notification-preference-form > button {
+        align-self: end;
+        justify-self: start;
+        margin-bottom: 12px;
+      }
+
+      .notification-row {
+        border-top: 1px solid var(--line);
+        gap: 16px;
+        padding: 14px 10px;
+      }
+
+      .notification-row.unread {
+        background: #f0fdfa;
+        border-left: 4px solid var(--accent);
+      }
+
+      .notification-row.priority-high,
+      .notification-row.priority-critical {
+        border-left-color: #dc2626;
+      }
+
+      .notification-row-main {
+        min-width: 0;
+      }
+
+      .notification-row-heading,
+      .notification-meta {
+        flex-wrap: wrap;
+        gap: 8px 14px;
+      }
+
+      .notification-row p {
+        overflow-wrap: anywhere;
+      }
+
+      .notification-meta,
+      .notification-priority,
+      .notification-unread-summary {
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .notification-priority {
+        border: 1px solid var(--line);
+        border-radius: 4px;
+        padding: 2px 6px;
+      }
+
+      .button-link {
+        display: inline-block;
+        padding: 7px 9px;
+      }
+
+      .notification-toast-region {
+        bottom: 22px;
+        display: grid;
+        gap: 8px;
+        max-width: min(440px, calc(100vw - 32px));
+        position: fixed;
+        right: 22px;
+        width: 100%;
+        z-index: 1000;
+      }
+
+      .notification-toast {
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-left: 5px solid var(--accent);
+        box-shadow: 0 12px 30px rgba(22, 32, 42, 0.18);
+        display: grid;
+        gap: 3px;
+        padding: 12px 14px;
+      }
+
+      .notification-toast.priority-high,
+      .notification-toast.priority-critical {
+        border-left-color: #dc2626;
+      }
+
+      .notification-toast span {
+        color: var(--muted);
+        overflow-wrap: anywhere;
+      }
+
       @media (max-width: 860px) {
         .app-shell {
           grid-template-columns: 1fr;
         }
 
         .left-nav {
+          align-items: center;
+          display: grid;
+          gap: 10px;
+          grid-template-columns: auto minmax(0, 1fr) auto;
           position: static;
           height: auto;
+          padding: 12px 14px;
+        }
+
+        .brand-logo {
+          width: 120px;
+        }
+
+        .nav-account {
+          border: 0;
+          margin: 0;
+          min-width: 0;
+          padding: 4px 8px;
+        }
+
+        .nav-account-name {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .nav-group {
+          display: flex;
+          gap: 4px;
+          grid-column: 1 / -1;
+          margin-top: 0;
+          overflow-x: auto;
+          padding-bottom: 4px;
+        }
+
+        .nav-link,
+        .nav-subgroup .nav-link {
+          flex: 0 0 auto;
+          padding: 7px 9px;
+        }
+
+        .nav-parent {
+          display: none;
+        }
+
+        .nav-subgroup {
+          display: contents;
+        }
+
+        .logout-form {
+          grid-column: 3;
+          grid-row: 1;
+          margin: 0;
+        }
+
+        .logout-button {
+          padding: 7px 9px;
+          white-space: nowrap;
+        }
+
+        .app-main {
+          padding: 16px;
         }
 
         .page-header,
         .topbar {
+          align-items: flex-start;
+          flex-direction: column;
+        }
+
+        .notification-row,
+        .section-heading-row {
           align-items: flex-start;
           flex-direction: column;
         }
@@ -1027,6 +1269,10 @@
         <% } %>
         <nav class="nav-group">
           <a class="<%= navClass('workbench') %>" href="/workbench"><%= t('workbench') %></a>
+          <a class="<%= navClass('notifications') %> notification-nav-link" href="/notifications">
+            <span><%= t('notifications') %></span>
+            <span class="notification-badge" data-notification-badge hidden>0</span>
+          </a>
           <a class="<%= navClass('inquiries') %>" href="/inquiries"><%= t('inquiries') %></a>
           <a class="<%= navClass('sales-work') %>" href="/sales-work/plans"><%= t('salesWork') %></a>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>

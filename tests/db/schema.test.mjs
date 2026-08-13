@@ -20,6 +20,8 @@ const loginSecurityMigrationPath = new URL('../../src/db/migrations/016_login_se
 const salesWorkMigrationPath = new URL('../../src/db/migrations/017_sales_work.sql', import.meta.url);
 const inquiryInboxMigrationPath = new URL('../../src/db/migrations/018_inquiry_inbox.sql', import.meta.url);
 const inquirySourceReferenceUniqueMigrationPath = new URL('../../src/db/migrations/019_inquiry_source_reference_unique.sql', import.meta.url);
+const notificationCenterMigrationPath = new URL('../../src/db/migrations/020_notification_center.sql', import.meta.url);
+const notificationWorkflowRecipientsMigrationPath = new URL('../../src/db/migrations/021_notification_workflow_recipients.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -247,4 +249,34 @@ test('inquiry source reference migration prevents duplicate external intake', as
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS inquiries_source_reference_unique_idx/);
   assert.match(sql, /ON inquiries\(source, source_reference\)/);
   assert.match(sql, /WHERE source_reference <> ''/);
+});
+
+test('notification center migration creates inbox, channel queue, push subscriptions, and workflow trigger', async () => {
+  const sql = await readFile(notificationCenterMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS notification_preferences/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS notifications/);
+  assert.match(sql, /priority IN \('normal', 'high', 'critical'\)/);
+  assert.match(sql, /UNIQUE \(user_id, source_type, source_id\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS notification_deliveries/);
+  assert.match(sql, /channel IN \('web_push', 'email', 'sms'\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS web_push_subscriptions/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION create_workflow_notification/);
+  assert.match(sql, /AFTER INSERT ON workflow_events/);
+  assert.match(sql, /NEW\.target_user_id IS NULL OR NEW\.target_user_id = NEW\.actor_user_id/);
+  assert.match(sql, /notification_priority = 'critical'/);
+  assert.match(sql, /pg_notify\('bestcrm_notifications'/);
+});
+
+test('workflow notification recipients migration also notifies the salesperson after manager approvals', async () => {
+  const sql = await readFile(notificationWorkflowRecipientsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE OR REPLACE FUNCTION create_workflow_secondary_notifications/);
+  assert.match(sql, /NEW\.event_type NOT IN \('approve_initiation', 'approve_technical_solution'\)/);
+  assert.match(sql, /SELECT\s+salesperson_id,/);
+  assert.match(sql, /recipient_user_id = NEW\.actor_user_id/);
+  assert.match(sql, /recipient_user_id = NEW\.target_user_id/);
+  assert.match(sql, /CREATE TRIGGER workflow_event_secondary_notification_trigger/);
+  assert.match(sql, /AFTER INSERT ON workflow_events/);
+  assert.match(sql, /EXECUTE FUNCTION create_workflow_secondary_notifications/);
 });

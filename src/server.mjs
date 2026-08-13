@@ -17,6 +17,7 @@ import { createCustomerRepository } from './repositories/customerRepository.mjs'
 import { createInquiryAttachmentRepository } from './repositories/inquiryAttachmentRepository.mjs';
 import { createInquiryRepository } from './repositories/inquiryRepository.mjs';
 import { createLoginSecurityRepository } from './repositories/loginSecurityRepository.mjs';
+import { createNotificationRepository } from './repositories/notificationRepository.mjs';
 import { createOpportunityMaterialVersionRepository } from './repositories/opportunityMaterialVersionRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
@@ -33,6 +34,7 @@ import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
 import { inquiryIntakeRoutes } from './routes/inquiryIntakeRoutes.mjs';
 import { inquiryRoutes } from './routes/inquiryRoutes.mjs';
+import { notificationRoutes } from './routes/notificationRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
@@ -355,12 +357,34 @@ const emptyLoginSecurityRepository = {
   async recordAuditEvent() {}
 };
 
+const emptyNotificationRepository = {
+  async listForUser() { return []; },
+  async listAfterId() { return []; },
+  async countUnread() { return 0; },
+  async markRead() { return null; },
+  async markAllRead() { return 0; },
+  async getPreference(userId) {
+    return {
+      userId: Number(userId),
+      realtimeEnabled: true,
+      webPushEnabled: true,
+      emailEnabled: true,
+      smsEnabled: true,
+      emailDelayMinutes: 15
+    };
+  },
+  async savePreference(userId, preference) { return { userId: Number(userId), ...preference }; },
+  async upsertPushSubscription() { return { id: 0 }; },
+  async revokePushSubscription() { return 0; }
+};
+
 export function createApp(options = {}) {
   const config = { ...loadConfig(), ...options };
   const shouldCreatePool = !options.userRepository && config.databaseUrl;
   const pool = options.pool || (shouldCreatePool ? createPool(config) : null);
   const userRepository = options.userRepository || (pool ? createUserRepository(pool) : emptyUserRepository);
   const loginSecurityRepository = options.loginSecurityRepository || (pool ? createLoginSecurityRepository(pool) : emptyLoginSecurityRepository);
+  const notificationRepository = options.notificationRepository || (pool ? createNotificationRepository(pool) : emptyNotificationRepository);
   const loginSecurityService = options.loginSecurityService || createLoginSecurityService(loginSecurityRepository);
   const roleRepository = options.roleRepository || (pool ? createRoleRepository(pool) : emptyRoleRepository);
   const approvalSettingRepository = options.approvalSettingRepository || (pool ? createApprovalSettingRepository(pool) : emptyApprovalSettingRepository);
@@ -389,11 +413,18 @@ export function createApp(options = {}) {
     : pool ? createWorkflowTransaction(pool) : null;
   const sessionStore = 'sessionStore' in options ? options.sessionStore : createSessionStore(pool);
   const app = express();
+  const configuredWebPushPublicKey = config.notificationDelivery?.webPush?.publicKey
+    && config.notificationDelivery?.webPush?.privateKey
+    ? config.notificationDelivery.webPush.publicKey
+    : '';
 
   app.disable('x-powered-by');
   app.set('view engine', 'ejs');
   app.set('views', path.join(dirname, 'views'));
   app.use('/assets', express.static(path.join(dirname, 'public', 'assets')));
+  app.get('/service-worker.js', (req, res) => {
+    res.type('application/javascript').sendFile(path.join(dirname, 'public', 'service-worker.js'));
+  });
   app.use(express.urlencoded({ extended: false }));
   app.use(express.json({
     verify(req, res, buf) {
@@ -433,6 +464,7 @@ export function createApp(options = {}) {
     res.locals.workflowEventLabel = createWorkflowEventLabeler(language);
     res.locals.messageLabel = createMessageLabeler(language);
     res.locals.todoTitleLabel = createTodoTitleLabeler(language);
+    res.locals.webPushPublicKey = configuredWebPushPublicKey;
     next();
   });
   app.use(attachCurrentUser(userRepository));
@@ -441,6 +473,10 @@ export function createApp(options = {}) {
   });
   app.use(authRoutes(userRepository, { loginSecurityService }));
   app.use(workbenchRoutes({ workbenchRepository }));
+  app.use(notificationRoutes({
+    notificationRepository,
+    webPushPublicKey: configuredWebPushPublicKey
+  }));
   app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository, loginSecurityRepository }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));

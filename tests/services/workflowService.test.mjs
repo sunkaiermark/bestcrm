@@ -195,6 +195,28 @@ test('quotation engineer change reassigns active quotation engineer todo', () =>
   });
 });
 
+test('win and loss events notify the Sales Manager instead of the acting salesperson', () => {
+  for (const action of [ACTIONS.MARK_WON, ACTIONS.MARK_LOST]) {
+    const effects = buildWorkflowEffects({
+      actor: { id: 1, roles: [ROLES.SALESPERSON] },
+      action,
+      before: {
+        id: 10,
+        status: STATUSES.CUSTOMER_NEGOTIATION,
+        salespersonId: 1,
+        salesManagerId: 2
+      },
+      after: {
+        id: 10,
+        status: action === ACTIONS.MARK_WON ? STATUSES.WON_CONTRACT_PENDING : STATUSES.LOST_ARCHIVED,
+        salespersonId: 1,
+        salesManagerId: 2
+      }
+    });
+    assert.equal(effects.event.targetUserId, 2);
+  }
+});
+
 test('submissions create reviewer todos', () => {
   const initiation = buildWorkflowEffects({
     actor: { id: 1, roles: [ROLES.SALESPERSON] },

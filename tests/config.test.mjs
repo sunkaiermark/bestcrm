@@ -47,6 +47,38 @@ test('config reads optional inquiry intake secret', () => {
   });
 });
 
+test('config reads notification delivery providers without enabling them by default', () => {
+  const defaults = loadConfig({ NODE_ENV: 'development' });
+  assert.equal(defaults.notificationDelivery.enabled, false);
+
+  const config = loadConfig({
+    NODE_ENV: 'development',
+    NOTIFICATION_DELIVERY_ENABLED: 'true',
+    NOTIFICATION_DELIVERY_POLL_INTERVAL_MS: '12000',
+    NOTIFICATION_DELIVERY_BATCH_SIZE: '30',
+    WEB_PUSH_PUBLIC_KEY: 'public-key',
+    WEB_PUSH_PRIVATE_KEY: 'private-key',
+    SMTP_HOST: 'smtp.example.com',
+    SMTP_PORT: '587',
+    SMTP_SECURE: 'false',
+    SMTP_USER: 'crm@example.com',
+    SMTP_PASSWORD: 'password',
+    TENCENT_SMS_SECRET_ID: 'secret-id',
+    TENCENT_SMS_SECRET_KEY: 'secret-key',
+    TENCENT_SMS_SDK_APP_ID: 'app-id',
+    TENCENT_SMS_SIGN_NAME: 'BESTCRM',
+    TENCENT_SMS_TEMPLATE_ID: 'template-id'
+  });
+
+  assert.equal(config.notificationDelivery.enabled, true);
+  assert.equal(config.notificationDelivery.pollIntervalMs, 12000);
+  assert.equal(config.notificationDelivery.batchSize, 30);
+  assert.equal(config.notificationDelivery.webPush.publicKey, 'public-key');
+  assert.equal(config.notificationDelivery.smtp.secure, false);
+  assert.equal(config.notificationDelivery.smtp.port, 587);
+  assert.equal(config.notificationDelivery.sms.templateId, 'template-id');
+});
+
 test('production config requires an explicit session secret', () => {
   assert.throws(
     () => loadConfig({ NODE_ENV: 'production' }),
