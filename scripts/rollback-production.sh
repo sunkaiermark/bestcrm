@@ -20,6 +20,10 @@ CURRENT_APP="$APP_ROOT/app"
 BACKUP_DIR="${BESTCRM_BACKUP_DIR:-/var/backups/bestcrm}"
 ENV_FILE="${BESTCRM_ENV_FILE:-/etc/bestcrm/bestcrm.env}"
 UPLOAD_DIR="${BESTCRM_UPLOAD_DIR:-/var/bestcrm/uploads}"
+SERVICE_USER="${BESTCRM_SERVICE_USER:-$(systemctl show bestcrm -p User --value 2>/dev/null || true)}"
+SERVICE_USER="${SERVICE_USER:-www-data}"
+SERVICE_GROUP="${BESTCRM_SERVICE_GROUP:-$(systemctl show bestcrm -p Group --value 2>/dev/null || true)}"
+SERVICE_GROUP="${SERVICE_GROUP:-$SERVICE_USER}"
 
 if [ "$MODE" = "code" ]; then
   VERSION="${2:-}"
@@ -89,7 +93,7 @@ if [ "$MODE" = "full" ]; then
   sudo rm -rf "$UPLOAD_DIR"
   sudo mkdir -p "$UPLOAD_DIR"
   sudo tar -xzf "$UPLOAD_BACKUP" -C "$(dirname "$UPLOAD_DIR")"
-  sudo chown -R www-data:www-data "$UPLOAD_DIR"
+  sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$UPLOAD_DIR"
   ln -sfn "$RELEASE_DIR" "$CURRENT_APP"
   echo "$VERSION" > "$APP_ROOT/current-release.txt"
   sudo systemctl start bestcrm

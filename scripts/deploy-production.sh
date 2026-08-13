@@ -18,6 +18,10 @@ UPLOAD_DIR="${BESTCRM_UPLOAD_DIR:-/var/bestcrm/uploads}"
 BACKUP_SCRIPT="${BESTCRM_BACKUP_SCRIPT:-$SCRIPT_DIR/backup-production.sh}"
 RELEASE_DIR="$RELEASES_DIR/$VERSION"
 TMP_DIR="$(mktemp -d)"
+SERVICE_USER="${BESTCRM_SERVICE_USER:-$(systemctl show bestcrm -p User --value 2>/dev/null || true)}"
+SERVICE_USER="${SERVICE_USER:-www-data}"
+SERVICE_GROUP="${BESTCRM_SERVICE_GROUP:-$(systemctl show bestcrm -p Group --value 2>/dev/null || true)}"
+SERVICE_GROUP="${SERVICE_GROUP:-$SERVICE_USER}"
 
 cleanup() {
   rm -rf "$TMP_DIR"
@@ -96,7 +100,7 @@ if ! npm run db:migrate; then
   exit 1
 fi
 
-sudo chown -R www-data:www-data "$RELEASE_DIR" "$UPLOAD_DIR"
+sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$RELEASE_DIR" "$UPLOAD_DIR"
 echo "$VERSION" > "$APP_ROOT/current-release.txt"
 
 sudo systemctl start bestcrm
