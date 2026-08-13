@@ -6,6 +6,12 @@ test('development config can use the local session secret default', () => {
   const config = loadConfig({ NODE_ENV: 'development' });
 
   assert.equal(config.sessionSecret, 'dev-session-secret');
+  assert.equal(config.maxUploadMb, 200);
+});
+
+test('config accepts a positive custom upload limit and rejects invalid values', () => {
+  assert.equal(loadConfig({ NODE_ENV: 'development', MAX_UPLOAD_MB: '500' }).maxUploadMb, 500);
+  assert.equal(loadConfig({ NODE_ENV: 'development', MAX_UPLOAD_MB: 'invalid' }).maxUploadMb, 200);
 });
 
 test('config reads optional inquiry intake secret', () => {

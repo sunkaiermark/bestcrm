@@ -495,6 +495,21 @@ function createUploadMiddleware(uploadDir, maxUploadMb) {
   });
 }
 
+function uploadAttachmentOrSendLimitError(upload, maxUploadMb) {
+  return (req, res, next) => {
+    upload.single('attachment')(req, res, (error) => {
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        const message = req.language === 'zh'
+          ? `\u6587\u4ef6\u8d85\u8fc7 ${maxUploadMb} MB \u4e0a\u4f20\u9650\u5236`
+          : `File exceeds the ${maxUploadMb} MB upload limit`;
+        res.status(413).send(message);
+        return;
+      }
+      next(error);
+    });
+  };
+}
+
 function normalizeAttachmentCategory(category) {
   return attachmentCategories.has(category) ? category : 'other';
 }
@@ -630,10 +645,11 @@ export function opportunityRoutes({
   todoRepository,
   workflowTransaction,
   uploadDir = './var/uploads',
-  maxUploadMb = 25
+  maxUploadMb = 200
 }) {
   const router = Router();
   const upload = createUploadMiddleware(uploadDir, maxUploadMb);
+  const uploadAttachment = uploadAttachmentOrSendLimitError(upload, maxUploadMb);
 
   router.use('/opportunities', requireLogin);
   router.use('/api/opportunities', requireLogin);
@@ -1082,7 +1098,7 @@ export function opportunityRoutes({
     } catch (error) {
       next(error);
     }
-  }, upload.single('attachment'), async (req, res, next) => {
+  }, uploadAttachment, async (req, res, next) => {
     try {
       if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
         if (req.file?.path) {

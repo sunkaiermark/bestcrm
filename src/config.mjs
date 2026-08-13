@@ -45,6 +45,6 @@ export function loadConfig(env = process.env) {
       markSeen: booleanEnv(env.EMAIL_INTAKE_MARK_SEEN, true)
     },
     uploadDir: env.UPLOAD_DIR || './var/uploads',
-    maxUploadMb: Number(env.MAX_UPLOAD_MB || 25)
+    maxUploadMb: numberEnv(env.MAX_UPLOAD_MB, 200)
   };
 }

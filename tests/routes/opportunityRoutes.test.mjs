@@ -2508,6 +2508,31 @@ test('page form uploads attachment metadata and stores file', async () => {
   }
 });
 
+test('attachment upload returns a clear 413 response when the file exceeds the configured limit', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-upload-limit-'));
+  try {
+    const { agent, uploadedAttachments } = await createLoggedInAgent({
+      uploadDir,
+      maxUploadMb: 1,
+      language: 'zh'
+    });
+
+    const response = await agent
+      .post('/opportunities/30/attachments')
+      .field('category', 'commercial_quote')
+      .attach('attachment', Buffer.alloc((1024 * 1024) + 1), {
+        filename: 'large-quote.zip',
+        contentType: 'application/zip'
+      });
+
+    assert.equal(response.status, 413);
+    assert.match(response.text, /\u6587\u4ef6\u8d85\u8fc7 1 MB \u4e0a\u4f20\u9650\u5236/);
+    assert.equal(uploadedAttachments.length, 0);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('page form preserves Chinese attachment filenames', async () => {
   const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-upload-cn-'));
   try {
