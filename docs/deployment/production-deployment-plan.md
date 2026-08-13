@@ -63,7 +63,7 @@ SESSION_SECRET=REPLACE_WITH_LONG_RANDOM_SECRET
 INQUIRY_INTAKE_SECRET=REPLACE_WITH_LONG_RANDOM_WEBSITE_INTAKE_SECRET
 CHATWOOT_INQUIRY_INTAKE_SECRET=REPLACE_WITH_LONG_RANDOM_CHATWOOT_INTAKE_SECRET
 UPLOAD_DIR=/var/bestcrm/uploads
-MAX_UPLOAD_MB=200
+MAX_UPLOAD_MB=3072
 ```
 
 Important:
@@ -230,10 +230,11 @@ server {
     listen 80;
     server_name _;
 
-    client_max_body_size 200m;
+    client_max_body_size 3g;
 
     location / {
         proxy_pass http://127.0.0.1:3000;
+        proxy_request_buffering off;
         proxy_http_version 1.1;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;

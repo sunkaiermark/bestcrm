@@ -645,7 +645,7 @@ export function opportunityRoutes({
   todoRepository,
   workflowTransaction,
   uploadDir = './var/uploads',
-  maxUploadMb = 200
+  maxUploadMb = 3072
 }) {
   const router = Router();
   const upload = createUploadMiddleware(uploadDir, maxUploadMb);
