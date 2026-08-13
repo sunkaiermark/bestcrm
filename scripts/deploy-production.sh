@@ -76,7 +76,7 @@ npm ci --omit=dev
 
 set -a
 # shellcheck disable=SC1090
-. "$ENV_FILE"
+. <(sed 's/\r$//' "$ENV_FILE")
 set +a
 
 PREVIOUS_TARGET=""

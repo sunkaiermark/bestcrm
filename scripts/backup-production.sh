@@ -16,7 +16,7 @@ fi
 
 set -a
 # shellcheck disable=SC1090
-. "$ENV_FILE"
+. <(sed 's/\r$//' "$ENV_FILE")
 set +a
 
 if [ -z "${DATABASE_URL:-}" ]; then
