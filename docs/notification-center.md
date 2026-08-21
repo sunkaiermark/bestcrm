@@ -46,6 +46,7 @@ npm.cmd run notifications:deliver
 - SMTP 使用专用客户端授权码，不使用个人登录密码。
 - 腾讯云短信已开通，签名和通知模板已经审核通过。
 - 短信模板接受两个参数：事件标题和 BESTCRM 链接。
+- 登录短信二次认证使用独立模板和 `TENCENT_SMS_LOGIN_TEMPLATE_ID`，不得复用本通知模板；启用流程见 `docs/login-security.md`。
 - 用户资料中维护有效邮箱和手机号；中国大陆手机号可填写 11 位号码，其他号码使用 E.164 格式。
 - 投递 worker 使用独立 systemd 服务持续运行，并使用与 BESTCRM 相同的代码版本和环境文件。
 

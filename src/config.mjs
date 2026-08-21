@@ -70,6 +70,20 @@ export function loadConfig(env = process.env) {
         templateId: env.TENCENT_SMS_TEMPLATE_ID || ''
       }
     },
+    loginSecondFactor: {
+      enabled: booleanEnv(env.LOGIN_SMS_2FA_ENABLED, false),
+      codeTtlMinutes: numberEnv(env.LOGIN_SMS_2FA_CODE_TTL_MINUTES, 5),
+      maxAttempts: numberEnv(env.LOGIN_SMS_2FA_MAX_ATTEMPTS, 5),
+      resendCooldownSeconds: numberEnv(env.LOGIN_SMS_2FA_RESEND_COOLDOWN_SECONDS, 60),
+      sms: {
+        secretId: env.TENCENT_SMS_SECRET_ID || '',
+        secretKey: env.TENCENT_SMS_SECRET_KEY || '',
+        region: env.TENCENT_SMS_REGION || 'ap-guangzhou',
+        sdkAppId: env.TENCENT_SMS_SDK_APP_ID || '',
+        signName: env.TENCENT_SMS_SIGN_NAME || '',
+        templateId: env.TENCENT_SMS_LOGIN_TEMPLATE_ID || ''
+      }
+    },
     uploadDir: env.UPLOAD_DIR || './var/uploads',
     maxUploadMb: numberEnv(env.MAX_UPLOAD_MB, 3072)
   };

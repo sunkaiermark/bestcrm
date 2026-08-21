@@ -42,6 +42,7 @@ import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
 import { createMessageLabeler, createStatusLabeler, createTodoTitleLabeler, createTranslator, createWorkflowEventLabeler, inferLanguageFromAcceptLanguage, normalizeLanguage } from './utils/i18n.mjs';
 import { isMainModule } from './utils/moduleEntry.mjs';
 import { createLoginSecurityService } from './services/loginSecurityService.mjs';
+import { createSmsSecondFactorService } from './services/smsSecondFactorService.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -386,6 +387,10 @@ export function createApp(options = {}) {
   const loginSecurityRepository = options.loginSecurityRepository || (pool ? createLoginSecurityRepository(pool) : emptyLoginSecurityRepository);
   const notificationRepository = options.notificationRepository || (pool ? createNotificationRepository(pool) : emptyNotificationRepository);
   const loginSecurityService = options.loginSecurityService || createLoginSecurityService(loginSecurityRepository);
+  const smsSecondFactorService = options.smsSecondFactorService || createSmsSecondFactorService({
+    config: config.loginSecondFactor,
+    secret: config.sessionSecret
+  });
   const roleRepository = options.roleRepository || (pool ? createRoleRepository(pool) : emptyRoleRepository);
   const approvalSettingRepository = options.approvalSettingRepository || (pool ? createApprovalSettingRepository(pool) : emptyApprovalSettingRepository);
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
@@ -471,7 +476,7 @@ export function createApp(options = {}) {
   app.get('/', (req, res) => {
     res.redirect('/workbench');
   });
-  app.use(authRoutes(userRepository, { loginSecurityService }));
+  app.use(authRoutes(userRepository, { loginSecurityService, smsSecondFactorService }));
   app.use(workbenchRoutes({ workbenchRepository }));
   app.use(notificationRoutes({
     notificationRepository,

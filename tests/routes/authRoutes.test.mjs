@@ -367,3 +367,351 @@ test('successful login clears failure counters and writes audit event', async ()
   assert.equal(loginSecurityRepository.auditEvents.at(-1).result, 'success');
   assert.equal(loginSecurityRepository.auditEvents.at(-1).userId, 7);
 });
+
+test('SMS second factor delays session creation until the verification code succeeds', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const user = {
+    id: 7,
+    username: 'sales01',
+    passwordHash,
+    displayName: 'Sales One',
+    phone: '13800138000',
+    isActive: true,
+    roles: [ROLES.SALESPERSON]
+  };
+  const issued = [];
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    userRepository: buildUserRepository(user),
+    smsSecondFactorService: {
+      isEnabled() { return true; },
+      async issue({ user: challengedUser }) {
+        issued.push(challengedUser.id);
+        return {
+          userId: challengedUser.id,
+          username: challengedUser.username,
+          phoneMasked: '+86138****8000',
+          codeDigest: 'digest',
+          expiresAt: '2026-08-21T03:05:00.000Z',
+          attemptsRemaining: 5,
+          resendAvailableAt: '2026-08-21T03:01:00.000Z'
+        };
+      },
+      verify({ code }) { return code === '123456' ? 'valid' : 'invalid'; },
+      canResend() { return false; }
+    }
+  });
+  const agent = request.agent(app);
+
+  const passwordStep = await agent.post('/login').type('form').send({
+    username: 'sales01',
+    password: 'ChangeMe123!'
+  });
+  assert.equal(passwordStep.status, 302);
+  assert.equal(passwordStep.headers.location, '/login/verify-sms');
+  assert.deepEqual(issued, [7]);
+
+  const repeatedPasswordStep = await agent.post('/login').type('form').send({
+    username: 'sales01',
+    password: 'ChangeMe123!'
+  });
+  assert.equal(repeatedPasswordStep.status, 302);
+  assert.equal(repeatedPasswordStep.headers.location, '/login/verify-sms');
+  assert.deepEqual(issued, [7]);
+
+  const beforeVerification = await agent.get('/session/me');
+  assert.equal(beforeVerification.status, 401);
+  const form = await agent.get('/login/verify-sms');
+  assert.equal(form.status, 200);
+  assert.match(form.text, /name="code"/);
+  assert.match(form.text, /\+86138\*\*\*\*8000/);
+
+  const verified = await agent.post('/login/verify-sms').type('form').send({ code: '123456' });
+  assert.equal(verified.status, 302);
+  assert.equal(verified.headers.location, '/');
+  assert.equal((await agent.get('/session/me')).status, 200);
+});
+
+test('incorrect SMS codes are audited and never create an authenticated session', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const loginSecurityRepository = createLoginSecurityRepository();
+  const user = {
+    id: 7,
+    username: 'sales01',
+    passwordHash,
+    displayName: 'Sales One',
+    phone: '13800138000',
+    isActive: true,
+    roles: [ROLES.SALESPERSON]
+  };
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    loginSecurityRepository,
+    userRepository: buildUserRepository(user),
+    smsSecondFactorService: {
+      isEnabled() { return true; },
+      async issue() {
+        return {
+          userId: 7,
+          username: 'sales01',
+          phoneMasked: '+86138****8000',
+          codeDigest: 'digest',
+          expiresAt: '2026-08-21T03:05:00.000Z',
+          attemptsRemaining: 5,
+          resendAvailableAt: '2026-08-21T03:01:00.000Z'
+        };
+      },
+      verify() { return 'invalid'; },
+      canResend() { return false; }
+    }
+  });
+  const agent = request.agent(app);
+
+  await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
+  const response = await agent.post('/login/verify-sms').type('form').send({ code: '000000' });
+
+  assert.equal(response.status, 401);
+  assert.match(response.text, /Invalid SMS verification code/);
+  assert.equal(loginSecurityRepository.auditEvents.at(-1).reason, 'invalid_second_factor');
+  assert.equal((await agent.get('/session/me')).status, 401);
+});
+
+test('SMS second-factor challenge expires without creating a session', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    userRepository: buildUserRepository({
+      id: 7,
+      username: 'sales01',
+      passwordHash,
+      displayName: 'Sales One',
+      phone: '13800138000',
+      isActive: true,
+      roles: [ROLES.SALESPERSON]
+    }),
+    smsSecondFactorService: {
+      isEnabled() { return true; },
+      async issue() {
+        return {
+          userId: 7,
+          username: 'sales01',
+          phoneMasked: '+86138****8000',
+          codeDigest: 'digest',
+          expiresAt: '2026-08-21T03:05:00.000Z',
+          attemptsRemaining: 5,
+          resendAvailableAt: '2026-08-21T03:01:00.000Z'
+        };
+      },
+      verify() { return 'expired'; },
+      canResend() { return false; }
+    }
+  });
+  const agent = request.agent(app);
+
+  await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
+  const response = await agent.post('/login/verify-sms').type('form').send({ code: '123456' });
+
+  assert.equal(response.status, 401);
+  assert.match(response.text, /verification code has expired/);
+  assert.equal((await agent.get('/login/verify-sms')).headers.location, '/login');
+  assert.equal((await agent.get('/session/me')).status, 401);
+});
+
+test('SMS second-factor challenge is removed after five incorrect codes', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const loginSecurityRepository = createLoginSecurityRepository();
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    loginSecurityRepository,
+    userRepository: buildUserRepository({
+      id: 7,
+      username: 'sales01',
+      passwordHash,
+      displayName: 'Sales One',
+      phone: '13800138000',
+      isActive: true,
+      roles: [ROLES.SALESPERSON]
+    }),
+    smsSecondFactorService: {
+      isEnabled() { return true; },
+      async issue() {
+        return {
+          userId: 7,
+          username: 'sales01',
+          phoneMasked: '+86138****8000',
+          codeDigest: 'digest',
+          expiresAt: '2026-08-21T03:05:00.000Z',
+          attemptsRemaining: 5,
+          resendAvailableAt: '2026-08-21T03:01:00.000Z'
+        };
+      },
+      verify() { return 'invalid'; },
+      canResend() { return false; }
+    }
+  });
+  const agent = request.agent(app);
+
+  await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const response = await agent.post('/login/verify-sms').type('form').send({ code: '000000' });
+    assert.equal(response.status, 401);
+    if (attempt === 5) {
+      assert.match(response.text, /Too many incorrect codes/);
+    }
+  }
+
+  assert.equal(loginSecurityRepository.auditEvents.filter(
+    (event) => event.reason === 'invalid_second_factor'
+  ).length, 5);
+  assert.equal((await agent.get('/login/verify-sms')).headers.location, '/login');
+  assert.equal((await agent.get('/session/me')).status, 401);
+});
+
+test('SMS resend enforces cooldown and preserves the remaining attempt limit', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  let canResend = false;
+  let issueCount = 0;
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    userRepository: buildUserRepository({
+      id: 7,
+      username: 'sales01',
+      passwordHash,
+      displayName: 'Sales One',
+      phone: '13800138000',
+      isActive: true,
+      roles: [ROLES.SALESPERSON]
+    }),
+    smsSecondFactorService: {
+      isEnabled() { return true; },
+      async issue() {
+        issueCount += 1;
+        return {
+          userId: 7,
+          username: 'sales01',
+          phoneMasked: '+86138****8000',
+          codeDigest: `digest-${issueCount}`,
+          expiresAt: '2026-08-21T03:05:00.000Z',
+          attemptsRemaining: 5,
+          resendAvailableAt: '2026-08-21T03:01:00.000Z'
+        };
+      },
+      verify() { return 'invalid'; },
+      canResend() { return canResend; }
+    }
+  });
+  const agent = request.agent(app);
+
+  await agent.post('/login').type('form').send({ username: 'sales01', password: 'ChangeMe123!' });
+  const invalid = await agent.post('/login/verify-sms').type('form').send({ code: '000000' });
+  assert.equal(invalid.status, 401);
+
+  const tooSoon = await agent.post('/login/verify-sms/resend');
+  assert.equal(tooSoon.status, 429);
+  assert.equal(issueCount, 1);
+
+  canResend = true;
+  const resent = await agent.post('/login/verify-sms/resend');
+  assert.equal(resent.status, 200);
+  assert.match(resent.text, /new verification code was sent/);
+  assert.equal(issueCount, 2);
+
+  for (let attempt = 1; attempt <= 4; attempt += 1) {
+    const response = await agent.post('/login/verify-sms').type('form').send({ code: '000000' });
+    assert.equal(response.status, 401);
+    if (attempt === 4) {
+      assert.match(response.text, /Too many incorrect codes/);
+    }
+  }
+  assert.equal((await agent.get('/login/verify-sms')).headers.location, '/login');
+});
+
+test('SMS second-factor delivery failure keeps the user signed out', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    userRepository: buildUserRepository({
+      id: 7,
+      username: 'sales01',
+      passwordHash,
+      displayName: 'Sales One',
+      phone: '',
+      isActive: true,
+      roles: [ROLES.SALESPERSON]
+    }),
+    smsSecondFactorService: {
+      isEnabled() { return true; },
+      async issue() { throw new Error('missing phone'); }
+    }
+  });
+  const agent = request.agent(app);
+
+  const response = await agent.post('/login').type('form').send({
+    username: 'sales01',
+    password: 'ChangeMe123!'
+  });
+
+  assert.equal(response.status, 503);
+  assert.match(response.text, /SMS verification is unavailable/);
+  assert.equal((await agent.get('/session/me')).status, 401);
+});
+
+test('SMS second-factor flow requires the regenerated session CSRF token', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const app = createApp({
+    csrfProtection: true,
+    sessionSecret: 'test-secret',
+    userRepository: buildUserRepository({
+      id: 7,
+      username: 'sales01',
+      passwordHash,
+      displayName: 'Sales One',
+      phone: '13800138000',
+      isActive: true,
+      roles: [ROLES.SALESPERSON]
+    }),
+    smsSecondFactorService: {
+      isEnabled() { return true; },
+      async issue() {
+        return {
+          userId: 7,
+          username: 'sales01',
+          phoneMasked: '+86138****8000',
+          codeDigest: 'digest',
+          expiresAt: '2026-08-21T03:05:00.000Z',
+          attemptsRemaining: 5,
+          resendAvailableAt: '2026-08-21T03:01:00.000Z'
+        };
+      },
+      verify({ code }) { return code === '123456' ? 'valid' : 'invalid'; },
+      canResend() { return false; }
+    }
+  });
+  const agent = request.agent(app);
+
+  const loginForm = await agent.get('/login');
+  const loginToken = extractCsrfToken(loginForm.text);
+  const passwordStep = await agent.post('/login').type('form').send({
+    username: 'sales01',
+    password: 'ChangeMe123!',
+    _csrf: loginToken
+  });
+  assert.equal(passwordStep.status, 302);
+
+  const staleTokenResponse = await agent.post('/login/verify-sms').type('form').send({
+    code: '123456',
+    _csrf: loginToken
+  });
+  assert.equal(staleTokenResponse.status, 403);
+
+  const verificationForm = await agent.get('/login/verify-sms');
+  const verificationToken = extractCsrfToken(verificationForm.text);
+  assert.ok(verificationToken);
+  assert.notEqual(verificationToken, loginToken);
+  const verified = await agent.post('/login/verify-sms').type('form').send({
+    code: '123456',
+    _csrf: verificationToken
+  });
+  assert.equal(verified.status, 302);
+  assert.equal(verified.headers.location, '/');
+});

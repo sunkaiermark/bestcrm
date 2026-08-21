@@ -6,7 +6,29 @@ test('development config can use the local session secret default', () => {
   const config = loadConfig({ NODE_ENV: 'development' });
 
   assert.equal(config.sessionSecret, 'dev-session-secret');
+  assert.equal(config.loginSecondFactor.enabled, false);
   assert.equal(config.maxUploadMb, 3072);
+});
+
+test('config reads optional SMS login second-factor settings', () => {
+  const config = loadConfig({
+    NODE_ENV: 'development',
+    LOGIN_SMS_2FA_ENABLED: 'true',
+    LOGIN_SMS_2FA_CODE_TTL_MINUTES: '8',
+    LOGIN_SMS_2FA_MAX_ATTEMPTS: '4',
+    LOGIN_SMS_2FA_RESEND_COOLDOWN_SECONDS: '90',
+    TENCENT_SMS_SECRET_ID: 'secret-id',
+    TENCENT_SMS_SECRET_KEY: 'secret-key',
+    TENCENT_SMS_SDK_APP_ID: 'app-id',
+    TENCENT_SMS_SIGN_NAME: 'BESTCRM',
+    TENCENT_SMS_LOGIN_TEMPLATE_ID: 'login-template-id'
+  });
+
+  assert.equal(config.loginSecondFactor.enabled, true);
+  assert.equal(config.loginSecondFactor.codeTtlMinutes, 8);
+  assert.equal(config.loginSecondFactor.maxAttempts, 4);
+  assert.equal(config.loginSecondFactor.resendCooldownSeconds, 90);
+  assert.equal(config.loginSecondFactor.sms.templateId, 'login-template-id');
 });
 
 test('config accepts a positive custom upload limit and rejects invalid values', () => {
