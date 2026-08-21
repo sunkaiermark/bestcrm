@@ -5,10 +5,22 @@ import { CUSTOMER_REGIONS } from '../domain/customerRegions.mjs';
 import { ENTERPRISE_NATURES } from '../domain/enterpriseNatures.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
-import { canDeleteCustomer, canMaintainCustomer, createCustomer, deleteCustomer, updateCustomer } from '../services/customerService.mjs';
+import { DuplicateCustomerError, canDeleteCustomer, canMaintainCustomer, createCustomer, deleteCustomer, updateCustomer } from '../services/customerService.mjs';
 
 function customerFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
+}
+
+function customerFormLocals({ customer = {}, action = '/customers', duplicateCustomers = [] } = {}) {
+  return {
+    customer,
+    duplicateCustomers,
+    countryOptions: CUSTOMER_COUNTRIES,
+    industryOptions: CUSTOMER_INDUSTRIES,
+    enterpriseNatureOptions: ENTERPRISE_NATURES,
+    regionOptions: CUSTOMER_REGIONS,
+    action
+  };
 }
 
 export function customerRoutes({ customerRepository }) {
@@ -26,14 +38,7 @@ export function customerRoutes({ customerRepository }) {
   });
 
   router.get('/customers/new', (req, res) => {
-    res.render('customers/form', {
-      customer: {},
-      countryOptions: CUSTOMER_COUNTRIES,
-      industryOptions: CUSTOMER_INDUSTRIES,
-      enterpriseNatureOptions: ENTERPRISE_NATURES,
-      regionOptions: CUSTOMER_REGIONS,
-      action: '/customers'
-    });
+    res.render('customers/form', customerFormLocals());
   });
 
   router.post('/customers', async (req, res, next) => {
@@ -41,6 +46,13 @@ export function customerRoutes({ customerRepository }) {
       const customer = await createCustomer(customerRepository, req.currentUser, req.body);
       res.redirect(`/customers/${customer.id}`);
     } catch (error) {
+      if (error instanceof DuplicateCustomerError) {
+        res.status(409).render('customers/form', customerFormLocals({
+          customer: req.body,
+          duplicateCustomers: error.duplicates
+        }));
+        return;
+      }
       next(error);
     }
   });
@@ -73,14 +85,7 @@ export function customerRoutes({ customerRepository }) {
         res.status(403).send('Forbidden');
         return;
       }
-      res.render('customers/form', {
-        customer,
-        countryOptions: CUSTOMER_COUNTRIES,
-        industryOptions: CUSTOMER_INDUSTRIES,
-        enterpriseNatureOptions: ENTERPRISE_NATURES,
-        regionOptions: CUSTOMER_REGIONS,
-        action: `/customers/${customer.id}`
-      });
+      res.render('customers/form', customerFormLocals({ customer, action: `/customers/${customer.id}` }));
     } catch (error) {
       next(error);
     }
@@ -91,6 +96,14 @@ export function customerRoutes({ customerRepository }) {
       const customer = await updateCustomer(customerRepository, req.currentUser, req.params.id, req.body);
       res.redirect(`/customers/${customer.id}`);
     } catch (error) {
+      if (error instanceof DuplicateCustomerError) {
+        res.status(409).render('customers/form', customerFormLocals({
+          customer: { id: req.params.id, ...req.body },
+          duplicateCustomers: error.duplicates,
+          action: `/customers/${req.params.id}`
+        }));
+        return;
+      }
       if (error.message === 'Forbidden') {
         res.status(403).send('Forbidden');
         return;

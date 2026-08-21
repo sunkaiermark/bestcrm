@@ -4,6 +4,14 @@ function forbidden() {
   throw new Error('Forbidden');
 }
 
+export class DuplicateCustomerError extends Error {
+  constructor(duplicates) {
+    super('Duplicate customer');
+    this.name = 'DuplicateCustomerError';
+    this.duplicates = duplicates;
+  }
+}
+
 function text(value) {
   return String(value || '').trim();
 }
@@ -44,11 +52,23 @@ export function normalizeCustomerInput(input, ownerUserId) {
   };
 }
 
+async function assertNoDuplicateCustomer(customerRepository, input, { excludeId } = {}) {
+  if (!input.name || typeof customerRepository.findDuplicatesByName !== 'function') {
+    return;
+  }
+  const duplicates = await customerRepository.findDuplicatesByName(input.name, { excludeId });
+  if (duplicates.length > 0) {
+    throw new DuplicateCustomerError(duplicates);
+  }
+}
+
 export async function createCustomer(customerRepository, actor, input) {
   const ownerUserId = hasRole(actor, ROLES.ADMINISTRATOR) && input.ownerUserId
     ? Number(input.ownerUserId)
     : actor.id;
-  return customerRepository.createCustomer(normalizeCustomerInput(input, ownerUserId));
+  const normalized = normalizeCustomerInput(input, ownerUserId);
+  await assertNoDuplicateCustomer(customerRepository, normalized);
+  return customerRepository.createCustomer(normalized);
 }
 
 export async function updateCustomer(customerRepository, actor, customerId, input) {
@@ -59,7 +79,9 @@ export async function updateCustomer(customerRepository, actor, customerId, inpu
   if (!canMaintainCustomer(actor, existing)) {
     forbidden();
   }
-  return customerRepository.updateCustomer(customerId, normalizeCustomerInput(input, existing.ownerUserId));
+  const normalized = normalizeCustomerInput(input, existing.ownerUserId);
+  await assertNoDuplicateCustomer(customerRepository, normalized, { excludeId: Number(customerId) });
+  return customerRepository.updateCustomer(customerId, normalized);
 }
 
 export async function deleteCustomer(customerRepository, actor, customerId) {

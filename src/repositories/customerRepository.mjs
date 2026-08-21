@@ -26,6 +26,20 @@ function mapCustomerRow(row) {
   };
 }
 
+function mapDuplicateCustomerRow(row) {
+  if (!row) {
+    return null;
+  }
+  return {
+    id: Number(row.id),
+    name: row.name,
+    ownerUserId: Number(row.owner_user_id),
+    ownerDisplayName: row.owner_display_name || '',
+    ownerUsername: row.owner_username || '',
+    contactCount: numberOrNull(row.contact_count) || 0
+  };
+}
+
 function mapContactRow(row) {
   return {
     id: Number(row.id),
@@ -97,6 +111,28 @@ export function createCustomerRepository(queryTarget) {
         ...customer,
         contacts: contacts.rows.map(mapContactRow)
       };
+    },
+
+    async findDuplicatesByName(name, { excludeId } = {}) {
+      const params = [String(name || '').trim()];
+      const excludeClause = excludeId ? `AND c.id <> $${params.push(excludeId)}` : '';
+      const result = await queryTarget.query(`
+        SELECT
+          c.id,
+          c.name,
+          c.owner_user_id,
+          u.display_name AS owner_display_name,
+          u.username AS owner_username,
+          COALESCE(count(ct.id), 0)::int AS contact_count
+        FROM customers c
+        LEFT JOIN users u ON u.id = c.owner_user_id
+        LEFT JOIN contacts ct ON ct.customer_id = c.id
+        WHERE lower(btrim(c.name)) = lower($1)
+          ${excludeClause}
+        GROUP BY c.id, u.display_name, u.username
+        ORDER BY c.created_at DESC, c.id DESC
+      `, params);
+      return result.rows.map(mapDuplicateCustomerRow);
     },
 
     async createCustomer(input) {

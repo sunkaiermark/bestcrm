@@ -916,6 +916,51 @@ test('opportunity form quick creates customer and returns with it selected', asy
   }]);
 });
 
+test('opportunity form quick customer creation shows duplicate owner coordination warning', async () => {
+  let createCalled = false;
+  const { agent } = await createLoggedInAgent({
+    customerRepository: {
+      async listCustomers() {
+        return [{ id: 10, name: 'Acme Co', ownerUserId: 7 }];
+      },
+      async findDuplicatesByName() {
+        return [{
+          id: 12,
+          name: 'New Account',
+          ownerUserId: 8,
+          ownerDisplayName: 'Other Sales',
+          ownerUsername: 'other01',
+          contactCount: 1
+        }];
+      },
+      async createCustomer() {
+        createCalled = true;
+        throw new Error('should not create duplicate customer');
+      }
+    }
+  });
+
+  const response = await agent
+    .post('/opportunities/customers')
+    .type('form')
+    .send({
+      name: 'New Account',
+      website: 'new-account.example',
+      industry: 'Manufacturing',
+      country: 'China',
+      region: 'Shanghai',
+      address: 'No. 1 Road',
+      notes: 'Created while initiating opportunity'
+    });
+
+  assert.equal(response.status, 409);
+  assert.match(response.text, /<details class="inline-create-panel" open>/);
+  assert.match(response.text, /Duplicate customer found/);
+  assert.match(response.text, /Other Sales/);
+  assert.match(response.text, /value="New Account"/);
+  assert.equal(createCalled, false);
+});
+
 test('opportunity form quick creates contact and returns with it selected', async () => {
   const { agent, createdContacts } = await createLoggedInAgent();
 

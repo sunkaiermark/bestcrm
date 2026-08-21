@@ -333,6 +333,94 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.match(contactDetail.text, />\u5907\u6ce8<\/th>/);
 });
 
+test('customer creation shows duplicate owner coordination warning', async () => {
+  let createCalled = false;
+  const { agent } = await createLoggedInAgent({
+    customerRepository: {
+      async findDuplicatesByName() {
+        return [{
+          id: 11,
+          name: 'Acme Co',
+          ownerUserId: 8,
+          ownerDisplayName: 'Other Sales',
+          ownerUsername: 'other01',
+          contactCount: 2
+        }];
+      },
+      async createCustomer() {
+        createCalled = true;
+        throw new Error('should not create duplicate customer');
+      }
+    }
+  });
+
+  const response = await agent
+    .post('/customers')
+    .type('form')
+    .send({
+      name: 'Acme Co',
+      industry: 'Manufacturing',
+      country: 'China',
+      region: 'Shanghai',
+      address: 'Road 1',
+      notes: 'Duplicate check'
+    });
+
+  assert.equal(response.status, 409);
+  assert.match(response.text, /Duplicate customer found/);
+  assert.match(response.text, /Coordinate with the responsible person/);
+  assert.match(response.text, /Other Sales/);
+  assert.match(response.text, /value="Acme Co"/);
+  assert.equal(createCalled, false);
+});
+
+test('customer update shows duplicate warning and preserves the edited values', async () => {
+  let updateCalled = false;
+  const { agent } = await createLoggedInAgent({
+    customerRepository: {
+      async findDuplicatesByName(name, options) {
+        assert.equal(name, 'Another Acme');
+        assert.deepEqual(options, { excludeId: 10 });
+        return [{
+          id: 11,
+          name: 'Another Acme',
+          ownerUserId: 8,
+          ownerDisplayName: 'Other Sales',
+          ownerUsername: 'other01',
+          contactCount: 3
+        }];
+      },
+      async updateCustomer() {
+        updateCalled = true;
+        throw new Error('should not rename customer to a duplicate name');
+      }
+    }
+  });
+
+  const response = await agent
+    .post('/customers/10')
+    .type('form')
+    .send({
+      name: 'Another Acme',
+      website: 'another-acme.example',
+      industry: 'Manufacturing',
+      country: 'China',
+      region: 'Shanghai',
+      address: 'Road 2',
+      notes: 'Edited values'
+    });
+
+  assert.equal(response.status, 409);
+  assert.match(response.text, /Duplicate customer found/);
+  assert.match(response.text, /creating or renaming another record to the same name/);
+  assert.match(response.text, /Other Sales/);
+  assert.match(response.text, /action="\/customers\/10"/);
+  assert.match(response.text, /value="Another Acme"/);
+  assert.match(response.text, /value="another-acme\.example"/);
+  assert.match(response.text, /Edited values/);
+  assert.equal(updateCalled, false);
+});
+
 test('contact creation can return to opportunity initiation with the new contact selected', async () => {
   const { agent, createdContacts } = await createLoggedInAgent();
 

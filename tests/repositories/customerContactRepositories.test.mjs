@@ -130,6 +130,33 @@ test('customer repository creates and updates customer rows', async () => {
   ]);
 });
 
+test('customer repository finds duplicate customers by normalized name', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    id: '10',
+    name: 'Acme Co',
+    owner_user_id: '7',
+    owner_display_name: 'Sales One',
+    owner_username: 'sales01',
+    contact_count: '2'
+  }]);
+  const repository = createCustomerRepository(queryTarget);
+
+  const duplicates = await repository.findDuplicatesByName(' Acme Co ', { excludeId: 99 });
+
+  assert.deepEqual(duplicates, [{
+    id: 10,
+    name: 'Acme Co',
+    ownerUserId: 7,
+    ownerDisplayName: 'Sales One',
+    ownerUsername: 'sales01',
+    contactCount: 2
+  }]);
+  assert.match(queryTarget.queries[0].sql, /lower\(btrim\(c\.name\)\) = lower\(\$1\)/);
+  assert.match(queryTarget.queries[0].sql, /c\.id <> \$2/);
+  assert.match(queryTarget.queries[0].sql, /LEFT JOIN users u/);
+  assert.deepEqual(queryTarget.queries[0].params, ['Acme Co', 99]);
+});
+
 test('customer repository deletes customer rows by id', async () => {
   const queryTarget = createFakeQueryTarget([{ id: '10' }]);
   const repository = createCustomerRepository(queryTarget);

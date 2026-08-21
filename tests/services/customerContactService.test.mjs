@@ -4,6 +4,7 @@ import {
   canMaintainContact,
   canMaintainCustomer,
   createCustomer,
+  DuplicateCustomerError,
   deleteCustomer,
   normalizeCustomerWebsite,
   updateCustomer
@@ -67,6 +68,34 @@ test('normalizeCustomerWebsite accepts full URLs and adds HTTPS to bare domains'
   assert.equal(normalizeCustomerWebsite(''), '');
 });
 
+test('createCustomer rejects duplicate customer names before insert', async () => {
+  let createCalled = false;
+  const customerRepository = {
+    async findDuplicatesByName(name) {
+      assert.equal(name, 'Acme Co');
+      return [{
+        id: 10,
+        name: 'Acme Co',
+        ownerUserId: 9,
+        ownerDisplayName: 'Sales Manager',
+        contactCount: 2
+      }];
+    },
+    async createCustomer() {
+      createCalled = true;
+      throw new Error('should not create duplicate customer');
+    }
+  };
+
+  await assert.rejects(() => createCustomer(customerRepository, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, {
+    name: ' Acme Co '
+  }), DuplicateCustomerError);
+  assert.equal(createCalled, false);
+});
+
 test('updateCustomer rejects non-owner salesperson', async () => {
   const customerRepository = {
     async getCustomerDetail() {
@@ -83,6 +112,38 @@ test('updateCustomer rejects non-owner salesperson', async () => {
   }, 10, {
     name: 'Acme Updated'
   }), /Forbidden/);
+});
+
+test('updateCustomer rejects duplicate customer names excluding the current customer', async () => {
+  let updateCalled = false;
+  const customerRepository = {
+    async getCustomerDetail() {
+      return { id: 10, ownerUserId: 7 };
+    },
+    async findDuplicatesByName(name, options) {
+      assert.equal(name, 'Acme Co');
+      assert.deepEqual(options, { excludeId: 10 });
+      return [{
+        id: 11,
+        name: 'Acme Co',
+        ownerUserId: 8,
+        ownerDisplayName: 'Other Sales',
+        contactCount: 1
+      }];
+    },
+    async updateCustomer() {
+      updateCalled = true;
+      throw new Error('should not update duplicate customer');
+    }
+  };
+
+  await assert.rejects(() => updateCustomer(customerRepository, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, 10, {
+    name: 'Acme Co'
+  }), DuplicateCustomerError);
+  assert.equal(updateCalled, false);
 });
 
 test('deleteCustomer allows administrators only', async () => {

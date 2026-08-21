@@ -13,7 +13,7 @@ import { ROLE_DETAILS } from '../domain/systemCatalog.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { createContact } from '../services/contactService.mjs';
-import { createCustomer } from '../services/customerService.mjs';
+import { DuplicateCustomerError, createCustomer } from '../services/customerService.mjs';
 import {
   canManageOpportunityResponsibility,
   canEditOpportunity,
@@ -52,6 +52,46 @@ function newContactUrl(selectedCustomerId) {
   }
   params.set('returnTo', 'opportunity-initiation');
   return `/contacts/new?${params.toString()}`;
+}
+
+async function renderOpportunityForm(res, {
+  customerRepository,
+  contactRepository,
+  user,
+  opportunity = {},
+  duplicateCustomers = [],
+  newCustomer = {},
+  inlineCustomerOpen = false,
+  action = '/opportunities',
+  pageTitle,
+  submitLabel,
+  allowInlineCreate
+}) {
+  const filter = hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
+  const [customers, contacts] = await Promise.all([
+    customerRepository.listCustomers(filter),
+    contactRepository.listContacts(filter)
+  ]);
+  const selectedCustomerId = opportunity.customerId || customers[0]?.id || '';
+  res.render('opportunities/form', {
+    opportunity: {
+      ...opportunity,
+      customerId: selectedCustomerId
+    },
+    customers,
+    contacts,
+    countryOptions: CUSTOMER_COUNTRIES,
+    industryOptions: CUSTOMER_INDUSTRIES,
+    regionOptions: CUSTOMER_REGIONS,
+    duplicateCustomers,
+    newCustomer,
+    inlineCustomerOpen,
+    newContactUrl: newContactUrl(selectedCustomerId),
+    action,
+    pageTitle,
+    submitLabel,
+    allowInlineCreate
+  });
 }
 
 const assignmentRoles = [
@@ -666,23 +706,14 @@ export function opportunityRoutes({
 
   router.get('/opportunities/new', async (req, res, next) => {
     try {
-      const filter = hasRole(req.currentUser, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: req.currentUser.id };
-      const [customers, contacts] = await Promise.all([
-        customerRepository.listCustomers(filter),
-        contactRepository.listContacts(filter)
-      ]);
-      const selectedCustomerId = req.query.customerId || customers[0]?.id || '';
-      res.render('opportunities/form', {
+      await renderOpportunityForm(res, {
+        customerRepository,
+        contactRepository,
+        user: req.currentUser,
         opportunity: {
-          customerId: selectedCustomerId,
+          customerId: req.query.customerId,
           primaryContactId: req.query.contactId
         },
-        customers,
-        contacts,
-        countryOptions: CUSTOMER_COUNTRIES,
-        industryOptions: CUSTOMER_INDUSTRIES,
-        regionOptions: CUSTOMER_REGIONS,
-        newContactUrl: newContactUrl(selectedCustomerId),
         action: '/opportunities'
       });
     } catch (error) {
@@ -696,6 +727,18 @@ export function opportunityRoutes({
       const params = new URLSearchParams({ customerId: String(customer.id) });
       res.redirect(`/opportunities/new?${params.toString()}`);
     } catch (error) {
+      if (error instanceof DuplicateCustomerError) {
+        res.status(409);
+        await renderOpportunityForm(res, {
+          customerRepository,
+          contactRepository,
+          user: req.currentUser,
+          duplicateCustomers: error.duplicates,
+          newCustomer: req.body,
+          inlineCustomerOpen: true
+        });
+        return;
+      }
       next(error);
     }
   });

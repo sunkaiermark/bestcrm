@@ -6,6 +6,30 @@
 
         <form class="form-panel" method="post" action="<%= action %>">
           <%- csrfField() %>
+          <% if (typeof duplicateCustomers !== 'undefined' && duplicateCustomers.length) { %>
+            <section class="duplicate-warning" role="alert">
+              <strong><%= t('duplicateCustomerFound') %></strong>
+              <p><%= t('duplicateCustomerCoordinationHint') %></p>
+              <table class="duplicate-table">
+                <thead>
+                  <tr>
+                    <th><%= t('customerName') %></th>
+                    <th><%= t('responsiblePerson') %></th>
+                    <th><%= t('contacts') %></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% for (const duplicate of duplicateCustomers) { %>
+                    <tr>
+                      <td><%= duplicate.name %></td>
+                      <td><%= duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></td>
+                      <td><%= duplicate.contactCount %></td>
+                    </tr>
+                  <% } %>
+                </tbody>
+              </table>
+            </section>
+          <% } %>
           <label>
             <%= t('name') %>
             <input name="name" value="<%= customer.name || '' %>" required>
