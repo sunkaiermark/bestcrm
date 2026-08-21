@@ -24,6 +24,14 @@
                     <td><%= customer.industry %></td>
                   </tr>
                   <tr>
+                    <th scope="row"><%= t('website') %></th>
+                    <td>
+                      <% if (customer.website) { %>
+                        <a href="<%= customer.website %>" target="_blank" rel="noopener noreferrer"><%= customer.website %></a>
+                      <% } %>
+                    </td>
+                  </tr>
+                  <tr>
                     <th scope="row"><%= t('country') %></th>
                     <td><%= customer.country %></td>
                   </tr>

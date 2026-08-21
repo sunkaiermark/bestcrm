@@ -1,4 +1,4 @@
-export const CUSTOMER_REGIONS = [
+export const CHINA_PROVINCE_LEVEL_REGIONS = [
   'Beijing',
   'Shanghai',
   'Tianjin',
@@ -32,7 +32,11 @@ export const CUSTOMER_REGIONS = [
   'Xinjiang',
   'Hong Kong',
   'Macau',
-  'Taiwan',
+  'Taiwan'
+];
+
+export const CUSTOMER_REGIONS = [
+  ...CHINA_PROVINCE_LEVEL_REGIONS,
   'Overseas',
   'Other'
 ];

@@ -891,6 +891,7 @@ test('opportunity form quick creates customer and returns with it selected', asy
     .type('form')
     .send({
       name: 'New Account',
+      website: 'new-account.example',
       industry: 'Manufacturing',
       country: 'China',
       region: 'Shanghai',
@@ -902,6 +903,7 @@ test('opportunity form quick creates customer and returns with it selected', asy
   assert.equal(response.headers.location, '/opportunities/new?customerId=11');
   assert.deepEqual(createdCustomers, [{
     name: 'New Account',
+    website: 'https://new-account.example',
     industry: 'Manufacturing',
     country: 'China',
     region: 'Shanghai',

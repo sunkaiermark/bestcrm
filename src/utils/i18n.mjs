@@ -402,6 +402,7 @@ const dictionaries = {
     unlockLogin: 'Unlock Login',
     unlockLoginConfirm: 'Unlock this user login?',
     username: 'Username',
+    website: 'Company Website',
     workbench: 'Workbench'
   },
   zh: {
@@ -807,6 +808,7 @@ const dictionaries = {
     unlockLogin: '\u89e3\u9664\u9501\u5b9a',
     unlockLoginConfirm: '\u786e\u8ba4\u89e3\u9664\u8be5\u7528\u6237\u767b\u5f55\u9501\u5b9a\uff1f',
     username: '\u7528\u6237\u540d',
+    website: '\u4f01\u4e1a\u7f51\u7ad9',
     workbench: '\u5de5\u4f5c\u53f0'
   }
 };

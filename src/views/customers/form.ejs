@@ -11,6 +11,10 @@
             <input name="name" value="<%= customer.name || '' %>" required>
           </label>
           <label>
+            <%= t('website') %>
+            <input name="website" type="text" inputmode="url" placeholder="https://www.example.com" value="<%= customer.website || '' %>">
+          </label>
+          <label>
             <%= t('industry') %>
             <select name="industry">
               <% const currentIndustry = customer.industry || ''; %>
@@ -45,9 +49,14 @@
           <label>
             <%= t('country') %>
             <select name="country">
+              <% const currentCountry = customer.country || ''; %>
+              <% const availableCountries = typeof countryOptions !== 'undefined' ? countryOptions : []; %>
               <option value=""><%= t('selectCountry') %></option>
-              <% for (const country of (typeof countryOptions !== 'undefined' ? countryOptions : [])) { %>
-                <option value="<%= country %>" <%= (customer.country || '') === country ? 'selected' : '' %>><%= country %></option>
+              <% if (currentCountry && !availableCountries.includes(currentCountry)) { %>
+                <option value="<%= currentCountry %>" selected><%= currentCountry %></option>
+              <% } %>
+              <% for (const country of availableCountries) { %>
+                <option value="<%= country %>"<%= currentCountry === country ? ' selected' : '' %>><%= country %></option>
               <% } %>
             </select>
           </label>

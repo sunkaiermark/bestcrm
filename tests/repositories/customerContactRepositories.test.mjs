@@ -17,6 +17,7 @@ test('customer repository lists and maps customers', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '10',
     name: 'Acme Co',
+    website: 'https://www.acme.example',
     industry: 'Manufacturing',
     country: 'China',
     region: 'Shanghai',
@@ -35,6 +36,7 @@ test('customer repository lists and maps customers', async () => {
   assert.deepEqual(customers, [{
     id: 10,
     name: 'Acme Co',
+    website: 'https://www.acme.example',
     industry: 'Manufacturing',
     country: 'China',
     region: 'Shanghai',
@@ -55,6 +57,7 @@ test('customer repository creates and updates customer rows', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '10',
     name: 'Acme Co',
+    website: 'https://www.acme.example',
     industry: 'Manufacturing',
     country: 'China',
     region: 'Shanghai',
@@ -70,6 +73,7 @@ test('customer repository creates and updates customer rows', async () => {
 
   await repository.createCustomer({
     name: 'Acme Co',
+    website: 'https://www.acme.example',
     industry: 'Manufacturing',
     country: 'China',
     region: 'Shanghai',
@@ -84,6 +88,7 @@ test('customer repository creates and updates customer rows', async () => {
   assert.match(queryTarget.queries[0].sql, /INSERT INTO customers/);
   assert.deepEqual(queryTarget.queries[0].params, [
     'Acme Co',
+    'https://www.acme.example',
     'Manufacturing',
     'China',
     'Shanghai',
@@ -97,6 +102,7 @@ test('customer repository creates and updates customer rows', async () => {
 
   await repository.updateCustomer(10, {
     name: 'Acme Updated',
+    website: 'https://updated.acme.example',
     industry: 'Energy',
     country: 'Singapore',
     region: 'Beijing',
@@ -111,6 +117,7 @@ test('customer repository creates and updates customer rows', async () => {
   assert.match(queryTarget.queries[1].sql, /updated_at = now\(\)/);
   assert.deepEqual(queryTarget.queries[1].params, [
     'Acme Updated',
+    'https://updated.acme.example',
     'Energy',
     'Singapore',
     'Beijing',

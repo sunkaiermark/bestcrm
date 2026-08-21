@@ -5,6 +5,7 @@ import {
   canMaintainCustomer,
   createCustomer,
   deleteCustomer,
+  normalizeCustomerWebsite,
   updateCustomer
 } from '../../src/services/customerService.mjs';
 import { createContact, deleteContact, updateContact } from '../../src/services/contactService.mjs';
@@ -35,6 +36,7 @@ test('createCustomer defaults ownership to current salesperson', async () => {
     roles: [ROLES.SALESPERSON]
   }, {
     name: 'Acme Co',
+    website: 'www.acme.example',
     industry: 'Manufacturing',
     country: 'China',
     region: 'Shanghai',
@@ -46,6 +48,7 @@ test('createCustomer defaults ownership to current salesperson', async () => {
   assert.equal(customer.ownerUserId, 7);
   assert.deepEqual(calls, [{
     name: 'Acme Co',
+    website: 'https://www.acme.example',
     industry: 'Manufacturing',
     country: 'China',
     region: 'Shanghai',
@@ -56,6 +59,12 @@ test('createCustomer defaults ownership to current salesperson', async () => {
     ownerUserId: 7,
     notes: ''
   }]);
+});
+
+test('normalizeCustomerWebsite accepts full URLs and adds HTTPS to bare domains', () => {
+  assert.equal(normalizeCustomerWebsite(' acme.example '), 'https://acme.example');
+  assert.equal(normalizeCustomerWebsite('http://acme.example'), 'http://acme.example');
+  assert.equal(normalizeCustomerWebsite(''), '');
 });
 
 test('updateCustomer rejects non-owner salesperson', async () => {

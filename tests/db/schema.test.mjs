@@ -22,6 +22,7 @@ const inquiryInboxMigrationPath = new URL('../../src/db/migrations/018_inquiry_i
 const inquirySourceReferenceUniqueMigrationPath = new URL('../../src/db/migrations/019_inquiry_source_reference_unique.sql', import.meta.url);
 const notificationCenterMigrationPath = new URL('../../src/db/migrations/020_notification_center.sql', import.meta.url);
 const notificationWorkflowRecipientsMigrationPath = new URL('../../src/db/migrations/021_notification_workflow_recipients.sql', import.meta.url);
+const customerWebsiteMigrationPath = new URL('../../src/db/migrations/022_customer_website.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -160,6 +161,13 @@ test('customer profile migration adds parent company enterprise nature and highl
   assert.match(sql, /ADD COLUMN IF NOT EXISTS parent_company text/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS enterprise_nature text/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS company_highlights text/);
+});
+
+test('customer website migration adds website to customer records', async () => {
+  const sql = await readFile(customerWebsiteMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE customers/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS website text/);
 });
 
 test('opportunity material versions migration creates unified approval version records', async () => {

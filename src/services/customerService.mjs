@@ -8,6 +8,14 @@ function text(value) {
   return String(value || '').trim();
 }
 
+export function normalizeCustomerWebsite(value) {
+  const website = text(value);
+  if (!website || /^https?:\/\//i.test(website)) {
+    return website;
+  }
+  return `https://${website}`;
+}
+
 export function canMaintainCustomer(user, customer) {
   return hasRole(user, ROLES.ADMINISTRATOR) || customer.ownerUserId === user.id;
 }
@@ -23,6 +31,7 @@ export function canDeleteCustomer(user) {
 export function normalizeCustomerInput(input, ownerUserId) {
   return {
     name: text(input.name),
+    website: normalizeCustomerWebsite(input.website),
     industry: text(input.industry),
     country: text(input.country),
     region: text(input.region),

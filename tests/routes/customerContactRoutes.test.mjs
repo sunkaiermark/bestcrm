@@ -39,6 +39,7 @@ async function createLoggedInAgent(options = {}) {
         return [{
           id: 10,
           name: 'Acme Co',
+          website: 'https://www.acme.example',
           industry: 'Manufacturing',
           country: 'China',
           region: 'Shanghai',
@@ -53,6 +54,7 @@ async function createLoggedInAgent(options = {}) {
         return {
           id: Number(id),
           name: 'Acme Co',
+          website: 'https://www.acme.example',
           industry: 'Manufacturing',
           country: 'China',
           region: 'Shanghai',
@@ -179,12 +181,14 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.equal(form.status, 200);
   assertAppSidebar(form.text, '/customers');
   assert.match(form.text, /name="name"/);
+  assert.match(form.text, /name="website"/);
   assert.match(form.text, /<select name="industry">/);
   for (const industry of ['石油化工', '精细化工', '湿法冶金', '环保', '食品', '医化', '其他']) {
     assert.match(form.text, new RegExp(`<option value="${industry}">${industry}<\\/option>`));
   }
   assert.match(form.text, /<select name="country">/);
   assert.match(form.text, /<option value="China"\s*>China<\/option>/);
+  assert.match(form.text, /<option value="Zimbabwe">Zimbabwe<\/option>/);
   assert.match(form.text, /<select name="region">/);
   assert.match(form.text, /<option value="Shanghai">Shanghai<\/option>/);
   assert.match(form.text, /name="parentCompany"/);
@@ -196,6 +200,7 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.equal(editForm.status, 200);
   assertAppSidebar(editForm.text, '/customers');
   assert.match(editForm.text, /<select name="country">/);
+  assert.match(editForm.text, /name="website"[^>]*value="https:\/\/www\.acme\.example"/);
   assert.match(editForm.text, /<option value="China" selected>China<\/option>/);
   assert.match(editForm.text, /<select name="region">/);
   assert.match(editForm.text, /<option value="Shanghai" selected>Shanghai<\/option>/);
@@ -218,6 +223,8 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.equal((customerDetailHtml.match(/<table class="detail-table detail-table-wide">/g) || []).length, 3);
   assert.match(detail.text, /\.detail-table-wide\s*\{[\s\S]*grid-column:\s*1 \/ -1;/);
   assert.match(customerDetailHtml, /<th scope="row">Industry<\/th>/);
+  assert.match(customerDetailHtml, /<th scope="row">Company Website<\/th>/);
+  assert.match(customerDetailHtml, /href="https:\/\/www\.acme\.example"/);
   assert.ok(customerDetailHtml.indexOf('Country') < customerDetailHtml.indexOf('Parent Company'));
   assert.match(customerDetailHtml, /<th scope="row">Parent Company<\/th>/);
   assert.match(customerDetailHtml, /Acme Group/);
@@ -301,6 +308,7 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.match(customerDetail.text, /\u7f16\u8f91\u5ba2\u6237/);
   assert.match(customerDetail.text, /\u5ba2\u6237\u8be6\u60c5/);
   assert.match(customerDetail.text, />\u884c\u4e1a<\/th>/);
+  assert.match(customerDetail.text, />\u4f01\u4e1a\u7f51\u7ad9<\/th>/);
   assert.match(customerDetail.text, />\u6bcd\u516c\u53f8<\/th>/);
   assert.match(customerDetail.text, />\u4f01\u4e1a\u6027\u8d28<\/th>/);
   assert.match(customerDetail.text, />\u5730\u5740<\/th>/);
