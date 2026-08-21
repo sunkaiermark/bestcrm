@@ -42,6 +42,7 @@
                   <th><%= t('companyName') %></th>
                   <th><%= t('contact') %></th>
                   <th><%= t('productInterest') %></th>
+                  <th><%= t('opportunityType') %></th>
                   <th><%= t('assignedTo') %></th>
                   <th><%= t('actions') %></th>
                 </tr>
@@ -57,6 +58,7 @@
                     <td><%= inquiry.companyName || '' %></td>
                     <td><%= inquiry.contactName || inquiry.contactEmail || '' %></td>
                     <td><%= inquiry.productInterest || '' %></td>
+                    <td><%= inquiry.opportunityType || '' %></td>
                     <td><%= inquiry.assignedDisplayName || '' %></td>
                     <td><a class="secondary-action" href="/inquiries/<%= inquiry.id %>"><%= t('view') %></a></td>
                   </tr>

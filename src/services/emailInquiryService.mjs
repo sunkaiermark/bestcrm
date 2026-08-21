@@ -104,6 +104,7 @@ export function normalizeEmailInquiryPayload(parsed = {}, meta = {}) {
     contactPhone: fieldFromBody(body, ['Phone', 'Tel', 'Telephone', 'Mobile', 'WhatsApp', '电话', '手机']),
     country: fieldFromBody(body, ['Country', '国家']),
     productInterest: fieldFromBody(body, ['Product', 'Product Interest', 'Equipment', '产品', '设备']),
+    opportunityType: fieldFromBody(body, ['Opportunity Type', 'Project Type', '商机类型', '项目类型']),
     requirementText: body || subject,
     rawPayload: {
       mailbox: text(meta.mailbox || 'INBOX'),

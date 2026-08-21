@@ -48,6 +48,10 @@
             <input name="productInterest" value="<%= inquiry.productInterest || '' %>">
           </label>
           <label>
+            <%= t('opportunityType') %>
+            <input name="opportunityType" value="<%= inquiry.opportunityType || '' %>">
+          </label>
+          <label>
             <%= t('priority') %>
             <select name="priority" required>
               <% for (const priority of priorities) { %>

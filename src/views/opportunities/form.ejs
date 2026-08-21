@@ -127,10 +127,18 @@
             <input name="estimatedAmount" form="opportunity-form" value="<%= opportunity.estimatedAmount || '' %>">
           </label>
           <label>
-            <%= t('projectType') %>
+            <%= t('productInterest') %>
+            <input name="productInterest" form="opportunity-form" value="<%= opportunity.productInterest || '' %>">
+          </label>
+          <label>
+            <%= t('opportunityType') %>
             <select name="projectType" form="opportunity-form">
               <option value=""><%= t('selectProjectType') %></option>
-              <% for (const projectType of ['新增', '扩建', '改造', '维修']) { %>
+              <% const projectTypeOptions = ['新增', '扩建', '改造', '维修']; %>
+              <% if (opportunity.projectType && !projectTypeOptions.includes(opportunity.projectType)) { %>
+                <option value="<%= opportunity.projectType %>" selected><%= opportunity.projectType %></option>
+              <% } %>
+              <% for (const projectType of projectTypeOptions) { %>
                 <option value="<%= projectType %>" <%= opportunity.projectType === projectType ? 'selected' : '' %>><%= projectType %></option>
               <% } %>
             </select>

@@ -3,10 +3,15 @@ import assert from 'node:assert/strict';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
   canAccessInquiryInbox,
+  canDeleteInquiry,
+  canProcessInquiry,
   canViewInquiry,
   convertInquiryToOpportunity,
   createInquiry,
+  markInquiryAsSpam,
   inquiryListFilterFor,
+  saveInquiryAsContact,
+  saveInquiryAsCustomer,
   updateInquiryReview
 } from '../../src/services/inquiryService.mjs';
 
@@ -24,6 +29,10 @@ test('inquiry service exposes inbox to sales roles only', () => {
   assert.equal(canViewInquiry(salesperson, { assignedUserId: 8, createdBy: 7 }), true);
   assert.equal(canViewInquiry(salesperson, { assignedUserId: 8, createdBy: 9 }), false);
   assert.equal(canViewInquiry(salesManager, { assignedUserId: 8, createdBy: 9 }), true);
+  assert.equal(canDeleteInquiry(salesperson), false);
+  assert.equal(canDeleteInquiry({ id: 99, roles: [ROLES.ADMINISTRATOR] }), true);
+  assert.equal(canProcessInquiry({ status: 'reviewing' }), true);
+  assert.equal(canProcessInquiry({ status: 'customer_saved' }), false);
 });
 
 test('inquiry list filter limits salesperson visibility', () => {
@@ -37,7 +46,7 @@ test('inquiry list filter limits salesperson visibility', () => {
     status: 'spam'
   });
   assert.deepEqual(inquiryListFilterFor(salesperson, {}), {
-    excludeStatuses: ['spam', 'archived'],
+    excludeStatuses: ['converted', 'contact_saved', 'customer_saved', 'spam', 'duplicate', 'archived'],
     visibleToUserId: 7
   });
 });
@@ -73,6 +82,7 @@ test('createInquiry normalizes input and requires requirement text', async () =>
     contactPhone: '',
     country: '',
     productInterest: 'Evaporator',
+    opportunityType: '',
     requirementText: 'Need quote',
     rawPayload: {},
     priority: 'urgent',
@@ -116,7 +126,16 @@ test('updateInquiryReview validates matched customer and contact', async () => {
     id: 11,
     assignedUserId: 7,
     status: 'new',
-    priority: 'normal'
+    priority: 'normal',
+    subject: 'RFQ',
+    companyName: 'Acme',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '123',
+    country: 'Singapore',
+    productInterest: 'Dryer',
+    opportunityType: 'Expansion',
+    requirementText: 'Need a dryer'
   }, {
     status: 'reviewing',
     priority: 'high',
@@ -135,6 +154,15 @@ test('updateInquiryReview validates matched customer and contact', async () => {
       assignedUserId: 7,
       matchedCustomerId: 20,
       matchedContactId: 30,
+      subject: 'RFQ',
+      companyName: 'Acme',
+      contactName: 'Alice',
+      contactEmail: 'alice@example.com',
+      contactPhone: '123',
+      country: 'Singapore',
+      productInterest: 'Dryer',
+      opportunityType: 'Expansion',
+      requirementText: 'Need a dryer',
       reviewNote: 'Qualified',
       reviewedBy: 7
     }]
@@ -174,6 +202,7 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
     id: 11,
     subject: 'Need evaporator quote',
     productInterest: 'Evaporator',
+    opportunityType: 'Expansion',
     requirementText: 'Need wastewater evaporation package.',
     matchedCustomerId: 20,
     matchedContactId: 30,
@@ -192,7 +221,8 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
       primaryContactId: 30,
       requirement: 'Need wastewater evaporation package.',
       estimatedAmount: null,
-      projectType: 'Evaporator',
+      productInterest: 'Evaporator',
+      projectType: 'Expansion',
       deliveryCycle: '',
       expectedBidDate: null,
       status: 'draft',
@@ -205,4 +235,148 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
       reviewedBy: 7
     }]
   ]);
+});
+
+test('conversion can create missing customer and contact from extracted inquiry fields', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryRepository: {
+      async markConverted(id, input) {
+        calls.push(['markConverted', id, input]);
+        return { id, ...input, status: 'converted' };
+      }
+    },
+    customerRepository: {
+      async findDuplicatesByName() {
+        return [];
+      },
+      async createCustomer(input) {
+        calls.push(['createCustomer', input]);
+        return { id: 20, ...input };
+      },
+      async getCustomerDetail(id) {
+        return { id, ownerUserId: 7 };
+      }
+    },
+    contactRepository: {
+      async createContact(input) {
+        calls.push(['createContact', input]);
+        return { id: 30, ...input };
+      },
+      async getContactDetail(id) {
+        return { id, customerId: 20, customerOwnerUserId: 7 };
+      }
+    },
+    opportunityRepository: {
+      async createOpportunity(input) {
+        calls.push(['createOpportunity', input]);
+        return { id: 40, ...input };
+      }
+    }
+  };
+
+  const opportunity = await convertInquiryToOpportunity(repositories, salesperson, {
+    id: 11,
+    status: 'new',
+    assignedUserId: 7,
+    subject: 'New line RFQ',
+    companyName: 'Acme',
+    country: 'United States',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '123',
+    productInterest: 'Evaporator',
+    opportunityType: 'Expansion',
+    requirementText: 'Need quote',
+    matchedCustomerId: null,
+    matchedContactId: null
+  }, { createMissingRecords: '1' });
+
+  assert.equal(opportunity.customerId, 20);
+  assert.equal(opportunity.primaryContactId, 30);
+  assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].name, 'Acme');
+  assert.equal(calls.find((call) => call[0] === 'createContact')[1].email, 'alice@example.com');
+  assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].productInterest, 'Evaporator');
+  assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].projectType, 'Expansion');
+});
+
+test('inquiry dispositions save an existing customer, create a contact, and prevent a second action', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryRepository: {
+      async markDisposition(id, input) {
+        calls.push(['markDisposition', id, input]);
+        return { id, ...input };
+      }
+    },
+    customerRepository: {
+      async getCustomerDetail(id) {
+        calls.push(['getCustomer', id]);
+        return { id, ownerUserId: 7 };
+      }
+    },
+    contactRepository: {
+      async createContact(input) {
+        calls.push(['createContact', input]);
+        return { id: 31, ...input };
+      },
+      async getContactDetail() {
+        return null;
+      }
+    }
+  };
+  const inquiry = {
+    id: 11,
+    assignedUserId: 7,
+    status: 'reviewing',
+    companyName: 'Acme',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '123',
+    requirementText: 'Need quote',
+    reviewNote: ''
+  };
+
+  await saveInquiryAsCustomer(repositories, salesperson, inquiry, { customerId: '20' });
+  await saveInquiryAsContact(repositories, salesperson, inquiry, { customerId: '20' });
+
+  assert.deepEqual(calls.filter((call) => call[0] === 'markDisposition').map((call) => call[2].status), [
+    'customer_saved',
+    'contact_saved'
+  ]);
+  assert.deepEqual(calls.find((call) => call[0] === 'createContact')[1], {
+    customerId: 20,
+    name: 'Alice',
+    title: '',
+    phone: '123',
+    email: 'alice@example.com',
+    wechat: '',
+    educationBackground: '',
+    workExperience: '',
+    keyAchievements: '',
+    notes: 'Need quote'
+  });
+
+  await assert.rejects(
+    () => markInquiryAsSpam(repositories.inquiryRepository, salesperson, { ...inquiry, status: 'contact_saved' }),
+    /Inquiry already processed/
+  );
+});
+
+test('markInquiryAsSpam records the final spam disposition', async () => {
+  const calls = [];
+  const inquiryRepository = {
+    async markDisposition(id, input) {
+      calls.push([id, input]);
+      return { id, ...input };
+    }
+  };
+  await markInquiryAsSpam(inquiryRepository, salesperson, {
+    id: 12,
+    assignedUserId: 7,
+    status: 'new',
+    reviewNote: ''
+  }, { reviewNote: 'SEO solicitation' });
+  assert.equal(calls[0][1].status, 'spam');
+  assert.equal(calls[0][1].reviewNote, 'SEO solicitation');
 });

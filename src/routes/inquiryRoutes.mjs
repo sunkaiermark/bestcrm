@@ -4,13 +4,20 @@ import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
+import { DuplicateCustomerError } from '../services/customerService.mjs';
 import {
   canAccessInquiryInbox,
+  canDeleteInquiry,
+  canProcessInquiry,
   canViewInquiry,
   convertInquiryToOpportunity,
   createInquiry,
+  deleteInquiry,
   inquiryFormOptions,
   inquiryListFilterFor,
+  markInquiryAsSpam,
+  saveInquiryAsContact,
+  saveInquiryAsCustomer,
   updateInquiryReview
 } from '../services/inquiryService.mjs';
 import { attachmentPreviewKind, extractDocxPlainText, renderDxfPreview } from '../utils/attachmentPreview.mjs';
@@ -74,6 +81,23 @@ function renderInquiryDetail(res, data = {}) {
   });
 }
 
+async function renderInquiryDetailPage(dependencies, req, res, inquiry, data = {}, status = 200) {
+  const options = await loadCrmOptions(dependencies, req.currentUser);
+  const inquiryAttachments = typeof dependencies.inquiryAttachmentRepository?.listByInquiry === 'function'
+    ? await dependencies.inquiryAttachmentRepository.listByInquiry(inquiry.id)
+    : [];
+  res.status(status);
+  renderInquiryDetail(res, {
+    inquiry,
+    inquiryAttachments,
+    canDeleteInquiry: canDeleteInquiry(req.currentUser),
+    canProcessInquiry: canProcessInquiry(inquiry),
+    duplicateCustomers: [],
+    ...options,
+    ...data
+  });
+}
+
 function handleInquiryError(error, res, next) {
   if (error.message === 'Forbidden') {
     forbidden(res);
@@ -87,12 +111,27 @@ function handleInquiryError(error, res, next) {
     'Contact does not belong to customer',
     'Requirement is required',
     'Customer is required',
-    'Inquiry already converted'
+    'Customer name is required',
+    'Contact name is required'
   ].includes(error.message)) {
     res.status(400).send(error.message);
     return;
   }
+  if (error.message === 'Inquiry already processed') {
+    res.status(409).send(error.message);
+    return;
+  }
   next(error);
+}
+
+async function handleInquiryActionError(error, dependencies, req, res, next, inquiry) {
+  if (error instanceof DuplicateCustomerError) {
+    await renderInquiryDetailPage(dependencies, req, res, inquiry, {
+      duplicateCustomers: error.duplicates
+    }, 409);
+    return;
+  }
+  handleInquiryError(error, res, next);
 }
 
 export function inquiryRoutes({
@@ -106,6 +145,16 @@ export function inquiryRoutes({
   uploadDir = './var/uploads'
 }) {
   const router = Router();
+  const dependencies = {
+    inquiryRepository,
+    inquiryAttachmentRepository,
+    customerRepository,
+    contactRepository,
+    opportunityRepository,
+    attachmentRepository,
+    userRepository,
+    uploadDir
+  };
 
   router.use('/inquiries', requireLogin);
   router.use('/inquiries', (req, res, next) => {
@@ -162,15 +211,7 @@ export function inquiryRoutes({
       if (!inquiry) {
         return;
       }
-      const options = await loadCrmOptions({ customerRepository, contactRepository, userRepository }, req.currentUser);
-      const inquiryAttachments = typeof inquiryAttachmentRepository?.listByInquiry === 'function'
-        ? await inquiryAttachmentRepository.listByInquiry(inquiry.id)
-        : [];
-      renderInquiryDetail(res, {
-        inquiry,
-        inquiryAttachments,
-        ...options
-      });
+      await renderInquiryDetailPage(dependencies, req, res, inquiry);
     } catch (error) {
       handleInquiryError(error, res, next);
     }
@@ -194,21 +235,68 @@ export function inquiryRoutes({
   });
 
   router.post('/inquiries/:id/convert', async (req, res, next) => {
+    let inquiry;
+    try {
+      inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
+      if (!inquiry) {
+        return;
+      }
+      const opportunity = await convertInquiryToOpportunity(dependencies, req.currentUser, inquiry, req.body);
+      res.redirect(`/opportunities/${opportunity.id}`);
+    } catch (error) {
+      await handleInquiryActionError(error, dependencies, req, res, next, inquiry);
+    }
+  });
+
+  router.post('/inquiries/:id/save-customer', async (req, res, next) => {
+    let inquiry;
+    try {
+      inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
+      if (!inquiry) {
+        return;
+      }
+      await saveInquiryAsCustomer(dependencies, req.currentUser, inquiry, req.body);
+      res.redirect(`/inquiries/${inquiry.id}`);
+    } catch (error) {
+      await handleInquiryActionError(error, dependencies, req, res, next, inquiry);
+    }
+  });
+
+  router.post('/inquiries/:id/save-contact', async (req, res, next) => {
+    let inquiry;
+    try {
+      inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
+      if (!inquiry) {
+        return;
+      }
+      await saveInquiryAsContact(dependencies, req.currentUser, inquiry, req.body);
+      res.redirect(`/inquiries/${inquiry.id}`);
+    } catch (error) {
+      await handleInquiryActionError(error, dependencies, req, res, next, inquiry);
+    }
+  });
+
+  router.post('/inquiries/:id/spam', async (req, res, next) => {
     try {
       const inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
       if (!inquiry) {
         return;
       }
-      const opportunity = await convertInquiryToOpportunity({
-        inquiryRepository,
-        inquiryAttachmentRepository,
-        customerRepository,
-        contactRepository,
-        opportunityRepository,
-        attachmentRepository,
-        uploadDir
-      }, req.currentUser, inquiry, req.body);
-      res.redirect(`/opportunities/${opportunity.id}`);
+      await markInquiryAsSpam(inquiryRepository, req.currentUser, inquiry, req.body);
+      res.redirect('/inquiries');
+    } catch (error) {
+      handleInquiryError(error, res, next);
+    }
+  });
+
+  router.post('/inquiries/:id/delete', async (req, res, next) => {
+    try {
+      const inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
+      if (!inquiry) {
+        return;
+      }
+      await deleteInquiry(dependencies, req.currentUser, inquiry);
+      res.redirect('/inquiries');
     } catch (error) {
       handleInquiryError(error, res, next);
     }

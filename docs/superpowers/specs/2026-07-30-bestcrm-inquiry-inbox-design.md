@@ -2,25 +2,28 @@
 
 ## Goal
 
-Create a controlled CRM intake layer for SUNKAIER inquiries before connecting live sources.
+Create a controlled CRM intake layer for SUNKAIER inquiries and give every pushed record one explicit business disposition.
 
 External inquiries from `sunkaier.com`, `sales@sunkaier.com`, and Chatwoot should first become inquiry inbox records. Sales users review, match, and convert those records into existing BESTCRM customer, contact, opportunity, attachment, and follow-up workflows.
 
 ## Scope
 
-Phase 1 is local CRM-only:
+Current local implementation:
 
 - Add the inquiry inbox table.
 - Add list, create, detail, review, and convert pages inside BESTCRM.
 - Allow manual inquiry creation for local validation.
-- Convert a reviewed inquiry into a draft opportunity after selecting an existing customer/contact.
+- Extract customer name, contact name, product, and opportunity type from common website fields, nested form data, or labeled message text.
+- Let an operator correct extracted fields before processing.
+- Finish each active inquiry with exactly one disposition: converted to opportunity, saved as contact, saved as customer, or spam.
+- Reuse existing customer/contact records or create missing records from extracted fields while converting.
 - Poll `sales@sunkaier.com` through the mailbox provider for local validation.
 
-Out of scope for Phase 1:
+Out of scope:
 
-- Public website form submission.
-- AI auto-creation of customers, contacts, quotes, or final opportunities.
-- Production deployment.
+- Free-form generative AI classification without deterministic source fields or labels.
+- Automatic quote creation.
+- Production deployment as part of this local change.
 
 ## Data Model
 
@@ -35,10 +38,11 @@ Core columns:
 - `subject`: email subject, form title, or short inquiry heading.
 - `company_name`, `contact_name`, `contact_email`, `contact_phone`, `country`: extracted customer/contact fields.
 - `product_interest`: product, service, or project area.
+- `opportunity_type`: business opportunity type, kept separate from product.
 - `requirement_text`: customer requirement summary or full raw requirement.
 - `raw_payload`: original normalized JSON payload for traceability.
 - `priority`: `low`, `normal`, `high`, or `urgent`.
-- `status`: `new`, `reviewing`, `converted`, `duplicate`, `spam`, or `archived`.
+- `status`: active states `new` and `reviewing`; final dispositions `converted`, `contact_saved`, `customer_saved`, and `spam`; legacy intake compatibility states `duplicate` and `archived`.
 - `assigned_user_id`: sales owner currently handling the inquiry.
 - `matched_customer_id`, `matched_contact_id`: reviewed CRM links.
 - `converted_opportunity_id`: created opportunity after conversion.
@@ -78,9 +82,11 @@ Path: `/inquiries/:id`
 
 Purpose:
 
-- Show raw inquiry fields.
-- Review status, assignment, priority, CRM matching, and notes.
-- Convert to opportunity after customer matching.
+- Show raw and extracted inquiry fields.
+- Correct extraction, assignment, priority, CRM matching, and notes while the inquiry is active.
+- Select one final action: save customer, save contact, convert to opportunity, or mark as spam.
+- Show links to the resulting customer, contact, or opportunity after processing.
+- Let administrators delete the inquiry and its inquiry attachments.
 
 ### Convert
 
@@ -88,16 +94,26 @@ Action: `POST /inquiries/:id/convert`
 
 Behavior:
 
-- Requires an existing customer.
-- Creates a draft opportunity using selected customer/contact and inquiry requirement.
+- Uses selected customer/contact records when supplied.
+- Can create missing customer/contact records from corrected extracted fields when the operator keeps that option selected.
+- Creates a draft opportunity with customer, contact, product, opportunity type, and requirement kept in their separate destination fields.
 - Marks inquiry as `converted`.
 - Stores the created opportunity id on the inquiry.
+
+Other final actions:
+
+- `POST /inquiries/:id/save-customer`
+- `POST /inquiries/:id/save-contact`
+- `POST /inquiries/:id/spam`
+- `POST /inquiries/:id/delete` (administrator only)
+
+All final disposition updates are conditional on the inquiry still being `new` or `reviewing`, so a processed inquiry cannot be deliberately processed a second time.
 
 ## Later Integrations
 
 ### Website Form
 
-Add a signed public endpoint after the local inbox is validated:
+The signed public endpoint is:
 
 - `POST /api/inquiries/website`
 - HMAC-SHA256 signature using `INQUIRY_INTAKE_SECRET`.
@@ -106,6 +122,8 @@ Add a signed public endpoint after the local inbox is validated:
 - `x-bestcrm-signature` format: `sha256=<hex digest>`.
 - Spam protection and payload size limits.
 - Website keeps only submission responsibility; CRM handles review and conversion.
+- Accepted extraction aliases include `companyName`/`customerName`/`company`, `contactName`/`name`, `productInterest`/`product`/`productName`, and `opportunityType`/`projectType`; the same values may be nested under `formData`, `data`, or `fields`.
+- When structured values are absent, labeled lines such as `客户名称：`, `联系人：`, `产品：`, and `商机类型：` are extracted from the requirement message.
 
 ### sales@sunkaier.com
 
@@ -118,7 +136,7 @@ Use the mailbox provider as the mail server and let BESTCRM poll it:
 - Store email body and attachment metadata on the inquiry before conversion.
 - Keep the worker disabled until IMAP host, account, and app password are configured.
 - Classify messages during import. RFQ, quotation, technical inquiry, proposal review, and relevant equipment terms stay `new`; known Google Ads notifications, newsletters, finance/logistics documents, supplier inventory offers, and SEO outreach become `archived` or `spam`.
-- The inquiry inbox default view excludes `archived` and `spam`, while explicit status filters still allow review of filtered records.
+- The inquiry inbox default view shows only active work and excludes all final/legacy closed states, while explicit status filters still allow review of processed records.
 
 ### Chatwoot
 

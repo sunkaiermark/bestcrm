@@ -163,6 +163,12 @@ const emptyInquiryRepository = {
   },
   async markConverted() {
     throw new Error('Inquiry repository is not configured');
+  },
+  async markDisposition() {
+    throw new Error('Inquiry repository is not configured');
+  },
+  async deleteById() {
+    throw new Error('Inquiry repository is not configured');
   }
 };
 

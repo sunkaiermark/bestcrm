@@ -58,6 +58,7 @@ test('signed website inquiry API creates an inbox record without login or csrf t
     phone: '+86 510 1234',
     country: 'China',
     product: 'MVR Evaporator',
+    opportunityType: 'Expansion',
     message: 'Need evaporation package for wastewater.',
     priority: 'high',
     pageUrl: 'https://sunkaier.com/en/contact'
@@ -83,6 +84,7 @@ test('signed website inquiry API creates an inbox record without login or csrf t
       contactPhone: '+86 510 1234',
       country: 'China',
       productInterest: 'MVR Evaporator',
+      opportunityType: 'Expansion',
       requirementText: 'Need evaporation package for wastewater.',
       rawPayload: payload,
       priority: 'high',

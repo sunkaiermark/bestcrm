@@ -21,6 +21,7 @@ function mapOpportunityRow(row) {
     primaryContactName: row.primary_contact_name || '',
     requirement: row.requirement,
     estimatedAmount: numberOrNull(row.estimated_amount),
+    productInterest: row.product_interest || '',
     projectType: row.project_type,
     deliveryCycle: row.delivery_cycle,
     expectedBidDate: row.expected_bid_date,
@@ -50,6 +51,7 @@ const opportunitySelect = `
     pc.name AS primary_contact_name,
     o.requirement,
     o.estimated_amount,
+    o.product_interest,
     o.project_type,
     o.delivery_cycle,
     o.expected_bid_date,
@@ -175,13 +177,14 @@ export function createOpportunityRepository(queryTarget) {
           primary_contact_id,
           requirement,
           estimated_amount,
+          product_interest,
           project_type,
           delivery_cycle,
           expected_bid_date,
           status,
           salesperson_id
         )
-        VALUES (COALESCE($1, nextval('opportunity_no_seq')::text), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES (COALESCE($1, nextval('opportunity_no_seq')::text), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
         RETURNING *
       `, [
         input.opportunityNo,
@@ -190,6 +193,7 @@ export function createOpportunityRepository(queryTarget) {
         input.primaryContactId,
         input.requirement,
         input.estimatedAmount,
+        input.productInterest,
         input.projectType,
         input.deliveryCycle,
         input.expectedBidDate,
@@ -208,11 +212,12 @@ export function createOpportunityRepository(queryTarget) {
           primary_contact_id = $3,
           requirement = $4,
           estimated_amount = $5,
-          project_type = $6,
-          delivery_cycle = $7,
-          expected_bid_date = $8,
+          product_interest = $6,
+          project_type = $7,
+          delivery_cycle = $8,
+          expected_bid_date = $9,
           updated_at = now()
-        WHERE id = $9
+        WHERE id = $10
         RETURNING *
       `, [
         input.title,
@@ -220,6 +225,7 @@ export function createOpportunityRepository(queryTarget) {
         input.primaryContactId,
         input.requirement,
         input.estimatedAmount,
+        input.productInterest,
         input.projectType,
         input.deliveryCycle,
         input.expectedBidDate,
@@ -242,6 +248,7 @@ export function createOpportunityRepository(queryTarget) {
           primary_contact_id,
           requirement,
           estimated_amount,
+          product_interest,
           project_type,
           delivery_cycle,
           expected_bid_date,

@@ -128,6 +128,7 @@ function combinedText(input = {}) {
     input.contactName,
     input.contactEmail,
     input.productInterest,
+    input.opportunityType,
     input.requirementText,
     input.rawPayload?.from?.name,
     input.rawPayload?.from?.address,

@@ -595,6 +595,7 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.match(form.text, /Delivery Period\s*<input name="deliveryCycle"/);
   assert.doesNotMatch(form.text, /Delivery Cycle\s*<input name="deliveryCycle"/);
   assert.match(form.text, /<select name="projectType" form="opportunity-form">/);
+  assert.match(form.text, /Opportunity Type\s*<select name="projectType"/);
   for (const projectType of ['新增', '扩建', '改造', '维修']) {
     assert.match(form.text, new RegExp(`<option value="${projectType}"[^>]*>${projectType}<\\/option>`));
   }
@@ -680,7 +681,7 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.match(form.text, /\u6dfb\u52a0\u65b0\u8054\u7cfb\u4eba/);
   assert.match(form.text, /\u9700\u6c42/);
   assert.match(form.text, /\u9884\u4f30\u91d1\u989d\s*<input name="estimatedAmount"/);
-  assert.match(form.text, /\u9879\u76ee\u7c7b\u578b\s*<select name="projectType"/);
+  assert.match(form.text, /\u5546\u673a\u7c7b\u578b\s*<select name="projectType"/);
   assert.match(form.text, /\u4ea4\u4ed8\u5468\u671f\s*<input name="deliveryCycle"/);
 });
 
@@ -774,6 +775,7 @@ test('salesperson edits opportunity fields from the detail action', async () => 
   assert.equal(editForm.status, 200);
   assert.match(editForm.text, /Edit Opportunity/);
   assert.match(editForm.text, /value="Factory upgrade"/);
+  assert.match(editForm.text, /<option value="automation" selected>automation<\/option>/);
   assert.match(editForm.text, /Save changes/);
 
   const response = await agent
@@ -785,6 +787,7 @@ test('salesperson edits opportunity fields from the detail action', async () => 
       title: 'Factory upgrade revised',
       requirement: 'Upgrade production line and packing line',
       estimatedAmount: '180000',
+      productInterest: 'Industrial mixer',
       projectType: 'automation',
       deliveryCycle: '60 days',
       expectedBidDate: '2026-08-01'
@@ -800,6 +803,7 @@ test('salesperson edits opportunity fields from the detail action', async () => 
       primaryContactId: 20,
       requirement: 'Upgrade production line and packing line',
       estimatedAmount: 180000,
+      productInterest: 'Industrial mixer',
       projectType: 'automation',
       deliveryCycle: '60 days',
       expectedBidDate: '2026-08-01'

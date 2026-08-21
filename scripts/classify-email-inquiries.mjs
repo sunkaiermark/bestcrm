@@ -30,6 +30,7 @@ try {
       contact_name,
       contact_email,
       product_interest,
+      opportunity_type,
       requirement_text,
       raw_payload,
       review_note
@@ -46,6 +47,7 @@ try {
       contactName: row.contact_name,
       contactEmail: row.contact_email,
       productInterest: row.product_interest,
+      opportunityType: row.opportunity_type,
       requirementText: row.requirement_text,
       rawPayload: row.raw_payload || {}
     });

@@ -20,6 +20,7 @@ const inquiry = {
   contactPhone: '+1 555',
   country: 'United States',
   productInterest: 'Evaporator',
+  opportunityType: 'Expansion',
   requirementText: 'Need wastewater evaporation package.',
   rawPayload: { messageId: 'msg-1' },
   priority: 'high',
@@ -103,6 +104,14 @@ async function createLoggedInAgent(options = {}) {
         calls.push(['markConverted', Number(id), input]);
         return { ...inquiry, id: Number(id), status: 'converted', ...input };
       },
+      async markDisposition(id, input) {
+        calls.push(['markDisposition', Number(id), input]);
+        return { ...inquiry, id: Number(id), ...input };
+      },
+      async deleteById(id) {
+        calls.push(['deleteInquiry', Number(id)]);
+        return true;
+      },
       ...inquiryRepositoryOverrides
     },
     inquiryAttachmentRepository: {
@@ -128,6 +137,13 @@ async function createLoggedInAgent(options = {}) {
       async getCustomerDetail(id) {
         calls.push(['getCustomer', Number(id)]);
         return { id: Number(id), name: 'Acme Co', ownerUserId: 7 };
+      },
+      async findDuplicatesByName() {
+        return [];
+      },
+      async createCustomer(input) {
+        calls.push(['createCustomer', input]);
+        return { id: 21, ...input };
       }
     },
     contactRepository: {
@@ -138,6 +154,10 @@ async function createLoggedInAgent(options = {}) {
       async getContactDetail(id) {
         calls.push(['getContact', Number(id)]);
         return { id: Number(id), customerId: 20, customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' };
+      },
+      async createContact(input) {
+        calls.push(['createContact', input]);
+        return { id: 31, customerName: 'Acme Co', customerOwnerUserId: 7, ...input };
       }
     },
     opportunityRepository: {
@@ -232,6 +252,7 @@ test('salesperson opens manual inquiry form and creates inquiry', async () => {
       contactName: 'Bob',
       contactEmail: 'bob@example.com',
       productInterest: 'Dryer',
+      opportunityType: '',
       priority: 'normal',
       assignedUserId: '7',
       requirementText: 'Need dryer quote'
@@ -251,6 +272,7 @@ test('salesperson opens manual inquiry form and creates inquiry', async () => {
       contactPhone: '',
       country: '',
       productInterest: 'Dryer',
+      opportunityType: '',
       requirementText: 'Need dryer quote',
       rawPayload: {},
       priority: 'normal',
@@ -280,6 +302,10 @@ test('inquiry detail supports review and conversion forms', async () => {
   assert.match(response.text, /action="\/inquiries\/11\/convert"/);
   assert.match(response.text, /name="matchedCustomerId"/);
   assert.match(response.text, /name="customerId"/);
+  assert.match(response.text, /action="\/inquiries\/11\/save-customer"/);
+  assert.match(response.text, /action="\/inquiries\/11\/save-contact"/);
+  assert.match(response.text, /action="\/inquiries\/11\/spam"/);
+  assert.match(response.text, /name="opportunityType" value="Expansion"/);
 });
 
 test('inquiry detail shows imported email attachments with preview and download links', async () => {
@@ -366,6 +392,15 @@ test('salesperson reviews inquiry and converts it to opportunity', async () => {
       assignedUserId: 7,
       matchedCustomerId: 20,
       matchedContactId: 30,
+      subject: 'Need evaporator quote',
+      companyName: 'Acme Co',
+      contactName: 'Alice',
+      contactEmail: 'alice@example.com',
+      contactPhone: '+1 555',
+      country: 'United States',
+      productInterest: 'Evaporator',
+      opportunityType: 'Expansion',
+      requirementText: 'Need wastewater evaporation package.',
       reviewNote: 'Ready for opportunity',
       reviewedBy: 7
     }],
@@ -376,6 +411,7 @@ test('salesperson reviews inquiry and converts it to opportunity', async () => {
       primaryContactId: 30,
       requirement: 'Need wastewater evaporation package',
       estimatedAmount: null,
+      productInterest: 'Evaporator',
       projectType: 'Evaporator',
       deliveryCycle: '',
       expectedBidDate: null,
@@ -454,6 +490,73 @@ test('converting an inquiry copies imported email attachments to opportunity req
       'createAttachment',
       'markConverted'
     ]);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('salesperson can finish an inquiry as customer, contact, or spam', async () => {
+  const customerFlow = await createLoggedInAgent();
+  const savedCustomer = await customerFlow.agent
+    .post('/inquiries/11/save-customer')
+    .type('form')
+    .send({ customerId: '20' });
+  assert.equal(savedCustomer.status, 302);
+  assert.equal(savedCustomer.headers.location, '/inquiries/11');
+  assert.equal(customerFlow.calls.find((call) => call[0] === 'markDisposition')[2].status, 'customer_saved');
+
+  const contactFlow = await createLoggedInAgent({
+    inquiryRepository: {
+      async findById(id) {
+        return Number(id) === inquiry.id ? { ...inquiry, matchedContactId: null } : null;
+      }
+    }
+  });
+  const savedContact = await contactFlow.agent
+    .post('/inquiries/11/save-contact')
+    .type('form')
+    .send({ customerId: '20', name: 'Alice', email: 'alice@example.com' });
+  assert.equal(savedContact.status, 302);
+  assert.equal(contactFlow.calls.find((call) => call[0] === 'createContact')[1].name, 'Alice');
+  assert.equal(contactFlow.calls.find((call) => call[0] === 'markDisposition')[2].status, 'contact_saved');
+
+  const spamFlow = await createLoggedInAgent();
+  const spam = await spamFlow.agent.post('/inquiries/11/spam').type('form').send({});
+  assert.equal(spam.status, 302);
+  assert.equal(spam.headers.location, '/inquiries');
+  assert.equal(spamFlow.calls.find((call) => call[0] === 'markDisposition')[2].status, 'spam');
+});
+
+test('only an administrator can delete an inquiry and its stored inquiry attachment', async () => {
+  const salespersonFlow = await createLoggedInAgent();
+  const forbidden = await salespersonFlow.agent.post('/inquiries/11/delete').type('form').send({});
+  assert.equal(forbidden.status, 403);
+
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-inquiry-delete-'));
+  const storedPath = 'email-inquiries/delete-me.txt';
+  const fullPath = path.join(uploadDir, storedPath);
+  try {
+    await mkdir(path.dirname(fullPath), { recursive: true });
+    await writeFile(fullPath, 'delete me', 'utf8');
+    const adminFlow = await createLoggedInAgent({
+      user: {
+        id: 99,
+        username: 'admin',
+        displayName: 'Administrator',
+        roles: [ROLES.ADMINISTRATOR]
+      },
+      uploadDir,
+      inquiryAttachmentRepository: {
+        async listByInquiry() {
+          return [{ id: 71, inquiryId: 11, storedPath, originalName: 'delete-me.txt' }];
+        }
+      }
+    });
+    const deleted = await adminFlow.agent.post('/inquiries/11/delete').type('form').send({});
+    assert.equal(deleted.status, 302);
+    assert.equal(deleted.headers.location, '/inquiries');
+    assert.deepEqual(adminFlow.calls.find((call) => call[0] === 'deleteInquiry'), ['deleteInquiry', 11]);
+    await assert.rejects(() => readFile(fullPath), /ENOENT/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

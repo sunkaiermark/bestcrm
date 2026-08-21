@@ -54,6 +54,7 @@ test('salesperson creates draft opportunity referencing owned customer and conta
     primaryContactId: 20,
     requirement: 'Upgrade production line',
     estimatedAmount: '120000.50',
+    productInterest: 'Industrial mixer',
     projectType: 'automation',
     deliveryCycle: '45 days',
     expectedBidDate: '2026-07-10'
@@ -74,6 +75,7 @@ test('salesperson creates draft opportunity referencing owned customer and conta
       primaryContactId: 20,
       requirement: 'Upgrade production line',
       estimatedAmount: 120000.50,
+      productInterest: 'Industrial mixer',
       projectType: 'automation',
       deliveryCycle: '45 days',
       expectedBidDate: '2026-07-10',
@@ -166,6 +168,7 @@ test('owner salesperson updates opportunity fields', async () => {
     primaryContactId: '20',
     requirement: 'Upgrade production and packing lines',
     estimatedAmount: '180000',
+    productInterest: 'Mixer and packing line',
     projectType: 'automation',
     deliveryCycle: '60 days',
     expectedBidDate: '2026-08-01'
@@ -181,6 +184,7 @@ test('owner salesperson updates opportunity fields', async () => {
       primaryContactId: 20,
       requirement: 'Upgrade production and packing lines',
       estimatedAmount: 180000,
+      productInterest: 'Mixer and packing line',
       projectType: 'automation',
       deliveryCycle: '60 days',
       expectedBidDate: '2026-08-01'
@@ -205,6 +209,7 @@ test('updateOpportunity preserves existing fields when edit payload leaves them 
     primaryContactId: 20,
     requirement: 'Upgrade production line',
     estimatedAmount: 120000.50,
+    productInterest: 'Industrial mixer',
     projectType: 'automation',
     deliveryCycle: '45 days',
     expectedBidDate: '2026-07-10'
@@ -214,6 +219,7 @@ test('updateOpportunity preserves existing fields when edit payload leaves them 
     primaryContactId: '',
     requirement: '',
     estimatedAmount: '',
+    productInterest: '',
     projectType: '',
     deliveryCycle: '',
     expectedBidDate: ''
@@ -229,6 +235,7 @@ test('updateOpportunity preserves existing fields when edit payload leaves them 
       primaryContactId: 20,
       requirement: 'Upgrade production line',
       estimatedAmount: 120000.50,
+      productInterest: 'Industrial mixer',
       projectType: 'automation',
       deliveryCycle: '45 days',
       expectedBidDate: '2026-07-10'

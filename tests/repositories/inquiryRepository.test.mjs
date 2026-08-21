@@ -25,6 +25,7 @@ const inquiryRow = {
   contact_phone: '+1 555',
   country: 'United States',
   product_interest: 'Evaporator',
+  opportunity_type: 'Expansion',
   requirement_text: 'Need wastewater evaporation package.',
   raw_payload: { messageId: 'msg-1' },
   priority: 'high',
@@ -66,6 +67,7 @@ test('inquiry repository lists mapped inquiries with visibility filter', async (
     contactPhone: '+1 555',
     country: 'United States',
     productInterest: 'Evaporator',
+    opportunityType: 'Expansion',
     requirementText: 'Need wastewater evaporation package.',
     rawPayload: { messageId: 'msg-1' },
     priority: 'high',
@@ -110,7 +112,9 @@ test('inquiry repository creates review and conversion updates', async () => {
   const queryTarget = createFakeQueryTarget([
     [{ ...inquiryRow, id: '12' }],
     [{ ...inquiryRow, status: 'reviewing', review_note: 'Qualified' }],
-    [{ ...inquiryRow, status: 'converted', converted_opportunity_id: '40' }]
+    [{ ...inquiryRow, status: 'converted', converted_opportunity_id: '40' }],
+    [{ ...inquiryRow, status: 'customer_saved' }],
+    []
   ]);
   const repository = createInquiryRepository(queryTarget);
 
@@ -125,6 +129,7 @@ test('inquiry repository creates review and conversion updates', async () => {
     contactPhone: '',
     country: 'Singapore',
     productInterest: 'Dryer',
+    opportunityType: 'New build',
     requirementText: 'Need dryer quote',
     rawPayload: {},
     priority: 'normal',
@@ -138,7 +143,7 @@ test('inquiry repository creates review and conversion updates', async () => {
   assert.match(queryTarget.queries[0].sql, /INSERT INTO inquiries/);
   assert.match(queryTarget.queries[0].sql, /ON CONFLICT \(source, source_reference\)/);
   assert.deepEqual(queryTarget.queries[0].params.slice(0, 4), ['manual', '', null, 'Manual RFQ']);
-  assert.equal(queryTarget.queries[0].params[11], '{}');
+  assert.equal(queryTarget.queries[0].params[12], '{}');
 
   await repository.updateReview(12, {
     status: 'reviewing',
@@ -146,12 +151,25 @@ test('inquiry repository creates review and conversion updates', async () => {
     assignedUserId: 8,
     matchedCustomerId: 20,
     matchedContactId: 30,
+    subject: 'Manual RFQ',
+    companyName: 'Beta',
+    contactName: 'Bob',
+    contactEmail: 'bob@example.com',
+    contactPhone: '',
+    country: 'Singapore',
+    productInterest: 'Dryer',
+    opportunityType: 'New build',
+    requirementText: 'Need dryer quote',
     reviewNote: 'Qualified',
     reviewedBy: 7
   });
   assert.match(queryTarget.queries[1].sql, /UPDATE inquiries/);
   assert.match(queryTarget.queries[1].sql, /reviewed_at = now\(\)/);
-  assert.deepEqual(queryTarget.queries[1].params, ['reviewing', 'high', 8, 20, 30, 'Qualified', 7, 12]);
+  assert.deepEqual(queryTarget.queries[1].params, [
+    'reviewing', 'high', 8, 20, 30,
+    'Manual RFQ', 'Beta', 'Bob', 'bob@example.com', '', 'Singapore', 'Dryer', 'New build',
+    'Need dryer quote', 'Qualified', 7, 12
+  ]);
 
   await repository.markConverted(12, {
     matchedCustomerId: 20,
@@ -161,6 +179,20 @@ test('inquiry repository creates review and conversion updates', async () => {
   });
   assert.match(queryTarget.queries[2].sql, /status = 'converted'/);
   assert.deepEqual(queryTarget.queries[2].params, [20, 30, 40, 7, 12]);
+
+  await repository.markDisposition(12, {
+    status: 'customer_saved',
+    matchedCustomerId: 20,
+    matchedContactId: null,
+    reviewNote: 'Customer only',
+    reviewedBy: 7
+  });
+  assert.match(queryTarget.queries[3].sql, /status = \$1/);
+  assert.match(queryTarget.queries[3].sql, /status IN \('new', 'reviewing'\)/);
+  assert.deepEqual(queryTarget.queries[3].params, ['customer_saved', 20, null, 'Customer only', 7, 12]);
+
+  assert.equal(await repository.deleteById(12), false);
+  assert.match(queryTarget.queries[4].sql, /DELETE FROM inquiries/);
 });
 
 test('inquiry repository returns an existing inquiry for duplicate source reference', async () => {
@@ -181,6 +213,7 @@ test('inquiry repository returns an existing inquiry for duplicate source refere
     contactPhone: '',
     country: 'Singapore',
     productInterest: 'Dryer',
+    opportunityType: '',
     requirementText: 'Need dryer quote',
     rawPayload: {},
     priority: 'normal',

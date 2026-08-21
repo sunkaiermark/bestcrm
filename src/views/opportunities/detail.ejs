@@ -225,7 +225,11 @@
                       <td><%= opportunity.estimatedAmount ?? '' %></td>
                     </tr>
                     <tr>
-                      <th scope="row"><%= t('projectType') %></th>
+                      <th scope="row"><%= t('productInterest') %></th>
+                      <td><%= opportunity.productInterest || '' %></td>
+                    </tr>
+                    <tr>
+                      <th scope="row"><%= t('opportunityType') %></th>
                       <td><%= opportunity.projectType %></td>
                     </tr>
                     <tr>

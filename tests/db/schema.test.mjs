@@ -23,6 +23,7 @@ const inquirySourceReferenceUniqueMigrationPath = new URL('../../src/db/migratio
 const notificationCenterMigrationPath = new URL('../../src/db/migrations/020_notification_center.sql', import.meta.url);
 const notificationWorkflowRecipientsMigrationPath = new URL('../../src/db/migrations/021_notification_workflow_recipients.sql', import.meta.url);
 const customerWebsiteMigrationPath = new URL('../../src/db/migrations/022_customer_website.sql', import.meta.url);
+const inquiryDispositionMigrationPath = new URL('../../src/db/migrations/023_inquiry_disposition_workflow.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -168,6 +169,16 @@ test('customer website migration adds website to customer records', async () => 
 
   assert.match(sql, /ALTER TABLE customers/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS website text/);
+});
+
+test('inquiry disposition migration separates product and opportunity type and adds final outcomes', async () => {
+  const sql = await readFile(inquiryDispositionMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS opportunity_type text NOT NULL DEFAULT ''/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS product_interest text NOT NULL DEFAULT ''/);
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS inquiries_status_check/);
+  assert.match(sql, /'contact_saved'/);
+  assert.match(sql, /'customer_saved'/);
 });
 
 test('opportunity material versions migration creates unified approval version records', async () => {

@@ -60,6 +60,7 @@ test('normalizeWebsiteInquiryPayload maps common sunkaier.com form fields', () =
     email: 'ALICE@EXAMPLE.COM',
     phone: '123',
     productName: 'Dryer',
+    projectType: '改造',
     description: 'Need dryer quote',
     priority: 'bad'
   }), {
@@ -73,6 +74,7 @@ test('normalizeWebsiteInquiryPayload maps common sunkaier.com form fields', () =
     contactPhone: '123',
     country: '',
     productInterest: 'Dryer',
+    opportunityType: '改造',
     requirementText: 'Need dryer quote',
     rawPayload: {
       submissionId: 'form-1',
@@ -83,6 +85,7 @@ test('normalizeWebsiteInquiryPayload maps common sunkaier.com form fields', () =
       email: 'ALICE@EXAMPLE.COM',
       phone: '123',
       productName: 'Dryer',
+      projectType: '改造',
       description: 'Need dryer quote',
       priority: 'bad'
     },
@@ -105,6 +108,7 @@ test('normalizeChatwootInquiryPayload maps handoff summary and sender fields', (
     senderEmail: 'BOB@EXAMPLE.COM',
     senderPhone: '+65 6000 0000',
     product: 'Industrial Mixer',
+    opportunityType: '新增',
     handoffSummary: 'Needs a mixer quotation.',
     priority: 'urgent'
   }), {
@@ -118,6 +122,7 @@ test('normalizeChatwootInquiryPayload maps handoff summary and sender fields', (
     contactPhone: '+65 6000 0000',
     country: '',
     productInterest: 'Industrial Mixer',
+    opportunityType: '新增',
     requirementText: 'Needs a mixer quotation.',
     rawPayload: {
       conversationId: '117236-9001',
@@ -127,6 +132,7 @@ test('normalizeChatwootInquiryPayload maps handoff summary and sender fields', (
       senderEmail: 'BOB@EXAMPLE.COM',
       senderPhone: '+65 6000 0000',
       product: 'Industrial Mixer',
+      opportunityType: '新增',
       handoffSummary: 'Needs a mixer quotation.',
       priority: 'urgent'
     },
@@ -138,4 +144,28 @@ test('normalizeChatwootInquiryPayload maps handoff summary and sender fields', (
     createdBy: null,
     reviewNote: ''
   });
+});
+
+test('normalizeWebsiteInquiryPayload extracts fields from nested forms and labeled message text', () => {
+  const normalized = normalizeWebsiteInquiryPayload({
+    submissionId: 'form-2',
+    formData: {
+      message: [
+        '客户名称：华星化工',
+        '联系人：王工',
+        '邮箱：WANG@EXAMPLE.COM',
+        '电话：+86 510 1234',
+        '产品：MVR 蒸发器',
+        '商机类型：扩建',
+        '请提供方案和报价。'
+      ].join('\n')
+    }
+  });
+
+  assert.equal(normalized.companyName, '华星化工');
+  assert.equal(normalized.contactName, '王工');
+  assert.equal(normalized.contactEmail, 'wang@example.com');
+  assert.equal(normalized.contactPhone, '+86 510 1234');
+  assert.equal(normalized.productInterest, 'MVR 蒸发器');
+  assert.equal(normalized.opportunityType, '扩建');
 });

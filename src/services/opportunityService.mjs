@@ -59,6 +59,7 @@ export function normalizeOpportunityInput(input, actor) {
     primaryContactId: numberOrNull(input.primaryContactId),
     requirement: text(input.requirement),
     estimatedAmount: numberOrNull(input.estimatedAmount),
+    productInterest: text(input.productInterest),
     projectType: text(input.projectType),
     deliveryCycle: text(input.deliveryCycle),
     expectedBidDate: isoDateOrNull(input.expectedBidDate),
@@ -92,6 +93,7 @@ export function normalizeOpportunityUpdateInput(input, currentOpportunity = {}) 
     primaryContactId: idOrCurrent(input.primaryContactId, currentOpportunity.primaryContactId),
     requirement: textOrCurrent(input.requirement, currentOpportunity.requirement),
     estimatedAmount: numberOrCurrent(input.estimatedAmount, currentOpportunity.estimatedAmount),
+    productInterest: textOrCurrent(input.productInterest, currentOpportunity.productInterest),
     projectType: textOrCurrent(input.projectType, currentOpportunity.projectType),
     deliveryCycle: textOrCurrent(input.deliveryCycle, currentOpportunity.deliveryCycle),
     expectedBidDate: dateOrCurrent(input.expectedBidDate, currentOpportunity.expectedBidDate)

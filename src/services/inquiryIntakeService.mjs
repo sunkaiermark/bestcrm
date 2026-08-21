@@ -13,6 +13,23 @@ function isoTimestampOrNull(value) {
   return normalized || null;
 }
 
+function fieldFromText(body, labels) {
+  for (const label of labels) {
+    const escaped = label.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const match = body.match(new RegExp(`(?:^|\\n)\\s*${escaped}\\s*[:：]\\s*(.+)`, 'i'));
+    if (match?.[1]) {
+      return text(match[1]);
+    }
+  }
+  return '';
+}
+
+function websiteFields(payload) {
+  const nested = [payload.formData, payload.data, payload.fields]
+    .find((value) => value && typeof value === 'object' && !Array.isArray(value)) || {};
+  return { ...nested, ...payload };
+}
+
 function parseTimestamp(value) {
   const normalized = text(value);
   if (!normalized) {
@@ -69,19 +86,33 @@ export function verifyInquiryIntakeSignature({ secret, timestamp, signature, raw
 }
 
 export function normalizeWebsiteInquiryPayload(payload = {}) {
-  const priority = isInquiryPriority(payload.priority) ? payload.priority : 'normal';
+  const fields = websiteFields(payload);
+  const requirementText = text(fields.requirementText || fields.requirement || fields.message || fields.description);
+  const priority = isInquiryPriority(fields.priority) ? fields.priority : 'normal';
   return {
     source: 'website',
-    sourceReference: text(payload.sourceReference || payload.submissionId || payload.id),
-    sourceReceivedAt: isoTimestampOrNull(payload.sourceReceivedAt || payload.receivedAt),
-    subject: text(payload.subject || payload.title),
-    companyName: text(payload.companyName || payload.company),
-    contactName: text(payload.contactName || payload.name),
-    contactEmail: text(payload.contactEmail || payload.email).toLowerCase(),
-    contactPhone: text(payload.contactPhone || payload.phone || payload.whatsapp),
-    country: text(payload.country),
-    productInterest: text(payload.productInterest || payload.product || payload.productName || payload.interest),
-    requirementText: text(payload.requirementText || payload.requirement || payload.message || payload.description),
+    sourceReference: text(fields.sourceReference || fields.submissionId || fields.id),
+    sourceReceivedAt: isoTimestampOrNull(fields.sourceReceivedAt || fields.receivedAt),
+    subject: text(fields.subject || fields.title),
+    companyName: text(fields.companyName || fields.customerName || fields.company)
+      || fieldFromText(requirementText, ['Company Name', 'Company', 'Customer Name', '公司名称', '客户名称', '公司']),
+    contactName: text(fields.contactName || fields.name)
+      || fieldFromText(requirementText, ['Contact Name', 'Contact', '联系人', '姓名']),
+    contactEmail: (text(fields.contactEmail || fields.email)
+      || fieldFromText(requirementText, ['Email', 'E-mail', '邮箱'])).toLowerCase(),
+    contactPhone: text(fields.contactPhone || fields.phone || fields.whatsapp)
+      || fieldFromText(requirementText, ['Phone', 'Tel', 'Telephone', 'Mobile', 'WhatsApp', '电话', '手机']),
+    country: text(fields.country) || fieldFromText(requirementText, ['Country', '国家']),
+    productInterest: text(fields.productInterest || fields.product || fields.productName || fields.interest)
+      || fieldFromText(requirementText, ['Product Interest', 'Product', 'Equipment', '关注产品', '产品', '设备']),
+    opportunityType: text(
+      fields.opportunityType
+      || fields.opportunity_type
+      || fields.projectType
+      || fields.project_type
+      || fields.inquiryType
+    ) || fieldFromText(requirementText, ['Opportunity Type', 'Project Type', '商机类型', '项目类型']),
+    requirementText,
     rawPayload: payload && typeof payload === 'object' ? payload : {},
     priority,
     status: 'new',
@@ -107,6 +138,13 @@ export function normalizeChatwootInquiryPayload(payload = {}) {
     contactPhone: text(payload.contactPhone || payload.phone || payload.whatsapp || payload.senderPhone),
     country: text(payload.country),
     productInterest: text(payload.productInterest || payload.product || payload.productName || payload.interest),
+    opportunityType: text(
+      payload.opportunityType
+      || payload.opportunity_type
+      || payload.projectType
+      || payload.project_type
+      || payload.inquiryType
+    ),
     requirementText: text(
       payload.requirementText
       || payload.handoffSummary

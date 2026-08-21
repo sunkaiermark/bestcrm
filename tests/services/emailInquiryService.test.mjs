@@ -18,6 +18,7 @@ test('normalizeEmailInquiryPayload maps sender body fields and attachments into 
       'Phone: +1 555 0000',
       'Country: United States',
       'Product: Evaporator',
+      'Project Type: Expansion',
       '',
       'We need a wastewater evaporation package.'
     ].join('\n'),
@@ -37,6 +38,7 @@ test('normalizeEmailInquiryPayload maps sender body fields and attachments into 
     contactPhone: '+1 555 0000',
     country: 'United States',
     productInterest: 'Evaporator',
+    opportunityType: 'Expansion',
     requirementText: parsed.text,
     rawPayload: {
       mailbox: 'INBOX',

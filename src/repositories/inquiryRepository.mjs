@@ -25,6 +25,7 @@ function mapInquiryRow(row) {
     contactPhone: textOrEmpty(row.contact_phone),
     country: textOrEmpty(row.country),
     productInterest: textOrEmpty(row.product_interest),
+    opportunityType: textOrEmpty(row.opportunity_type),
     requirementText: row.requirement_text,
     rawPayload: row.raw_payload || {},
     priority: row.priority,
@@ -62,6 +63,7 @@ const inquirySelect = `
     i.contact_phone,
     i.country,
     i.product_interest,
+    i.opportunity_type,
     i.requirement_text,
     i.raw_payload,
     i.priority,
@@ -162,6 +164,7 @@ export function createInquiryRepository(queryTarget) {
           contact_phone,
           country,
           product_interest,
+          opportunity_type,
           requirement_text,
           raw_payload,
           priority,
@@ -172,7 +175,7 @@ export function createInquiryRepository(queryTarget) {
           created_by,
           review_note
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12::jsonb, $13, $14, $15, $16, $17, $18, $19)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, $17, $18, $19, $20)
         ON CONFLICT (source, source_reference) WHERE source_reference <> ''
         DO NOTHING
         RETURNING *
@@ -187,6 +190,7 @@ export function createInquiryRepository(queryTarget) {
         input.contactPhone,
         input.country,
         input.productInterest,
+        input.opportunityType,
         input.requirementText,
         JSON.stringify(input.rawPayload || {}),
         input.priority,
@@ -227,11 +231,21 @@ export function createInquiryRepository(queryTarget) {
           assigned_user_id = $3,
           matched_customer_id = $4,
           matched_contact_id = $5,
-          review_note = $6,
-          reviewed_by = $7,
+          subject = $6,
+          company_name = $7,
+          contact_name = $8,
+          contact_email = $9,
+          contact_phone = $10,
+          country = $11,
+          product_interest = $12,
+          opportunity_type = $13,
+          requirement_text = $14,
+          review_note = $15,
+          reviewed_by = $16,
           reviewed_at = now(),
           updated_at = now()
-        WHERE id = $8
+        WHERE id = $17
+          AND status IN ('new', 'reviewing')
         RETURNING *
       `, [
         input.status,
@@ -239,6 +253,15 @@ export function createInquiryRepository(queryTarget) {
         input.assignedUserId,
         input.matchedCustomerId,
         input.matchedContactId,
+        input.subject,
+        input.companyName,
+        input.contactName,
+        input.contactEmail,
+        input.contactPhone,
+        input.country,
+        input.productInterest,
+        input.opportunityType,
+        input.requirementText,
         input.reviewNote,
         input.reviewedBy,
         id
@@ -258,6 +281,7 @@ export function createInquiryRepository(queryTarget) {
           reviewed_at = now(),
           updated_at = now()
         WHERE id = $5
+          AND status IN ('new', 'reviewing')
         RETURNING *
       `, [
         input.matchedCustomerId,
@@ -267,6 +291,39 @@ export function createInquiryRepository(queryTarget) {
         id
       ]);
       return mapInquiryRow(result.rows[0]);
+    },
+
+    async markDisposition(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE inquiries
+        SET
+          status = $1,
+          matched_customer_id = $2,
+          matched_contact_id = $3,
+          review_note = $4,
+          reviewed_by = $5,
+          reviewed_at = now(),
+          updated_at = now()
+        WHERE id = $6
+          AND status IN ('new', 'reviewing')
+        RETURNING *
+      `, [
+        input.status,
+        input.matchedCustomerId,
+        input.matchedContactId,
+        input.reviewNote,
+        input.reviewedBy,
+        id
+      ]);
+      return mapInquiryRow(result.rows[0]);
+    },
+
+    async deleteById(id) {
+      const result = await queryTarget.query(`
+        DELETE FROM inquiries
+        WHERE id = $1
+      `, [id]);
+      return result.rowCount > 0;
     }
   };
 }
