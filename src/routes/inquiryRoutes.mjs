@@ -6,7 +6,10 @@ import { requireLogin } from '../middleware/auth.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
 import { DuplicateCustomerError } from '../services/customerService.mjs';
 import {
+  CustomerApprovalRequiredError,
+  approveInquiryCustomerApproval,
   canAccessInquiryInbox,
+  canDecideInquiryCustomerApproval,
   canDeleteInquiry,
   canProcessInquiry,
   canViewInquiry,
@@ -16,6 +19,9 @@ import {
   inquiryFormOptions,
   inquiryListFilterFor,
   markInquiryAsSpam,
+  rejectInquiryCustomerApproval,
+  requestInquiryCustomerApproval,
+  saveInquiryRecords,
   saveInquiryAsContact,
   saveInquiryAsCustomer,
   updateInquiryReview
@@ -86,13 +92,23 @@ async function renderInquiryDetailPage(dependencies, req, res, inquiry, data = {
   const inquiryAttachments = typeof dependencies.inquiryAttachmentRepository?.listByInquiry === 'function'
     ? await dependencies.inquiryAttachmentRepository.listByInquiry(inquiry.id)
     : [];
+  const customerApproval = typeof dependencies.inquiryCustomerApprovalRepository?.findLatestByInquiry === 'function'
+    ? await dependencies.inquiryCustomerApprovalRepository.findLatestByInquiry(inquiry.id)
+    : null;
+  let duplicateCustomers = data.duplicateCustomers;
+  if (!Array.isArray(duplicateCustomers) && inquiry.companyName
+    && typeof dependencies.customerRepository?.findDuplicatesByName === 'function') {
+    duplicateCustomers = await dependencies.customerRepository.findDuplicatesByName(inquiry.companyName);
+  }
   res.status(status);
   renderInquiryDetail(res, {
     inquiry,
     inquiryAttachments,
+    customerApproval,
+    canDecideCustomerApproval: canDecideInquiryCustomerApproval(req.currentUser, customerApproval),
     canDeleteInquiry: canDeleteInquiry(req.currentUser),
     canProcessInquiry: canProcessInquiry(inquiry),
-    duplicateCustomers: [],
+    duplicateCustomers: duplicateCustomers || [],
     ...options,
     ...data
   });
@@ -131,16 +147,41 @@ async function handleInquiryActionError(error, dependencies, req, res, next, inq
     }, 409);
     return;
   }
+  if (error instanceof CustomerApprovalRequiredError) {
+    const duplicates = typeof dependencies.customerRepository?.findDuplicatesByName === 'function'
+      ? await dependencies.customerRepository.findDuplicatesByName(error.customer.name)
+      : [error.customer];
+    await renderInquiryDetailPage(dependencies, req, res, inquiry, {
+      duplicateCustomers: duplicates,
+      actionError: error.message
+    }, 409);
+    return;
+  }
+  if (inquiry && [
+    'Customer approval already pending',
+    'Customer approval is not required',
+    'Customer approval is not pending',
+    'Customer approval could not be completed',
+    'Sales manager is not configured',
+    'Decision note is required'
+  ].includes(error.message)) {
+    await renderInquiryDetailPage(dependencies, req, res, inquiry, {
+      actionError: error.message
+    }, error.message === 'Decision note is required' ? 400 : 409);
+    return;
+  }
   handleInquiryError(error, res, next);
 }
 
 export function inquiryRoutes({
   inquiryRepository,
   inquiryAttachmentRepository,
+  inquiryCustomerApprovalRepository,
   customerRepository,
   contactRepository,
   opportunityRepository,
   attachmentRepository,
+  approvalSettingRepository,
   userRepository,
   uploadDir = './var/uploads'
 }) {
@@ -148,10 +189,12 @@ export function inquiryRoutes({
   const dependencies = {
     inquiryRepository,
     inquiryAttachmentRepository,
+    inquiryCustomerApprovalRepository,
     customerRepository,
     contactRepository,
     opportunityRepository,
     attachmentRepository,
+    approvalSettingRepository,
     userRepository,
     uploadDir
   };
@@ -248,6 +291,60 @@ export function inquiryRoutes({
     }
   });
 
+  router.post('/inquiries/:id/customer-approval', async (req, res, next) => {
+    let inquiry;
+    try {
+      inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
+      if (!inquiry) {
+        return;
+      }
+      await requestInquiryCustomerApproval(dependencies, req.currentUser, inquiry, req.body);
+      res.redirect(`/inquiries/${inquiry.id}`);
+    } catch (error) {
+      await handleInquiryActionError(error, dependencies, req, res, next, inquiry);
+    }
+  });
+
+  router.post('/inquiries/:id/customer-approval/:requestId/approve', async (req, res, next) => {
+    let inquiry;
+    try {
+      inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
+      if (!inquiry) {
+        return;
+      }
+      const opportunity = await approveInquiryCustomerApproval(
+        dependencies,
+        req.currentUser,
+        inquiry,
+        req.params.requestId,
+        req.body
+      );
+      res.redirect(`/opportunities/${opportunity.id}`);
+    } catch (error) {
+      await handleInquiryActionError(error, dependencies, req, res, next, inquiry);
+    }
+  });
+
+  router.post('/inquiries/:id/customer-approval/:requestId/reject', async (req, res, next) => {
+    let inquiry;
+    try {
+      inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
+      if (!inquiry) {
+        return;
+      }
+      await rejectInquiryCustomerApproval(
+        dependencies,
+        req.currentUser,
+        inquiry,
+        req.params.requestId,
+        req.body
+      );
+      res.redirect(`/inquiries/${inquiry.id}`);
+    } catch (error) {
+      await handleInquiryActionError(error, dependencies, req, res, next, inquiry);
+    }
+  });
+
   router.post('/inquiries/:id/save-customer', async (req, res, next) => {
     let inquiry;
     try {
@@ -270,6 +367,20 @@ export function inquiryRoutes({
         return;
       }
       await saveInquiryAsContact(dependencies, req.currentUser, inquiry, req.body);
+      res.redirect(`/inquiries/${inquiry.id}`);
+    } catch (error) {
+      await handleInquiryActionError(error, dependencies, req, res, next, inquiry);
+    }
+  });
+
+  router.post('/inquiries/:id/save-records', async (req, res, next) => {
+    let inquiry;
+    try {
+      inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
+      if (!inquiry) {
+        return;
+      }
+      await saveInquiryRecords(dependencies, req.currentUser, inquiry, req.body);
       res.redirect(`/inquiries/${inquiry.id}`);
     } catch (error) {
       await handleInquiryActionError(error, dependencies, req, res, next, inquiry);

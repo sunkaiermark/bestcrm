@@ -2,6 +2,8 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
+  CustomerApprovalRequiredError,
+  approveInquiryCustomerApproval,
   canAccessInquiryInbox,
   canDeleteInquiry,
   canProcessInquiry,
@@ -10,6 +12,9 @@ import {
   createInquiry,
   markInquiryAsSpam,
   inquiryListFilterFor,
+  rejectInquiryCustomerApproval,
+  requestInquiryCustomerApproval,
+  saveInquiryRecords,
   saveInquiryAsContact,
   saveInquiryAsCustomer,
   updateInquiryReview
@@ -32,6 +37,7 @@ test('inquiry service exposes inbox to sales roles only', () => {
   assert.equal(canDeleteInquiry(salesperson), false);
   assert.equal(canDeleteInquiry({ id: 99, roles: [ROLES.ADMINISTRATOR] }), true);
   assert.equal(canProcessInquiry({ status: 'reviewing' }), true);
+  assert.equal(canProcessInquiry({ status: 'customer_approval_pending' }), false);
   assert.equal(canProcessInquiry({ status: 'customer_saved' }), false);
 });
 
@@ -298,6 +304,238 @@ test('conversion can create missing customer and contact from extracted inquiry 
   assert.equal(calls.find((call) => call[0] === 'createContact')[1].email, 'alice@example.com');
   assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].productInterest, 'Evaporator');
   assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].projectType, 'Expansion');
+});
+
+test('conversion requires approval instead of duplicating another salesperson customer', async () => {
+  const repositories = {
+    inquiryRepository: {},
+    customerRepository: {
+      async getCustomerDetail(id) {
+        return { id, name: 'Acme', ownerUserId: 8 };
+      }
+    },
+    contactRepository: {},
+    opportunityRepository: {
+      async createOpportunity() {
+        assert.fail('opportunity must not be created before approval');
+      }
+    }
+  };
+
+  await assert.rejects(
+    () => convertInquiryToOpportunity(repositories, salesperson, {
+      id: 11,
+      status: 'reviewing',
+      assignedUserId: 7,
+      subject: 'Acme project',
+      requirementText: 'Need quote',
+      matchedCustomerId: 20,
+      matchedContactId: null
+    }, {}),
+    (error) => error instanceof CustomerApprovalRequiredError
+      && error.customer.ownerUserId === 8
+  );
+});
+
+test('cross-sales customer request is assigned to a sales manager with proposed contact and opportunity data', async () => {
+  const calls = [];
+  const repositories = {
+    customerRepository: {
+      async getCustomerDetail(id) {
+        return { id, name: 'Acme', ownerUserId: 8 };
+      }
+    },
+    contactRepository: {},
+    approvalSettingRepository: {
+      async findActiveByKey(key) {
+        calls.push(['findSetting', key]);
+        return null;
+      }
+    },
+    userRepository: {
+      async listUsersWithRoles() {
+        return [{ id: 2, displayName: 'Sales Manager', isActive: true, roles: [ROLES.SALES_MANAGER] }];
+      }
+    },
+    inquiryCustomerApprovalRepository: {
+      async createPending(input) {
+        calls.push(['createPending', input]);
+        return { id: 80, status: 'pending', ...input };
+      }
+    }
+  };
+
+  const approval = await requestInquiryCustomerApproval(repositories, salesperson, {
+    id: 11,
+    status: 'reviewing',
+    assignedUserId: 7,
+    companyName: 'Acme',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    productInterest: 'Evaporator',
+    opportunityType: 'Expansion',
+    requirementText: 'Need quote',
+    subject: 'Acme project'
+  }, {
+    approvalCustomerId: '20',
+    contactName: 'Alice Ahmed',
+    contactEmail: 'alice.ahmed@example.com',
+    requirementText: 'Updated requirement',
+    opportunityType: 'New project'
+  });
+
+  assert.equal(approval.reviewerUserId, 2);
+  assert.deepEqual(calls[0], ['findSetting', 'inquiry_customer_access']);
+  assert.deepEqual(calls[1][1], {
+    inquiryId: 11,
+    customerId: 20,
+    requestedBy: 7,
+    customerOwnerUserId: 8,
+    reviewerUserId: 2,
+    matchedContactId: null,
+    requestPayload: {
+      primaryContactId: null,
+      newContactName: 'Alice Ahmed',
+      newContactTitle: '',
+      newContactPhone: '',
+      newContactEmail: 'alice.ahmed@example.com',
+      newContactNotes: 'Updated requirement',
+      title: 'Acme project',
+      requirement: 'Updated requirement',
+      estimatedAmount: null,
+      productInterest: 'Evaporator',
+      projectType: 'New project',
+      deliveryCycle: '',
+      expectedBidDate: null
+    }
+  });
+});
+
+test('sales manager approval creates the opportunity for the requesting salesperson', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryCustomerApprovalRepository: {
+      async findById(id) {
+        calls.push(['findApproval', id]);
+        return {
+          id: 80,
+          inquiryId: 11,
+          customerId: 20,
+          requestedBy: 7,
+          reviewerUserId: 2,
+          status: 'pending',
+          requestPayload: {
+            primaryContactId: null,
+            newContactName: 'Alice',
+            title: 'Acme project',
+            requirement: 'Need quote'
+          }
+        };
+      },
+      async completeApproval(id, input) {
+        calls.push(['complete', id, input]);
+        return { id: 40, customerId: 20, salespersonId: 7, title: input.title };
+      }
+    },
+    contactRepository: {}
+  };
+
+  const opportunity = await approveInquiryCustomerApproval(repositories, salesManager, {
+    id: 11,
+    status: 'customer_approval_pending'
+  }, 80, { decisionNote: 'Approved for collaboration' });
+
+  assert.equal(opportunity.id, 40);
+  assert.deepEqual(calls, [
+    ['findApproval', 80],
+    ['complete', 80, {
+      primaryContactId: null,
+      newContactName: 'Alice',
+      title: 'Acme project',
+      requirement: 'Need quote',
+      decidedBy: 2,
+      decisionNote: 'Approved for collaboration',
+      allowAnyReviewer: false,
+      inquiryId: 11
+    }]
+  ]);
+});
+
+test('sales manager rejection requires a reason and returns the inquiry to the requester', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryCustomerApprovalRepository: {
+      async rejectAndReturnInquiry(id, input) {
+        calls.push([id, input]);
+        return { id, status: 'rejected' };
+      }
+    }
+  };
+  const pendingInquiry = { id: 11, status: 'customer_approval_pending' };
+
+  await assert.rejects(
+    () => rejectInquiryCustomerApproval(repositories, salesManager, pendingInquiry, 80, {}),
+    /Decision note is required/
+  );
+  await rejectInquiryCustomerApproval(repositories, salesManager, pendingInquiry, 80, {
+    decisionNote: 'Use another customer'
+  });
+
+  assert.deepEqual(calls, [[80, {
+    decidedBy: 2,
+    decisionNote: 'Use another customer',
+    allowAnyReviewer: false,
+    inquiryId: 11
+  }]]);
+});
+
+test('saveInquiryRecords creates one customer and contact then closes the inquiry', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryRepository: {
+      async markDisposition(id, input) {
+        calls.push(['markDisposition', id, input]);
+        return { id, ...input };
+      }
+    },
+    customerRepository: {
+      async findDuplicatesByName() {
+        return [];
+      },
+      async createCustomer(input) {
+        calls.push(['createCustomer', input]);
+        return { id: 20, ownerUserId: 7, ...input };
+      },
+      async getCustomerDetail(id) {
+        return { id, ownerUserId: 7 };
+      }
+    },
+    contactRepository: {
+      async createContact(input) {
+        calls.push(['createContact', input]);
+        return { id: 30, ...input };
+      }
+    }
+  };
+
+  await saveInquiryRecords(repositories, salesperson, {
+    id: 11,
+    assignedUserId: 7,
+    status: 'reviewing',
+    companyName: 'Acme',
+    country: 'Oman',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '123',
+    requirementText: 'Original requirement',
+    matchedCustomerId: null,
+    matchedContactId: null,
+    reviewNote: ''
+  }, { requirementText: 'Corrected requirement' });
+
+  assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].notes, 'Corrected requirement');
+  assert.equal(calls.find((call) => call[0] === 'createContact')[1].notes, 'Corrected requirement');
+  assert.equal(calls.find((call) => call[0] === 'markDisposition')[2].status, 'contact_saved');
 });
 
 test('inquiry dispositions save an existing customer, create a contact, and prevent a second action', async () => {

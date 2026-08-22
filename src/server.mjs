@@ -15,6 +15,7 @@ import { createContractApprovalRepository } from './repositories/contractApprova
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
 import { createInquiryAttachmentRepository } from './repositories/inquiryAttachmentRepository.mjs';
+import { createInquiryCustomerApprovalRepository } from './repositories/inquiryCustomerApprovalRepository.mjs';
 import { createInquiryRepository } from './repositories/inquiryRepository.mjs';
 import { createLoginSecurityRepository } from './repositories/loginSecurityRepository.mjs';
 import { createNotificationRepository } from './repositories/notificationRepository.mjs';
@@ -182,6 +183,14 @@ const emptyInquiryAttachmentRepository = {
   async createAttachment() {
     throw new Error('Inquiry attachment repository is not configured');
   }
+};
+
+const emptyInquiryCustomerApprovalRepository = {
+  async findById() { return null; },
+  async findLatestByInquiry() { return null; },
+  async createPending() { throw new Error('Inquiry customer approval repository is not configured'); },
+  async completeApproval() { throw new Error('Inquiry customer approval repository is not configured'); },
+  async rejectAndReturnInquiry() { return false; }
 };
 
 const emptyAttachmentRepository = {
@@ -405,6 +414,9 @@ export function createApp(options = {}) {
   const inquiryAttachmentRepository = options.inquiryAttachmentRepository || (pool
     ? createInquiryAttachmentRepository(pool)
     : emptyInquiryAttachmentRepository);
+  const inquiryCustomerApprovalRepository = options.inquiryCustomerApprovalRepository || (pool
+    ? createInquiryCustomerApprovalRepository(pool)
+    : emptyInquiryCustomerApprovalRepository);
   const attachmentRepository = options.attachmentRepository || (pool ? createAttachmentRepository(pool) : emptyAttachmentRepository);
   const commercialQuoteRepository = options.commercialQuoteRepository || (pool ? createCommercialQuoteRepository(pool) : emptyCommercialQuoteRepository);
   const technicalSolutionRepository = options.technicalSolutionRepository || (pool ? createTechnicalSolutionRepository(pool) : emptyTechnicalSolutionRepository);
@@ -494,10 +506,12 @@ export function createApp(options = {}) {
   app.use(inquiryRoutes({
     inquiryRepository,
     inquiryAttachmentRepository,
+    inquiryCustomerApprovalRepository,
     customerRepository,
     contactRepository,
     opportunityRepository,
     attachmentRepository,
+    approvalSettingRepository,
     userRepository,
     uploadDir: config.uploadDir
   }));

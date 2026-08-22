@@ -50,7 +50,12 @@ async function createLoggedInAgent(options = {}) {
     language,
     inquiryRepository: inquiryRepositoryOverrides = {},
     inquiryAttachmentRepository: inquiryAttachmentRepositoryOverrides = {},
+    inquiryCustomerApprovalRepository: inquiryCustomerApprovalRepositoryOverrides = {},
+    customerRepository: customerRepositoryOverrides = {},
+    contactRepository: contactRepositoryOverrides = {},
+    approvalSettingRepository: approvalSettingRepositoryOverrides = {},
     attachmentRepository: attachmentRepositoryOverrides = {},
+    additionalUsers = [],
     uploadDir = './var/uploads'
   } = options;
   const user = {
@@ -80,7 +85,7 @@ async function createLoggedInAgent(options = {}) {
           displayName: 'Sales Two',
           isActive: true,
           roles: [ROLES.SALESPERSON]
-        }];
+        }, ...additionalUsers];
       }
     },
     inquiryRepository: {
@@ -144,7 +149,8 @@ async function createLoggedInAgent(options = {}) {
       async createCustomer(input) {
         calls.push(['createCustomer', input]);
         return { id: 21, ...input };
-      }
+      },
+      ...customerRepositoryOverrides
     },
     contactRepository: {
       async listContacts(filter) {
@@ -158,7 +164,30 @@ async function createLoggedInAgent(options = {}) {
       async createContact(input) {
         calls.push(['createContact', input]);
         return { id: 31, customerName: 'Acme Co', customerOwnerUserId: 7, ...input };
-      }
+      },
+      ...contactRepositoryOverrides
+    },
+    inquiryCustomerApprovalRepository: {
+      async findLatestByInquiry() {
+        return null;
+      },
+      async createPending(input) {
+        calls.push(['createCustomerApproval', input]);
+        return { id: 80, status: 'pending', ...input };
+      },
+      async completeApproval() {
+        return null;
+      },
+      async rejectAndReturnInquiry() {
+        return false;
+      },
+      ...inquiryCustomerApprovalRepositoryOverrides
+    },
+    approvalSettingRepository: {
+      async findActiveByKey() {
+        return null;
+      },
+      ...approvalSettingRepositoryOverrides
     },
     opportunityRepository: {
       async createOpportunity(input) {
@@ -292,19 +321,17 @@ test('inquiry detail supports review and conversion forms', async () => {
   const response = await agent.get('/inquiries/11');
 
   assert.equal(response.status, 200);
-  assert.match(response.text, /Inquiry Detail/);
+  assert.match(response.text, /Customer and contact/);
+  assert.match(response.text, /Inquiry content/);
+  assert.match(response.text, /Convert to Opportunity/);
   assert.match(response.text, /Need wastewater evaporation package/);
-  assert.match(response.text, /class="detail-text-cell">Need wastewater evaporation package/);
-  assert.match(response.text, /\.detail-table\s*\{[\s\S]*table-layout:\s*fixed;/);
-  assert.match(response.text, /\.detail-table td\s*\{[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*word-break:\s*break-word;/);
-  assert.match(response.text, /\.detail-text-cell\s*\{[\s\S]*white-space:\s*pre-wrap;/);
-  assert.match(response.text, /action="\/inquiries\/11\/review"/);
-  assert.match(response.text, /action="\/inquiries\/11\/convert"/);
-  assert.match(response.text, /name="matchedCustomerId"/);
+  assert.match(response.text, /class="inquiry-workflow-form" method="post" action="\/inquiries\/11\/convert"/);
+  assert.match(response.text, /formaction="\/inquiries\/11\/review"/);
   assert.match(response.text, /name="customerId"/);
-  assert.match(response.text, /action="\/inquiries\/11\/save-customer"/);
-  assert.match(response.text, /action="\/inquiries\/11\/save-contact"/);
-  assert.match(response.text, /action="\/inquiries\/11\/spam"/);
+  assert.match(response.text, /formaction="\/inquiries\/11\/save-records"/);
+  assert.match(response.text, /formaction="\/inquiries\/11\/spam"/);
+  assert.doesNotMatch(response.text, /action="\/inquiries\/11\/save-customer"/);
+  assert.doesNotMatch(response.text, /action="\/inquiries\/11\/save-contact"/);
   assert.match(response.text, /name="opportunityType" value="Expansion"/);
 });
 
@@ -340,8 +367,8 @@ test('inquiry detail shows imported email attachments with preview and download 
 
     const detail = await agent.get('/inquiries/11');
     assert.equal(detail.status, 200);
-    assert.match(detail.text, /Inquiry Attachments/);
     assert.match(detail.text, /process\.txt/);
+    assert.match(detail.text, /18 B/);
     assert.match(detail.text, /\/inquiries\/11\/attachments\/71\/preview/);
     assert.match(detail.text, /\/inquiries\/11\/attachments\/71\/download/);
 
@@ -352,6 +379,138 @@ test('inquiry detail shows imported email attachments with preview and download 
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
+});
+
+test('cross-sales duplicate customer is shown without a customer link and can be sent for manager approval', async () => {
+  const foreignCustomer = {
+    id: 22,
+    name: 'Acme Co',
+    ownerUserId: 8,
+    ownerDisplayName: 'Sales Two',
+    contactCount: 2
+  };
+  const { agent, calls } = await createLoggedInAgent({
+    additionalUsers: [{
+      id: 2,
+      username: 'salesmanager',
+      displayName: 'Sales Manager',
+      isActive: true,
+      roles: [ROLES.SALES_MANAGER]
+    }],
+    customerRepository: {
+      async findDuplicatesByName() {
+        return [foreignCustomer];
+      },
+      async getCustomerDetail(id) {
+        return Number(id) === foreignCustomer.id ? foreignCustomer : null;
+      }
+    }
+  });
+
+  const detail = await agent.get('/inquiries/11');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Existing customer matches/);
+  assert.match(detail.text, /Sales Two/);
+  assert.match(detail.text, /formaction="\/inquiries\/11\/customer-approval"/);
+  assert.doesNotMatch(detail.text, /href="\/customers\/22"/);
+
+  const requested = await agent
+    .post('/inquiries/11/customer-approval')
+    .type('form')
+    .send({
+      approvalCustomerId: '22',
+      customerId: '20',
+      primaryContactId: '30',
+      contactName: 'Alice',
+      contactEmail: 'alice@example.com',
+      requirementText: 'Need wastewater evaporation package.',
+      opportunityType: 'Expansion'
+    });
+
+  assert.equal(requested.status, 302);
+  assert.equal(requested.headers.location, '/inquiries/11');
+  const approvalCall = calls.find((call) => call[0] === 'createCustomerApproval');
+  assert.equal(approvalCall[1].customerId, 22);
+  assert.equal(approvalCall[1].reviewerUserId, 2);
+  assert.equal(approvalCall[1].matchedContactId, null);
+  assert.equal(approvalCall[1].requestPayload.primaryContactId, null);
+});
+
+test('assigned sales manager sees a pending collaboration request and approves its opportunity', async () => {
+  const approvalCalls = [];
+  const pendingInquiry = {
+    ...inquiry,
+    status: 'customer_approval_pending',
+    assignedUserId: 2,
+    matchedCustomerId: 22,
+    matchedContactId: null
+  };
+  const pendingApproval = {
+    id: 80,
+    inquiryId: 11,
+    customerId: 22,
+    customerName: 'Acme Co',
+    requestedBy: 7,
+    requesterDisplayName: 'Sales One',
+    customerOwnerUserId: 8,
+    customerOwnerDisplayName: 'Sales Two',
+    reviewerUserId: 2,
+    reviewerDisplayName: 'Sales Manager',
+    status: 'pending',
+    requestPayload: {
+      primaryContactId: null,
+      newContactName: 'Alice',
+      title: 'Acme project',
+      requirement: 'Need quote'
+    },
+    decisionNote: ''
+  };
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 2,
+      username: 'salesmanager',
+      displayName: 'Sales Manager',
+      roles: [ROLES.SALES_MANAGER]
+    },
+    inquiryRepository: {
+      async findById(id) {
+        return Number(id) === pendingInquiry.id ? pendingInquiry : null;
+      }
+    },
+    inquiryCustomerApprovalRepository: {
+      async findLatestByInquiry() {
+        return pendingApproval;
+      },
+      async findById(id) {
+        approvalCalls.push(['findApproval', Number(id)]);
+        return pendingApproval;
+      },
+      async completeApproval(id, input) {
+        approvalCalls.push(['complete', id, input]);
+        return { id: 40, title: input.title, customerId: 22, salespersonId: 7 };
+      }
+    }
+  });
+
+  const detail = await agent.get('/inquiries/11');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Customer collaboration approval/);
+  assert.match(detail.text, /action="\/inquiries\/11\/customer-approval\/80\/approve"/);
+  assert.match(detail.text, /Approve and create opportunity/);
+  assert.doesNotMatch(detail.text, /href="\/customers\/22"/);
+
+  const approved = await agent
+    .post('/inquiries/11/customer-approval/80/approve')
+    .type('form')
+    .send({ decisionNote: 'Approved' });
+
+  assert.equal(approved.status, 302);
+  assert.equal(approved.headers.location, '/opportunities/40');
+  assert.deepEqual(approvalCalls[0], ['findApproval', 80]);
+  assert.equal(approvalCalls[1][0], 'complete');
+  assert.equal(approvalCalls[1][2].decidedBy, 2);
+  assert.equal(approvalCalls[1][2].decisionNote, 'Approved');
+  assert.equal(approvalCalls[1][2].inquiryId, 11);
 });
 
 test('salesperson reviews inquiry and converts it to opportunity', async () => {

@@ -133,8 +133,9 @@ export function createInquiryRepository(queryTarget) {
           CASE i.status
             WHEN 'new' THEN 1
             WHEN 'reviewing' THEN 2
-            WHEN 'converted' THEN 3
-            ELSE 4
+            WHEN 'customer_approval_pending' THEN 3
+            WHEN 'converted' THEN 4
+            ELSE 5
           END,
           COALESCE(i.source_received_at, i.created_at) DESC,
           i.id DESC

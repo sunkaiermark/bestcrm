@@ -24,6 +24,7 @@ const notificationCenterMigrationPath = new URL('../../src/db/migrations/020_not
 const notificationWorkflowRecipientsMigrationPath = new URL('../../src/db/migrations/021_notification_workflow_recipients.sql', import.meta.url);
 const customerWebsiteMigrationPath = new URL('../../src/db/migrations/022_customer_website.sql', import.meta.url);
 const inquiryDispositionMigrationPath = new URL('../../src/db/migrations/023_inquiry_disposition_workflow.sql', import.meta.url);
+const inquiryCustomerCollaborationMigrationPath = new URL('../../src/db/migrations/024_inquiry_customer_collaboration.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -179,6 +180,20 @@ test('inquiry disposition migration separates product and opportunity type and a
   assert.match(sql, /DROP CONSTRAINT IF EXISTS inquiries_status_check/);
   assert.match(sql, /'contact_saved'/);
   assert.match(sql, /'customer_saved'/);
+});
+
+test('inquiry customer collaboration migration adds a pending state and auditable approval records', async () => {
+  const sql = await readFile(inquiryCustomerCollaborationMigrationPath, 'utf8');
+
+  assert.match(sql, /'customer_approval_pending'/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_customer_approvals/);
+  assert.match(sql, /customer_id bigint NOT NULL REFERENCES customers\(id\)/);
+  assert.match(sql, /requested_by bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /customer_owner_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /reviewer_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /request_payload jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.match(sql, /converted_opportunity_id bigint REFERENCES opportunities\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /WHERE status = 'pending'/);
 });
 
 test('opportunity material versions migration creates unified approval version records', async () => {

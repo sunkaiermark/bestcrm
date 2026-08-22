@@ -18,6 +18,8 @@ Current local implementation:
 - Finish each active inquiry with exactly one disposition: converted to opportunity, saved as contact, saved as customer, or spam.
 - Reuse existing customer/contact records or create missing records from extracted fields while converting.
 - Poll `sales@sunkaier.com` through the mailbox provider for local validation.
+- Keep one customer record per company while allowing multiple opportunities under the same customer.
+- Require Sales Manager approval before a salesperson can add a contact or opportunity under another salesperson's customer.
 
 Out of scope:
 
@@ -42,7 +44,7 @@ Core columns:
 - `requirement_text`: customer requirement summary or full raw requirement.
 - `raw_payload`: original normalized JSON payload for traceability.
 - `priority`: `low`, `normal`, `high`, or `urgent`.
-- `status`: active states `new` and `reviewing`; final dispositions `converted`, `contact_saved`, `customer_saved`, and `spam`; legacy intake compatibility states `duplicate` and `archived`.
+- `status`: active states `new` and `reviewing`; approval state `customer_approval_pending`; final dispositions `converted`, `contact_saved`, `customer_saved`, and `spam`; legacy intake compatibility states `duplicate` and `archived`.
 - `assigned_user_id`: sales owner currently handling the inquiry.
 - `matched_customer_id`, `matched_contact_id`: reviewed CRM links.
 - `converted_opportunity_id`: created opportunity after conversion.
@@ -82,11 +84,22 @@ Path: `/inquiries/:id`
 
 Purpose:
 
-- Show raw and extracted inquiry fields.
-- Correct extraction, assignment, priority, CRM matching, and notes while the inquiry is active.
-- Select one final action: save customer, save contact, convert to opportunity, or mark as spam.
+- Use one compact three-step form: customer/contact, inquiry content, then opportunity conversion.
+- Edit each extracted field only once; the same values feed review, customer/contact saving, and conversion.
+- Keep source metadata and raw payload in collapsed secondary sections.
+- Select one final action: save customer/contact records, convert to opportunity, or mark as spam.
 - Show links to the resulting customer, contact, or opportunity after processing.
 - Let administrators delete the inquiry and its inquiry attachments.
+
+Customer handling rules:
+
+- Select an existing customer owned by the salesperson, then select or add a contact.
+- If no customer exists, create the customer and optional contact as part of the final action.
+- If the same customer exists under another salesperson, do not create a duplicate customer.
+- Submit a customer collaboration request to a Sales Manager. While pending, the inquiry is assigned to the reviewer and cannot be processed again.
+- Approval keeps the original customer owner, creates any requested new contact under that customer, and creates a new opportunity owned by the requesting salesperson.
+- Rejection returns the inquiry to the requesting salesperson for revision.
+- The same customer may have multiple opportunities; customer uniqueness does not imply opportunity uniqueness.
 
 ### Convert
 
@@ -108,6 +121,16 @@ Other final actions:
 - `POST /inquiries/:id/delete` (administrator only)
 
 All final disposition updates are conditional on the inquiry still being `new` or `reviewing`, so a processed inquiry cannot be deliberately processed a second time.
+
+### Cross-owner Customer Approval
+
+Actions:
+
+- `POST /inquiries/:id/customer-approval`
+- `POST /inquiries/:id/customer-approval/:requestId/approve`
+- `POST /inquiries/:id/customer-approval/:requestId/reject`
+
+The approval record stores the selected customer, requesting salesperson, reviewer, requested contact/opportunity payload, decision, and resulting opportunity. Approval, optional contact creation, opportunity creation, and inquiry conversion are completed atomically so the same request cannot be approved twice.
 
 ## Later Integrations
 

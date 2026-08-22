@@ -100,9 +100,13 @@ export function normalizeOpportunityUpdateInput(input, currentOpportunity = {}) 
   };
 }
 
-async function validateOpportunityReferences(repositories, actor, normalized) {
-  const customer = await repositories.customerRepository.getCustomerDetail(normalized.customerId);
+async function validateOpportunityReferences(repositories, actor, normalized, options = {}) {
+  const customer = options.validatedCustomer
+    || await repositories.customerRepository.getCustomerDetail(normalized.customerId);
   if (!customer) {
+    throw new Error('Customer not found');
+  }
+  if (Number(customer.id) !== Number(normalized.customerId)) {
     throw new Error('Customer not found');
   }
   if (!canMaintainCustomer(actor, customer)) {
@@ -123,9 +127,9 @@ async function validateOpportunityReferences(repositories, actor, normalized) {
   }
 }
 
-export async function createOpportunityDraft(repositories, actor, input) {
+export async function createOpportunityDraft(repositories, actor, input, options = {}) {
   const normalized = normalizeOpportunityInput(input, actor);
-  await validateOpportunityReferences(repositories, actor, normalized);
+  await validateOpportunityReferences(repositories, actor, normalized, options);
 
   return repositories.opportunityRepository.createOpportunity(normalized);
 }

@@ -50,6 +50,15 @@ export const ROLE_DETAILS = Object.freeze([
 
 export const APPROVAL_SETTINGS = Object.freeze([
   {
+    key: 'inquiry_customer_access',
+    stage: 'Inquiry Customer Collaboration',
+    owner: 'Sales',
+    approver: 'Sales Manager',
+    assignment: 'Resolved from the configured approver, then the first active Sales Manager.',
+    approveResult: 'Creates the requested contact and opportunity under the existing customer without changing customer ownership.',
+    rejectResult: 'Returns the inquiry to the requesting salesperson for revision.'
+  },
+  {
     key: 'opportunity_initiation',
     stage: 'Opportunity Initiation',
     owner: 'Sales',

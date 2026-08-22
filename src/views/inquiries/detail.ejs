@@ -1,18 +1,25 @@
 <%- include('../partials/app-start', { title: `${inquiry.subject || t('inquiry')} - BESTCRM`, activeNav: 'inquiries' }) %>
+        <% const formatFileSize = (bytes) => { const value = Number(bytes || 0); if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`; if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`; return `${value} B`; }; %>
+        <% const canOpenApprovedCustomer = !customerApproval || Number(customerApproval.customerOwnerUserId) === Number(currentUser.id) || (currentUser.roles || []).includes('administrator'); %>
         <p class="breadcrumb"><a href="/inquiries"><%= t('inquiries') %></a></p>
-        <header class="page-header">
+        <header class="page-header inquiry-page-header">
           <div>
-            <p class="breadcrumb"><%= t(`inquirySource.${inquiry.source}`) %></p>
+            <p class="inquiry-meta-line">
+              <%= t(`inquirySource.${inquiry.source}`) %>
+              · <%= inquiry.sourceReceivedAt || inquiry.createdAt || '' %>
+              · <span class="status"><%= t(`inquiryStatus.${inquiry.status}`) %></span>
+              · <%= t(`inquiryPriority.${inquiry.priority}`) %>
+            </p>
             <h1><%= inquiry.subject || inquiry.companyName || `${t('inquiry')} #${inquiry.id}` %></h1>
           </div>
           <div class="inline-actions">
             <% if (inquiry.convertedOpportunityId) { %>
               <a class="quick-action" href="/opportunities/<%= inquiry.convertedOpportunityId %>"><%= t('viewOpportunity') %></a>
             <% } %>
-            <% if (inquiry.matchedCustomerId) { %>
+            <% if (inquiry.matchedCustomerId && canOpenApprovedCustomer) { %>
               <a class="secondary-action" href="/customers/<%= inquiry.matchedCustomerId %>"><%= t('viewCustomer') %></a>
             <% } %>
-            <% if (inquiry.matchedContactId) { %>
+            <% if (inquiry.matchedContactId && canOpenApprovedCustomer) { %>
               <a class="secondary-action" href="/contacts/<%= inquiry.matchedContactId %>"><%= t('viewContact') %></a>
             <% } %>
             <% if (canDeleteInquiry) { %>
@@ -24,324 +31,223 @@
           </div>
         </header>
 
-        <section class="content-section">
-          <h2><%= t('inquiryDetail') %></h2>
-          <div class="basic-info-grid">
-            <table class="detail-table">
-              <tbody>
-                <tr><th scope="row"><%= t('source') %></th><td><%= t(`inquirySource.${inquiry.source}`) %></td></tr>
-                <tr><th scope="row"><%= t('sourceReference') %></th><td><%= inquiry.sourceReference || '' %></td></tr>
-                <tr><th scope="row"><%= t('receivedAt') %></th><td><%= inquiry.sourceReceivedAt || inquiry.createdAt || '' %></td></tr>
-                <tr><th scope="row"><%= t('status') %></th><td><span class="status"><%= t(`inquiryStatus.${inquiry.status}`) %></span></td></tr>
-                <tr><th scope="row"><%= t('priority') %></th><td><%= t(`inquiryPriority.${inquiry.priority}`) %></td></tr>
-              </tbody>
-            </table>
-            <table class="detail-table">
-              <tbody>
-                <tr><th scope="row"><%= t('companyName') %></th><td><%= inquiry.companyName || '' %></td></tr>
-                <tr><th scope="row"><%= t('contactName') %></th><td><%= inquiry.contactName || '' %></td></tr>
-                <tr><th scope="row"><%= t('email') %></th><td><%= inquiry.contactEmail || '' %></td></tr>
-                <tr><th scope="row"><%= t('phone') %></th><td><%= inquiry.contactPhone || '' %></td></tr>
-                <tr><th scope="row"><%= t('country') %></th><td><%= inquiry.country || '' %></td></tr>
-              </tbody>
-            </table>
-            <table class="detail-table detail-table-wide">
-              <tbody>
-                <tr><th scope="row"><%= t('productInterest') %></th><td><%= inquiry.productInterest || '' %></td></tr>
-                <tr><th scope="row"><%= t('opportunityType') %></th><td><%= inquiry.opportunityType || '' %></td></tr>
-                <tr><th scope="row"><%= t('requirement') %></th><td class="detail-text-cell"><%= inquiry.requirementText || '' %></td></tr>
-                <tr><th scope="row"><%= t('reviewNote') %></th><td class="detail-text-cell"><%= inquiry.reviewNote || '' %></td></tr>
-              </tbody>
-            </table>
-          </div>
-        </section>
-
-        <% if ((duplicateCustomers || []).length) { %>
+        <% if (typeof actionError !== 'undefined' && actionError) { %>
           <section class="duplicate-warning" role="alert">
-            <strong><%= t('duplicateCustomerFound') %></strong>
-            <p><%= t('duplicateCustomerCoordinationHint') %></p>
-            <table class="duplicate-table">
-              <thead><tr><th><%= t('customer') %></th><th><%= t('owner') %></th><th><%= t('contacts') %></th></tr></thead>
-              <tbody>
-                <% for (const duplicate of duplicateCustomers) { %>
-                  <tr>
-                    <td><a href="/customers/<%= duplicate.id %>"><%= duplicate.name %></a></td>
-                    <td><%= duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></td>
-                    <td><%= duplicate.contactCount %></td>
-                  </tr>
-                <% } %>
-              </tbody>
-            </table>
+            <strong><%= t('inquiryActionFailed') %></strong>
+            <p><%= actionError %></p>
           </section>
         <% } %>
 
-        <section class="content-section">
-          <h2><%= t('inquiryAttachments') %></h2>
-          <% if ((inquiryAttachments || []).length > 0) { %>
-            <div class="table-scroll">
-              <table class="data-table">
-                <thead>
-                  <tr>
-                    <th scope="col"><%= t('fileName') %></th>
-                    <th scope="col"><%= t('fileSize') %></th>
-                    <th scope="col"><%= t('receivedAt') %></th>
-                    <th scope="col"><%= t('actions') %></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <% for (const attachment of inquiryAttachments) { %>
-                    <tr>
-                      <td><%= attachment.originalName %></td>
-                      <td><%= attachment.fileSize %></td>
-                      <td><%= attachment.uploadedAt || '' %></td>
-                      <td>
-                        <div class="inline-actions">
-                          <a href="/inquiries/<%= inquiry.id %>/attachments/<%= attachment.id %>/preview"><%= t('preview') %></a>
-                          <a href="/inquiries/<%= inquiry.id %>/attachments/<%= attachment.id %>/download"><%= t('download') %></a>
-                        </div>
-                      </td>
-                    </tr>
-                  <% } %>
-                </tbody>
-              </table>
+        <% if (customerApproval) { %>
+          <section class="content-section inquiry-approval-section">
+            <h2><%= t('customerCollaborationApproval') %></h2>
+            <div class="inquiry-approval-summary">
+              <span><strong><%= t('customer') %>:</strong> <%= customerApproval.customerName %></span>
+              <span><strong><%= t('customerCurrentOwner') %>:</strong> <%= customerApproval.customerOwnerDisplayName %></span>
+              <span><strong><%= t('customerApprovalRequester') %>:</strong> <%= customerApproval.requesterDisplayName %></span>
+              <span><strong><%= t('customerApprovalReviewer') %>:</strong> <%= customerApproval.reviewerDisplayName %></span>
+              <span><strong><%= t('status') %>:</strong> <%= t(`customerApprovalStatus.${customerApproval.status}`) %></span>
             </div>
-          <% } else { %>
-            <p class="muted"><%= t('noInquiryAttachments') %></p>
-          <% } %>
-        </section>
+            <% if (customerApproval.status === 'pending' && canDecideCustomerApproval) { %>
+              <div class="approval-decision-grid">
+                <form class="form-panel compact-form-panel" method="post" action="/inquiries/<%= inquiry.id %>/customer-approval/<%= customerApproval.id %>/approve">
+                  <%- csrfField() %>
+                  <label><%= t('decisionNote') %><textarea name="decisionNote"></textarea></label>
+                  <button type="submit"><%= t('approveAndCreateOpportunity') %></button>
+                </form>
+                <form class="form-panel compact-form-panel" method="post" action="/inquiries/<%= inquiry.id %>/customer-approval/<%= customerApproval.id %>/reject">
+                  <%- csrfField() %>
+                  <label><%= t('decisionNote') %><textarea name="decisionNote" required></textarea></label>
+                  <button class="danger-action" type="submit"><%= t('rejectAndReturn') %></button>
+                </form>
+              </div>
+            <% } else if (customerApproval.decisionNote) { %>
+              <p class="inquiry-decision-note"><strong><%= t('decisionNote') %>:</strong> <%= customerApproval.decisionNote %></p>
+            <% } %>
+          </section>
+        <% } %>
 
         <% if (canProcessInquiry) { %>
-        <section class="content-section">
-          <h2><%= t('reviewInquiry') %></h2>
-          <form class="form-panel" method="post" action="/inquiries/<%= inquiry.id %>/review">
+          <form class="inquiry-workflow-form" method="post" action="/inquiries/<%= inquiry.id %>/convert">
             <%- csrfField() %>
-            <label>
-              <%= t('status') %>
-              <select name="status">
-                <% for (const status of reviewStatuses) { %>
-                  <option value="<%= status %>"<%= inquiry.status === status ? ' selected' : '' %>><%= t(`inquiryStatus.${status}`) %></option>
-                <% } %>
-              </select>
-            </label>
-            <label>
-              <%= t('subject') %>
-              <input name="subject" value="<%= inquiry.subject || '' %>">
-            </label>
-            <label>
-              <%= t('companyName') %>
-              <input name="companyName" value="<%= inquiry.companyName || '' %>">
-            </label>
-            <label>
-              <%= t('contactName') %>
-              <input name="contactName" value="<%= inquiry.contactName || '' %>">
-            </label>
-            <label>
-              <%= t('email') %>
-              <input type="email" name="contactEmail" value="<%= inquiry.contactEmail || '' %>">
-            </label>
-            <label>
-              <%= t('phone') %>
-              <input name="contactPhone" value="<%= inquiry.contactPhone || '' %>">
-            </label>
-            <label>
-              <%= t('country') %>
-              <select name="country">
-                <option value=""><%= t('selectCountry') %></option>
-                <% for (const country of countryOptions) { %>
-                  <option value="<%= country %>"<%= inquiry.country === country ? ' selected' : '' %>><%= country %></option>
-                <% } %>
-              </select>
-            </label>
-            <label>
-              <%= t('productInterest') %>
-              <input name="productInterest" value="<%= inquiry.productInterest || '' %>">
-            </label>
-            <label>
-              <%= t('opportunityType') %>
-              <input name="opportunityType" value="<%= inquiry.opportunityType || '' %>">
-            </label>
-            <label>
-              <%= t('requirement') %>
-              <textarea name="requirementText" required><%= inquiry.requirementText || '' %></textarea>
-            </label>
-            <label>
-              <%= t('priority') %>
-              <select name="priority">
-                <% for (const priority of priorities) { %>
-                  <option value="<%= priority %>"<%= inquiry.priority === priority ? ' selected' : '' %>><%= t(`inquiryPriority.${priority}`) %></option>
-                <% } %>
-              </select>
-            </label>
-            <label>
-              <%= t('assignedTo') %>
-              <select name="assignedUserId">
-                <% for (const user of assignableUsers) { %>
-                  <option value="<%= user.id %>"<%= Number(inquiry.assignedUserId) === Number(user.id) ? ' selected' : '' %>><%= user.displayName || user.username %></option>
-                <% } %>
-              </select>
-            </label>
-            <label>
-              <%= t('matchedCustomer') %>
-              <select name="matchedCustomerId">
-                <option value=""><%= t('selectCustomer') %></option>
-                <% for (const customer of customers) { %>
-                  <option value="<%= customer.id %>"<%= Number(inquiry.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.name %></option>
-                <% } %>
-              </select>
-            </label>
-            <label>
-              <%= t('matchedContact') %>
-              <select name="matchedContactId">
-                <option value=""><%= t('selectContact') %></option>
-                <% for (const contact of contacts) { %>
-                  <option value="<%= contact.id %>"<%= Number(inquiry.matchedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` - ${contact.customerName}` : '' %></option>
-                <% } %>
-              </select>
-            </label>
-            <label>
-              <%= t('reviewNote') %>
-              <textarea name="reviewNote"><%= inquiry.reviewNote || '' %></textarea>
-            </label>
-            <button type="submit"><%= t('save') %></button>
+            <input type="hidden" name="createMissingRecords" value="1">
+
+            <section class="content-section inquiry-step-section">
+              <h2><span class="inquiry-step-number">1</span><%= t('inquiryCustomerAndContact') %></h2>
+              <div class="inquiry-form-grid">
+                <label class="inquiry-field-wide">
+                  <%= t('customer') %>
+                  <select name="customerId" id="inquiry-customer-select">
+                    <option value=""><%= t('createNewCustomerFromInquiry') %></option>
+                    <% for (const customer of customers) { %>
+                      <option value="<%= customer.id %>"<%= Number(inquiry.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.name %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label><%= t('customerName') %><input name="companyName" value="<%= inquiry.companyName || '' %>"></label>
+                <label>
+                  <%= t('country') %>
+                  <select name="country">
+                    <option value=""><%= t('selectCountry') %></option>
+                    <% for (const country of countryOptions) { %>
+                      <option value="<%= country %>"<%= inquiry.country === country ? ' selected' : '' %>><%= country %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label class="inquiry-field-wide">
+                  <%= t('primaryContact') %>
+                  <select name="primaryContactId" id="inquiry-contact-select">
+                    <option value=""><%= t('createNewContactFromInquiry') %></option>
+                    <% for (const contact of contacts) { %>
+                      <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>"<%= Number(inquiry.matchedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` - ${contact.customerName}` : '' %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label><%= t('contactName') %><input name="contactName" value="<%= inquiry.contactName || '' %>"></label>
+                <label><%= t('email') %><input type="email" name="contactEmail" value="<%= inquiry.contactEmail || '' %>"></label>
+                <label><%= t('phone') %><input name="contactPhone" value="<%= inquiry.contactPhone || '' %>"></label>
+                <label><%= t('title') %><input name="contactTitle"></label>
+              </div>
+
+              <% if ((duplicateCustomers || []).length) { %>
+                <div class="customer-match-list">
+                  <strong><%= t('existingCustomerMatches') %></strong>
+                  <% for (const duplicate of duplicateCustomers) { %>
+                    <div class="customer-match-card">
+                      <% if (Number(duplicate.ownerUserId) === Number(currentUser.id) || (currentUser.roles || []).includes('administrator')) { %>
+                        <span><a href="/customers/<%= duplicate.id %>"><%= duplicate.name %></a></span>
+                      <% } else { %>
+                        <span><%= duplicate.name %></span>
+                      <% } %>
+                      <span><%= t('owner') %>: <%= duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></span>
+                      <span><%= t('contacts') %>: <%= duplicate.contactCount %></span>
+                      <% if (Number(duplicate.ownerUserId) === Number(currentUser.id) || (currentUser.roles || []).includes('administrator')) { %>
+                        <span class="muted"><%= t('selectExistingCustomerHint') %></span>
+                      <% } else { %>
+                        <button type="submit" class="secondary-action" formaction="/inquiries/<%= inquiry.id %>/customer-approval" name="approvalCustomerId" value="<%= duplicate.id %>"><%= t('requestCustomerCollaboration') %></button>
+                      <% } %>
+                    </div>
+                  <% } %>
+                </div>
+              <% } %>
+            </section>
+
+            <section class="content-section inquiry-step-section">
+              <h2><span class="inquiry-step-number">2</span><%= t('inquiryContent') %></h2>
+              <div class="inquiry-form-grid">
+                <label class="inquiry-field-wide"><%= t('subject') %><input name="subject" value="<%= inquiry.subject || '' %>"></label>
+                <label><%= t('productInterest') %><input name="productInterest" value="<%= inquiry.productInterest || '' %>"></label>
+                <label><%= t('opportunityType') %><input name="opportunityType" value="<%= inquiry.opportunityType || '' %>"></label>
+                <label class="inquiry-field-full"><%= t('requirement') %><textarea name="requirementText" required><%= inquiry.requirementText || '' %></textarea></label>
+              </div>
+
+              <% if ((inquiryAttachments || []).length > 0) { %>
+                <div class="inquiry-attachment-list">
+                  <% for (const attachment of inquiryAttachments) { %>
+                    <div class="inquiry-attachment-row">
+                      <span><%= attachment.originalName %></span>
+                      <span class="muted"><%= formatFileSize(attachment.fileSize) %></span>
+                      <span class="inline-actions">
+                        <a href="/inquiries/<%= inquiry.id %>/attachments/<%= attachment.id %>/preview"><%= t('preview') %></a>
+                        <a href="/inquiries/<%= inquiry.id %>/attachments/<%= attachment.id %>/download"><%= t('download') %></a>
+                      </span>
+                    </div>
+                  <% } %>
+                </div>
+              <% } %>
+            </section>
+
+            <section class="content-section inquiry-step-section">
+              <h2><span class="inquiry-step-number">3</span><%= t('convertToOpportunity') %></h2>
+              <div class="inquiry-form-grid">
+                <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" value="<%= inquiry.subject || inquiry.productInterest || inquiry.companyName || '' %>" required></label>
+                <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount"></label>
+                <label><%= t('deliveryPeriod') %><input name="deliveryCycle"></label>
+                <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate"></label>
+              </div>
+
+              <details class="inquiry-secondary-details">
+                <summary><%= t('inquiryInternalDetails') %></summary>
+                <div class="inquiry-form-grid">
+                  <label>
+                    <%= t('priority') %>
+                    <select name="priority">
+                      <% for (const priority of priorities) { %>
+                        <option value="<%= priority %>"<%= inquiry.priority === priority ? ' selected' : '' %>><%= t(`inquiryPriority.${priority}`) %></option>
+                      <% } %>
+                    </select>
+                  </label>
+                  <label>
+                    <%= t('assignedTo') %>
+                    <select name="assignedUserId">
+                      <% for (const user of assignableUsers) { %>
+                        <option value="<%= user.id %>"<%= Number(inquiry.assignedUserId) === Number(user.id) ? ' selected' : '' %>><%= user.displayName || user.username %></option>
+                      <% } %>
+                    </select>
+                  </label>
+                  <label class="inquiry-field-full"><%= t('reviewNote') %><textarea name="reviewNote"><%= inquiry.reviewNote || '' %></textarea></label>
+                </div>
+              </details>
+
+              <div class="inquiry-primary-actions">
+                <button type="submit"><%= t('convertToOpportunity') %></button>
+                <button type="submit" class="secondary-action" formaction="/inquiries/<%= inquiry.id %>/review"><%= t('saveInquiry') %></button>
+              </div>
+
+              <details class="inquiry-secondary-details">
+                <summary><%= t('otherInquiryActions') %></summary>
+                <div class="inline-actions inquiry-secondary-actions">
+                  <button type="submit" class="secondary-action" formaction="/inquiries/<%= inquiry.id %>/save-records"><%= t('saveCustomerAndContact') %></button>
+                  <button type="submit" class="danger-action" formaction="/inquiries/<%= inquiry.id %>/spam" onclick="return confirm('<%= t('markInquirySpamConfirm') %>')"><%= t('markAsSpam') %></button>
+                </div>
+              </details>
+            </section>
           </form>
-        </section>
-
-          <section class="content-section">
-            <h2><%= t('saveAsCustomer') %></h2>
-            <p class="muted"><%= t('saveAsCustomerHint') %></p>
-            <form class="form-panel" method="post" action="/inquiries/<%= inquiry.id %>/save-customer">
-              <%- csrfField() %>
-              <label>
-                <%= t('matchedCustomer') %>
-                <select name="customerId">
-                  <option value=""><%= t('createNewCustomerFromInquiry') %></option>
-                  <% for (const customer of customers) { %>
-                    <option value="<%= customer.id %>"<%= Number(inquiry.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.name %></option>
-                  <% } %>
-                </select>
-              </label>
-              <label>
-                <%= t('customerName') %>
-                <input name="name" value="<%= inquiry.companyName || '' %>">
-              </label>
-              <label>
-                <%= t('country') %>
-                <input name="country" value="<%= inquiry.country || '' %>">
-              </label>
-              <button type="submit"><%= t('saveAsCustomer') %></button>
-            </form>
-          </section>
-
-          <section class="content-section">
-            <h2><%= t('saveAsContact') %></h2>
-            <p class="muted"><%= t('saveAsContactHint') %></p>
-            <form class="form-panel" method="post" action="/inquiries/<%= inquiry.id %>/save-contact">
-              <%- csrfField() %>
-              <label>
-                <%= t('matchedContact') %>
-                <select name="contactId">
-                  <option value=""><%= t('createNewContactFromInquiry') %></option>
-                  <% for (const contact of contacts) { %>
-                    <option value="<%= contact.id %>"<%= Number(inquiry.matchedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` - ${contact.customerName}` : '' %></option>
-                  <% } %>
-                </select>
-              </label>
-              <label>
-                <%= t('customer') %>
-                <select name="customerId">
-                  <option value=""><%= t('createNewCustomerFromInquiry') %></option>
-                  <% for (const customer of customers) { %>
-                    <option value="<%= customer.id %>"<%= Number(inquiry.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.name %></option>
-                  <% } %>
-                </select>
-              </label>
-              <label><%= t('customerName') %><input name="newCustomerName" value="<%= inquiry.companyName || '' %>"></label>
-              <label><%= t('contactName') %><input name="name" value="<%= inquiry.contactName || '' %>"></label>
-              <label><%= t('email') %><input type="email" name="email" value="<%= inquiry.contactEmail || '' %>"></label>
-              <label><%= t('phone') %><input name="phone" value="<%= inquiry.contactPhone || '' %>"></label>
-              <button type="submit"><%= t('saveAsContact') %></button>
-            </form>
-          </section>
-
-          <section class="content-section">
-            <h2><%= t('convertToOpportunity') %></h2>
-            <form class="form-panel" method="post" action="/inquiries/<%= inquiry.id %>/convert">
-              <%- csrfField() %>
-              <label>
-                <%= t('customer') %>
-                <select name="customerId">
-                  <option value=""><%= t('createNewCustomerFromInquiry') %></option>
-                  <% for (const customer of customers) { %>
-                    <option value="<%= customer.id %>"<%= Number(inquiry.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.name %></option>
-                  <% } %>
-                </select>
-              </label>
-              <label><%= t('customerName') %><input name="newCustomerName" value="<%= inquiry.companyName || '' %>"></label>
-              <label><%= t('country') %><input name="newCustomerCountry" value="<%= inquiry.country || '' %>"></label>
-              <label>
-                <%= t('primaryContact') %>
-                <select name="primaryContactId">
-                  <option value=""><%= t('selectContact') %></option>
-                  <% for (const contact of contacts) { %>
-                    <option value="<%= contact.id %>"<%= Number(inquiry.matchedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` - ${contact.customerName}` : '' %></option>
-                  <% } %>
-                </select>
-              </label>
-              <label><%= t('contactName') %><input name="newContactName" value="<%= inquiry.contactName || '' %>"></label>
-              <label><%= t('email') %><input type="email" name="newContactEmail" value="<%= inquiry.contactEmail || '' %>"></label>
-              <label><%= t('phone') %><input name="newContactPhone" value="<%= inquiry.contactPhone || '' %>"></label>
-              <label>
-                <input type="checkbox" name="createMissingRecords" value="1" checked>
-                <%= t('createMissingCustomerAndContact') %>
-              </label>
-              <label>
-                <%= t('opportunityName') %>
-                <input name="title" value="<%= inquiry.subject || inquiry.productInterest || inquiry.companyName || '' %>" required>
-              </label>
-              <label>
-                <%= t('requirement') %>
-                <textarea name="requirement" required><%= inquiry.requirementText || '' %></textarea>
-              </label>
-              <label>
-                <%= t('estimatedAmount') %>
-                <input type="number" step="0.01" name="estimatedAmount">
-              </label>
-              <label>
-                <%= t('productInterest') %>
-                <input name="productInterest" value="<%= inquiry.productInterest || '' %>">
-              </label>
-              <label>
-                <%= t('opportunityType') %>
-                <input name="projectType" value="<%= inquiry.opportunityType || '' %>">
-              </label>
-              <label>
-                <%= t('deliveryPeriod') %>
-                <input name="deliveryCycle">
-              </label>
-              <label>
-                <%= t('expectedBidDate') %>
-                <input type="date" name="expectedBidDate">
-              </label>
-              <button type="submit"><%= t('convertToOpportunity') %></button>
-            </form>
-          </section>
-
-          <section class="content-section">
-            <h2><%= t('markAsSpam') %></h2>
-            <form method="post" action="/inquiries/<%= inquiry.id %>/spam" onsubmit="return confirm('<%= t('markInquirySpamConfirm') %>')">
-              <%- csrfField() %>
-              <button class="danger-action" type="submit"><%= t('markAsSpam') %></button>
-            </form>
-          </section>
         <% } else { %>
-          <section class="content-section">
-            <h2><%= t('inquiryProcessed') %></h2>
-            <p><%= t(`inquiryStatus.${inquiry.status}`) %></p>
+          <section class="content-section inquiry-step-section">
+            <h2><%= t('inquiryCustomerAndContact') %></h2>
+            <div class="inquiry-summary-grid">
+              <span><strong><%= t('customerName') %>:</strong> <%= inquiry.matchedCustomerName || inquiry.companyName || '-' %></span>
+              <span><strong><%= t('contactName') %>:</strong> <%= inquiry.matchedContactName || inquiry.contactName || '-' %></span>
+              <span><strong><%= t('email') %>:</strong> <%= inquiry.contactEmail || '-' %></span>
+              <span><strong><%= t('phone') %>:</strong> <%= inquiry.contactPhone || '-' %></span>
+            </div>
+          </section>
+          <section class="content-section inquiry-step-section">
+            <h2><%= t('inquiryContent') %></h2>
+            <div class="inquiry-summary-grid">
+              <span><strong><%= t('productInterest') %>:</strong> <%= inquiry.productInterest || '-' %></span>
+              <span><strong><%= t('opportunityType') %>:</strong> <%= inquiry.opportunityType || '-' %></span>
+              <p class="inquiry-field-full detail-text-cell"><strong><%= t('requirement') %>:</strong><br><%= inquiry.requirementText || '-' %></p>
+            </div>
           </section>
         <% } %>
 
-        <section class="content-section">
-          <h2><%= t('rawPayload') %></h2>
+        <details class="content-section inquiry-raw-details">
+          <summary><%= t('sourceDetails') %></summary>
+          <div class="inquiry-summary-grid">
+            <span><strong><%= t('sourceReference') %>:</strong> <%= inquiry.sourceReference || '-' %></span>
+            <span><strong><%= t('receivedAt') %>:</strong> <%= inquiry.sourceReceivedAt || inquiry.createdAt || '-' %></span>
+          </div>
           <pre><%= JSON.stringify(inquiry.rawPayload || {}, null, 2) %></pre>
-        </section>
+        </details>
+
+        <script>
+          (() => {
+            const customerSelect = document.getElementById('inquiry-customer-select');
+            const contactSelect = document.getElementById('inquiry-contact-select');
+            if (!customerSelect || !contactSelect) return;
+            const filterContacts = () => {
+              const customerId = customerSelect.value;
+              for (const option of contactSelect.options) {
+                if (!option.value) continue;
+                option.hidden = Boolean(customerId) && option.dataset.customerId !== customerId;
+              }
+              const selected = contactSelect.selectedOptions[0];
+              if (selected && selected.hidden) contactSelect.value = '';
+            };
+            customerSelect.addEventListener('change', filterContacts);
+            filterContacts();
+          })();
+        </script>
 <%- include('../partials/app-end') %>
