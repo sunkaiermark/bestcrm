@@ -167,7 +167,7 @@ function assertAppSidebar(html) {
 }
 
 test('anonymous users are redirected from sales work plans', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
   const response = await request(app).get('/sales-work/plans');
 

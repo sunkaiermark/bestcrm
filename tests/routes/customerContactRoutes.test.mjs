@@ -151,7 +151,7 @@ function assertAppSidebar(html, activeHref) {
 }
 
 test('anonymous users are redirected from customer and contact pages', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
   const customers = await request(app).get('/customers');
   assert.equal(customers.status, 302);

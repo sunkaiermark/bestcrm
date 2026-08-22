@@ -108,3 +108,19 @@ test('refuses to issue challenges without complete provider config or a valid ph
     /SMS delivery failed/
   );
 });
+
+test('loads the Tencent Cloud SMS SDK and constructs a client without sending', async () => {
+  const imported = await import('tencentcloud-sdk-nodejs');
+  const tencentcloud = imported.default || imported;
+  const Client = tencentcloud.sms?.v20210111?.Client;
+
+  assert.equal(typeof Client, 'function');
+
+  const client = new Client({
+    credential: { secretId: 'test-secret-id', secretKey: 'test-secret-key' },
+    region: 'ap-guangzhou',
+    profile: { httpProfile: { endpoint: 'sms.tencentcloudapi.com' } }
+  });
+
+  assert.equal(typeof client.SendSms, 'function');
+});

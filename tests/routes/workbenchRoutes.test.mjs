@@ -88,7 +88,7 @@ async function createWorkbenchAgent(options = {}) {
 }
 
 test('anonymous users are redirected from workbench', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
   const response = await request(app).get('/workbench');
 

@@ -172,7 +172,7 @@ function assertSystemSidebar(html, activeHref) {
 }
 
 test('anonymous users are redirected from system pages', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
   for (const path of ['/system/users', '/system/roles', '/system/approval-settings']) {
     const response = await request(app).get(path);

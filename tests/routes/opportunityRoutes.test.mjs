@@ -542,7 +542,7 @@ async function createWorkflowAgent({
 }
 
 test('anonymous users are redirected from opportunity pages', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
   const response = await request(app).get('/opportunities');
 

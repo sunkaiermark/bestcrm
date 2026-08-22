@@ -90,6 +90,35 @@ test('parseEmailInquirySource parses raw RFC822 email', async () => {
   assert.match(inquiry.requirementText, /Need dryer quote/);
 });
 
+test('parseEmailInquirySource converts an HTML-only email into inquiry fields', async () => {
+  const raw = [
+    'Message-ID: <rfq-html-102@example.com>',
+    'Date: Sat, 01 Aug 2026 05:00:00 +0000',
+    'From: Carol Buyer <CAROL@EXAMPLE.COM>',
+    'To: sales@sunkaier.com',
+    'Subject: Mixing system inquiry',
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=utf-8',
+    '',
+    '<html><body>',
+    '<p>Company: Gamma Process</p>',
+    '<p>Product: Mixing System</p>',
+    '<p>Project Type: New Project</p>',
+    '<p>Please quote a complete mixing system.</p>',
+    '</body></html>'
+  ].join('\r\n');
+
+  const inquiry = await parseEmailInquirySource(Buffer.from(raw), { uid: 102, mailbox: 'INBOX' });
+
+  assert.equal(inquiry.sourceReference, 'rfq-html-102@example.com');
+  assert.equal(inquiry.contactName, 'Carol Buyer');
+  assert.equal(inquiry.contactEmail, 'carol@example.com');
+  assert.equal(inquiry.companyName, 'Gamma Process');
+  assert.equal(inquiry.productInterest, 'Mixing System');
+  assert.equal(inquiry.opportunityType, 'New Project');
+  assert.match(inquiry.requirementText, /complete mixing system/i);
+});
+
 test('createEmailInquiry requires an email source reference', async () => {
   await assert.rejects(
     () => createEmailInquiry({ async createInquiry() {} }, { subject: 'No id', text: 'Need quote' }),

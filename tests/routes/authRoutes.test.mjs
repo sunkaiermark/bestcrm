@@ -51,7 +51,7 @@ function extractCsrfToken(html) {
 }
 
 test('login page renders username and password form', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
   const response = await request(app).get('/login');
 
@@ -136,7 +136,7 @@ test('csrf protection accepts login posts with the current form token', async ()
 });
 
 test('login page can switch between English and Chinese', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
   const agent = request.agent(app);
 
   const switchResponse = await agent.get('/language?lang=zh&returnTo=/login');

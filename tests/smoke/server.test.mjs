@@ -47,7 +47,7 @@ function waitForServerStart(child) {
 }
 
 test('GET /health returns ok', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
   const response = await request(app).get('/health');
 
@@ -56,7 +56,7 @@ test('GET /health returns ok', async () => {
 });
 
 test('GET / redirects to the workbench entry', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
   const response = await request(app).get('/');
 
@@ -65,7 +65,7 @@ test('GET / redirects to the workbench entry', async () => {
 });
 
 test('GET /assets/sunkaier-logo.png serves the sidebar logo', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
   const response = await request(app).get('/assets/sunkaier-logo.png');
 
@@ -74,7 +74,7 @@ test('GET /assets/sunkaier-logo.png serves the sidebar logo', async () => {
 });
 
 test('GET /assets/sunkaier-logo-login.png serves the login logo', async () => {
-  const app = createApp({ sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
   const response = await request(app).get('/assets/sunkaier-logo-login.png');
 
