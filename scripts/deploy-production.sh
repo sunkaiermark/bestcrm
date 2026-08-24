@@ -16,6 +16,7 @@ CURRENT_APP="$APP_ROOT/app"
 ENV_FILE="${BESTCRM_ENV_FILE:-/etc/bestcrm/bestcrm.env}"
 UPLOAD_DIR="${BESTCRM_UPLOAD_DIR:-/var/bestcrm/uploads}"
 BACKUP_SCRIPT="${BESTCRM_BACKUP_SCRIPT:-$SCRIPT_DIR/backup-production.sh}"
+ENV_READER="${BESTCRM_ENV_READER:-$SCRIPT_DIR/read-env-value.mjs}"
 RELEASE_DIR="$RELEASES_DIR/$VERSION"
 TMP_DIR="$(mktemp -d)"
 SERVICE_USER="${BESTCRM_SERVICE_USER:-$(systemctl show bestcrm -p User --value 2>/dev/null || true)}"
@@ -40,6 +41,11 @@ fi
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "Missing environment file: $ENV_FILE" >&2
+  exit 1
+fi
+
+if [ ! -f "$ENV_READER" ]; then
+  echo "Missing safe environment reader: $ENV_READER" >&2
   exit 1
 fi
 
@@ -74,10 +80,8 @@ cp -a "$SOURCE_DIR"/. "$RELEASE_DIR"/
 cd "$RELEASE_DIR"
 npm ci --omit=dev
 
-set -a
-# shellcheck disable=SC1090
-. <(sed 's/\r$//' "$ENV_FILE")
-set +a
+DATABASE_URL="$(node "$ENV_READER" "$ENV_FILE" DATABASE_URL)"
+export DATABASE_URL
 
 PREVIOUS_TARGET=""
 if [ -L "$CURRENT_APP" ]; then

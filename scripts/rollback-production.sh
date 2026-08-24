@@ -14,11 +14,13 @@ USAGE
 }
 
 MODE="${1:-}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 APP_ROOT="${BESTCRM_ROOT:-/opt/bestcrm}"
 RELEASES_DIR="$APP_ROOT/releases"
 CURRENT_APP="$APP_ROOT/app"
 BACKUP_DIR="${BESTCRM_BACKUP_DIR:-/var/backups/bestcrm}"
 ENV_FILE="${BESTCRM_ENV_FILE:-/etc/bestcrm/bestcrm.env}"
+ENV_READER="${BESTCRM_ENV_READER:-$SCRIPT_DIR/read-env-value.mjs}"
 UPLOAD_DIR="${BESTCRM_UPLOAD_DIR:-/var/bestcrm/uploads}"
 SERVICE_USER="${BESTCRM_SERVICE_USER:-$(systemctl show bestcrm -p User --value 2>/dev/null || true)}"
 SERVICE_USER="${SERVICE_USER:-www-data}"
@@ -77,10 +79,13 @@ if [ "$MODE" = "full" ]; then
     exit 1
   fi
 
-  set -a
-  # shellcheck disable=SC1090
-  . <(sed 's/\r$//' "$ENV_FILE")
-  set +a
+  if [ ! -f "$ENV_READER" ]; then
+    echo "Missing safe environment reader: $ENV_READER" >&2
+    exit 1
+  fi
+
+  DATABASE_URL="$(node "$ENV_READER" "$ENV_FILE" DATABASE_URL)"
+  export DATABASE_URL
 
   if [ -z "${DATABASE_URL:-}" ]; then
     echo "DATABASE_URL is required in $ENV_FILE" >&2

@@ -6,6 +6,8 @@ BACKUP_DIR="${BESTCRM_BACKUP_DIR:-/var/backups/bestcrm}"
 UPLOAD_DIR="${BESTCRM_UPLOAD_DIR:-/var/bestcrm/uploads}"
 APP_DIR="${BESTCRM_APP_DIR:-/opt/bestcrm/app}"
 KEEP_DAYS="${BESTCRM_BACKUP_KEEP_DAYS:-30}"
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ENV_READER="${BESTCRM_ENV_READER:-$SCRIPT_DIR/read-env-value.mjs}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_PATH="$BACKUP_DIR/$STAMP"
 
@@ -14,10 +16,13 @@ if [ ! -f "$ENV_FILE" ]; then
   exit 1
 fi
 
-set -a
-# shellcheck disable=SC1090
-. <(sed 's/\r$//' "$ENV_FILE")
-set +a
+if [ ! -f "$ENV_READER" ]; then
+  echo "Missing safe environment reader: $ENV_READER" >&2
+  exit 1
+fi
+
+DATABASE_URL="$(node "$ENV_READER" "$ENV_FILE" DATABASE_URL)"
+export DATABASE_URL
 
 if [ -z "${DATABASE_URL:-}" ]; then
   echo "DATABASE_URL is required in $ENV_FILE" >&2

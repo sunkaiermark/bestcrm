@@ -104,7 +104,7 @@ scp .\bestcrm-release.zip ubuntu@175.27.225.156:/opt/bestcrm/bestcrm-release.zip
 在本地 PowerShell 上传脚本：
 
 ```powershell
-scp .\scripts\backup-production.sh .\scripts\deploy-production.sh .\scripts\rollback-production.sh ubuntu@175.27.225.156:/tmp/
+scp .\scripts\backup-production.sh .\scripts\deploy-production.sh .\scripts\rollback-production.sh .\scripts\read-env-value.mjs ubuntu@175.27.225.156:/tmp/
 ```
 
 登录云服务器：
@@ -117,8 +117,9 @@ ssh ubuntu@175.27.225.156
 
 ```bash
 sudo mkdir -p /opt/bestcrm/scripts
-sudo cp /tmp/backup-production.sh /tmp/deploy-production.sh /tmp/rollback-production.sh /opt/bestcrm/scripts/
+sudo cp /tmp/backup-production.sh /tmp/deploy-production.sh /tmp/rollback-production.sh /tmp/read-env-value.mjs /opt/bestcrm/scripts/
 sudo chmod +x /opt/bestcrm/scripts/*.sh
+sudo chmod 755 /opt/bestcrm/scripts/read-env-value.mjs
 ```
 
 ## 6. 部署新版本
@@ -132,7 +133,7 @@ ssh ubuntu@175.27.225.156
 执行部署：
 
 ```bash
-/opt/bestcrm/scripts/deploy-production.sh /opt/bestcrm/bestcrm-release.zip v2026.06.23-01
+sudo -n /opt/bestcrm/scripts/deploy-production.sh /opt/bestcrm/bestcrm-release.zip v2026.06.23-01
 ```
 
 这个脚本会自动做以下事情：
@@ -166,7 +167,7 @@ http://175.27.225.156/login
 如果需要单独手工备份：
 
 ```bash
-/opt/bestcrm/scripts/backup-production.sh
+sudo -n /opt/bestcrm/scripts/backup-production.sh
 ```
 
 备份目录格式：
@@ -320,4 +321,3 @@ cat /opt/bestcrm/current-release.txt
 ```bash
 ls -la /opt/bestcrm/releases
 ```
-
