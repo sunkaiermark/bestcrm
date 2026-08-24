@@ -163,6 +163,15 @@
         padding: 9px 10px;
       }
 
+      .login-notice {
+        margin: 0 0 14px;
+        border: 1px solid #9ed8c7;
+        border-radius: 6px;
+        background: #eefaf6;
+        color: #17624f;
+        padding: 9px 10px;
+      }
+
       @media (max-width: 460px) {
         .login-shell {
           align-items: start;
@@ -186,6 +195,9 @@
         </div>
       <% if (error) { %>
           <p class="login-alert" role="alert"><%= error %></p>
+      <% } %>
+      <% if (typeof notice !== 'undefined' && notice) { %>
+          <p class="login-notice" role="status"><%= notice %></p>
       <% } %>
         <form class="login-form" method="post" action="/login">
           <%- csrfField() %>

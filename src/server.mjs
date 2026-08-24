@@ -30,6 +30,7 @@ import { createTodoRepository } from './repositories/todoRepository.mjs';
 import { createUserRepository } from './repositories/userRepository.mjs';
 import { createWorkbenchRepository } from './repositories/workbenchRepository.mjs';
 import { createWorkflowEventRepository } from './repositories/workflowEventRepository.mjs';
+import { accountRoutes } from './routes/accountRoutes.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
@@ -61,6 +62,9 @@ const emptyUserRepository = {
     throw new Error('User repository is not configured');
   },
   async updateUser() {
+    throw new Error('User repository is not configured');
+  },
+  async changePassword() {
     throw new Error('User repository is not configured');
   },
   async deactivateUser() {
@@ -495,6 +499,7 @@ export function createApp(options = {}) {
     res.redirect('/workbench');
   });
   app.use(authRoutes(userRepository, { loginSecurityService, smsSecondFactorService }));
+  app.use(accountRoutes({ userRepository, loginSecurityRepository }));
   app.use(workbenchRoutes({ workbenchRepository }));
   app.use(notificationRoutes({
     notificationRepository,

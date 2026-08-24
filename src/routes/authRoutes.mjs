@@ -68,7 +68,13 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
   });
 
   router.get('/login', (req, res) => {
-    res.render('auth/login', { error: null, username: '' });
+    res.render('auth/login', {
+      error: null,
+      notice: req.query.passwordChanged === '1'
+        ? res.locals.t('passwordChangedLoginAgain')
+        : null,
+      username: ''
+    });
   });
 
   router.post('/login', async (req, res, next) => {

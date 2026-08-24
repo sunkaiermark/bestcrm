@@ -135,6 +135,52 @@ export function createUserRepository(pool) {
       }
     },
 
+    async changePassword(id, passwordHash, auditEvent) {
+      await pool.query('BEGIN');
+      try {
+        const result = await pool.query(`
+          UPDATE users
+          SET password_hash = $2, updated_at = now()
+          WHERE id = $1
+            AND is_active = true
+          RETURNING id, username
+        `, [id, passwordHash]);
+        if (!result.rows[0]) {
+          await pool.query('COMMIT');
+          return null;
+        }
+
+        const userId = Number(result.rows[0].id);
+        await pool.query(`
+          INSERT INTO login_audit_events (
+            username,
+            user_id,
+            ip_address,
+            user_agent,
+            result,
+            reason
+          )
+          VALUES ($1, $2, $3, $4, $5, $6)
+        `, [
+          result.rows[0].username,
+          userId,
+          auditEvent?.ipAddress || null,
+          auditEvent?.userAgent || null,
+          auditEvent?.result || 'success',
+          auditEvent?.reason || 'password_changed'
+        ]);
+        await pool.query(`
+          DELETE FROM "session"
+          WHERE sess ->> 'userId' = $1
+        `, [String(userId)]);
+        await pool.query('COMMIT');
+        return { id: userId };
+      } catch (error) {
+        await pool.query('ROLLBACK');
+        throw error;
+      }
+    },
+
     async deactivateUser(id) {
       const result = await pool.query(`
         UPDATE users

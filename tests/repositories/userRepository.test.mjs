@@ -212,6 +212,38 @@ test('updateUser updates password hash when provided', async () => {
   ]);
 });
 
+test('changePassword updates the hash, audits the change, and deletes all user sessions atomically', async () => {
+  const pool = createFakePoolSequence([[{ id: 12, username: 'sales01' }], [], []]);
+  const repository = createUserRepository(pool);
+
+  const user = await repository.changePassword(12, 'new-hashed-password', {
+    ipAddress: '127.0.0.1',
+    userAgent: 'test-agent',
+    result: 'success',
+    reason: 'password_changed'
+  });
+
+  assert.deepEqual(user, { id: 12 });
+  assert.match(pool.queries[0].sql, /BEGIN/);
+  assert.match(pool.queries[1].sql, /UPDATE users/);
+  assert.match(pool.queries[1].sql, /password_hash = \$2/);
+  assert.match(pool.queries[1].sql, /AND is_active = true/);
+  assert.deepEqual(pool.queries[1].params, [12, 'new-hashed-password']);
+  assert.match(pool.queries[2].sql, /INSERT INTO login_audit_events/);
+  assert.deepEqual(pool.queries[2].params, [
+    'sales01',
+    12,
+    '127.0.0.1',
+    'test-agent',
+    'success',
+    'password_changed'
+  ]);
+  assert.match(pool.queries[3].sql, /DELETE FROM "session"/);
+  assert.match(pool.queries[3].sql, /sess ->> 'userId' = \$1/);
+  assert.deepEqual(pool.queries[3].params, ['12']);
+  assert.match(pool.queries[4].sql, /COMMIT/);
+});
+
 test('deactivateUser soft deletes by setting inactive', async () => {
   const pool = createFakePoolSequence([[{ id: 12 }]]);
   const repository = createUserRepository(pool);
