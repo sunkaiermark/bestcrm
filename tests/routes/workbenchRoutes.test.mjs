@@ -175,6 +175,11 @@ test('administrator users see system navigation in the left sidebar', async () =
   assert.match(response.text, /Roles/);
   assert.match(response.text, /href="\/system\/approval-settings"/);
   assert.match(response.text, /Approval Settings/);
+  const mainNavigation = response.text.match(/<nav class="nav-group">[\s\S]*?<\/nav>/)?.[0] || '';
+  const navigationFooter = response.text.match(/<div class="nav-footer">[\s\S]*?<\/div>/)?.[0] || '';
+  assert.doesNotMatch(mainNavigation, /href="\/account\/password"/);
+  assert.match(navigationFooter, /href="\/account\/password">Change password<\/a>/);
+  assert.match(navigationFooter, /action="\/logout"/);
 });
 
 test('left sidebar uses selected Chinese language after login', async () => {

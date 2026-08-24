@@ -131,6 +131,9 @@
         height: 100vh;
         background: var(--rail);
         color: var(--rail-ink);
+        display: flex;
+        flex-direction: column;
+        overflow-y: auto;
         padding: 18px 14px;
       }
 
@@ -201,8 +204,19 @@
         color: var(--rail-ink);
       }
 
+      .nav-footer {
+        display: grid;
+        gap: 8px;
+        margin-top: auto;
+        padding-top: 18px;
+      }
+
+      .nav-footer .nav-link {
+        border: 1px solid rgba(255, 255, 255, 0.18);
+      }
+
       .logout-form {
-        margin-top: 18px;
+        margin: 0;
       }
 
       .logout-button {
@@ -1404,9 +1418,19 @@
           display: contents;
         }
 
+        .nav-footer {
+          align-items: center;
+          display: flex;
+          gap: 6px;
+          grid-column: 1 / -1;
+          justify-content: flex-end;
+          margin: 0;
+          padding: 0;
+        }
+
         .logout-form {
-          grid-column: 3;
-          grid-row: 1;
+          grid-column: auto;
+          grid-row: auto;
           margin: 0;
         }
 
@@ -1460,7 +1484,6 @@
             <span><%= t('notifications') %></span>
             <span class="notification-badge" data-notification-badge hidden>0</span>
           </a>
-          <a class="<%= navClass('account-password') %>" href="/account/password"><%= t('changePassword') %></a>
           <a class="<%= navClass('inquiries') %>" href="/inquiries"><%= t('inquiries') %></a>
           <a class="<%= navClass('sales-work') %>" href="/sales-work/plans"><%= t('salesWork') %></a>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>
@@ -1475,10 +1498,13 @@
             </div>
           <% } %>
         </nav>
-        <form class="logout-form" method="post" action="/logout">
-          <%- csrfField() %>
-          <button class="logout-button" type="submit"><%= t('logout') %></button>
-        </form>
+        <div class="nav-footer">
+          <a class="<%= navClass('account-password') %>" href="/account/password"><%= t('changePassword') %></a>
+          <form class="logout-form" method="post" action="/logout">
+            <%- csrfField() %>
+            <button class="logout-button" type="submit"><%= t('logout') %></button>
+          </form>
+        </div>
       </aside>
 
       <main class="app-main">
