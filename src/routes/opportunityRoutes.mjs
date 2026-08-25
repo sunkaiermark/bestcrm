@@ -38,10 +38,58 @@ function normalizeOpportunityArchiveScope(value) {
   return opportunityArchiveScopes.has(value) ? value : 'active';
 }
 
-function opportunityListFilter(user, archiveScope) {
+function normalizeOpportunityListId(value) {
+  const normalized = String(value ?? '').trim();
+  if (!/^\d+$/.test(normalized)) {
+    return null;
+  }
+  const id = Number(normalized);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function normalizeOpportunityListQuery(query = {}) {
   return {
+    archiveScope: normalizeOpportunityArchiveScope(query.archiveScope),
+    salespersonId: normalizeOpportunityListId(query.salespersonId),
+    customerId: normalizeOpportunityListId(query.customerId),
+    contactId: normalizeOpportunityListId(query.contactId),
+    query: String(query.query ?? '').trim().slice(0, 200)
+  };
+}
+
+function opportunityListFilter(user, filters) {
+  const filter = {
     ...opportunityVisibilityFilter(user),
-    archiveScope
+    archiveScope: filters.archiveScope
+  };
+  if (filters.salespersonId) {
+    filter.salespersonId = filters.salespersonId;
+  }
+  if (filters.customerId) {
+    filter.customerId = filters.customerId;
+  }
+  if (filters.contactId) {
+    filter.contactId = filters.contactId;
+  }
+  if (filters.query) {
+    filter.searchTerm = filters.query;
+  }
+  return filter;
+}
+
+async function loadOpportunityFilterOptions(opportunityRepository, userRepository, filter) {
+  const [opportunityOptions, salespeople] = await Promise.all([
+    typeof opportunityRepository.listOpportunityFilterOptions === 'function'
+      ? opportunityRepository.listOpportunityFilterOptions(filter)
+      : { customers: [], contacts: [] },
+    typeof userRepository?.listUsersByRole === 'function'
+      ? userRepository.listUsersByRole(ROLES.SALESPERSON)
+      : []
+  ]);
+  return {
+    salespeople,
+    customers: opportunityOptions.customers || [],
+    contacts: opportunityOptions.contacts || []
   };
 }
 
@@ -696,9 +744,22 @@ export function opportunityRoutes({
 
   router.get('/opportunities', async (req, res, next) => {
     try {
-      const archiveScope = normalizeOpportunityArchiveScope(req.query.archiveScope);
-      const opportunities = await opportunityRepository.listOpportunities(opportunityListFilter(req.currentUser, archiveScope));
-      res.render('opportunities/index', { opportunities, archiveScope });
+      const filters = normalizeOpportunityListQuery(req.query);
+      const baseFilter = opportunityListFilter(req.currentUser, {
+        archiveScope: filters.archiveScope
+      });
+      const [opportunities, filterOptions] = await Promise.all([
+        opportunityRepository.listOpportunities(opportunityListFilter(req.currentUser, filters)),
+        loadOpportunityFilterOptions(opportunityRepository, userRepository, baseFilter)
+      ]);
+      res.render('opportunities/index', {
+        opportunities,
+        archiveScope: filters.archiveScope,
+        filters,
+        salespeople: filterOptions.salespeople,
+        customers: filterOptions.customers,
+        contacts: filterOptions.contacts
+      });
     } catch (error) {
       next(error);
     }
@@ -1347,8 +1408,8 @@ export function opportunityRoutes({
 
   router.get('/api/opportunities', async (req, res, next) => {
     try {
-      const archiveScope = normalizeOpportunityArchiveScope(req.query.archiveScope);
-      const opportunities = await opportunityRepository.listOpportunities(opportunityListFilter(req.currentUser, archiveScope));
+      const filters = normalizeOpportunityListQuery(req.query);
+      const opportunities = await opportunityRepository.listOpportunities(opportunityListFilter(req.currentUser, filters));
       res.json({ opportunities });
     } catch (error) {
       next(error);

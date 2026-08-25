@@ -14,7 +14,39 @@
                 <option value="all"<%= archiveScope === 'all' ? ' selected' : '' %>><%= t('allOpportunities') %></option>
               </select>
             </label>
-            <button type="submit"><%= t('filter') %></button>
+            <label>
+              <%= t('salesOwner') %>
+              <select name="salespersonId">
+                <option value=""><%= t('allSalesOwners') %></option>
+                <% for (const salesperson of salespeople) { %>
+                  <option value="<%= salesperson.id %>"<%= String(filters.salespersonId || '') === String(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('customer') %>
+              <select name="customerId">
+                <option value=""><%= t('allCustomers') %></option>
+                <% for (const customer of customers) { %>
+                  <option value="<%= customer.id %>"<%= String(filters.customerId || '') === String(customer.id) ? ' selected' : '' %>><%= customer.name %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('contact') %>
+              <select name="contactId">
+                <option value=""><%= t('allContacts') %></option>
+                <% for (const contact of contacts) { %>
+                  <option value="<%= contact.id %>"<%= String(filters.contactId || '') === String(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` (${contact.customerName})` : '' %></option>
+                <% } %>
+              </select>
+            </label>
+            <label class="opportunity-search-field">
+              <%= t('keyword') %>
+              <input name="query" type="search" value="<%= filters.query %>" placeholder="<%= t('opportunitySearchPlaceholder') %>">
+            </label>
+            <button type="submit"><%= t('search') %></button>
+            <a class="secondary-action" href="/opportunities?archiveScope=<%= archiveScope %>"><%= t('clearFilters') %></a>
           </form>
 
           <div class="list-body">

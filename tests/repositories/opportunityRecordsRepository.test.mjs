@@ -83,6 +83,55 @@ test('opportunity repository lists opportunities with customer and contact names
   assert.deepEqual(queryTarget.queries[0].params, [7, STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
 });
 
+test('opportunity repository combines sales owner customer contact and keyword filters', async () => {
+  const queryTarget = createFakeQueryTarget([opportunityRow]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  await repository.listOpportunities({
+    salespersonId: 7,
+    customerId: 10,
+    contactId: 20,
+    searchTerm: 'Acme_100%'
+  });
+
+  const { sql, params } = queryTarget.queries[0];
+  assert.match(sql, /o\.salesperson_id = \$1/);
+  assert.match(sql, /o\.customer_id = \$2/);
+  assert.match(sql, /o\.primary_contact_id = \$3/);
+  assert.match(sql, /o\.opportunity_no ILIKE \$4/);
+  assert.match(sql, /o\.title ILIKE \$4/);
+  assert.match(sql, /c\.name ILIKE \$4/);
+  assert.match(sql, /salesperson\.display_name ILIKE \$4/);
+  assert.match(sql, /pc\.name ILIKE \$4/);
+  assert.match(sql, /o\.status NOT IN \(\$5, \$6\)/);
+  assert.deepEqual(params, [
+    7,
+    10,
+    20,
+    '%Acme\\_100\\%%',
+    STATUSES.LOST_ARCHIVED,
+    STATUSES.CONTRACT_ARCHIVED
+  ]);
+});
+
+test('opportunity repository lists permission-scoped sales owner customer and contact filter options', async () => {
+  const queryTarget = createFakeQueryTarget([opportunityRow]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  const options = await repository.listOpportunityFilterOptions({ visibleToUserId: 8 });
+
+  assert.deepEqual(options, {
+    salespeople: [{ id: 7, username: 'sales01', displayName: 'Sales One' }],
+    customers: [{ id: 10, name: 'Acme Co' }],
+    contacts: [{ id: 20, name: 'Alice', customerId: 10, customerName: 'Acme Co' }]
+  });
+  assert.match(queryTarget.queries[0].sql, /SELECT DISTINCT/);
+  assert.match(queryTarget.queries[0].sql, /o\.salesperson_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /FROM opportunity_members om/);
+  assert.match(queryTarget.queries[0].sql, /o\.status NOT IN \(\$2, \$3\)/);
+  assert.deepEqual(queryTarget.queries[0].params, [8, STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
+});
+
 test('opportunity repository filters visible opportunities for owners assignees and active team members', async () => {
   const queryTarget = createFakeQueryTarget([opportunityRow]);
   const repository = createOpportunityRepository(queryTarget);

@@ -72,6 +72,23 @@ async function createLoggedInAgent(extraOptions = {}) {
             roles: [ROLES.SALES_MANAGER]
           }
         ];
+      },
+      async listUsersByRole(role) {
+        if (role !== ROLES.SALESPERSON) {
+          return [];
+        }
+        return [
+          user,
+          {
+            id: 8,
+            username: 'team01',
+            displayName: 'Team Member',
+            email: null,
+            phone: null,
+            isActive: true,
+            roles: [ROLES.SALESPERSON]
+          }
+        ];
       }
     },
     customerRepository: {
@@ -290,6 +307,7 @@ async function createLoggedInAgent(extraOptions = {}) {
 }
 
 function assertAppSidebar(html, activeHref) {
+  const navAccount = html.match(/<div class="nav-account"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || '';
   assert.match(html, /class="left-nav"/);
   assert.match(html, /font:\s*20px\/1\.45 Arial, "Microsoft YaHei", Helvetica, sans-serif;/);
   assert.match(html, /th\s*\{[\s\S]*font-size:\s*20px;/);
@@ -305,7 +323,7 @@ function assertAppSidebar(html, activeHref) {
   assert.match(html, /class="nav-account-name"[\s\S]*Sales One/);
   assert.doesNotMatch(html, /class="nav-account-meta"/);
   assert.doesNotMatch(html, /class="nav-account-roles"/);
-  assert.doesNotMatch(html, /salesperson/);
+  assert.doesNotMatch(navAccount, /salesperson/);
   assert.match(html, /\.nav-account\s*\{/);
   assert.match(html, /\.nav-group\s*\{[\s\S]*margin-top:\s*18px;/);
   assert.match(html, /href="\/workbench"/);
@@ -645,6 +663,75 @@ test('opportunity list supports active archived and all scopes', async () => {
   assert.match(allList.text, /<option value="all" selected>All opportunities<\/option>/);
 });
 
+test('opportunity list and API combine sales owner customer contact and keyword filters', async () => {
+  const filters = [];
+  const optionFilters = [];
+  const { agent } = await createLoggedInAgent({
+    opportunityRepository: {
+      async listOpportunities(filter) {
+        filters.push(filter);
+        return [];
+      },
+      async listOpportunityFilterOptions(filter) {
+        optionFilters.push(filter);
+        return {
+          salespeople: [
+            { id: 99, username: 'engineer01', displayName: 'Quotation Engineer' }
+          ],
+          customers: [
+            { id: 10, name: 'Acme Co' },
+            { id: 11, name: 'Beta Co' }
+          ],
+          contacts: [
+            { id: 20, name: 'Alice', customerId: 10, customerName: 'Acme Co' },
+            { id: 21, name: 'Bob', customerId: 11, customerName: 'Beta Co' }
+          ]
+        };
+      }
+    }
+  });
+
+  const list = await agent
+    .get('/opportunities')
+    .query({ archiveScope: 'all', salespersonId: '8', customerId: '11', contactId: '21', query: '  upgrade  ' });
+
+  assert.equal(list.status, 200);
+  assert.deepEqual(filters[0], {
+    visibleToUserId: 7,
+    archiveScope: 'all',
+    salespersonId: 8,
+    customerId: 11,
+    contactId: 21,
+    searchTerm: 'upgrade'
+  });
+  assert.deepEqual(optionFilters[0], { visibleToUserId: 7, archiveScope: 'all' });
+  assert.match(list.text, /Sales owner\s*<select name="salespersonId">/);
+  assert.match(list.text, /<option value="8" selected>Team Member<\/option>/);
+  assert.doesNotMatch(list.text, /Quotation Engineer/);
+  assert.match(list.text, /Customer\s*<select name="customerId">/);
+  assert.match(list.text, /<option value="11" selected>Beta Co<\/option>/);
+  assert.match(list.text, /Contact\s*<select name="contactId">/);
+  assert.match(list.text, /<option value="21" selected>Bob \(Beta Co\)<\/option>/);
+  assert.match(list.text, /name="query" type="search" value="upgrade"/);
+  assert.match(list.text, />Search<\/button>/);
+  assert.match(list.text, /href="\/opportunities\?archiveScope=all">Clear filters<\/a>/);
+
+  const api = await agent
+    .get('/api/opportunities')
+    .query({ salespersonId: '8', customerId: '11', contactId: '21', query: 'upgrade' });
+
+  assert.equal(api.status, 200);
+  assert.deepEqual(filters[1], {
+    visibleToUserId: 7,
+    archiveScope: 'active',
+    salespersonId: 8,
+    customerId: 11,
+    contactId: 21,
+    searchTerm: 'upgrade'
+  });
+  assert.deepEqual(api.body, { opportunities: [] });
+});
+
 test('opportunity framework text and common actions use selected Chinese language', async () => {
   const { agent } = await createLoggedInAgent({ language: 'zh' });
 
@@ -652,6 +739,8 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.equal(list.status, 200);
   assert.match(list.text, /<h1>\u5546\u673a<\/h1>/);
   assert.match(list.text, /\u65b0\u5efa\u5546\u673a/);
+  assert.match(list.text, /\u9500\u552e\u8d1f\u8d23\u4eba/);
+  assert.match(list.text, />\u67e5\u8be2<\/button>/);
   assert.match(list.text, /<th>\u5546\u673a\u540d\u79f0<\/th>/);
   assert.match(list.text, /<span class="status">\u8349\u7a3f<\/span>/);
 

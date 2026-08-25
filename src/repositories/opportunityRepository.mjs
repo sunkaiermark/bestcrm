@@ -129,34 +129,119 @@ function addArchiveScopeFilter(where, params, filter) {
   }
 }
 
+function opportunityListConditions(filter = {}) {
+  const where = [];
+  const params = [];
+  if (filter.salespersonId) {
+    params.push(filter.salespersonId);
+    where.push(`o.salesperson_id = $${params.length}`);
+  }
+  if (filter.status) {
+    params.push(filter.status);
+    where.push(`o.status = $${params.length}`);
+  }
+  if (filter.customerId) {
+    params.push(filter.customerId);
+    where.push(`o.customer_id = $${params.length}`);
+  }
+  if (filter.contactId) {
+    params.push(filter.contactId);
+    where.push(`o.primary_contact_id = $${params.length}`);
+  }
+  if (filter.visibleToUserId) {
+    params.push(filter.visibleToUserId);
+    where.push(visibleOpportunityPredicate(`$${params.length}`));
+  }
+  if (filter.searchTerm) {
+    params.push(`%${String(filter.searchTerm).replace(/[\\%_]/g, '\\$&')}%`);
+    const searchParam = `$${params.length}`;
+    where.push(`(
+      o.opportunity_no ILIKE ${searchParam} ESCAPE '\\'
+      OR o.title ILIKE ${searchParam} ESCAPE '\\'
+      OR c.name ILIKE ${searchParam} ESCAPE '\\'
+      OR salesperson.username ILIKE ${searchParam} ESCAPE '\\'
+      OR salesperson.display_name ILIKE ${searchParam} ESCAPE '\\'
+      OR pc.name ILIKE ${searchParam} ESCAPE '\\'
+    )`);
+  }
+  addArchiveScopeFilter(where, params, filter);
+  return { where, params };
+}
+
+function mapOpportunityFilterOptions(rows) {
+  const salespeopleById = new Map();
+  const customersById = new Map();
+  const contactsById = new Map();
+  for (const row of rows) {
+    const salespersonId = Number(row.salesperson_id);
+    if (!salespeopleById.has(salespersonId)) {
+      salespeopleById.set(salespersonId, {
+        id: salespersonId,
+        username: row.salesperson_username || '',
+        displayName: row.salesperson_display_name || ''
+      });
+    }
+    const customerId = Number(row.customer_id);
+    if (!customersById.has(customerId)) {
+      customersById.set(customerId, {
+        id: customerId,
+        name: row.customer_name || ''
+      });
+    }
+    if (row.primary_contact_id) {
+      const contactId = Number(row.primary_contact_id);
+      if (!contactsById.has(contactId)) {
+        contactsById.set(contactId, {
+          id: contactId,
+          name: row.primary_contact_name || '',
+          customerId,
+          customerName: row.customer_name || ''
+        });
+      }
+    }
+  }
+  const label = (item) => item.displayName || item.username || item.name || '';
+  const compare = (left, right) => label(left).localeCompare(label(right), undefined, {
+    numeric: true,
+    sensitivity: 'base'
+  });
+  return {
+    salespeople: [...salespeopleById.values()].sort(compare),
+    customers: [...customersById.values()].sort(compare),
+    contacts: [...contactsById.values()].sort(compare)
+  };
+}
+
 export function createOpportunityRepository(queryTarget) {
   return {
     async listOpportunities(filter = {}) {
-      const where = [];
-      const params = [];
-      if (filter.salespersonId) {
-        params.push(filter.salespersonId);
-        where.push(`o.salesperson_id = $${params.length}`);
-      }
-      if (filter.status) {
-        params.push(filter.status);
-        where.push(`o.status = $${params.length}`);
-      }
-      if (filter.customerId) {
-        params.push(filter.customerId);
-        where.push(`o.customer_id = $${params.length}`);
-      }
-      if (filter.visibleToUserId) {
-        params.push(filter.visibleToUserId);
-        where.push(visibleOpportunityPredicate(`$${params.length}`));
-      }
-      addArchiveScopeFilter(where, params, filter);
+      const { where, params } = opportunityListConditions(filter);
       const result = await queryTarget.query(`
         ${opportunitySelect}
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
         ORDER BY o.created_at DESC, o.id DESC
       `, params);
       return result.rows.map(mapOpportunityRow);
+    },
+
+    async listOpportunityFilterOptions(filter = {}) {
+      const { where, params } = opportunityListConditions(filter);
+      const result = await queryTarget.query(`
+        SELECT DISTINCT
+          o.salesperson_id,
+          salesperson.username AS salesperson_username,
+          salesperson.display_name AS salesperson_display_name,
+          o.customer_id,
+          c.name AS customer_name,
+          o.primary_contact_id,
+          pc.name AS primary_contact_name
+        FROM opportunities o
+        JOIN customers c ON c.id = o.customer_id
+        LEFT JOIN contacts pc ON pc.id = o.primary_contact_id
+        JOIN users salesperson ON salesperson.id = o.salesperson_id
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      `, params);
+      return mapOpportunityFilterOptions(result.rows);
     },
 
     async getOpportunityDetail(id) {
