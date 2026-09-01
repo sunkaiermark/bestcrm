@@ -1476,6 +1476,7 @@
   <body>
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>
     <% const canSeeSystemNav = Array.isArray(currentUser?.roles) && currentUser.roles.includes('administrator'); %>
+    <% const canSeeInquiryNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'sales_manager'].includes(role)); %>
     <div class="app-shell">
       <aside class="left-nav" aria-label="<%= t('primaryNavigation') %>">
         <a class="brand" href="/workbench" aria-label="Sunkaier workbench">
@@ -1492,7 +1493,9 @@
             <span><%= t('notifications') %></span>
             <span class="notification-badge" data-notification-badge hidden>0</span>
           </a>
-          <a class="<%= navClass('inquiries') %>" href="/inquiries"><%= t('inquiries') %></a>
+          <% if (canSeeInquiryNav) { %>
+            <a class="<%= navClass('inquiries') %>" href="/inquiries"><%= t('inquiries') %></a>
+          <% } %>
           <a class="<%= navClass('sales-work') %>" href="/sales-work/plans"><%= t('salesWork') %></a>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>
           <a class="<%= navClass('customers') %>" href="/customers"><%= t('customers') %></a>

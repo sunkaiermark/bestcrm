@@ -75,16 +75,11 @@ function assertInquiryActionable(inquiry) {
 
 export function canAccessInquiryInbox(user) {
   return hasRole(user, ROLES.ADMINISTRATOR)
-    || hasRole(user, ROLES.SALES_MANAGER)
-    || hasRole(user, ROLES.SALESPERSON);
+    || hasRole(user, ROLES.SALES_MANAGER);
 }
 
-export function canViewInquiry(user, inquiry) {
-  if (hasRole(user, ROLES.ADMINISTRATOR) || hasRole(user, ROLES.SALES_MANAGER)) {
-    return true;
-  }
-  return Number(inquiry.assignedUserId) === Number(user.id)
-    || Number(inquiry.createdBy) === Number(user.id);
+export function canViewInquiry(user) {
+  return canAccessInquiryInbox(user);
 }
 
 export function canDeleteInquiry(user) {
@@ -95,7 +90,34 @@ export function canProcessInquiry(inquiry) {
   return isActiveInquiryStatus(inquiry?.status);
 }
 
+function isEligibleInquiryAssignee(user) {
+  return user?.isActive !== false
+    && hasRole(user, ROLES.SALES_MANAGER);
+}
+
+export function inquiryAssignableUsers(actor, users = []) {
+  const eligibleUsers = users.filter(isEligibleInquiryAssignee);
+  if (canAccessInquiryInbox(actor)) {
+    return eligibleUsers;
+  }
+  return [];
+}
+
+async function assertInquiryAssigneeAllowed(userRepository, actor, assignedUserId) {
+  const users = typeof userRepository?.listUsersWithRoles === 'function'
+    ? await userRepository.listUsersWithRoles()
+    : [actor];
+  const allowed = inquiryAssignableUsers(actor, users)
+    .some((user) => Number(user.id) === Number(assignedUserId));
+  if (!allowed) {
+    forbidden();
+  }
+}
+
 export function inquiryListFilterFor(user, query = {}) {
+  if (!canAccessInquiryInbox(user)) {
+    forbidden();
+  }
   const filter = {};
   if (isInquiryStatus(query.status)) {
     filter.status = query.status;
@@ -105,13 +127,9 @@ export function inquiryListFilterFor(user, query = {}) {
   if (isInquirySource(query.source)) {
     filter.source = query.source;
   }
-  if (hasRole(user, ROLES.ADMINISTRATOR) || hasRole(user, ROLES.SALES_MANAGER)) {
-    if (query.assignedUserId) {
-      filter.assignedUserId = Number(query.assignedUserId);
-    }
-    return filter;
+  if (query.assignedUserId) {
+    filter.assignedUserId = Number(query.assignedUserId);
   }
-  filter.visibleToUserId = user.id;
   return filter;
 }
 
@@ -187,7 +205,7 @@ async function validateMatchedRecords({ customerRepository, contactRepository },
   }
 }
 
-export async function createInquiry(inquiryRepository, actor, input) {
+export async function createInquiry({ inquiryRepository, userRepository }, actor, input) {
   if (!canAccessInquiryInbox(actor)) {
     forbidden();
   }
@@ -195,10 +213,11 @@ export async function createInquiry(inquiryRepository, actor, input) {
   if (!normalized.requirementText) {
     throw new Error('Requirement is required');
   }
+  await assertInquiryAssigneeAllowed(userRepository, actor, normalized.assignedUserId);
   return inquiryRepository.createInquiry(normalized);
 }
 
-export async function updateInquiryReview({ inquiryRepository, customerRepository, contactRepository }, actor, inquiry, input) {
+export async function updateInquiryReview({ inquiryRepository, customerRepository, contactRepository, userRepository }, actor, inquiry, input) {
   if (!canViewInquiry(actor, inquiry)) {
     forbidden();
   }
@@ -207,6 +226,7 @@ export async function updateInquiryReview({ inquiryRepository, customerRepositor
   if (!normalized.requirementText) {
     throw new Error('Requirement is required');
   }
+  await assertInquiryAssigneeAllowed(userRepository, actor, normalized.assignedUserId);
   await validateMatchedRecords({ customerRepository, contactRepository }, actor, normalized);
   const updated = await inquiryRepository.updateReview(inquiry.id, normalized);
   if (!updated) {

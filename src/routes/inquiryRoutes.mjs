@@ -16,6 +16,7 @@ import {
   convertInquiryToOpportunity,
   createInquiry,
   deleteInquiry,
+  inquiryAssignableUsers,
   inquiryFormOptions,
   inquiryListFilterFor,
   markInquiryAsSpam,
@@ -46,12 +47,11 @@ async function loadInquiryOrSend(inquiryRepository, req, res) {
   return inquiry;
 }
 
-async function listAssignableUsers(userRepository) {
-  if (typeof userRepository?.listUsersWithRoles !== 'function') {
-    return [];
-  }
-  const users = await userRepository.listUsersWithRoles();
-  return users.filter((user) => user.isActive !== false);
+async function listAssignableUsers(userRepository, actor) {
+  const users = typeof userRepository?.listUsersWithRoles === 'function'
+    ? await userRepository.listUsersWithRoles()
+    : [actor];
+  return inquiryAssignableUsers(actor, users);
 }
 
 async function loadCrmOptions({ customerRepository, contactRepository, userRepository }, user) {
@@ -64,10 +64,7 @@ async function loadCrmOptions({ customerRepository, contactRepository, userRepos
   const contacts = typeof contactRepository?.listContacts === 'function'
     ? await contactRepository.listContacts(customerFilter)
     : [];
-  const assignableUsers = await listAssignableUsers(userRepository);
-  if (assignableUsers.length === 0) {
-    assignableUsers.push(user);
-  }
+  const assignableUsers = await listAssignableUsers(userRepository, user);
   return { customers, contacts, assignableUsers };
 }
 
@@ -224,12 +221,14 @@ export function inquiryRoutes({
   router.get('/inquiries/new', async (req, res, next) => {
     try {
       const options = await loadCrmOptions({ customerRepository, contactRepository, userRepository }, req.currentUser);
+      const defaultAssignee = options.assignableUsers.find((user) => Number(user.id) === Number(req.currentUser.id))
+        || options.assignableUsers[0];
       renderInquiryForm(res, {
         inquiry: {
           source: 'manual',
           priority: 'normal',
           status: 'new',
-          assignedUserId: req.currentUser.id
+          assignedUserId: defaultAssignee?.id || null
         },
         action: '/inquiries',
         ...options
@@ -241,7 +240,7 @@ export function inquiryRoutes({
 
   router.post('/inquiries', async (req, res, next) => {
     try {
-      const inquiry = await createInquiry(inquiryRepository, req.currentUser, req.body);
+      const inquiry = await createInquiry({ inquiryRepository, userRepository }, req.currentUser, req.body);
       res.redirect(`/inquiries/${inquiry.id}`);
     } catch (error) {
       handleInquiryError(error, res, next);
@@ -269,7 +268,8 @@ export function inquiryRoutes({
       await updateInquiryReview({
         inquiryRepository,
         customerRepository,
-        contactRepository
+        contactRepository,
+        userRepository
       }, req.currentUser, inquiry, req.body);
       res.redirect(`/inquiries/${inquiry.id}`);
     } catch (error) {

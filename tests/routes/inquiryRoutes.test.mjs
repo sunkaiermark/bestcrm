@@ -65,7 +65,7 @@ async function createLoggedInAgent(options = {}) {
     displayName: 'Sales One',
     isActive: true,
     ...userOverrides,
-    roles: userOverrides.roles || [ROLES.SALESPERSON]
+    roles: userOverrides.roles || [ROLES.SALES_MANAGER]
   };
   const calls = [];
   const app = createApp({
@@ -246,7 +246,22 @@ test('non sales roles cannot open inquiry inbox', async () => {
   assert.equal(response.status, 403);
 });
 
-test('salesperson can view inquiry list from navigation', async () => {
+test('salespeople cannot open inquiry inbox', async () => {
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    }
+  });
+
+  const response = await agent.get('/inquiries');
+
+  assert.equal(response.status, 403);
+});
+
+test('sales manager can view inquiry list from navigation', async () => {
   const { agent, calls } = await createLoggedInAgent();
 
   const response = await agent.get('/inquiries?status=reviewing&source=email');
@@ -258,11 +273,11 @@ test('salesperson can view inquiry list from navigation', async () => {
   assert.match(response.text, /Acme Co/);
   assert.match(response.text, /Evaporator/);
   assert.deepEqual(calls.filter((call) => call[0] === 'listInquiries'), [
-    ['listInquiries', { status: 'reviewing', source: 'email', visibleToUserId: 7 }]
+    ['listInquiries', { status: 'reviewing', source: 'email' }]
   ]);
 });
 
-test('salesperson opens manual inquiry form and creates inquiry', async () => {
+test('sales manager opens manual inquiry form and creates inquiry', async () => {
   const { agent, calls } = await createLoggedInAgent();
 
   const form = await agent.get('/inquiries/new');
@@ -270,6 +285,9 @@ test('salesperson opens manual inquiry form and creates inquiry', async () => {
   assert.match(form.text, /New inquiry/);
   assert.match(form.text, /name="source"/);
   assert.match(form.text, /name="requirementText"/);
+  const assigneeSelect = form.text.match(/<select name="assignedUserId"[\s\S]*?<\/select>/)?.[0] || '';
+  assert.match(assigneeSelect, /Sales One/);
+  assert.doesNotMatch(assigneeSelect, /Sales Two/);
 
   const created = await agent
     .post('/inquiries')
@@ -313,6 +331,68 @@ test('salesperson opens manual inquiry form and creates inquiry', async () => {
       reviewNote: ''
     }]
   ]);
+});
+
+test('salesperson cannot create an inquiry directly', async () => {
+  const { agent, calls } = await createLoggedInAgent({
+    user: {
+      id: 7,
+      username: 'sales01',
+      displayName: 'Sales One',
+      roles: [ROLES.SALESPERSON]
+    }
+  });
+
+  const response = await agent
+    .post('/inquiries')
+    .type('form')
+    .send({
+      source: 'manual',
+      assignedUserId: '8',
+      requirementText: 'Need dryer quote'
+    });
+
+  assert.equal(response.status, 403);
+  assert.equal(calls.some((call) => call[0] === 'createInquiry'), false);
+});
+
+test('sales manager can assign only to active sales managers', async () => {
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 2,
+      username: 'salesmanager',
+      displayName: 'Sales Manager',
+      roles: [ROLES.SALES_MANAGER]
+    },
+    additionalUsers: [{
+      id: 4,
+      username: 'salesmanager02',
+      displayName: 'Sales Manager Two',
+      isActive: true,
+      roles: [ROLES.SALES_MANAGER]
+    }, {
+      id: 3,
+      username: 'qe01',
+      displayName: 'Quotation Engineer',
+      isActive: true,
+      roles: [ROLES.QUOTATION_ENGINEER]
+    }, {
+      id: 9,
+      username: 'inactive-sales',
+      displayName: 'Inactive Sales',
+      isActive: false,
+      roles: [ROLES.SALESPERSON]
+    }]
+  });
+
+  const form = await agent.get('/inquiries/new');
+  assert.equal(form.status, 200);
+  const assigneeSelect = form.text.match(/<select name="assignedUserId"[\s\S]*?<\/select>/)?.[0] || '';
+  assert.match(assigneeSelect, /Sales Manager/);
+  assert.match(assigneeSelect, /Sales Manager Two/);
+  assert.doesNotMatch(assigneeSelect, />Sales Two</);
+  assert.doesNotMatch(assigneeSelect, /Quotation Engineer/);
+  assert.doesNotMatch(assigneeSelect, /Inactive Sales/);
 });
 
 test('inquiry detail supports review and conversion forms', async () => {
@@ -513,7 +593,7 @@ test('assigned sales manager sees a pending collaboration request and approves i
   assert.equal(approvalCalls[1][2].inquiryId, 11);
 });
 
-test('salesperson reviews inquiry and converts it to opportunity', async () => {
+test('sales manager reviews inquiry and converts it to opportunity', async () => {
   const { agent, calls } = await createLoggedInAgent();
 
   const reviewed = await agent
@@ -654,7 +734,7 @@ test('converting an inquiry copies imported email attachments to opportunity req
   }
 });
 
-test('salesperson can finish an inquiry as customer, contact, or spam', async () => {
+test('sales manager can finish an inquiry as customer, contact, or spam', async () => {
   const customerFlow = await createLoggedInAgent();
   const savedCustomer = await customerFlow.agent
     .post('/inquiries/11/save-customer')
@@ -687,8 +767,8 @@ test('salesperson can finish an inquiry as customer, contact, or spam', async ()
 });
 
 test('only an administrator can delete an inquiry and its stored inquiry attachment', async () => {
-  const salespersonFlow = await createLoggedInAgent();
-  const forbidden = await salespersonFlow.agent.post('/inquiries/11/delete').type('form').send({});
+  const salesManagerFlow = await createLoggedInAgent();
+  const forbidden = await salesManagerFlow.agent.post('/inquiries/11/delete').type('form').send({});
   assert.equal(forbidden.status, 403);
 
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-inquiry-delete-'));

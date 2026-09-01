@@ -10,6 +10,7 @@ import {
   canViewInquiry,
   convertInquiryToOpportunity,
   createInquiry,
+  inquiryAssignableUsers,
   markInquiryAsSpam,
   inquiryListFilterFor,
   rejectInquiryCustomerApproval,
@@ -21,18 +22,18 @@ import {
 } from '../../src/services/inquiryService.mjs';
 
 const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
+const inquiryManager = { id: 7, roles: [ROLES.SALES_MANAGER] };
 const salesManager = { id: 2, roles: [ROLES.SALES_MANAGER] };
 const quotationEngineer = { id: 3, roles: [ROLES.QUOTATION_ENGINEER] };
+const administrator = { id: 99, roles: [ROLES.ADMINISTRATOR] };
 
-test('inquiry service exposes inbox to sales roles only', () => {
-  assert.equal(canAccessInquiryInbox(salesperson), true);
+test('inquiry service exposes inbox to sales managers and administrators only', () => {
+  assert.equal(canAccessInquiryInbox(salesperson), false);
   assert.equal(canAccessInquiryInbox(salesManager), true);
   assert.equal(canAccessInquiryInbox({ id: 99, roles: [ROLES.ADMINISTRATOR] }), true);
   assert.equal(canAccessInquiryInbox(quotationEngineer), false);
 
-  assert.equal(canViewInquiry(salesperson, { assignedUserId: 7, createdBy: 8 }), true);
-  assert.equal(canViewInquiry(salesperson, { assignedUserId: 8, createdBy: 7 }), true);
-  assert.equal(canViewInquiry(salesperson, { assignedUserId: 8, createdBy: 9 }), false);
+  assert.equal(canViewInquiry(salesperson, { assignedUserId: 7, createdBy: 7 }), false);
   assert.equal(canViewInquiry(salesManager, { assignedUserId: 8, createdBy: 9 }), true);
   assert.equal(canDeleteInquiry(salesperson), false);
   assert.equal(canDeleteInquiry({ id: 99, roles: [ROLES.ADMINISTRATOR] }), true);
@@ -41,32 +42,50 @@ test('inquiry service exposes inbox to sales roles only', () => {
   assert.equal(canProcessInquiry({ status: 'customer_saved' }), false);
 });
 
-test('inquiry list filter limits salesperson visibility', () => {
-  assert.deepEqual(inquiryListFilterFor(salesperson, { status: 'new', source: 'email' }), {
+test('inquiry assignees are limited to active sales managers', () => {
+  const users = [
+    { ...salesperson, displayName: 'Sales One', isActive: true },
+    { id: 8, displayName: 'Sales Two', roles: [ROLES.SALESPERSON], isActive: true },
+    { ...inquiryManager, displayName: 'Inquiry Manager', isActive: true },
+    { ...salesManager, displayName: 'Sales Manager', isActive: true },
+    { ...quotationEngineer, displayName: 'Quotation Engineer', isActive: true },
+    { id: 9, displayName: 'Inactive Sales', roles: [ROLES.SALESPERSON], isActive: false }
+  ];
+
+  assert.deepEqual(inquiryAssignableUsers(salesperson, users), []);
+  assert.deepEqual(inquiryAssignableUsers(salesManager, users).map((user) => user.id), [7, 2]);
+  assert.deepEqual(inquiryAssignableUsers(administrator, users).map((user) => user.id), [7, 2]);
+});
+
+test('inquiry list filter is available only to sales managers and administrators', () => {
+  assert.deepEqual(inquiryListFilterFor(inquiryManager, { status: 'new', source: 'email' }), {
     status: 'new',
-    source: 'email',
-    visibleToUserId: 7
+    source: 'email'
   });
   assert.deepEqual(inquiryListFilterFor(salesManager, { assignedUserId: '7', status: 'spam', source: 'bad' }), {
     assignedUserId: 7,
     status: 'spam'
   });
-  assert.deepEqual(inquiryListFilterFor(salesperson, {}), {
-    excludeStatuses: ['converted', 'contact_saved', 'customer_saved', 'spam', 'duplicate', 'archived'],
-    visibleToUserId: 7
-  });
+  assert.throws(() => inquiryListFilterFor(salesperson, {}), /Forbidden/);
 });
 
 test('createInquiry normalizes input and requires requirement text', async () => {
   const calls = [];
-  const inquiryRepository = {
-    async createInquiry(input) {
-      calls.push(input);
-      return { id: 10, ...input };
+  const repositories = {
+    inquiryRepository: {
+      async createInquiry(input) {
+        calls.push(input);
+        return { id: 10, ...input };
+      }
+    },
+    userRepository: {
+      async listUsersWithRoles() {
+        return [{ ...inquiryManager, isActive: true }];
+      }
     }
   };
 
-  const inquiry = await createInquiry(inquiryRepository, salesperson, {
+  const inquiry = await createInquiry(repositories, inquiryManager, {
     source: 'email',
     subject: ' RFQ ',
     companyName: ' Acme ',
@@ -100,9 +119,13 @@ test('createInquiry normalizes input and requires requirement text', async () =>
     reviewNote: ''
   }]);
 
-  await assert.rejects(() => createInquiry(inquiryRepository, salesperson, {
+  await assert.rejects(() => createInquiry(repositories, inquiryManager, {
     requirementText: ''
   }), /Requirement is required/);
+  await assert.rejects(() => createInquiry(repositories, inquiryManager, {
+    assignedUserId: '8',
+    requirementText: 'Need quote'
+  }), /Forbidden/);
 });
 
 test('updateInquiryReview validates matched customer and contact', async () => {
@@ -125,10 +148,15 @@ test('updateInquiryReview validates matched customer and contact', async () => {
         calls.push(['getContact', id]);
         return { id, customerId: 20 };
       }
+    },
+    userRepository: {
+      async listUsersWithRoles() {
+        return [{ ...inquiryManager, isActive: true }];
+      }
     }
   };
 
-  await updateInquiryReview(repositories, salesperson, {
+  await updateInquiryReview(repositories, inquiryManager, {
     id: 11,
     assignedUserId: 7,
     status: 'new',
@@ -204,7 +232,7 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
     }
   };
 
-  const opportunity = await convertInquiryToOpportunity(repositories, salesperson, {
+  const opportunity = await convertInquiryToOpportunity(repositories, inquiryManager, {
     id: 11,
     subject: 'Need evaporator quote',
     productInterest: 'Evaporator',
@@ -281,7 +309,7 @@ test('conversion can create missing customer and contact from extracted inquiry 
     }
   };
 
-  const opportunity = await convertInquiryToOpportunity(repositories, salesperson, {
+  const opportunity = await convertInquiryToOpportunity(repositories, inquiryManager, {
     id: 11,
     status: 'new',
     assignedUserId: 7,
@@ -323,7 +351,7 @@ test('conversion requires approval instead of duplicating another salesperson cu
   };
 
   await assert.rejects(
-    () => convertInquiryToOpportunity(repositories, salesperson, {
+    () => convertInquiryToOpportunity(repositories, inquiryManager, {
       id: 11,
       status: 'reviewing',
       assignedUserId: 7,
@@ -365,7 +393,7 @@ test('cross-sales customer request is assigned to a sales manager with proposed 
     }
   };
 
-  const approval = await requestInquiryCustomerApproval(repositories, salesperson, {
+  const approval = await requestInquiryCustomerApproval(repositories, inquiryManager, {
     id: 11,
     status: 'reviewing',
     assignedUserId: 7,
@@ -411,7 +439,7 @@ test('cross-sales customer request is assigned to a sales manager with proposed 
   });
 });
 
-test('sales manager approval creates the opportunity for the requesting salesperson', async () => {
+test('sales manager approval creates the opportunity for the requesting inquiry manager', async () => {
   const calls = [];
   const repositories = {
     inquiryCustomerApprovalRepository: {
@@ -518,7 +546,7 @@ test('saveInquiryRecords creates one customer and contact then closes the inquir
     }
   };
 
-  await saveInquiryRecords(repositories, salesperson, {
+  await saveInquiryRecords(repositories, inquiryManager, {
     id: 11,
     assignedUserId: 7,
     status: 'reviewing',
@@ -575,8 +603,8 @@ test('inquiry dispositions save an existing customer, create a contact, and prev
     reviewNote: ''
   };
 
-  await saveInquiryAsCustomer(repositories, salesperson, inquiry, { customerId: '20' });
-  await saveInquiryAsContact(repositories, salesperson, inquiry, { customerId: '20' });
+  await saveInquiryAsCustomer(repositories, inquiryManager, inquiry, { customerId: '20' });
+  await saveInquiryAsContact(repositories, inquiryManager, inquiry, { customerId: '20' });
 
   assert.deepEqual(calls.filter((call) => call[0] === 'markDisposition').map((call) => call[2].status), [
     'customer_saved',
@@ -596,7 +624,7 @@ test('inquiry dispositions save an existing customer, create a contact, and prev
   });
 
   await assert.rejects(
-    () => markInquiryAsSpam(repositories.inquiryRepository, salesperson, { ...inquiry, status: 'contact_saved' }),
+    () => markInquiryAsSpam(repositories.inquiryRepository, inquiryManager, { ...inquiry, status: 'contact_saved' }),
     /Inquiry already processed/
   );
 });
@@ -609,7 +637,7 @@ test('markInquiryAsSpam records the final spam disposition', async () => {
       return { id, ...input };
     }
   };
-  await markInquiryAsSpam(inquiryRepository, salesperson, {
+  await markInquiryAsSpam(inquiryRepository, inquiryManager, {
     id: 12,
     assignedUserId: 7,
     status: 'new',

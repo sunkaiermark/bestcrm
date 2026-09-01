@@ -124,6 +124,7 @@ test('logged in users see compact workbench list layout', async () => {
   assert.match(response.text, /Opportunity initiation submitted/);
   assert.match(response.text, /Draft/);
   assert.match(response.text, /left-nav/);
+  assert.doesNotMatch(response.text, /href="\/inquiries"/);
   assert.doesNotMatch(response.text, /class="nav-parent">System/);
   assert.doesNotMatch(response.text, /href="\/system\/users"/);
   assert.doesNotMatch(response.text, /href="\/system\/roles"/);
@@ -132,6 +133,32 @@ test('logged in users see compact workbench list layout', async () => {
   assert.match(response.text, /class="workbench-list"/);
   assert.match(response.text, /class="list-section"/);
   assert.doesNotMatch(response.text, /class="panel-grid"/);
+});
+
+test('sales managers see inquiry navigation', async () => {
+  const agent = await createWorkbenchAgent({
+    username: 'salesmanager01',
+    displayName: 'Sales Manager',
+    roles: [ROLES.SALES_MANAGER]
+  });
+
+  const response = await agent.get('/workbench');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /href="\/inquiries"/);
+});
+
+test('non-sales users do not see inquiry navigation', async () => {
+  const agent = await createWorkbenchAgent({
+    username: 'qe01',
+    displayName: 'Quotation Engineer',
+    roles: [ROLES.QUOTATION_ENGINEER]
+  });
+
+  const response = await agent.get('/workbench');
+
+  assert.equal(response.status, 200);
+  assert.doesNotMatch(response.text, /href="\/inquiries"/);
 });
 
 test('workbench framework text uses selected Chinese language', async () => {
@@ -175,6 +202,7 @@ test('administrator users see system navigation in the left sidebar', async () =
   assert.match(response.text, /Roles/);
   assert.match(response.text, /href="\/system\/approval-settings"/);
   assert.match(response.text, /Approval Settings/);
+  assert.match(response.text, /href="\/inquiries"/);
   const mainNavigation = response.text.match(/<nav class="nav-group">[\s\S]*?<\/nav>/)?.[0] || '';
   const navigationFooter = response.text.match(/<div class="nav-footer">[\s\S]*?<\/div>/)?.[0] || '';
   assert.doesNotMatch(mainNavigation, /href="\/account\/password"/);

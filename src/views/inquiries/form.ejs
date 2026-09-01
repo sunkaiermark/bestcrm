@@ -61,7 +61,7 @@
           </label>
           <label>
             <%= t('assignedTo') %>
-            <select name="assignedUserId">
+            <select name="assignedUserId" required>
               <% for (const user of assignableUsers) { %>
                 <option value="<%= user.id %>"<%= Number(inquiry.assignedUserId) === Number(user.id) ? ' selected' : '' %>><%= user.displayName || user.username %></option>
               <% } %>
