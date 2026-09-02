@@ -1,0 +1,44 @@
+<%
+  const editing = Boolean(packageVersion);
+  const value = (field, fallback = '') => editing ? (packageVersion[field] ?? fallback) : (sourcePackage?.[field] ?? fallback);
+  const selectedTechnical = value('technicalSolutionVersionId', technicalSolutions[0]?.id || '');
+  const selectedQuote = value('commercialQuoteId', commercialQuotes[0]?.id || '');
+%>
+<%- include('../partials/app-start', { title: `${editing ? t('editQuotationPackageDraft') : t('createQuotationPackageDraft')} - BESTCRM`, activeNav: 'opportunities' }) %>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>/quotation-packages"><%= t('quotationPackages') %></a></p>
+        <header class="page-header"><div><h1><%= editing ? packageVersion.label : t('createQuotationPackageDraft') %></h1><div class="muted"><%= opportunity.opportunityNo %> · <%= opportunity.title %></div></div></header>
+
+        <% if (!technicalSolutions.length || !commercialQuotes.length) { %>
+          <section class="form-panel"><strong><%= t('quotationPackageApprovedComponentsRequired') %></strong></section>
+        <% } else { %>
+          <form class="form-panel" method="post" action="<%= editing ? `/opportunities/${opportunity.id}/quotation-packages/${packageVersion.id}` : `/opportunities/${opportunity.id}/quotation-packages` %>">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>">
+            <% if (!editing && sourcePackage) { %><input type="hidden" name="sourcePackageId" value="<%= sourcePackage.id %>"><% } %>
+            <div class="form-grid">
+              <label><%= t('approvedTechnicalVersion') %>
+                <select name="technicalSolutionVersionId" required>
+                  <% for (const item of technicalSolutions) { %><option value="<%= item.id %>" <%= Number(item.id) === Number(selectedTechnical) ? 'selected' : '' %>><%= item.label %> · <%= t(`templateLanguage.${item.language}`) %></option><% } %>
+                </select>
+              </label>
+              <label><%= t('approvedCommercialQuote') %>
+                <select name="commercialQuoteId" required>
+                  <% for (const item of commercialQuotes) { %><option value="<%= item.id %>" <%= Number(item.id) === Number(selectedQuote) ? 'selected' : '' %>><%= item.label %> · <%= item.totalPrice.toFixed(2) %></option><% } %>
+                </select>
+              </label>
+              <label><%= t('currency') %><input name="currency" maxlength="3" value="<%= value('currency', 'USD') %>" required></label>
+              <label><%= t('deliveryPeriod') %><input name="deliveryPeriod" value="<%= value('deliveryPeriod') %>" required></label>
+            </div>
+            <label><%= t('inclusions') %><textarea name="inclusions"><%= value('inclusions') %></textarea></label>
+            <label><%= t('exclusions') %><textarea name="exclusions"><%= value('exclusions') %></textarea></label>
+            <label><%= t('technicalAssumptions') %><textarea name="technicalAssumptions"><%= value('technicalAssumptions') %></textarea></label>
+            <% if (sourcePackage) { %>
+              <div class="form-grid">
+                <label><%= t('revisionReason') %><textarea name="revisionReason" required><%= value('revisionReason') %></textarea></label>
+                <label><%= t('customerChangeSummary') %><textarea name="changeSummary" required><%= value('changeSummary') %></textarea></label>
+              </div>
+            <% } %>
+            <p class="muted"><%= t('quotationPackageCommercialSnapshotNotice') %></p>
+            <button type="submit"><%= t('save') %></button>
+          </form>
+        <% } %>
+<%- include('../partials/app-end') %>

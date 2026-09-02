@@ -1,0 +1,34 @@
+<%- include('../partials/app-start', { title: `${t('quotationPackages')} - ${opportunity.title} - BESTCRM`, activeNav: 'opportunities' }) %>
+        <p class="breadcrumb"><a href="/opportunities"><%= t('opportunities') %></a> / <a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a></p>
+        <header class="page-header">
+          <div>
+            <h1><%= t('quotationPackages') %></h1>
+            <div class="muted"><%= opportunity.title %> · <%= opportunity.customerName %></div>
+          </div>
+          <% if (canManage && opportunity.status === 'customer_negotiation' && !packages.some((item) => ['draft', 'pending', 'approved', 'accepted'].includes(item.status))) { const currentSent = packages.find((item) => item.status === 'sent'); %>
+            <a class="quick-action" href="/opportunities/<%= opportunity.id %>/quotation-packages/new<%= currentSent ? `?sourcePackageId=${currentSent.id}` : '' %>"><%= currentSent ? t('createQuotationPackageRevision') : t('createQuotationPackageDraft') %></a>
+          <% } %>
+        </header>
+
+        <section class="form-panel"><strong><%= t('quotationPackageSnapshotNotice') %></strong></section>
+        <section class="list-section">
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead><tr><th><%= t('packageNumber') %></th><th><%= t('technicalSolution') %></th><th><%= t('commercialQuote') %></th><th><%= t('amount') %></th><th><%= t('status') %></th><th><%= t('actions') %></th></tr></thead>
+              <tbody>
+                <% for (const item of packages) { %>
+                  <tr>
+                    <td><strong><%= item.label %></strong></td>
+                    <td>TS-V<%= item.technicalSolutionVersionNo %></td>
+                    <td>CQ-V<%= item.commercialQuoteVersionNo %></td>
+                    <td><%= item.currency %> <%= item.totalPrice.toFixed(2) %></td>
+                    <td><span class="status"><%= t(`quotationPackageStatus.${item.status}`) %></span></td>
+                    <td><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/quotation-packages/<%= item.id %>"><%= t('openQuotationPackage') %></a></td>
+                  </tr>
+                <% } %>
+                <% if (!packages.length) { %><tr><td colspan="6" class="empty"><%= t('noQuotationPackages') %></td></tr><% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

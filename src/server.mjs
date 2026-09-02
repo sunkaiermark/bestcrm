@@ -23,6 +23,7 @@ import { createOpportunityMaterialVersionRepository } from './repositories/oppor
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
 import { createOpportunityTechnicalDraftRepository } from './repositories/opportunityTechnicalDraftRepository.mjs';
+import { createQuotationPackageRepository } from './repositories/quotationPackageRepository.mjs';
 import { createRequirementUpdateRepository } from './repositories/requirementUpdateRepository.mjs';
 import { createRoleRepository } from './repositories/roleRepository.mjs';
 import { createSalesWorkRepository } from './repositories/salesWorkRepository.mjs';
@@ -42,6 +43,7 @@ import { leadSubmissionRoutes } from './routes/leadSubmissionRoutes.mjs';
 import { notificationRoutes } from './routes/notificationRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { opportunityTechnicalDraftRoutes } from './routes/opportunityTechnicalDraftRoutes.mjs';
+import { quotationPackageRoutes } from './routes/quotationPackageRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
 import { technicalTemplateRoutes } from './routes/technicalTemplateRoutes.mjs';
@@ -338,6 +340,26 @@ const emptyOpportunityTechnicalDraftRepository = {
   async saveApprovedDocuments() { throw new Error('Opportunity technical draft repository is not configured'); }
 };
 
+const emptyQuotationPackageRepository = {
+  supportsQuotationPackages: false,
+  async listByOpportunity() { return []; },
+  async getPackageDetail() { return null; },
+  async listApprovedTechnicalSolutions() { return []; },
+  async listApprovedCommercialQuotes() { return []; },
+  async findCurrentSentByOpportunity() { return null; },
+  async findAcceptedByOpportunity() { return null; },
+  async getCreationContext() { return null; },
+  async createDraft() { throw new Error('Quotation package repository is not configured'); },
+  async addAttachmentSnapshot() { throw new Error('Quotation package repository is not configured'); },
+  async updateDraft() { throw new Error('Quotation package repository is not configured'); },
+  async replaceAttachmentSnapshots() { throw new Error('Quotation package repository is not configured'); },
+  async submitDraft() { throw new Error('Quotation package repository is not configured'); },
+  async approvePending() { throw new Error('Quotation package repository is not configured'); },
+  async rejectPending() { throw new Error('Quotation package repository is not configured'); },
+  async markSent() { throw new Error('Quotation package repository is not configured'); },
+  async acceptSent() { throw new Error('Quotation package repository is not configured'); }
+};
+
 const emptyWorkflowEventRepository = {
   async listByOpportunity() {
     return [];
@@ -497,6 +519,8 @@ export function createApp(options = {}) {
     || (pool ? createOpportunityResponsibilityRepository(pool) : emptyOpportunityResponsibilityRepository);
   const opportunityTechnicalDraftRepository = options.opportunityTechnicalDraftRepository
     || (pool ? createOpportunityTechnicalDraftRepository(pool) : emptyOpportunityTechnicalDraftRepository);
+  const quotationPackageRepository = options.quotationPackageRepository
+    || (pool ? createQuotationPackageRepository(pool) : emptyQuotationPackageRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
@@ -622,6 +646,13 @@ export function createApp(options = {}) {
     workflowTransaction,
     workflowAction: options.workflowAction
   }));
+  app.use(quotationPackageRoutes({
+    opportunityRepository,
+    opportunityResponsibilityRepository,
+    quotationPackageRepository,
+    workflowTransaction,
+    quotationPackageFileReader: options.quotationPackageFileReader
+  }));
   app.use(opportunityRoutes({
     customerRepository,
     contactRepository,
@@ -629,6 +660,7 @@ export function createApp(options = {}) {
     commercialQuoteRepository,
     technicalSolutionRepository,
     opportunityTechnicalDraftRepository,
+    quotationPackageRepository,
     technicalDocumentService,
     requirementUpdateRepository,
     opportunityMaterialVersionRepository,

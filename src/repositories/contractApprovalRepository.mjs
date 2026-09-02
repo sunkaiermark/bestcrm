@@ -5,6 +5,9 @@ function mapContractApprovalRow(row) {
   return {
     id: Number(row.id),
     opportunityId: Number(row.opportunity_id),
+    quotationPackageVersionId: row.quotation_package_version_id === null || row.quotation_package_version_id === undefined
+      ? null
+      : Number(row.quotation_package_version_id),
     versionNo: Number(row.version_no),
     currentStep: Number(row.current_step),
     status: row.status,
@@ -24,6 +27,7 @@ const contractApprovalSelect = `
   SELECT
     ca.id,
     ca.opportunity_id,
+    ca.quotation_package_version_id,
     ca.version_no,
     ca.current_step,
     ca.status,
@@ -47,12 +51,14 @@ export function createContractApprovalRepository(queryTarget) {
       const approvalResult = await queryTarget.query(`
         INSERT INTO contract_approvals (
           opportunity_id,
+          quotation_package_version_id,
           version_no,
           status,
           submitted_by
         )
         SELECT
           $1,
+          $4,
           COALESCE(MAX(version_no), 0) + 1,
           $2,
           $3
@@ -62,7 +68,8 @@ export function createContractApprovalRepository(queryTarget) {
       `, [
         input.opportunityId,
         'pending',
-        input.submittedBy
+        input.submittedBy,
+        input.quotationPackageVersionId || null
       ]);
       const approvalId = Number(approvalResult.rows[0].id);
       await queryTarget.query(`
@@ -83,6 +90,7 @@ export function createContractApprovalRepository(queryTarget) {
       return {
         id: approvalId,
         opportunityId: input.opportunityId,
+        quotationPackageVersionId: input.quotationPackageVersionId || null,
         versionNo: Number(approvalResult.rows[0].version_no),
         currentStep: 1,
         status: 'pending',

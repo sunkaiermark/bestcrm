@@ -30,6 +30,7 @@ const opportunityEngineeringCollaborationMigrationPath = new URL('../../src/db/m
 const productTechnicalTemplatesMigrationPath = new URL('../../src/db/migrations/029_product_technical_templates.sql', import.meta.url);
 const opportunityTechnicalDraftsMigrationPath = new URL('../../src/db/migrations/030_opportunity_technical_drafts.sql', import.meta.url);
 const technicalSolutionDocumentsMigrationPath = new URL('../../src/db/migrations/031_technical_solution_versions_and_documents.sql', import.meta.url);
+const quotationPackageVersionsMigrationPath = new URL('../../src/db/migrations/032_quotation_package_versions.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -224,6 +225,35 @@ test('technical solution version migration adds immutable approval versions and 
   assert.match(sql, /Approved technical solution documents are immutable/);
   assert.match(sql, /Submitted and approved technical solution content is immutable/);
   assert.match(sql, /Revision drafts must preserve the rejected source snapshot/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('quotation package migration creates immutable customer-facing package versions', async () => {
+  const sql = await readFile(quotationPackageVersionsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS quotation_package_versions/);
+  assert.match(sql, /draft_revision_no integer NOT NULL CHECK \(draft_revision_no > 0\)/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'draft' CHECK \(status IN \('draft', 'pending', 'approved', 'rejected', 'sent', 'superseded', 'accepted'\)\)/);
+  assert.match(sql, /technical_solution_version_id bigint NOT NULL REFERENCES opportunity_technical_drafts\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /commercial_quote_id bigint NOT NULL REFERENCES commercial_quotes\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /commercial_line_items jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
+  assert.match(sql, /quotation_package_versions_formal_version_idx/);
+  assert.match(sql, /quotation_package_versions_pending_idx/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS quotation_package_attachments/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS quotation_package_events/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS accepted_quotation_package_id bigint/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS quotation_package_version_id bigint/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION validate_quotation_package_components/);
+  assert.match(sql, /Quotation packages require approved technical solution and commercial quote versions/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION protect_quotation_package_version/);
+  assert.match(sql, /Sent, superseded, and accepted quotation packages are immutable/);
+  assert.match(sql, /Quotation package status transition is invalid/);
+  assert.match(sql, /Accepted quotation package link cannot be cleared/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION protect_quotation_package_attachment/);
+  assert.match(sql, /Quotation package attachments are immutable after submission/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION validate_accepted_quotation_package_link/);
+  assert.match(sql, /Contract approval requires an accepted quotation package from the same opportunity/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE/);
 });
 

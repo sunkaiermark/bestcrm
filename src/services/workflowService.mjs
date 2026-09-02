@@ -398,6 +398,20 @@ async function payloadWithTechnicalDraft({ action, opportunityId, payload, repos
   };
 }
 
+async function payloadWithAcceptedQuotationPackage({ action, opportunityId, payload, repositories }) {
+  if (![ACTIONS.MARK_WON, ACTIONS.SUBMIT_CONTRACT_APPROVAL].includes(action)
+      || repositories.quotationPackageRepository?.supportsQuotationPackages !== true) {
+    return payload;
+  }
+  const acceptedPackage = await repositories.quotationPackageRepository.findAcceptedByOpportunity(
+    Number(opportunityId)
+  );
+  if (!acceptedPackage) {
+    throw new WorkflowValidationError('An accepted quotation package is required before recording a win or submitting a contract');
+  }
+  return { ...payload, acceptedQuotationPackageId: acceptedPackage.id };
+}
+
 async function assertRequiredMaterials({ action, before, opportunityId, payload, repositories }) {
   let attachments = null;
   const attachmentRequirement = attachmentRequirements.get(action);
@@ -614,11 +628,15 @@ async function persistContractApprovalData({ action, actor, opportunityId, paylo
     if (typeof repositories.contractApprovalRepository?.createApproval !== 'function') {
       throw new WorkflowValidationError('Contract approval repository is not configured');
     }
-    await repositories.contractApprovalRepository.createApproval({
+    const approvalInput = {
       opportunityId,
       reviewerUserId: payload.legalReviewerId,
       submittedBy: actor.id
-    });
+    };
+    if (payload.acceptedQuotationPackageId) {
+      approvalInput.quotationPackageVersionId = payload.acceptedQuotationPackageId;
+    }
+    await repositories.contractApprovalRepository.createApproval(approvalInput);
     await createPendingMaterialVersion({ action, actor, opportunityId, repositories });
     return;
   }
@@ -715,10 +733,16 @@ export async function applyWorkflowAction({
   const contractApproval = await loadContractApprovalContext(action, opportunityId, repositories);
   const transitionOpportunity = opportunityWithContractApproval(before, contractApproval);
   const configuredPayload = await payloadWithConfiguredApprovalAssignee({ action, payload, repositories });
-  const effectivePayload = await payloadWithTechnicalDraft({
+  const technicalPayload = await payloadWithTechnicalDraft({
     action,
     opportunityId,
     payload: configuredPayload,
+    repositories
+  });
+  const effectivePayload = await payloadWithAcceptedQuotationPackage({
+    action,
+    opportunityId,
+    payload: technicalPayload,
     repositories
   });
 

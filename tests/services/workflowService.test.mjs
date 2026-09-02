@@ -1512,3 +1512,61 @@ test('applyWorkflowAction refuses missing opportunities before side effects', as
 
   assert.deepEqual(repositories.calls, [['findOpportunity', 404]]);
 });
+
+test('quotation package enabled workflow blocks win when no package was accepted', async () => {
+  const repositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.CUSTOMER_NEGOTIATION,
+    salespersonId: 1,
+    salesManagerId: 2
+  });
+  repositories.quotationPackageRepository = {
+    supportsQuotationPackages: true,
+    async findAcceptedByOpportunity(opportunityId) {
+      repositories.calls.push(['findAcceptedQuotationPackage', opportunityId]);
+      return null;
+    }
+  };
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.MARK_WON,
+    payload: { wonDescription: 'PO received', finalDealAmount: 100000 },
+    repositories
+  }), /accepted quotation package is required/i);
+
+  assert.deepEqual(repositories.calls, [
+    ['findOpportunity', 10],
+    ['findAcceptedQuotationPackage', 10]
+  ]);
+});
+
+test('contract approval is explicitly linked to the accepted quotation package', async () => {
+  const repositories = createMaterialRepositories({
+    id: 10,
+    status: STATUSES.WON_CONTRACT_PENDING,
+    salespersonId: 1,
+    salesManagerId: 2
+  }, [{ id: 80, opportunityId: 10, category: 'contract', uploadedAt: '2026-09-03' }]);
+  repositories.quotationPackageRepository = {
+    supportsQuotationPackages: true,
+    async findAcceptedByOpportunity(opportunityId) {
+      repositories.calls.push(['findAcceptedQuotationPackage', opportunityId]);
+      return { id: 51, opportunityId, status: 'accepted', versionNo: 2 };
+    }
+  };
+
+  await applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+    payload: {},
+    repositories
+  });
+
+  assert.ok(repositories.calls.some(([name, input]) => (
+    name === 'createContractApproval'
+    && input.quotationPackageVersionId === 51
+  )));
+});

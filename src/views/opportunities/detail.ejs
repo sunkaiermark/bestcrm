@@ -657,6 +657,13 @@
           <section class="content-section business-section business-section-quote">
             <h2><%= t('commercialQuote') %></h2>
             <div class="section-body">
+              <div class="form-panel requirement-input-panel">
+                <p><strong><%= t('quotationPackages') %></strong> · <%= t('quotationPackageSnapshotNotice') %></p>
+                <a class="quick-action" href="/opportunities/<%= opportunity.id %>/quotation-packages"><%= t('openQuotationPackage') %></a>
+                <% if (quotationPackages && quotationPackages.length) { %>
+                  <span class="muted"><%= quotationPackages[0].label %> · <%= t(`quotationPackageStatus.${quotationPackages[0].status}`) %></span>
+                <% } %>
+              </div>
               <% if (uploadPermissions.commercial_quote) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <%- csrfField() %>

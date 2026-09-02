@@ -379,7 +379,12 @@ function hasContractAttachmentAfter(attachments, rejectedAt) {
   });
 }
 
-function missingMaterialsForAction(action, attachments, opportunity, contractApprovals) {
+function missingMaterialsForAction(action, attachments, opportunity, contractApprovals, quotationPackages = [], quotationPackagesEnabled = false) {
+  if (quotationPackagesEnabled
+      && [ACTIONS.MARK_WON, ACTIONS.SUBMIT_CONTRACT_APPROVAL].includes(action)
+      && !quotationPackages.some((item) => item.status === 'accepted')) {
+    return ['An accepted quotation package is required before recording a win or submitting a contract'];
+  }
   const requirement = attachmentRequirementsByAction.get(action);
   if (!requirement) {
     return [];
@@ -412,7 +417,7 @@ function opportunityWithActiveContractReviewer(opportunity, contractApprovals) {
   };
 }
 
-function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = [], language = 'en') {
+function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = [], language = 'en', quotationPackages = [], quotationPackagesEnabled = false) {
   const workflowOpportunity = opportunityWithActiveContractReviewer(opportunity, contractApprovals);
   const workflowButtonLabel = createWorkflowButtonLabeler(language);
   const workflowTitleLabel = createWorkflowTitleLabeler(language);
@@ -427,7 +432,7 @@ function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], co
     .map((action) => formForAction(action, usersByRole, opportunity))
     .filter(Boolean)
     .map((form) => {
-      const missingRequirements = missingMaterialsForAction(form.action, attachments, opportunity, contractApprovals)
+      const missingRequirements = missingMaterialsForAction(form.action, attachments, opportunity, contractApprovals, quotationPackages, quotationPackagesEnabled)
         .map((requirement) => workflowMessageLabel(requirement));
       return {
         ...form,
@@ -688,6 +693,7 @@ export function opportunityRoutes({
   commercialQuoteRepository,
   technicalSolutionRepository,
   opportunityTechnicalDraftRepository,
+  quotationPackageRepository,
   technicalDocumentService,
   requirementUpdateRepository,
   opportunityMaterialVersionRepository,
@@ -882,7 +888,8 @@ export function opportunityRoutes({
         teamMemberEvents,
         engineeringContributions,
         ownerTransfers,
-        responsibilityUsers
+        responsibilityUsers,
+        quotationPackages
       ] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
@@ -919,9 +926,21 @@ export function opportunityRoutes({
         typeof opportunityResponsibilityRepository?.listOwnerTransfersByOpportunity === 'function'
           ? opportunityResponsibilityRepository.listOwnerTransfersByOpportunity(opportunity.id)
           : [],
-        canManageResponsibility || canManageEngineeringTeam ? listResponsibilityUsers(userRepository) : []
+        canManageResponsibility || canManageEngineeringTeam ? listResponsibilityUsers(userRepository) : [],
+        quotationPackageRepository?.supportsQuotationPackages === true
+          ? quotationPackageRepository.listByOpportunity(opportunity.id)
+          : []
       ]);
-      const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals, req.language);
+      const workflowForms = buildWorkflowForms(
+        req.currentUser,
+        opportunity,
+        usersByRole,
+        attachments,
+        activity.contractApprovals,
+        req.language,
+        quotationPackages,
+        quotationPackageRepository?.supportsQuotationPackages === true
+      );
       res.render('opportunities/detail', {
         opportunity,
         workflowForms,
@@ -933,6 +952,7 @@ export function opportunityRoutes({
         requirementUpdates,
         technicalSolutions,
         commercialQuotes,
+        quotationPackages,
         materialVersions,
         versionedTechnicalDraftsEnabled: opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true,
         canManageResponsibility,
@@ -1386,6 +1406,7 @@ export function opportunityRoutes({
           commercialQuoteRepository,
           technicalSolutionRepository,
           opportunityTechnicalDraftRepository,
+          quotationPackageRepository,
           technicalDocumentService,
           opportunityMaterialVersionRepository,
           contractApprovalRepository,

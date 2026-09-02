@@ -1,0 +1,76 @@
+<%- include('../partials/app-start', { title: `${packageVersion.label} - BESTCRM`, activeNav: 'opportunities' }) %>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>/quotation-packages"><%= t('quotationPackages') %></a></p>
+        <header class="page-header">
+          <div><h1><%= packageVersion.label %></h1><div class="muted"><%= opportunity.opportunityNo %> · <span class="status"><%= t(`quotationPackageStatus.${packageVersion.status}`) %></span></div></div>
+          <% if (canManage && packageVersion.status === 'draft') { %><a class="quick-action" href="/opportunities/<%= opportunity.id %>/quotation-packages/<%= packageVersion.id %>/edit"><%= t('edit') %></a><% } %>
+        </header>
+
+        <section class="detail-card">
+          <h2><%= t('frozenPackageContent') %></h2>
+          <dl class="detail-grid">
+            <div><dt><%= t('technicalSolution') %></dt><dd>TS-V<%= packageVersion.technicalSolutionVersionNo %></dd></div>
+            <div><dt><%= t('commercialQuote') %></dt><dd>CQ-V<%= packageVersion.commercialQuoteVersionNo %></dd></div>
+            <div><dt><%= t('amount') %></dt><dd><%= packageVersion.currency %> <%= packageVersion.totalPrice.toFixed(2) %></dd></div>
+            <div><dt><%= t('validUntil') %></dt><dd><%= packageVersion.validUntil %></dd></div>
+            <div><dt><%= t('deliveryPeriod') %></dt><dd><%= packageVersion.deliveryPeriod %></dd></div>
+            <div><dt><%= t('paymentTerms') %></dt><dd><%= packageVersion.paymentTerms %></dd></div>
+            <div><dt><%= t('inclusions') %></dt><dd><%= packageVersion.inclusions || '-' %></dd></div>
+            <div><dt><%= t('exclusions') %></dt><dd><%= packageVersion.exclusions || '-' %></dd></div>
+            <div><dt><%= t('technicalAssumptions') %></dt><dd><%= packageVersion.technicalAssumptions || '-' %></dd></div>
+          </dl>
+        </section>
+
+        <section class="detail-card">
+          <h2><%= t('frozenCommercialLineItems') %></h2>
+          <table><thead><tr><th><%= t('itemName') %></th><th><%= t('specification') %></th><th><%= t('quantity') %></th><th><%= t('unitPrice') %></th><th><%= t('subtotal') %></th></tr></thead><tbody>
+            <% for (const item of packageVersion.commercialLineItems) { %><tr><td><%= item.itemName %></td><td><%= item.specification || '-' %></td><td><%= item.quantity %> <%= item.unit || '' %></td><td><%= packageVersion.currency %> <%= Number(item.unitPrice).toFixed(2) %></td><td><%= packageVersion.currency %> <%= Number(item.subtotal).toFixed(2) %></td></tr><% } %>
+            <% if (!packageVersion.commercialLineItems.length) { %><tr><td colspan="5" class="empty">-</td></tr><% } %>
+          </tbody></table>
+        </section>
+
+        <section class="detail-card">
+          <h2><%= t('frozenAttachments') %></h2>
+          <% for (const attachment of packageVersion.attachments) { const downloadUrl = attachment.sourceType === 'technical_solution_document' ? `/opportunities/${opportunity.id}/technical-drafts/${packageVersion.technicalSolutionVersionId}/documents/${attachment.technicalSolutionDocumentId}/download` : `/opportunities/${opportunity.id}/attachments/${attachment.attachmentId}/download`; %>
+            <p><a href="<%= downloadUrl %>"><strong><%= attachment.originalName %></strong></a> · <%= attachment.sha256 %></p>
+          <% } %>
+          <% if (!packageVersion.attachments.length) { %><p class="empty"><%= t('noAttachments') %></p><% } %>
+        </section>
+
+        <% if (sourcePackage) { %>
+          <section class="detail-card">
+            <h2><%= t('revisionComparison') %>: <%= sourcePackage.label %> → <%= packageVersion.label %></h2>
+            <p><strong><%= t('revisionReason') %>:</strong> <%= packageVersion.revisionReason %></p>
+            <p><strong><%= t('customerChangeSummary') %>:</strong> <%= packageVersion.changeSummary %></p>
+            <table><thead><tr><th><%= t('field') %></th><th><%= t('before') %></th><th><%= t('after') %></th></tr></thead><tbody>
+              <% for (const change of comparison) { %><tr><td><%= t(`quotationPackageDiff.${change.field}`) %></td><td><%= change.before %></td><td><%= change.after %></td></tr><% } %>
+              <% if (!comparison.length) { %><tr><td colspan="3" class="empty"><%= t('noDetectedChanges') %></td></tr><% } %>
+            </tbody></table>
+          </section>
+        <% } %>
+
+        <% if (canManage && packageVersion.status === 'draft') { %>
+          <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/quotation-packages/<%= packageVersion.id %>/submit">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><label><%= t('submissionComment') %><textarea name="comment"></textarea></label><button type="submit"><%= t('submitQuotationPackage') %></button>
+          </form>
+        <% } %>
+        <% if (canReview && packageVersion.status === 'pending') { %>
+          <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/quotation-packages/<%= packageVersion.id %>/review">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><label><%= t('comment') %><textarea name="comment"></textarea></label><button name="decision" value="approve"><%= t('approveQuotationPackage') %></button> <button class="danger-action" name="decision" value="reject"><%= t('rejectQuotationPackage') %></button>
+          </form>
+        <% } %>
+        <% if (canManage && packageVersion.status === 'approved') { %>
+          <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/quotation-packages/<%= packageVersion.id %>/mark-sent">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><label><%= t('sentRecordNote') %><textarea name="comment"></textarea></label><button type="submit"><%= t('markQuotationPackageSent') %></button><p class="muted"><%= t('markSentTemporaryNotice') %></p>
+          </form>
+        <% } %>
+        <% if (canManage && packageVersion.status === 'sent') { %>
+          <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/quotation-packages/<%= packageVersion.id %>/accept">
+            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><label><%= t('acceptanceEvidence') %><textarea name="comment"></textarea></label><button type="submit"><%= t('recordCustomerAcceptance') %></button>
+          </form>
+          <p><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/quotation-packages/new?sourcePackageId=<%= packageVersion.id %>"><%= t('createQuotationPackageRevision') %></a></p>
+        <% } %>
+
+        <section class="detail-card"><h2><%= t('auditHistory') %></h2>
+          <% for (const event of packageVersion.events) { %><p><strong><%= t(`quotationPackageEvent.${event.eventType}`) %></strong> · <%= event.actorDisplayName || event.actorUserId %> · <%= event.createdAt %><% if (event.comment) { %><br><%= event.comment %><% } %></p><% } %>
+        </section>
+<%- include('../partials/app-end') %>

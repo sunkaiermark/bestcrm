@@ -32,7 +32,7 @@ test('contract approval repository creates approval and legal review step', asyn
   assert.equal(approval.reviewerUserId, 6);
   assert.match(queryTarget.queries[0].sql, /INSERT INTO contract_approvals/);
   assert.match(queryTarget.queries[0].sql, /COALESCE\(MAX\(version_no\), 0\) \+ 1/);
-  assert.deepEqual(queryTarget.queries[0].params, [10, 'pending', 1]);
+  assert.deepEqual(queryTarget.queries[0].params, [10, 'pending', 1, null]);
   assert.match(queryTarget.queries[1].sql, /INSERT INTO contract_approval_steps/);
   assert.deepEqual(queryTarget.queries[1].params, [90, 1, 'legal_reviewer', 6]);
 });
@@ -64,6 +64,7 @@ test('contract approval repository lists opportunity approvals with reviewer nam
   assert.deepEqual(approvals, [{
     id: 90,
     opportunityId: 10,
+    quotationPackageVersionId: null,
     versionNo: 1,
     currentStep: 1,
     status: 'pending',
