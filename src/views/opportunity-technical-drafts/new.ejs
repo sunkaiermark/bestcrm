@@ -1,0 +1,18 @@
+<%- include('../partials/app-start', { title: `${t('generateTechnicalDraft')} - ${opportunity.title} - BESTCRM`, activeNav: 'opportunities' }) %>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a> / <a href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('projectTechnicalDrafts') %></a></p>
+        <header class="page-header"><div><h1><%= t('generateTechnicalDraft') %></h1><div class="muted"><%= t('generateTechnicalDraftDescription') %></div></div></header>
+        <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts">
+          <%- csrfField() %>
+          <label><%= t('publishedTechnicalTemplate') %>
+            <select name="templateId" required>
+              <option value=""></option>
+              <% for (const template of templates) { %>
+                <option value="<%= template.id %>"><%= template.templateCode %> · <%= template.name %> · <%= template.productFamily %> · <%= t(`templateLanguage.${template.language}`) %></option>
+              <% } %>
+            </select>
+          </label>
+          <p class="muted"><%= t('generationPrefillNotice') %></p>
+          <button type="submit" <%= templates.length ? '' : 'disabled' %>><%= t('generateIndependentDraft') %></button>
+          <% if (!templates.length) { %><p class="empty"><%= t('noPublishedTemplatesForGeneration') %></p><% } %>
+        </form>
+<%- include('../partials/app-end') %>

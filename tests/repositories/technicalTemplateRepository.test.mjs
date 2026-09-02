@@ -141,7 +141,7 @@ test('revision variable upsert copies approved catalogue fields into the revisio
   const queryTarget = createFakeQueryTarget([{ rows: [{
     id: '12', template_revision_id: '10', variable_definition_id: '3',
     variable_key: 'capacity', label_en: 'Capacity', label_zh: '处理能力',
-    data_type: 'number', source_field: 'capacity', is_required: true,
+    data_type: 'number', source_field: 'capacity', section_key: 'design_parameters', is_required: true,
     default_value: '1000', validation_rules: { min: 1 }, sort_order: '2',
     created_by: '7', updated_by: '7', created_at: '2026-09-02', updated_at: '2026-09-02'
   }] }]);
@@ -149,6 +149,7 @@ test('revision variable upsert copies approved catalogue fields into the revisio
 
   const saved = await repository.upsertRevisionVariable(10, {
     variableDefinitionId: 3,
+    sectionKey: 'design_parameters',
     isRequired: true,
     defaultValue: '1000',
     validationRules: { min: 1 },
@@ -159,7 +160,7 @@ test('revision variable upsert copies approved catalogue fields into the revisio
   assert.equal(saved.templateRevisionId, 10);
   assert.match(queryTarget.queries[0].sql, /d\.is_active = true/);
   assert.match(queryTarget.queries[0].sql, /variable_key = EXCLUDED\.variable_key/);
-  assert.deepEqual(queryTarget.queries[0].params, [10, 3, true, '1000', '{"min":1}', 2, 7]);
+  assert.deepEqual(queryTarget.queries[0].params, [10, 3, 'design_parameters', true, '1000', '{"min":1}', 2, 7]);
 });
 
 test('standard clause revisions use controlled status transitions', async () => {

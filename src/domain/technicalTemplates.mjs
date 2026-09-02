@@ -36,6 +36,41 @@ export const TECHNICAL_TEMPLATE_VARIABLE_SOURCES = Object.freeze([
   'opportunity_owner'
 ]);
 
+export const TECHNICAL_SECTION_TYPES = Object.freeze([
+  'narrative',
+  'parameter_table',
+  'equipment_table',
+  'materials_table',
+  'instrumentation_table',
+  'electrical_table',
+  'utilities_table',
+  'scope_matrix'
+]);
+
+export const TECHNICAL_SECTION_CONDITION_OPERATORS = Object.freeze([
+  'always',
+  'equals',
+  'not_equals',
+  'contains',
+  'truthy'
+]);
+
+export const OPPORTUNITY_TECHNICAL_DRAFT_STATUSES = Object.freeze([
+  'draft',
+  'ready'
+]);
+
+const sectionTypeByKey = Object.freeze({
+  equipment_list: 'equipment_table',
+  design_parameters: 'parameter_table',
+  materials_of_construction: 'materials_table',
+  instrumentation_control: 'instrumentation_table',
+  electrical_requirements: 'electrical_table',
+  utilities: 'utilities_table',
+  scope_of_supply: 'scope_matrix',
+  interfaces_battery_limits: 'scope_matrix'
+});
+
 export const TECHNICAL_AGREEMENT_STANDARD_SECTIONS = Object.freeze([
   ['cover_and_parties', 'Cover and Parties', '封面与协议双方'],
   ['project_basis', 'Project Basis', '项目依据'],
@@ -61,6 +96,12 @@ export const TECHNICAL_AGREEMENT_STANDARD_SECTIONS = Object.freeze([
   labelZh,
   enabled: true,
   sortOrder: index + 1,
+  sectionType: sectionTypeByKey[key] || 'narrative',
+  bodyEn: '',
+  bodyZh: '',
+  tableRows: [],
+  condition: { operator: 'always', variableKey: '', value: '' },
+  defaultClauseIds: [],
   blocks: []
 })));
 
@@ -75,4 +116,8 @@ export function technicalTemplateRevisionLabel(revisionNo) {
 
 export function technicalClauseRevisionLabel(code, revisionNo) {
   return `${code}-R${Number(revisionNo)}`;
+}
+
+export function opportunityTechnicalDraftLabel(draftRevisionNo) {
+  return `TS-D${Number(draftRevisionNo)}`;
 }

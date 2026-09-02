@@ -22,6 +22,7 @@ import { createNotificationRepository } from './repositories/notificationReposit
 import { createOpportunityMaterialVersionRepository } from './repositories/opportunityMaterialVersionRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
+import { createOpportunityTechnicalDraftRepository } from './repositories/opportunityTechnicalDraftRepository.mjs';
 import { createRequirementUpdateRepository } from './repositories/requirementUpdateRepository.mjs';
 import { createRoleRepository } from './repositories/roleRepository.mjs';
 import { createSalesWorkRepository } from './repositories/salesWorkRepository.mjs';
@@ -40,6 +41,7 @@ import { inquiryRoutes } from './routes/inquiryRoutes.mjs';
 import { leadSubmissionRoutes } from './routes/leadSubmissionRoutes.mjs';
 import { notificationRoutes } from './routes/notificationRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
+import { opportunityTechnicalDraftRoutes } from './routes/opportunityTechnicalDraftRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
 import { technicalTemplateRoutes } from './routes/technicalTemplateRoutes.mjs';
@@ -311,6 +313,19 @@ const emptyOpportunityResponsibilityRepository = {
   }
 };
 
+const emptyOpportunityTechnicalDraftRepository = {
+  async getGenerationContext() { return null; },
+  async listByOpportunity() { return []; },
+  async getDraftDetail() { return null; },
+  async createDraft() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async updateVariables() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async updateSection() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async updateClauses() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async addAssignment() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async removeAssignment() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async markReady() { throw new Error('Opportunity technical draft repository is not configured'); }
+};
+
 const emptyWorkflowEventRepository = {
   async listByOpportunity() {
     return [];
@@ -411,6 +426,7 @@ const emptyTechnicalTemplateRepository = {
   async listTemplates() { return []; },
   async getTemplateDetail() { return null; },
   async findRevisionById() { return null; },
+  async updateRevisionContent() { throw new Error('Technical template repository is not configured'); },
   async listVariableDefinitions() { return []; },
   async findVariableDefinitionById() { return null; },
   async listClauses() { return []; },
@@ -467,6 +483,8 @@ export function createApp(options = {}) {
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
   const opportunityResponsibilityRepository = options.opportunityResponsibilityRepository
     || (pool ? createOpportunityResponsibilityRepository(pool) : emptyOpportunityResponsibilityRepository);
+  const opportunityTechnicalDraftRepository = options.opportunityTechnicalDraftRepository
+    || (pool ? createOpportunityTechnicalDraftRepository(pool) : emptyOpportunityTechnicalDraftRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
@@ -572,6 +590,12 @@ export function createApp(options = {}) {
     customerRepository,
     contactRepository,
     opportunityRepository
+  }));
+  app.use(opportunityTechnicalDraftRoutes({
+    opportunityRepository,
+    opportunityResponsibilityRepository,
+    technicalTemplateRepository,
+    opportunityTechnicalDraftRepository
   }));
   app.use(opportunityRoutes({
     customerRepository,

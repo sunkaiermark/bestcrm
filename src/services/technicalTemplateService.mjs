@@ -1,6 +1,8 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import {
   DEFAULT_TECHNICAL_AGREEMENT_SCHEMA,
+  TECHNICAL_SECTION_CONDITION_OPERATORS,
+  TECHNICAL_SECTION_TYPES,
   TECHNICAL_TEMPLATE_LANGUAGES,
   TECHNICAL_TEMPLATE_VARIABLE_SOURCES,
   TECHNICAL_TEMPLATE_VARIABLE_TYPES
@@ -9,8 +11,11 @@ import {
 const languageSet = new Set(TECHNICAL_TEMPLATE_LANGUAGES);
 const variableTypeSet = new Set(TECHNICAL_TEMPLATE_VARIABLE_TYPES);
 const variableSourceSet = new Set(TECHNICAL_TEMPLATE_VARIABLE_SOURCES);
+const sectionTypeSet = new Set(TECHNICAL_SECTION_TYPES);
+const sectionConditionOperatorSet = new Set(TECHNICAL_SECTION_CONDITION_OPERATORS);
 const codePattern = /^[A-Z][A-Z0-9-]{0,31}$/;
 const variableKeyPattern = /^[a-z][a-z0-9_]{0,63}$/;
+const sectionKeyPattern = /^[a-z][a-z0-9_]{0,63}$/;
 const unsafeTemplateSyntax = /(?:<\s*script\b|javascript\s*:|data\s*:\s*text\/html|<%|%>|{{|}}|{%|%})/i;
 
 function serviceError(message, statusCode) {
@@ -119,6 +124,30 @@ function normalizeAllowedValues(value) {
   return [...new Set(values)];
 }
 
+function normalizeTableRows(value) {
+  const rows = text(value)
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => line.split('|').map((cell) => cell.trim()));
+  if (rows.length > 200 || rows.some((row) => row.length > 12 || row.some((cell) => cell.length > 500))) {
+    invalid('Section table rows are invalid');
+  }
+  if (rows.some((row) => row.some((cell) => unsafeTemplateSyntax.test(cell)))) {
+    invalid('Section table rows contain unsupported template or script syntax');
+  }
+  return rows;
+}
+
+function normalizeIdList(value, field) {
+  const rawValues = Array.isArray(value) ? value : text(value).split(/[\r\n,]+/);
+  const values = rawValues
+    .map((item) => Number(String(item).trim()))
+    .filter((item) => Number.isInteger(item) && item > 0);
+  if (values.length > 100) invalid(`${field} is invalid`);
+  return [...new Set(values)];
+}
+
 function ensureTemplateViewer(user) {
   if (!canViewTechnicalTemplateLibrary(user)) {
     forbidden();
@@ -221,11 +250,94 @@ export function normalizeRevisionVariableInput(input) {
   if (allowedValues.length) validationRules.allowedValues = allowedValues;
   return {
     variableDefinitionId: positiveInteger(input.variableDefinitionId, 'Variable definition'),
+    sectionKey: sectionKeyPattern.test(text(input.sectionKey) || 'design_parameters')
+      ? (text(input.sectionKey) || 'design_parameters')
+      : invalid('Variable section is invalid'),
     isRequired: checkbox(input.isRequired),
     defaultValue: safeTemplateText(input.defaultValue, 'Default value'),
     validationRules,
     sortOrder: positiveInteger(input.sortOrder || 1, 'Sort order')
   };
+}
+
+export function normalizeTechnicalSectionInput(sectionKey, input) {
+  const normalizedSectionKey = text(sectionKey);
+  if (!sectionKeyPattern.test(normalizedSectionKey)) {
+    invalid('Template section is invalid');
+  }
+  const sectionType = text(input.sectionType) || 'narrative';
+  if (!sectionTypeSet.has(sectionType)) {
+    invalid('Template section type is invalid');
+  }
+  const operator = text(input.conditionOperator) || 'always';
+  if (!sectionConditionOperatorSet.has(operator)) {
+    invalid('Template section condition is invalid');
+  }
+  const conditionVariableKey = text(input.conditionVariableKey);
+  if (operator !== 'always' && !variableKeyPattern.test(conditionVariableKey)) {
+    invalid('Conditional sections require a safe variable key');
+  }
+  const conditionValue = operator === 'always' || operator === 'truthy'
+    ? ''
+    : safeTemplateText(input.conditionValue, 'Condition value', 500) || '';
+  if (!['always', 'truthy'].includes(operator) && !conditionValue) {
+    invalid('Conditional sections require a comparison value');
+  }
+  return {
+    key: normalizedSectionKey,
+    labelEn: requiredText(input.labelEn, 'English section label', 200),
+    labelZh: requiredText(input.labelZh, 'Chinese section label', 200),
+    enabled: checkbox(input.enabled),
+    sortOrder: positiveInteger(input.sortOrder || 1, 'Section sort order'),
+    sectionType,
+    bodyEn: safeTemplateText(input.bodyEn, 'English section content', 100000) || '',
+    bodyZh: safeTemplateText(input.bodyZh, 'Chinese section content', 100000) || '',
+    tableRows: normalizeTableRows(input.tableRows),
+    condition: {
+      operator,
+      variableKey: operator === 'always' ? '' : conditionVariableKey,
+      value: conditionValue
+    },
+    defaultClauseIds: normalizeIdList(input.defaultClauseIds, 'Default clauses'),
+    blocks: []
+  };
+}
+
+export async function updateTechnicalTemplateSection(repository, actor, templateId, revisionId, sectionKey, input) {
+  ensureTemplateAuthor(actor);
+  const normalizedTemplateId = positiveInteger(templateId, 'Template');
+  const normalizedRevisionId = positiveInteger(revisionId, 'Template revision');
+  const template = await repository.getTemplateDetail(normalizedTemplateId);
+  if (!template) notFound('Technical template not found');
+  const revision = template.revisions.find((candidate) => candidate.id === normalizedRevisionId);
+  if (!revision || revision.status !== 'draft') {
+    conflict('Only draft template revisions can be edited');
+  }
+  const normalizedSection = normalizeTechnicalSectionInput(sectionKey, input);
+  const sectionExists = (revision.contentSchema?.sections || []).some((section) => section.key === normalizedSection.key);
+  if (!sectionExists) notFound('Template section not found');
+  if (normalizedSection.condition.operator !== 'always'
+      && !revision.variables.some((variable) => variable.variableKey === normalizedSection.condition.variableKey)) {
+    invalid('Conditional section variable is not assigned to this revision');
+  }
+  const publishedClauses = await repository.listClauses({ publishedOnly: true });
+  const publishedClauseIds = new Set(publishedClauses.map((clause) => clause.id));
+  if (normalizedSection.defaultClauseIds.some((clauseId) => !publishedClauseIds.has(clauseId))) {
+    invalid('Default clauses must reference published clause revisions');
+  }
+  const sections = revision.contentSchema.sections
+    .filter((section) => section.key !== normalizedSection.key)
+    .sort((left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0));
+  const insertionIndex = Math.min(normalizedSection.sortOrder - 1, sections.length);
+  sections.splice(insertionIndex, 0, normalizedSection);
+  const orderedSections = sections.map((section, index) => ({ ...section, sortOrder: index + 1 }));
+  const saved = await repository.updateRevisionContent(
+    normalizedRevisionId,
+    { ...revision.contentSchema, schemaVersion: 1, sections: orderedSections },
+    Number(actor.id)
+  );
+  if (!saved) conflict('Only draft template revisions can be edited');
+  return saved;
 }
 
 export function normalizeTechnicalClauseInput(input, { includeCode = true } = {}) {

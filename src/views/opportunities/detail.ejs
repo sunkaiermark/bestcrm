@@ -181,6 +181,7 @@
           </div>
           <div class="page-actions">
             <a class="secondary-action" href="/opportunities"><%= t('backToList') %></a>
+            <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('projectTechnicalDrafts') %></a>
             <% if (typeof canEditOpportunity !== 'undefined' && canEditOpportunity) { %>
               <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit"><%= t('edit') %></a>
             <% } %>

@@ -28,6 +28,7 @@ const inquiryCustomerCollaborationMigrationPath = new URL('../../src/db/migratio
 const salesLeadSubmissionsMigrationPath = new URL('../../src/db/migrations/025_sales_lead_submissions.sql', import.meta.url);
 const opportunityEngineeringCollaborationMigrationPath = new URL('../../src/db/migrations/026_opportunity_engineering_collaboration.sql', import.meta.url);
 const productTechnicalTemplatesMigrationPath = new URL('../../src/db/migrations/029_product_technical_templates.sql', import.meta.url);
+const opportunityTechnicalDraftsMigrationPath = new URL('../../src/db/migrations/030_opportunity_technical_drafts.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -181,6 +182,26 @@ test('product technical template migration creates controlled immutable revision
   assert.match(sql, /Submitted or published template revision content is immutable/);
   assert.match(sql, /CREATE OR REPLACE FUNCTION require_draft_technical_template_revision/);
   assert.match(sql, /CREATE OR REPLACE FUNCTION protect_technical_clause_content/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('opportunity technical draft migration freezes generated snapshots and attributes section work', async () => {
+  const sql = await readFile(opportunityTechnicalDraftsMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS section_key text NOT NULL DEFAULT 'design_parameters'/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_drafts/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'draft' CHECK \(status IN \('draft', 'ready'\)\)/);
+  assert.match(sql, /content_schema_snapshot jsonb NOT NULL/);
+  assert.match(sql, /variable_schema_snapshot jsonb NOT NULL/);
+  assert.match(sql, /variable_values jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.match(sql, /selected_clauses jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
+  assert.match(sql, /rendered_content jsonb NOT NULL/);
+  assert.match(sql, /UNIQUE \(opportunity_id, draft_revision_no\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_section_assignments/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_draft_events/);
+  assert.match(sql, /require_current_published_technical_template_revision/);
+  assert.match(sql, /Opportunity technical draft source snapshots are immutable/);
+  assert.match(sql, /Opportunity technical draft events are append-only/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE/);
 });
 

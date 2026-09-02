@@ -59,6 +59,7 @@ async function createTechnicalTemplateAgent(options = {}) {
         labelZh: '处理能力',
         dataType: 'number',
         sourceField: 'capacity',
+        sectionKey: 'project_basis',
         isRequired: true,
         defaultValue: '',
         validationRules: { min: 1 },
@@ -114,6 +115,7 @@ async function createTechnicalTemplateAgent(options = {}) {
     async listTemplates(filter) { calls.push({ method: 'listTemplates', filter }); return [template]; },
     async getTemplateDetail(id) { calls.push({ method: 'getTemplateDetail', id: Number(id) }); return Number(id) === 4 ? template : null; },
     async findRevisionById(id) { return Number(id) === 9 ? template.revisions[0] : null; },
+    async updateRevisionContent(revisionId, contentSchema, actorUserId) { calls.push({ method: 'updateRevisionContent', revisionId: Number(revisionId), contentSchema, actorUserId }); return { id: Number(revisionId), templateId: 4 }; },
     async createTemplate(input, actorUserId) { calls.push({ method: 'createTemplate', input, actorUserId }); return { id: 4, revisionId: 9 }; },
     async updateTemplate(id, input, actorUserId) { calls.push({ method: 'updateTemplate', id: Number(id), input, actorUserId }); return { id: Number(id) }; },
     async createRevision(templateId, changeSummary, actorUserId) { calls.push({ method: 'createRevision', templateId: Number(templateId), changeSummary, actorUserId }); return { id: 10, templateId: Number(templateId), revisionNo: 2 }; },
@@ -328,4 +330,38 @@ test('administrator manages safe variables but cannot publish technical content'
     assert.equal(response.status, 403);
     assert.match(response.text, /Forbidden/);
   }
+});
+
+test('technical manager opens and saves the structured bilingual section editor', async () => {
+  const { agent, calls } = await createTechnicalTemplateAgent({ language: 'zh', revisionStatus: 'draft' });
+  const editor = await agent.get('/technical-templates/4/revisions/9/editor');
+  assert.equal(editor.status, 200);
+  assert.match(editor.text, /技术模板编辑器/);
+  assert.match(editor.text, /项目依据/);
+  assert.match(editor.text, /结构化表格行/);
+  assert.match(editor.text, /FAT-01-R1/);
+
+  const saved = await agent.post('/technical-templates/4/revisions/9/sections/project_basis').type('form').send({
+    labelEn: 'Project Basis',
+    labelZh: '项目依据',
+    enabled: 'on',
+    sortOrder: 1,
+    sectionType: 'narrative',
+    bodyEn: 'Customer requirements and design basis.',
+    bodyZh: '客户需求和设计依据。',
+    tableRows: 'Item | Value',
+    conditionOperator: 'always',
+    defaultClauseIds: 30
+  });
+  assert.equal(saved.status, 302);
+  assert.equal(saved.headers.location, '/technical-templates/4/revisions/9/editor');
+  const updateCall = calls.find((call) => call.method === 'updateRevisionContent');
+  assert.equal(updateCall.revisionId, 9);
+  assert.equal(updateCall.contentSchema.sections[0].bodyZh, '客户需求和设计依据。');
+});
+
+test('published template revisions cannot be opened in the editor by direct URL', async () => {
+  const { agent } = await createTechnicalTemplateAgent({ revisionStatus: 'published' });
+  const response = await agent.get('/technical-templates/4/revisions/9/editor');
+  assert.equal(response.status, 409);
 });

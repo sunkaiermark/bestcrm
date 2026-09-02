@@ -1,0 +1,124 @@
+<%- include('../partials/app-start', { title: `${draft.draftLabel} - ${opportunity.title} - BESTCRM`, activeNav: 'opportunities' }) %>
+<%
+  const sections = [...(draft.renderedContent?.sections || [])].sort((left, right) => left.sortOrder - right.sortOrder);
+  const activeAssignments = (draft.assignments || []).filter((assignment) => assignment.isActive !== false);
+  const selectedClauseIds = new Set((draft.selectedClauses || []).map((clause) => clause.id));
+  const issueByVariable = new Map((draft.validationIssues || []).map((issue) => [issue.variableKey, issue]));
+  const sectionLabel = (sectionKey) => {
+    const section = sections.find((candidate) => candidate.key === sectionKey);
+    return section ? (language === 'zh' ? section.labelZh : section.labelEn) : sectionKey;
+  };
+%>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a> / <a href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('projectTechnicalDrafts') %></a></p>
+        <header class="page-header">
+          <div>
+            <h1><%= draft.draftLabel %> · <%= draft.templateNameSnapshot %></h1>
+            <div class="muted"><%= draft.templateCodeSnapshot %> · TPL-R<%= draft.templateRevisionNoSnapshot %> · <%= t(`templateLanguage.${draft.language}`) %></div>
+          </div>
+          <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span>
+        </header>
+
+        <section class="detail-section">
+          <h2><%= t('snapshotAndValidation') %></h2>
+          <p class="muted"><%= t('technicalDraftSnapshotNotice') %></p>
+          <% if ((draft.validationIssues || []).length) { %>
+            <div class="form-panel validation-warning">
+              <strong><%= t('draftHasValidationIssues') %></strong>
+              <ul>
+                <% for (const issue of draft.validationIssues) { %>
+                  <li><%= language === 'zh' ? issue.labelZh : issue.labelEn %> · <%= t(`validationIssue.${issue.code}`) %><%= issue.expected !== undefined ? ` (${Array.isArray(issue.expected) ? issue.expected.join(', ') : issue.expected})` : '' %></li>
+                <% } %>
+              </ul>
+            </div>
+          <% } else { %><p class="status"><%= t('draftValidationPassed') %></p><% } %>
+          <% if (draft.renderedContent?.clauseSelectionChanged) { %><p class="validation-warning"><strong><%= t('standardClauseSelectionChanged') %></strong></p><% } %>
+          <% if (canLead) { %>
+            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/readiness">
+              <%- csrfField() %><button type="submit"><%= t('checkAndMarkReady') %></button>
+            </form>
+          <% } %>
+        </section>
+
+        <section class="detail-section">
+          <h2><%= t('projectVariables') %></h2>
+          <p class="muted"><%= t('prefilledVariableNotice') %></p>
+          <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/variables">
+            <%- csrfField() %>
+            <div class="form-grid">
+              <% for (const variable of draft.variableSchemaSnapshot || []) { const editable = canLead || editableSectionKeys.has(variable.sectionKey); %>
+                <label>
+                  <%= language === 'zh' ? variable.labelZh : variable.labelEn %><%= variable.isRequired ? ' *' : '' %>
+                  <span class="muted"><%= variable.variableKey %> · <%= sectionLabel(variable.sectionKey) %></span>
+                  <% if (variable.dataType === 'boolean') { %>
+                    <select name="<%= variable.variableKey %>" <%= editable ? '' : 'disabled' %>><option value=""></option><option value="true" <%= draft.variableValues[variable.variableKey] === true ? 'selected' : '' %>><%= t('yesValue') %></option><option value="false" <%= draft.variableValues[variable.variableKey] === false ? 'selected' : '' %>><%= t('noValue') %></option></select>
+                  <% } else { %>
+                    <input name="<%= variable.variableKey %>" value="<%= draft.variableValues[variable.variableKey] ?? '' %>" <%= variable.dataType === 'number' || variable.dataType === 'integer' ? 'type="number" step="any"' : variable.dataType === 'date' ? 'type="date"' : '' %> <%= editable ? '' : 'disabled' %>>
+                  <% } %>
+                  <% if (issueByVariable.has(variable.variableKey)) { %><span class="validation-error"><%= t(`validationIssue.${issueByVariable.get(variable.variableKey).code}`) %></span><% } %>
+                </label>
+              <% } %>
+            </div>
+            <% if (canLead || editableSectionKeys.size) { %><button type="submit"><%= t('saveProjectVariables') %></button><% } %>
+          </form>
+        </section>
+
+        <% if (canLead) { %>
+          <section class="detail-section">
+            <h2><%= t('standardClauseSelection') %></h2>
+            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/clauses">
+              <%- csrfField() %>
+              <% for (const clause of clauses) { %>
+                <label class="checkbox-row"><input type="checkbox" name="clauseIds" value="<%= clause.id %>" <%= selectedClauseIds.has(clause.id) ? 'checked' : '' %>><span><%= clause.revisionLabel %> · <%= clause.title %></span></label>
+              <% } %>
+              <button type="submit"><%= t('saveClauseSelection') %></button>
+            </form>
+          </section>
+
+          <section class="detail-section">
+            <h2><%= t('sectionAssignments') %></h2>
+            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/assignments">
+              <%- csrfField() %>
+              <div class="form-grid">
+                <label><%= t('assignedSection') %><select name="sectionKey" required><% for (const section of sections) { %><option value="<%= section.key %>"><%= language === 'zh' ? section.labelZh : section.labelEn %></option><% } %></select></label>
+                <label><%= t('supportingEngineer') %><select name="assigneeUserId" required><option value=""></option><% for (const engineer of supportingEngineers) { %><option value="<%= engineer.userId %>"><%= engineer.userDisplayName || engineer.username %></option><% } %></select></label>
+                <label><%= t('dueDate') %><input name="dueDate" type="date"></label>
+              </div>
+              <button type="submit" <%= supportingEngineers.length ? '' : 'disabled' %>><%= t('assignSection') %></button>
+            </form>
+            <div class="list-body"><table class="list-table content-fit-table"><thead><tr><th><%= t('assignedSection') %></th><th><%= t('supportingEngineer') %></th><th><%= t('dueDate') %></th><th><%= t('actions') %></th></tr></thead><tbody>
+              <% for (const assignment of activeAssignments) { %><tr><td><%= sectionLabel(assignment.sectionKey) %></td><td><%= assignment.assigneeDisplayName || assignment.assigneeUsername %></td><td><%= assignment.dueDate || '' %></td><td><form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/assignments/<%= assignment.id %>/remove"><%- csrfField() %><button class="danger-action" type="submit"><%= t('remove') %></button></form></td></tr><% } %>
+              <% if (!activeAssignments.length) { %><tr><td colspan="4" class="empty"><%= t('noSectionAssignments') %></td></tr><% } %>
+            </tbody></table></div>
+          </section>
+        <% } %>
+
+        <section class="detail-section">
+          <h2><%= t('structuredTechnicalContent') %></h2>
+          <% for (const section of sections) { %>
+            <article class="form-panel technical-template-revision <%= section.included ? '' : 'muted' %>">
+              <header class="page-header"><div><h3><%= section.sortOrder %>. <%= language === 'zh' ? section.labelZh : section.labelEn %></h3><div class="muted"><%= t(`sectionType.${section.sectionType}`) %> · <%= section.included ? t('includedSection') : t('excludedByCondition') %></div></div><% if (section.standardChanged) { %><span class="status"><%= t('standardContentChanged') %></span><% } %></header>
+              <% if (editableSectionKeys.has(section.key)) { %>
+                <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/sections/<%= section.key %>">
+                  <%- csrfField() %>
+                  <label><%= t('sectionBodyEn') %><textarea name="bodyEn" maxlength="100000"><%= section.bodyEn || '' %></textarea></label>
+                  <label><%= t('sectionBodyZh') %><textarea name="bodyZh" maxlength="100000"><%= section.bodyZh || '' %></textarea></label>
+                  <label><%= t('structuredTableRows') %><textarea name="tableRows" maxlength="100000"><%= (section.tableRows || []).map((row) => row.join(' | ')).join('\n') %></textarea></label>
+                  <button type="submit"><%= t('saveProjectSection') %></button>
+                </form>
+              <% } else { %>
+                <% if (section.bodyEn) { %><p><strong>EN</strong><br><%= section.bodyEn %></p><% } %>
+                <% if (section.bodyZh) { %><p><strong>中文</strong><br><%= section.bodyZh %></p><% } %>
+              <% } %>
+              <% if ((section.tableRows || []).length) { %><div class="list-body"><table class="list-table content-fit-table"><tbody><% for (const row of section.tableRows) { %><tr><% for (const cell of row) { %><td><%= cell %></td><% } %></tr><% } %></tbody></table></div><% } %>
+              <% if ((section.clauses || []).length) { %><h4><%= t('standardClauses') %></h4><ul><% for (const clause of section.clauses) { %><li><strong><%= clause.revisionLabel %> · <%= clause.title %></strong><br><%= clause.content %><% if (clause.standardChanged) { %> <span class="status"><%= t('standardContentChanged') %></span><% } %></li><% } %></ul><% } %>
+            </article>
+          <% } %>
+        </section>
+
+        <section class="detail-section">
+          <h2><%= t('draftContributionHistory') %></h2>
+          <div class="list-body"><table class="list-table content-fit-table"><thead><tr><th><%= t('event') %></th><th><%= t('assignedSection') %></th><th><%= t('actor') %></th><th><%= t('createdAt') %></th></tr></thead><tbody>
+            <% for (const event of draft.events || []) { %><tr><td><%= t(`technicalDraftEvent.${event.eventType}`) %></td><td><%= event.sectionKey ? sectionLabel(event.sectionKey) : '-' %></td><td><%= event.actorDisplayName || event.actorUserId %></td><td><%= event.createdAt || '' %></td></tr><% } %>
+          </tbody></table></div>
+        </section>
+<%- include('../partials/app-end') %>

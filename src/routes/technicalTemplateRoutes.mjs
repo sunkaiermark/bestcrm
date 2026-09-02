@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import {
+  TECHNICAL_SECTION_CONDITION_OPERATORS,
+  TECHNICAL_SECTION_TYPES,
   TECHNICAL_TEMPLATE_LANGUAGES,
   TECHNICAL_TEMPLATE_VARIABLE_SOURCES,
   TECHNICAL_TEMPLATE_VARIABLE_TYPES
@@ -29,6 +31,7 @@ import {
   submitTechnicalClause,
   submitTechnicalTemplateRevision,
   updateTechnicalClause,
+  updateTechnicalTemplateSection,
   updateTechnicalTemplate,
   updateTechnicalVariableDefinition
 } from '../services/technicalTemplateService.mjs';
@@ -291,6 +294,47 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
         req.params.variableId
       );
       res.redirect(`/technical-templates/${req.params.id}`);
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.get('/technical-templates/:id/revisions/:revisionId/editor', requireAuthor, async (req, res, next) => {
+    try {
+      const template = await getTechnicalTemplateDetail(technicalTemplateRepository, req.currentUser, req.params.id);
+      const revision = template.revisions.find((candidate) => candidate.id === Number(req.params.revisionId));
+      if (!revision) {
+        res.status(404).send('Template revision not found');
+        return;
+      }
+      if (revision.status !== 'draft') {
+        res.status(409).send('Only draft template revisions can be edited');
+        return;
+      }
+      const clauses = await technicalTemplateRepository.listClauses({ publishedOnly: true });
+      res.render('technical-templates/editor', {
+        template,
+        revision,
+        clauses,
+        sectionTypes: TECHNICAL_SECTION_TYPES,
+        conditionOperators: TECHNICAL_SECTION_CONDITION_OPERATORS
+      });
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/technical-templates/:id/revisions/:revisionId/sections/:sectionKey', requireAuthor, async (req, res, next) => {
+    try {
+      await updateTechnicalTemplateSection(
+        technicalTemplateRepository,
+        req.currentUser,
+        req.params.id,
+        req.params.revisionId,
+        req.params.sectionKey,
+        req.body
+      );
+      res.redirect(`/technical-templates/${req.params.id}/revisions/${req.params.revisionId}/editor`);
     } catch (error) {
       handleError(error, res, next);
     }

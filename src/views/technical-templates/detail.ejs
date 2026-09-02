@@ -47,6 +47,7 @@
                 <% if (canAuthor) { %>
                   <div class="inline-actions">
                     <% if (revision.status === 'draft') { %>
+                      <a class="secondary-action" href="/technical-templates/<%= template.id %>/revisions/<%= revision.id %>/editor"><%= t('openTemplateEditor') %></a>
                       <form method="post" action="/technical-templates/<%= template.id %>/revisions/<%= revision.id %>/submit" onsubmit="return confirm('<%= t('submitRevisionConfirm') %>')">
                         <%- csrfField() %>
                         <button type="submit"><%= t('submitForReview') %></button>
@@ -85,11 +86,12 @@
               <h4><%= t('variables') %></h4>
               <div class="list-body">
                 <table class="list-table content-fit-table">
-                  <thead><tr><th><%= t('variableKey') %></th><th><%= t('dataType') %></th><th><%= t('sourceField') %></th><th><%= t('requiredVariable') %></th><th><%= t('defaultValue') %></th><% if (canAuthor && revision.status === 'draft') { %><th><%= t('actions') %></th><% } %></tr></thead>
+                  <thead><tr><th><%= t('variableKey') %></th><th><%= t('assignedSection') %></th><th><%= t('dataType') %></th><th><%= t('sourceField') %></th><th><%= t('requiredVariable') %></th><th><%= t('defaultValue') %></th><% if (canAuthor && revision.status === 'draft') { %><th><%= t('actions') %></th><% } %></tr></thead>
                   <tbody>
                     <% for (const variable of revision.variables) { %>
                       <tr>
                         <td><strong><%= variable.variableKey %></strong><br><span class="muted"><%= language === 'zh' ? variable.labelZh : variable.labelEn %></span></td>
+                        <td><%= language === 'zh' ? (revision.contentSchema.sections || []).find((section) => section.key === variable.sectionKey)?.labelZh : (revision.contentSchema.sections || []).find((section) => section.key === variable.sectionKey)?.labelEn %></td>
                         <td><%= t(`variableType.${variable.dataType}`) %></td>
                         <td><%= t(`variableSource.${variable.sourceField}`) %></td>
                         <td><%= variable.isRequired ? t('yesValue') : t('noValue') %></td>
@@ -117,6 +119,14 @@
                     <select name="variableDefinitionId" required>
                       <% for (const definition of variableDefinitions) { %>
                         <option value="<%= definition.id %>"><%= definition.variableKey %> · <%= language === 'zh' ? definition.labelZh : definition.labelEn %></option>
+                      <% } %>
+                    </select>
+                  </label>
+                  <label>
+                    <%= t('assignedSection') %>
+                    <select name="sectionKey" required>
+                      <% for (const section of (revision.contentSchema.sections || [])) { %>
+                        <option value="<%= section.key %>"><%= language === 'zh' ? section.labelZh : section.labelEn %></option>
                       <% } %>
                     </select>
                   </label>

@@ -1,0 +1,58 @@
+<%- include('../partials/app-start', { title: `${t('templateEditor')} - ${template.templateCode} - BESTCRM`, activeNav: 'technical-templates' }) %>
+        <p class="breadcrumb"><a href="/technical-templates"><%= t('technicalTemplateLibrary') %></a> / <a href="/technical-templates/<%= template.id %>"><%= template.templateCode %></a> / <%= revision.revisionLabel %></p>
+        <header class="page-header">
+          <div>
+            <h1><%= t('templateEditor') %> · <%= revision.revisionLabel %></h1>
+            <div class="muted"><%= t('templateEditorDescription') %></div>
+          </div>
+        </header>
+
+        <section class="form-panel">
+          <strong><%= t('structuredEditorSafetyNotice') %></strong>
+        </section>
+
+        <% for (const section of [...(revision.contentSchema.sections || [])].sort((left, right) => left.sortOrder - right.sortOrder)) { %>
+          <details class="form-panel technical-template-revision" <%= section.sortOrder === 1 ? 'open' : '' %>>
+            <summary><strong><%= section.sortOrder %>. <%= language === 'zh' ? section.labelZh : section.labelEn %></strong> <span class="muted">(<%= section.key %>)</span></summary>
+            <form method="post" action="/technical-templates/<%= template.id %>/revisions/<%= revision.id %>/sections/<%= section.key %>">
+              <%- csrfField() %>
+              <div class="form-grid">
+                <label><%= t('sectionLabelEn') %><input name="labelEn" maxlength="200" value="<%= section.labelEn %>" required></label>
+                <label><%= t('sectionLabelZh') %><input name="labelZh" maxlength="200" value="<%= section.labelZh %>" required></label>
+                <label><%= t('sectionType') %>
+                  <select name="sectionType" required>
+                    <% for (const type of sectionTypes) { %><option value="<%= type %>" <%= (section.sectionType || 'narrative') === type ? 'selected' : '' %>><%= t(`sectionType.${type}`) %></option><% } %>
+                  </select>
+                </label>
+                <label><%= t('sortOrder') %><input name="sortOrder" type="number" min="1" max="99" value="<%= section.sortOrder %>" required></label>
+              </div>
+              <label class="checkbox-row"><input name="enabled" type="checkbox" <%= section.enabled !== false ? 'checked' : '' %>><span><%= t('includeSectionByDefault') %></span></label>
+              <label><%= t('sectionBodyEn') %><textarea name="bodyEn" maxlength="100000"><%= section.bodyEn || '' %></textarea></label>
+              <label><%= t('sectionBodyZh') %><textarea name="bodyZh" maxlength="100000"><%= section.bodyZh || '' %></textarea></label>
+              <label><%= t('structuredTableRows') %><textarea name="tableRows" maxlength="100000"><%= (section.tableRows || []).map((row) => row.join(' | ')).join('\n') %></textarea><span class="muted"><%= t('structuredTableRowsHint') %></span></label>
+              <div class="form-grid">
+                <label><%= t('conditionOperator') %>
+                  <select name="conditionOperator">
+                    <% for (const operator of conditionOperators) { %><option value="<%= operator %>" <%= (section.condition?.operator || 'always') === operator ? 'selected' : '' %>><%= t(`conditionOperator.${operator}`) %></option><% } %>
+                  </select>
+                </label>
+                <label><%= t('conditionVariable') %>
+                  <select name="conditionVariableKey">
+                    <option value=""></option>
+                    <% for (const variable of revision.variables) { %><option value="<%= variable.variableKey %>" <%= section.condition?.variableKey === variable.variableKey ? 'selected' : '' %>><%= variable.variableKey %> · <%= language === 'zh' ? variable.labelZh : variable.labelEn %></option><% } %>
+                  </select>
+                </label>
+                <label><%= t('conditionValue') %><input name="conditionValue" maxlength="500" value="<%= section.condition?.value || '' %>"></label>
+              </div>
+              <fieldset>
+                <legend><%= t('defaultStandardClauses') %></legend>
+                <% for (const clause of clauses) { %>
+                  <label class="checkbox-row"><input type="checkbox" name="defaultClauseIds" value="<%= clause.id %>" <%= (section.defaultClauseIds || []).includes(clause.id) ? 'checked' : '' %>><span><%= clause.revisionLabel %> · <%= clause.title %></span></label>
+                <% } %>
+                <% if (!clauses.length) { %><p class="empty"><%= t('noPublishedStandardClauses') %></p><% } %>
+              </fieldset>
+              <button type="submit"><%= t('saveSection') %></button>
+            </form>
+          </details>
+        <% } %>
+<%- include('../partials/app-end') %>

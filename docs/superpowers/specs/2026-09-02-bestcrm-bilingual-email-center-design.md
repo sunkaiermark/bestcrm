@@ -1,17 +1,21 @@
 # BESTCRM Bilingual Email Center Design
 
 - Date: 2026-09-02
-- Status: Approved V1 business workflow; Steps 1-4 complete locally
+- Status: Approved V1 business workflow; Steps 1-5 complete locally
 - Target: `https://crm.sunkaier.com` on the Singapore Tencent Cloud instance
 
-Implementation checkpoint: Steps 1-4 are complete locally and verified by
+Implementation checkpoint: Steps 1-5 are complete locally and verified by
 targeted, full-suite, and browser checks. Step 2 adds audited private sales lead
 submissions, manager-controlled inquiry conversion, and source inquiry identity
 on every resulting opportunity. Step 3 adds one project lead engineer, multiple
 supporting engineers, scoped assignments, contribution records, and assignment
 audit history per opportunity. Step 4 adds revision-controlled technical agreement
 templates, safe variable snapshots, standard clauses, audit events, and separated
-administrator, Technical Manager, and Quotation Engineer permissions. Steps 5-12 remain pending; no part of this design
+administrator, Technical Manager, and Quotation Engineer permissions. Step 5 adds
+a bilingual structured template editor, conditional sections, CRM-prefilled project
+variables, immutable template/variable/clause/rendered snapshots, validation, and
+section-scoped collaboration between the Project Lead Engineer and Supporting
+Engineers. Steps 6-12 remain pending; no part of this design
 has been deployed or enabled on the Singapore instance.
 
 ## 1. Objective

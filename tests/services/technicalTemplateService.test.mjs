@@ -13,9 +13,11 @@ import {
   getTechnicalTemplateDetail,
   listTechnicalTemplates,
   normalizeRevisionVariableInput,
+  normalizeTechnicalSectionInput,
   normalizeTechnicalTemplateInput,
   normalizeVariableDefinitionInput,
-  publishTechnicalTemplateRevision
+  publishTechnicalTemplateRevision,
+  updateTechnicalTemplateSection
 } from '../../src/services/technicalTemplateService.mjs';
 
 function user(role, id = 7) {
@@ -217,6 +219,7 @@ test('revision variable input is normalized into non-executable structured rules
     actorUserId: 8,
     input: {
       variableDefinitionId: 4,
+      sectionKey: 'design_parameters',
       isRequired: true,
       defaultValue: '10 bar',
       validationRules: { min: 1, max: 20, allowedValues: ['10 bar', '16 bar'] },
@@ -244,5 +247,87 @@ test('only technical managers author standard clauses', async () => {
   await assert.rejects(
     createTechnicalClause(repository, user(ROLES.ADMINISTRATOR), {}),
     (error) => error.message === 'Forbidden'
+  );
+});
+
+test('structured template sections normalize order tables conditions and published clause references', async () => {
+  const calls = [];
+  const repository = {
+    async getTemplateDetail() {
+      return {
+        id: 4,
+        revisions: [{
+          id: 9,
+          status: 'draft',
+          contentSchema: {
+            schemaVersion: 1,
+            sections: [
+              { key: 'project_basis', labelEn: 'Project Basis', labelZh: '项目依据', sortOrder: 1 },
+              { key: 'design_parameters', labelEn: 'Design Parameters', labelZh: '设计参数', sortOrder: 2 }
+            ]
+          },
+          variables: [{ variableKey: 'capacity' }]
+        }]
+      };
+    },
+    async listClauses() { return [{ id: 30, status: 'published' }]; },
+    async updateRevisionContent(revisionId, contentSchema, actorUserId) {
+      calls.push({ revisionId, contentSchema, actorUserId });
+      return { id: revisionId, templateId: 4 };
+    }
+  };
+  await updateTechnicalTemplateSection(repository, user(ROLES.TECHNICAL_MANAGER, 8), 4, 9, 'design_parameters', {
+    labelEn: 'Design Parameters',
+    labelZh: '设计参数',
+    enabled: 'on',
+    sortOrder: 1,
+    sectionType: 'parameter_table',
+    bodyEn: 'Design basis',
+    bodyZh: '设计依据',
+    tableRows: 'Capacity | 10 t/h\nPressure | 6 bar',
+    conditionOperator: 'equals',
+    conditionVariableKey: 'capacity',
+    conditionValue: '10',
+    defaultClauseIds: 30
+  });
+
+  assert.equal(calls[0].revisionId, 9);
+  assert.equal(calls[0].actorUserId, 8);
+  assert.equal(calls[0].contentSchema.sections[0].key, 'design_parameters');
+  assert.deepEqual(calls[0].contentSchema.sections[0].tableRows[0], ['Capacity', '10 t/h']);
+  assert.deepEqual(calls[0].contentSchema.sections[0].defaultClauseIds, [30]);
+});
+
+test('structured section editor rejects executable text and unknown condition variables', async () => {
+  assert.throws(() => normalizeTechnicalSectionInput('project_basis', {
+    labelEn: 'Project Basis',
+    labelZh: '项目依据',
+    enabled: 'on',
+    sortOrder: 1,
+    sectionType: 'narrative',
+    bodyEn: '<script>alert(1)</script>',
+    conditionOperator: 'always'
+  }), /unsupported template or script syntax/);
+
+  const repository = {
+    async getTemplateDetail() {
+      return {
+        id: 4,
+        revisions: [{
+          id: 9,
+          status: 'draft',
+          contentSchema: { schemaVersion: 1, sections: [{ key: 'project_basis', sortOrder: 1 }] },
+          variables: []
+        }]
+      };
+    },
+    async listClauses() { return []; }
+  };
+  await assert.rejects(
+    updateTechnicalTemplateSection(repository, user(ROLES.TECHNICAL_MANAGER), 4, 9, 'project_basis', {
+      labelEn: 'Project Basis', labelZh: '项目依据', enabled: 'on', sortOrder: 1,
+      sectionType: 'narrative', conditionOperator: 'truthy', conditionVariableKey: 'capacity'
+    }),
+    (error) => error.statusCode === 400 && /not assigned/.test(error.message)
   );
 });

@@ -97,6 +97,7 @@ function mapRevisionVariableRow(row) {
     labelZh: row.label_zh,
     dataType: row.data_type,
     sourceField: row.source_field,
+    sectionKey: row.section_key || 'design_parameters',
     isRequired: row.is_required,
     defaultValue: row.default_value || '',
     validationRules,
@@ -250,6 +251,31 @@ export function createTechnicalTemplateRepository(queryTarget) {
       return mapRevisionRow(result.rows[0]);
     },
 
+    async updateRevisionContent(revisionId, contentSchema, actorUserId) {
+      const result = await queryTarget.query(`
+        WITH updated AS (
+          UPDATE technical_agreement_template_revisions
+          SET content_schema = $2::jsonb,
+              updated_at = now()
+          WHERE id = $1
+            AND status = 'draft'
+          RETURNING *
+        ), inserted_event AS (
+          INSERT INTO technical_template_events (
+            template_id, entity_type, entity_id, event_type, actor_user_id, details
+          )
+          SELECT template_id, 'revision', id, 'content_schema_updated', $3,
+            jsonb_build_object('sectionCount', jsonb_array_length(content_schema->'sections'))
+          FROM updated
+        )
+        SELECT id, template_id FROM updated
+      `, [revisionId, JSON.stringify(contentSchema), actorUserId]);
+      return result.rows[0] ? {
+        id: Number(result.rows[0].id),
+        templateId: Number(result.rows[0].template_id)
+      } : null;
+    },
+
     async createTemplate(input, actorUserId) {
       const result = await queryTarget.query(`
         WITH inserted_template AS (
@@ -349,11 +375,11 @@ export function createTechnicalTemplateRepository(queryTarget) {
         ), copied_variables AS (
           INSERT INTO technical_agreement_revision_variables (
             template_revision_id, variable_definition_id, variable_key, label_en, label_zh,
-            data_type, source_field, is_required, default_value, validation_rules,
+            data_type, source_field, section_key, is_required, default_value, validation_rules,
             sort_order, created_by, updated_by
           )
           SELECT inserted.id, rv.variable_definition_id, rv.variable_key, rv.label_en, rv.label_zh,
-            rv.data_type, rv.source_field, rv.is_required, rv.default_value, rv.validation_rules,
+            rv.data_type, rv.source_field, rv.section_key, rv.is_required, rv.default_value, rv.validation_rules,
             rv.sort_order, $3, $3
           FROM inserted
           LEFT JOIN LATERAL (
@@ -489,11 +515,11 @@ export function createTechnicalTemplateRepository(queryTarget) {
         ), saved AS (
           INSERT INTO technical_agreement_revision_variables (
             template_revision_id, variable_definition_id, variable_key, label_en, label_zh,
-            data_type, source_field, is_required, default_value, validation_rules,
+            data_type, source_field, section_key, is_required, default_value, validation_rules,
             sort_order, created_by, updated_by
           )
           SELECT revision_id, id, variable_key, label_en, label_zh, data_type, source_field,
-            $3, $4, $5::jsonb, $6, $7, $7
+            $3, $4, $5, $6::jsonb, $7, $8, $8
           FROM valid
           ON CONFLICT (template_revision_id, variable_definition_id)
           DO UPDATE SET
@@ -502,6 +528,7 @@ export function createTechnicalTemplateRepository(queryTarget) {
             label_zh = EXCLUDED.label_zh,
             data_type = EXCLUDED.data_type,
             source_field = EXCLUDED.source_field,
+            section_key = EXCLUDED.section_key,
             is_required = EXCLUDED.is_required,
             default_value = EXCLUDED.default_value,
             validation_rules = EXCLUDED.validation_rules,
@@ -513,7 +540,7 @@ export function createTechnicalTemplateRepository(queryTarget) {
           INSERT INTO technical_template_events (
             template_id, entity_type, entity_id, event_type, actor_user_id, details
           )
-          SELECT valid.template_id, 'revision_variable', saved.id, 'variable_saved', $7,
+          SELECT valid.template_id, 'revision_variable', saved.id, 'variable_saved', $8,
             jsonb_build_object('variableKey', saved.variable_key, 'revisionId', saved.template_revision_id)
           FROM saved
           JOIN valid ON valid.revision_id = saved.template_revision_id
@@ -522,6 +549,7 @@ export function createTechnicalTemplateRepository(queryTarget) {
       `, [
         revisionId,
         input.variableDefinitionId,
+        input.sectionKey,
         input.isRequired,
         input.defaultValue,
         JSON.stringify(input.validationRules),
