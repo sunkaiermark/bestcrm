@@ -61,9 +61,7 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
   const router = Router();
 
   router.get('/language', (req, res) => {
-    if (!req.currentUser) {
-      req.session.language = normalizeLanguage(req.query.lang);
-    }
+    req.session.language = normalizeLanguage(req.query.lang);
     res.redirect(safeReturnTo(req.query.returnTo));
   });
 

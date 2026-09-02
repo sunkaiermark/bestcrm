@@ -204,7 +204,7 @@ test('administrator users see system navigation in the left sidebar', async () =
   assert.match(response.text, /Approval Settings/);
   assert.match(response.text, /href="\/inquiries"/);
   const mainNavigation = response.text.match(/<nav class="nav-group">[\s\S]*?<\/nav>/)?.[0] || '';
-  const navigationFooter = response.text.match(/<div class="nav-footer">[\s\S]*?<\/div>/)?.[0] || '';
+  const navigationFooter = response.text.match(/<div class="nav-footer">[\s\S]*?<\/aside>/)?.[0] || '';
   assert.doesNotMatch(mainNavigation, /href="\/account\/password"/);
   assert.match(navigationFooter, /href="\/account\/password">Change password<\/a>/);
   assert.match(navigationFooter, /action="\/logout"/);

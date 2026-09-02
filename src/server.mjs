@@ -440,6 +440,7 @@ export function createApp(options = {}) {
     : pool ? createWorkflowTransaction(pool) : null;
   const sessionStore = 'sessionStore' in options ? options.sessionStore : createSessionStore(pool);
   const app = express();
+  app.set('trust proxy', 'loopback');
   const configuredWebPushPublicKey = config.notificationDelivery?.webPush?.publicKey
     && config.notificationDelivery?.webPush?.privateKey
     ? config.notificationDelivery.webPush.publicKey

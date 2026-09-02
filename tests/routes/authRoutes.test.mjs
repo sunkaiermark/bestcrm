@@ -135,6 +135,25 @@ test('csrf protection accepts login posts with the current form token', async ()
   assert.equal(response.headers.location, '/');
 });
 
+test('secure session cookie is issued for HTTPS requests from the loopback reverse proxy', async () => {
+  const app = createApp({
+    csrfProtection: true,
+    databaseUrl: '',
+    sessionSecret: 'test-secret',
+    sessionCookieSecure: true
+  });
+
+  const response = await request(app)
+    .get('/login')
+    .set('X-Forwarded-Proto', 'https');
+
+  const sessionCookie = response.headers['set-cookie']?.find((cookie) => cookie.startsWith('bestcrm.sid='));
+  assert.ok(sessionCookie);
+  assert.match(sessionCookie, /; Secure/);
+  assert.match(sessionCookie, /; HttpOnly/);
+  assert.match(sessionCookie, /; SameSite=Lax/);
+});
+
 test('login page can switch between English and Chinese', async () => {
   const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
   const agent = request.agent(app);
@@ -160,7 +179,7 @@ test('login page can switch between English and Chinese', async () => {
   assert.match(englishLogin.text, />Login</);
 });
 
-test('logged in users keep login language and cannot switch from the sidebar', async () => {
+test('logged in users can switch language from the sidebar and keep the current page', async () => {
   const passwordHash = await hashPassword('ChangeMe123!');
   const user = {
     id: 7,
@@ -182,15 +201,38 @@ test('logged in users keep login language and cannot switch from the sidebar', a
   const workbench = await agent.get('/workbench');
   assert.equal(workbench.status, 200);
   assert.match(workbench.text, /<h1>\u5de5\u4f5c\u53f0<\/h1>/);
-  assert.doesNotMatch(workbench.text, /class="nav-language-switch"/);
+  assert.match(workbench.text, /class="nav-language-switch"/);
+  assert.match(workbench.text, /href="\/language\?lang=en&amp;returnTo=%2Fworkbench"/);
 
-  const blockedSwitch = await agent.get('/language?lang=en&returnTo=/workbench');
-  assert.equal(blockedSwitch.status, 302);
-  assert.equal(blockedSwitch.headers.location, '/workbench');
+  const switchResponse = await agent.get('/language?lang=en&returnTo=/workbench');
+  assert.equal(switchResponse.status, 302);
+  assert.equal(switchResponse.headers.location, '/workbench');
 
-  const stillChinese = await agent.get('/workbench');
-  assert.match(stillChinese.text, /<h1>\u5de5\u4f5c\u53f0<\/h1>/);
-  assert.doesNotMatch(stillChinese.text, /<h1>Workbench<\/h1>/);
+  const englishWorkbench = await agent.get('/workbench');
+  assert.match(englishWorkbench.text, /<h1>Workbench<\/h1>/);
+  assert.match(englishWorkbench.text, /class="nav-language-switch"/);
+
+  const filteredWorkbench = await agent.get('/workbench?scope=open&owner=7');
+  assert.equal(filteredWorkbench.status, 200);
+  assert.match(
+    filteredWorkbench.text,
+    /href="\/language\?lang=zh&amp;returnTo=%2Fworkbench%3Fscope%3Dopen%26owner%3D7"/
+  );
+
+  const filteredSwitch = await agent.get(
+    '/language?lang=zh&returnTo=%2Fworkbench%3Fscope%3Dopen%26owner%3D7'
+  );
+  assert.equal(filteredSwitch.status, 302);
+  assert.equal(filteredSwitch.headers.location, '/workbench?scope=open&owner=7');
+});
+
+test('language switch rejects external return locations', async () => {
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
+
+  const response = await request(app).get('/language?lang=zh&returnTo=https://example.com');
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/workbench');
 });
 
 test('valid login creates a session and logout clears it', async () => {

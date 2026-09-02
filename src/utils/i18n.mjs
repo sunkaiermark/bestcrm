@@ -478,6 +478,7 @@ const dictionaries = {
     username: 'Username',
     website: 'Company Website',
     verify: 'Verify',
+    language: 'Language',
     backToLogin: 'Back to login',
     workbench: 'Workbench'
   },
@@ -960,6 +961,7 @@ const dictionaries = {
     username: '\u7528\u6237\u540d',
     website: '\u4f01\u4e1a\u7f51\u7ad9',
     verify: '\u9a8c\u8bc1',
+    language: '\u8bed\u8a00',
     backToLogin: '\u8fd4\u56de\u767b\u5f55',
     workbench: '\u5de5\u4f5c\u53f0'
   }
@@ -1004,6 +1006,15 @@ export function inferLanguageFromAcceptLanguage(headerValue) {
 export function createTranslator(language) {
   const normalized = normalizeLanguage(language);
   return (key) => dictionaries[normalized][key] || dictionaries.en[key] || key;
+}
+
+export function listMissingTranslationKeys(language) {
+  const normalized = normalizeLanguage(language);
+  const targetDictionary = dictionaries[normalized];
+  return Object.keys(dictionaries.en).filter((key) => {
+    const value = targetDictionary[key];
+    return typeof value !== 'string' || value.trim() === '';
+  });
 }
 
 export function createStatusLabeler(language) {
