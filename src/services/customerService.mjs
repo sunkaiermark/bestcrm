@@ -62,8 +62,10 @@ async function assertNoDuplicateCustomer(customerRepository, input, { excludeId 
   }
 }
 
-export async function createCustomer(customerRepository, actor, input) {
-  const ownerUserId = hasRole(actor, ROLES.ADMINISTRATOR) && input.ownerUserId
+export async function createCustomer(customerRepository, actor, input, options = {}) {
+  const managedInquiry = options.managedInquiry === true
+    && (hasRole(actor, ROLES.ADMINISTRATOR) || hasRole(actor, ROLES.SALES_MANAGER));
+  const ownerUserId = (hasRole(actor, ROLES.ADMINISTRATOR) || managedInquiry) && input.ownerUserId
     ? Number(input.ownerUserId)
     : actor.id;
   const normalized = normalizeCustomerInput(input, ownerUserId);

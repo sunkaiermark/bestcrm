@@ -25,6 +25,7 @@ const notificationWorkflowRecipientsMigrationPath = new URL('../../src/db/migrat
 const customerWebsiteMigrationPath = new URL('../../src/db/migrations/022_customer_website.sql', import.meta.url);
 const inquiryDispositionMigrationPath = new URL('../../src/db/migrations/023_inquiry_disposition_workflow.sql', import.meta.url);
 const inquiryCustomerCollaborationMigrationPath = new URL('../../src/db/migrations/024_inquiry_customer_collaboration.sql', import.meta.url);
+const salesLeadSubmissionsMigrationPath = new URL('../../src/db/migrations/025_sales_lead_submissions.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -194,6 +195,17 @@ test('inquiry customer collaboration migration adds a pending state and auditabl
   assert.match(sql, /request_payload jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
   assert.match(sql, /converted_opportunity_id bigint REFERENCES opportunities\(id\) ON DELETE SET NULL/);
   assert.match(sql, /WHERE status = 'pending'/);
+});
+
+test('sales lead submissions migration enforces inquiry-first opportunity creation', async () => {
+  const sql = await readFile(salesLeadSubmissionsMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS submission_type text NOT NULL DEFAULT 'standard'/);
+  assert.match(sql, /CHECK \(submission_type IN \('standard', 'sales_lead'\)\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS source_channel text NOT NULL DEFAULT 'other'/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS recommended_salesperson_id bigint REFERENCES users\(id\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS origin_inquiry_id bigint REFERENCES inquiries\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS opportunities_origin_inquiry_unique_idx/);
 });
 
 test('opportunity material versions migration creates unified approval version records', async () => {

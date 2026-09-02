@@ -16,6 +16,8 @@ function createFakeQueryTarget(rowsByQuery = []) {
 const inquiryRow = {
   id: '11',
   source: 'email',
+  submission_type: 'standard',
+  source_channel: 'email',
   source_reference: 'msg-1',
   source_received_at: '2026-07-30T08:00:00.000Z',
   subject: 'Need evaporator quote',
@@ -32,6 +34,8 @@ const inquiryRow = {
   status: 'new',
   assigned_user_id: '7',
   assigned_display_name: 'Sales One',
+  recommended_salesperson_id: '7',
+  recommended_salesperson_display_name: 'Sales One',
   matched_customer_id: '20',
   matched_customer_name: 'Acme Co',
   matched_contact_id: '30',
@@ -39,6 +43,7 @@ const inquiryRow = {
   converted_opportunity_id: null,
   converted_opportunity_no: null,
   converted_opportunity_title: null,
+  converted_salesperson_id: null,
   created_by: '7',
   created_by_display_name: 'Sales One',
   reviewed_by: null,
@@ -58,6 +63,8 @@ test('inquiry repository lists mapped inquiries with visibility filter', async (
   assert.deepEqual(inquiries, [{
     id: 11,
     source: 'email',
+    submissionType: 'standard',
+    sourceChannel: 'email',
     sourceReference: 'msg-1',
     sourceReceivedAt: '2026-07-30T08:00:00.000Z',
     subject: 'Need evaporator quote',
@@ -74,6 +81,8 @@ test('inquiry repository lists mapped inquiries with visibility filter', async (
     status: 'new',
     assignedUserId: 7,
     assignedDisplayName: 'Sales One',
+    recommendedSalespersonId: 7,
+    recommendedSalespersonDisplayName: 'Sales One',
     matchedCustomerId: 20,
     matchedCustomerName: 'Acme Co',
     matchedContactId: 30,
@@ -81,6 +90,7 @@ test('inquiry repository lists mapped inquiries with visibility filter', async (
     convertedOpportunityId: null,
     convertedOpportunityNo: '',
     convertedOpportunityTitle: '',
+    convertedSalespersonId: null,
     createdBy: 7,
     createdByDisplayName: 'Sales One',
     reviewedBy: null,
@@ -120,6 +130,8 @@ test('inquiry repository creates review and conversion updates', async () => {
 
   await repository.createInquiry({
     source: 'manual',
+    submissionType: 'standard',
+    sourceChannel: 'manual',
     sourceReference: '',
     sourceReceivedAt: null,
     subject: 'Manual RFQ',
@@ -135,6 +147,7 @@ test('inquiry repository creates review and conversion updates', async () => {
     priority: 'normal',
     status: 'new',
     assignedUserId: 7,
+    recommendedSalespersonId: null,
     matchedCustomerId: null,
     matchedContactId: null,
     createdBy: 7,
@@ -142,8 +155,8 @@ test('inquiry repository creates review and conversion updates', async () => {
   });
   assert.match(queryTarget.queries[0].sql, /INSERT INTO inquiries/);
   assert.match(queryTarget.queries[0].sql, /ON CONFLICT \(source, source_reference\)/);
-  assert.deepEqual(queryTarget.queries[0].params.slice(0, 4), ['manual', '', null, 'Manual RFQ']);
-  assert.equal(queryTarget.queries[0].params[12], '{}');
+  assert.deepEqual(queryTarget.queries[0].params.slice(0, 6), ['manual', 'standard', 'manual', '', null, 'Manual RFQ']);
+  assert.equal(queryTarget.queries[0].params[14], '{}');
 
   await repository.updateReview(12, {
     status: 'reviewing',

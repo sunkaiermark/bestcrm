@@ -16,6 +16,8 @@ function mapInquiryRow(row) {
   return {
     id: Number(row.id),
     source: row.source,
+    submissionType: textOrEmpty(row.submission_type) || 'standard',
+    sourceChannel: textOrEmpty(row.source_channel) || 'other',
     sourceReference: textOrEmpty(row.source_reference),
     sourceReceivedAt: row.source_received_at,
     subject: textOrEmpty(row.subject),
@@ -32,6 +34,8 @@ function mapInquiryRow(row) {
     status: row.status,
     assignedUserId: numberOrNull(row.assigned_user_id),
     assignedDisplayName: textOrEmpty(row.assigned_display_name),
+    recommendedSalespersonId: numberOrNull(row.recommended_salesperson_id),
+    recommendedSalespersonDisplayName: textOrEmpty(row.recommended_salesperson_display_name),
     matchedCustomerId: numberOrNull(row.matched_customer_id),
     matchedCustomerName: textOrEmpty(row.matched_customer_name),
     matchedContactId: numberOrNull(row.matched_contact_id),
@@ -39,6 +43,7 @@ function mapInquiryRow(row) {
     convertedOpportunityId: numberOrNull(row.converted_opportunity_id),
     convertedOpportunityNo: textOrEmpty(row.converted_opportunity_no),
     convertedOpportunityTitle: textOrEmpty(row.converted_opportunity_title),
+    convertedSalespersonId: numberOrNull(row.converted_salesperson_id),
     createdBy: numberOrNull(row.created_by),
     createdByDisplayName: textOrEmpty(row.created_by_display_name),
     reviewedBy: numberOrNull(row.reviewed_by),
@@ -54,6 +59,8 @@ const inquirySelect = `
   SELECT
     i.id,
     i.source,
+    i.submission_type,
+    i.source_channel,
     i.source_reference,
     i.source_received_at,
     i.subject,
@@ -70,6 +77,8 @@ const inquirySelect = `
     i.status,
     i.assigned_user_id,
     assigned.display_name AS assigned_display_name,
+    i.recommended_salesperson_id,
+    recommended_salesperson.display_name AS recommended_salesperson_display_name,
     i.matched_customer_id,
     matched_customer.name AS matched_customer_name,
     i.matched_contact_id,
@@ -77,6 +86,7 @@ const inquirySelect = `
     i.converted_opportunity_id,
     converted.opportunity_no AS converted_opportunity_no,
     converted.title AS converted_opportunity_title,
+    converted.salesperson_id AS converted_salesperson_id,
     i.created_by,
     creator.display_name AS created_by_display_name,
     i.reviewed_by,
@@ -87,6 +97,7 @@ const inquirySelect = `
     i.updated_at
   FROM inquiries i
   LEFT JOIN users assigned ON assigned.id = i.assigned_user_id
+  LEFT JOIN users recommended_salesperson ON recommended_salesperson.id = i.recommended_salesperson_id
   LEFT JOIN customers matched_customer ON matched_customer.id = i.matched_customer_id
   LEFT JOIN contacts matched_contact ON matched_contact.id = i.matched_contact_id
   LEFT JOIN opportunities converted ON converted.id = i.converted_opportunity_id
@@ -121,6 +132,8 @@ export function createInquiryRepository(queryTarget) {
       addFilter(where, params, 'i.status = ?', filter.status);
       addFilter(where, params, 'i.source = ?', filter.source);
       addFilter(where, params, 'i.assigned_user_id = ?', filter.assignedUserId);
+      addFilter(where, params, 'i.created_by = ?', filter.createdBy);
+      addFilter(where, params, 'i.submission_type = ?', filter.submissionType);
       addNotInFilter(where, params, 'i.status', filter.excludeStatuses);
       if (filter.visibleToUserId) {
         params.push(filter.visibleToUserId);
@@ -156,6 +169,8 @@ export function createInquiryRepository(queryTarget) {
       const result = await queryTarget.query(`
         INSERT INTO inquiries (
           source,
+          submission_type,
+          source_channel,
           source_reference,
           source_received_at,
           subject,
@@ -171,17 +186,20 @@ export function createInquiryRepository(queryTarget) {
           priority,
           status,
           assigned_user_id,
+          recommended_salesperson_id,
           matched_customer_id,
           matched_contact_id,
           created_by,
           review_note
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13::jsonb, $14, $15, $16, $17, $18, $19, $20)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23)
         ON CONFLICT (source, source_reference) WHERE source_reference <> ''
         DO NOTHING
         RETURNING *
       `, [
         input.source,
+        input.submissionType || 'standard',
+        input.sourceChannel || input.source || 'other',
         input.sourceReference,
         input.sourceReceivedAt,
         input.subject,
@@ -197,6 +215,7 @@ export function createInquiryRepository(queryTarget) {
         input.priority,
         input.status,
         input.assignedUserId,
+        input.recommendedSalespersonId || null,
         input.matchedCustomerId,
         input.matchedContactId,
         input.createdBy,

@@ -1,7 +1,11 @@
 <%- include('../partials/app-start', { title: `${t('opportunities')} - BESTCRM`, activeNav: 'opportunities' }) %>
         <header class="page-header">
           <h1><%= t('opportunities') %></h1>
-          <a class="quick-action" href="/opportunities/new"><%= t('newOpportunity') %></a>
+          <% if ((currentUser.roles || []).includes('salesperson')) { %>
+            <a class="quick-action" href="/lead-submissions/new"><%= t('submitNewLead') %></a>
+          <% } else if ((currentUser.roles || []).some((role) => ['administrator', 'sales_manager'].includes(role))) { %>
+            <a class="quick-action" href="/inquiries/new"><%= t('newInquiry') %></a>
+          <% } %>
         </header>
 
         <section class="list-section">

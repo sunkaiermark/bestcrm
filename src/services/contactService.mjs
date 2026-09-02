@@ -28,13 +28,15 @@ export function canDeleteContact(user) {
   return hasRole(user, ROLES.ADMINISTRATOR);
 }
 
-export async function createContact({ customerRepository, contactRepository }, actor, input) {
+export async function createContact({ customerRepository, contactRepository }, actor, input, options = {}) {
   const normalized = normalizeContactInput(input);
   const customer = await customerRepository.getCustomerDetail(normalized.customerId);
   if (!customer) {
     throw new Error('Customer not found');
   }
-  if (!canMaintainCustomer(actor, customer)) {
+  const managedInquiry = options.managedInquiry === true
+    && (hasRole(actor, ROLES.ADMINISTRATOR) || hasRole(actor, ROLES.SALES_MANAGER));
+  if (!canMaintainCustomer(actor, customer) && !managedInquiry) {
     forbidden();
   }
   return contactRepository.createContact(normalized);

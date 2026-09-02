@@ -15,6 +15,7 @@ function createFakeQueryTarget(rows = []) {
 
 const opportunityRow = {
   id: '30',
+  origin_inquiry_id: '11',
   opportunity_no: 'OPP-20260605-abcdef12',
   title: 'Factory upgrade',
   customer_id: '10',
@@ -49,6 +50,7 @@ test('opportunity repository lists opportunities with customer and contact names
 
   assert.deepEqual(opportunities, [{
     id: 30,
+    originInquiryId: 11,
     opportunityNo: 'OPP-20260605-abcdef12',
     title: 'Factory upgrade',
     customerId: 10,
@@ -204,6 +206,7 @@ test('opportunity repository creates draft opportunity rows', async () => {
   const repository = createOpportunityRepository(queryTarget);
 
   await repository.createOpportunity({
+    originInquiryId: 11,
     opportunityNo: 'OPP-20260605-abcdef12',
     title: 'Factory upgrade',
     customerId: 10,
@@ -220,6 +223,7 @@ test('opportunity repository creates draft opportunity rows', async () => {
 
   assert.match(queryTarget.queries[0].sql, /INSERT INTO opportunities/);
   assert.deepEqual(queryTarget.queries[0].params, [
+    11,
     'OPP-20260605-abcdef12',
     'Factory upgrade',
     10,
@@ -290,6 +294,7 @@ test('opportunity repository generates six digit opportunity numbers from sequen
   const repository = createOpportunityRepository(queryTarget);
 
   const opportunity = await repository.createOpportunity({
+    originInquiryId: 11,
     opportunityNo: null,
     title: 'Factory upgrade',
     customerId: 10,
@@ -305,8 +310,9 @@ test('opportunity repository generates six digit opportunity numbers from sequen
   });
 
   assert.equal(opportunity.opportunityNo, '800000');
-  assert.match(queryTarget.queries[0].sql, /COALESCE\(\$1, nextval\('opportunity_no_seq'\)::text\)/);
+  assert.match(queryTarget.queries[0].sql, /COALESCE\(\$2, nextval\('opportunity_no_seq'\)::text\)/);
   assert.deepEqual(queryTarget.queries[0].params, [
+    11,
     null,
     'Factory upgrade',
     10,

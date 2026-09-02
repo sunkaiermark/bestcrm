@@ -568,7 +568,7 @@ test('anonymous users are redirected from opportunity pages', async () => {
   assert.equal(response.headers.location, '/login');
 });
 
-test('logged in salesperson can view opportunity list new form and detail', async () => {
+test('logged in salesperson can view opportunity list and is redirected to lead submission', async () => {
   const { agent } = await createLoggedInAgent();
 
   const list = await agent.get('/opportunities');
@@ -588,36 +588,8 @@ test('logged in salesperson can view opportunity list new form and detail', asyn
   assert.equal((list.text.match(/class="cell-link" href="\/opportunities\/30"/g) || []).length, 7);
 
   const form = await agent.get('/opportunities/new');
-  assert.equal(form.status, 200);
-  assertAppSidebar(form.text, '/opportunities');
-  assert.match(form.text, /name="customerId"/);
-  assert.match(form.text, /Acme Co/);
-  assert.match(form.text, /Alice/);
-  assert.match(form.text, /Add new customer here/);
-  assert.match(form.text, /\.inline-create-panel\s*\{[\s\S]*background:\s*#eef6ff;/);
-  assert.match(form.text, /\.inline-create-panel summary\s*\{[\s\S]*background:\s*#dbeafe;/);
-  assert.match(form.text, /action="\/opportunities\/customers"/);
-  assert.match(form.text, /<select name="industry">/);
-  for (const industry of ['石油化工', '精细化工', '湿法冶金', '环保', '食品', '医化', '其他']) {
-    assert.match(form.text, new RegExp(`<option value="${industry}">${industry}<\\/option>`));
-  }
-  assert.match(form.text, /<select name="country">/);
-  assert.match(form.text, /<option value="China">China<\/option>/);
-  assert.match(form.text, /<select name="region">/);
-  assert.match(form.text, /<option value="Shanghai">Shanghai<\/option>/);
-  assert.match(form.text, /Add new contact here/);
-  assert.match(form.text, /href="\/contacts\/new\?customerId=10&amp;returnTo=opportunity-initiation"/);
-  assert.doesNotMatch(form.text, /action="\/opportunities\/contacts"/);
-  assert.match(form.text, /Opportunity Name\s*<input name="title"/);
-  assert.doesNotMatch(form.text, /Title\s*<input name="title"/);
-  assert.match(form.text, /Delivery Period\s*<input name="deliveryCycle"/);
-  assert.doesNotMatch(form.text, /Delivery Cycle\s*<input name="deliveryCycle"/);
-  assert.match(form.text, /<select name="projectType" form="opportunity-form">/);
-  assert.match(form.text, /Opportunity Type\s*<select name="projectType"/);
-  for (const projectType of ['新增', '扩建', '改造', '维修']) {
-    assert.match(form.text, new RegExp(`<option value="${projectType}"[^>]*>${projectType}<\\/option>`));
-  }
-  assert.doesNotMatch(form.text, /Project Type\s*<input name="projectType"/);
+  assert.equal(form.status, 302);
+  assert.equal(form.headers.location, '/lead-submissions/new');
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
@@ -738,7 +710,7 @@ test('opportunity framework text and common actions use selected Chinese languag
   const list = await agent.get('/opportunities');
   assert.equal(list.status, 200);
   assert.match(list.text, /<h1>\u5546\u673a<\/h1>/);
-  assert.match(list.text, /\u65b0\u5efa\u5546\u673a/);
+  assert.match(list.text, /提交新线索/);
   assert.match(list.text, /\u9500\u552e\u8d1f\u8d23\u4eba/);
   assert.match(list.text, />\u67e5\u8be2<\/button>/);
   assert.match(list.text, /<th>\u5546\u673a\u540d\u79f0<\/th>/);
@@ -765,13 +737,8 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.doesNotMatch(detail.text, /Submit to Sales Manager/);
 
   const form = await agent.get('/opportunities/new');
-  assert.equal(form.status, 200);
-  assert.match(form.text, /\u6dfb\u52a0\u65b0\u5ba2\u6237/);
-  assert.match(form.text, /\u6dfb\u52a0\u65b0\u8054\u7cfb\u4eba/);
-  assert.match(form.text, /\u9700\u6c42/);
-  assert.match(form.text, /\u9884\u4f30\u91d1\u989d\s*<input name="estimatedAmount"/);
-  assert.match(form.text, /\u5546\u673a\u7c7b\u578b\s*<select name="projectType"/);
-  assert.match(form.text, /\u4ea4\u4ed8\u5468\u671f\s*<input name="deliveryCycle"/);
+  assert.equal(form.status, 302);
+  assert.equal(form.headers.location, '/lead-submissions/new');
 });
 
 test('opportunity detail shows list and edit actions but hides delete from non administrators', async () => {
@@ -976,7 +943,7 @@ test('administrator deletes opportunity and removes stored attachment files', as
   }
 });
 
-test('opportunity form quick creates customer and returns with it selected', async () => {
+test('direct opportunity customer creation is blocked', async () => {
   const { agent, createdCustomers } = await createLoggedInAgent();
 
   const response = await agent
@@ -992,24 +959,12 @@ test('opportunity form quick creates customer and returns with it selected', asy
       notes: 'Created while initiating opportunity'
     });
 
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.location, '/opportunities/new?customerId=11');
-  assert.deepEqual(createdCustomers, [{
-    name: 'New Account',
-    website: 'https://new-account.example',
-    industry: 'Manufacturing',
-    country: 'China',
-    region: 'Shanghai',
-    parentCompany: '',
-    enterpriseNature: '',
-    companyHighlights: '',
-    address: 'No. 1 Road',
-    ownerUserId: 7,
-    notes: 'Created while initiating opportunity'
-  }]);
+  assert.equal(response.status, 403);
+  assert.match(response.text, /Create and review an inquiry/);
+  assert.deepEqual(createdCustomers, []);
 });
 
-test('opportunity form quick customer creation shows duplicate owner coordination warning', async () => {
+test('direct opportunity customer creation never reaches duplicate handling', async () => {
   let createCalled = false;
   const { agent } = await createLoggedInAgent({
     customerRepository: {
@@ -1046,15 +1001,11 @@ test('opportunity form quick customer creation shows duplicate owner coordinatio
       notes: 'Created while initiating opportunity'
     });
 
-  assert.equal(response.status, 409);
-  assert.match(response.text, /<details class="inline-create-panel" open>/);
-  assert.match(response.text, /Duplicate customer found/);
-  assert.match(response.text, /Other Sales/);
-  assert.match(response.text, /value="New Account"/);
+  assert.equal(response.status, 403);
   assert.equal(createCalled, false);
 });
 
-test('opportunity form quick creates contact and returns with it selected', async () => {
+test('direct opportunity contact creation is blocked', async () => {
   const { agent, createdContacts } = await createLoggedInAgent();
 
   const response = await agent
@@ -1070,20 +1021,8 @@ test('opportunity form quick creates contact and returns with it selected', asyn
       notes: 'Primary buyer'
     });
 
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.location, '/opportunities/new?customerId=10&contactId=21');
-  assert.deepEqual(createdContacts, [{
-    customerId: 10,
-    name: 'Bob Buyer',
-    title: 'Purchasing Manager',
-    phone: '13800000000',
-    email: 'bob@example.com',
-    wechat: 'bobwx',
-    educationBackground: '',
-    workExperience: '',
-    keyAchievements: '',
-    notes: 'Primary buyer'
-  }]);
+  assert.equal(response.status, 403);
+  assert.deepEqual(createdContacts, []);
 });
 
 test('opportunity detail keeps workflow todos out of the detail page and shows timeline', async () => {
@@ -2840,7 +2779,7 @@ test('attachment upload and preview require opportunity view permission before f
   }
 });
 
-test('page form creates opportunity draft referencing customer and contact', async () => {
+test('page form cannot create an opportunity without an inquiry', async () => {
   const { agent, created } = await createLoggedInAgent();
 
   const response = await agent
@@ -2857,26 +2796,17 @@ test('page form creates opportunity draft referencing customer and contact', asy
       expectedBidDate: '2026-07-10'
     });
 
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.location, '/opportunities/31');
-  assert.equal(created[0].customerId, 10);
-  assert.equal(created[0].primaryContactId, 20);
-  assert.equal(created[0].status, STATUSES.DRAFT);
+  assert.equal(response.status, 403);
+  assert.deepEqual(created, []);
 });
 
-test('csrf protected opportunity form submits with the rendered token', async () => {
+test('csrf protection does not reopen the blocked direct opportunity endpoint', async () => {
   const { agent, created } = await createLoggedInAgent({ csrfProtection: true });
-
-  const form = await agent.get('/opportunities/new');
-  const csrfToken = extractCsrfToken(form.text);
-
-  assert.ok(csrfToken);
 
   const response = await agent
     .post('/opportunities')
     .type('form')
     .send({
-      _csrf: csrfToken,
       title: 'Factory upgrade',
       customerId: '10',
       primaryContactId: '20',
@@ -2887,12 +2817,11 @@ test('csrf protected opportunity form submits with the rendered token', async ()
       expectedBidDate: '2026-07-10'
     });
 
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.location, '/opportunities/31');
-  assert.equal(created[0].title, 'Factory upgrade');
+  assert.equal(response.status, 403);
+  assert.deepEqual(created, []);
 });
 
-test('JSON API creates opportunity draft', async () => {
+test('JSON API blocks direct opportunity creation', async () => {
   const { agent, created } = await createLoggedInAgent();
 
   const response = await agent
@@ -2908,11 +2837,9 @@ test('JSON API creates opportunity draft', async () => {
       expectedBidDate: '2026-07-10'
     });
 
-  assert.equal(response.status, 201);
-  assert.equal(response.body.id, 31);
-  assert.equal(response.body.customerId, 10);
-  assert.equal(response.body.primaryContactId, 20);
-  assert.equal(created[0].salespersonId, 7);
+  assert.equal(response.status, 403);
+  assert.match(response.body.error, /Create and review an inquiry/);
+  assert.deepEqual(created, []);
 });
 
 test('salesperson submits initiation from opportunity detail page', async () => {

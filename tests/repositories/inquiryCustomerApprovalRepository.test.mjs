@@ -103,7 +103,8 @@ test('approval completion locks the approval and inquiry and creates opportunity
     deliveryCycle: '90 days',
     expectedBidDate: '2026-10-01',
     allowAnyReviewer: false,
-    inquiryId: 11
+    inquiryId: 11,
+    salespersonId: 7
   });
 
   assert.deepEqual(opportunity, {
@@ -117,13 +118,14 @@ test('approval completion locks the approval and inquiry and creates opportunity
   assert.match(queryTarget.queries[0].sql, /FOR UPDATE OF approval, inquiry/);
   assert.match(queryTarget.queries[0].sql, /INSERT INTO contacts/);
   assert.match(queryTarget.queries[0].sql, /INSERT INTO opportunities/);
-  assert.match(queryTarget.queries[0].sql, /request\.requested_by/);
+  assert.match(queryTarget.queries[0].sql, /origin_inquiry_id/);
+  assert.match(queryTarget.queries[0].sql, /request\.inquiry_id/);
   assert.match(queryTarget.queries[0].sql, /inquiry\.status = 'customer_approval_pending'/);
   assert.match(queryTarget.queries[0].sql, /SET status = 'approved'/);
   assert.deepEqual(queryTarget.queries[0].params, [
     80, 2, 'Approved', null, 'Alice', 'Director', '123', 'alice@example.com', 'Need quote',
     'Acme project', 'Need quote', 1000, 'Evaporator', 'Expansion', '90 days', '2026-10-01',
-    false, 11
+    false, 11, 7
   ]);
 });
 

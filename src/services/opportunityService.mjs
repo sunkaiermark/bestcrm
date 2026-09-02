@@ -51,8 +51,9 @@ export function canManageOpportunityResponsibility(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) || hasRole(user, ROLES.SALES_MANAGER);
 }
 
-export function normalizeOpportunityInput(input, actor) {
+export function normalizeOpportunityInput(input, actor, options = {}) {
   return {
+    originInquiryId: numberOrNull(options.originInquiryId),
     opportunityNo: text(input.opportunityNo) || null,
     title: text(input.title),
     customerId: Number(input.customerId),
@@ -64,7 +65,7 @@ export function normalizeOpportunityInput(input, actor) {
     deliveryCycle: text(input.deliveryCycle),
     expectedBidDate: isoDateOrNull(input.expectedBidDate),
     status: STATUSES.DRAFT,
-    salespersonId: actor.id
+    salespersonId: numberOrNull(options.salespersonId) || actor.id
   };
 }
 
@@ -109,7 +110,11 @@ async function validateOpportunityReferences(repositories, actor, normalized, op
   if (Number(customer.id) !== Number(normalized.customerId)) {
     throw new Error('Customer not found');
   }
-  if (!canMaintainCustomer(actor, customer)) {
+  const managedInquiry = options.inquiryConversion === true;
+  if (managedInquiry && Number(customer.ownerUserId) !== Number(normalized.salespersonId)) {
+    forbidden();
+  }
+  if (!managedInquiry && !canMaintainCustomer(actor, customer)) {
     forbidden();
   }
 
@@ -121,14 +126,24 @@ async function validateOpportunityReferences(repositories, actor, normalized, op
     if (contact.customerId !== normalized.customerId) {
       throw new Error('Contact does not belong to customer');
     }
-    if (!hasRole(actor, ROLES.ADMINISTRATOR) && contact.customerOwnerUserId !== actor.id) {
+    if (managedInquiry && Number(contact.customerOwnerUserId) !== Number(normalized.salespersonId)) {
+      forbidden();
+    }
+    if (!managedInquiry && !hasRole(actor, ROLES.ADMINISTRATOR) && contact.customerOwnerUserId !== actor.id) {
       forbidden();
     }
   }
 }
 
 export async function createOpportunityDraft(repositories, actor, input, options = {}) {
-  const normalized = normalizeOpportunityInput(input, actor);
+  const authorizedInquiryConversion = options.inquiryConversion === true
+    && numberOrNull(options.originInquiryId)
+    && numberOrNull(options.salespersonId)
+    && (hasRole(actor, ROLES.ADMINISTRATOR) || hasRole(actor, ROLES.SALES_MANAGER));
+  if (!authorizedInquiryConversion) {
+    forbidden();
+  }
+  const normalized = normalizeOpportunityInput(input, actor, options);
   await validateOpportunityReferences(repositories, actor, normalized, options);
 
   return repositories.opportunityRepository.createOpportunity(normalized);

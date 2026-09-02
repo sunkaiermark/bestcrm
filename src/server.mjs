@@ -36,6 +36,7 @@ import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
 import { inquiryIntakeRoutes } from './routes/inquiryIntakeRoutes.mjs';
 import { inquiryRoutes } from './routes/inquiryRoutes.mjs';
+import { leadSubmissionRoutes } from './routes/leadSubmissionRoutes.mjs';
 import { notificationRoutes } from './routes/notificationRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
@@ -509,6 +510,13 @@ export function createApp(options = {}) {
   app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository, loginSecurityRepository }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
+  app.use(leadSubmissionRoutes({
+    inquiryRepository,
+    inquiryAttachmentRepository,
+    userRepository,
+    uploadDir: config.uploadDir,
+    maxUploadMb: config.maxUploadMb
+  }));
   app.use(inquiryRoutes({
     inquiryRepository,
     inquiryAttachmentRepository,

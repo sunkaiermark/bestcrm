@@ -5,20 +5,16 @@ import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 import multer from 'multer';
 import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
-import { CUSTOMER_INDUSTRIES } from '../domain/customerIndustries.mjs';
 import { CUSTOMER_REGIONS } from '../domain/customerRegions.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
 import { ROLE_DETAILS } from '../domain/systemCatalog.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
-import { createContact } from '../services/contactService.mjs';
-import { DuplicateCustomerError, createCustomer } from '../services/customerService.mjs';
 import {
   canManageOpportunityResponsibility,
   canEditOpportunity,
   canViewOpportunity,
-  createOpportunityDraft,
   updateOpportunity
 } from '../services/opportunityService.mjs';
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
@@ -91,55 +87,6 @@ async function loadOpportunityFilterOptions(opportunityRepository, userRepositor
     customers: opportunityOptions.customers || [],
     contacts: opportunityOptions.contacts || []
   };
-}
-
-function newContactUrl(selectedCustomerId) {
-  const params = new URLSearchParams();
-  if (selectedCustomerId) {
-    params.set('customerId', String(selectedCustomerId));
-  }
-  params.set('returnTo', 'opportunity-initiation');
-  return `/contacts/new?${params.toString()}`;
-}
-
-async function renderOpportunityForm(res, {
-  customerRepository,
-  contactRepository,
-  user,
-  opportunity = {},
-  duplicateCustomers = [],
-  newCustomer = {},
-  inlineCustomerOpen = false,
-  action = '/opportunities',
-  pageTitle,
-  submitLabel,
-  allowInlineCreate
-}) {
-  const filter = hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
-  const [customers, contacts] = await Promise.all([
-    customerRepository.listCustomers(filter),
-    contactRepository.listContacts(filter)
-  ]);
-  const selectedCustomerId = opportunity.customerId || customers[0]?.id || '';
-  res.render('opportunities/form', {
-    opportunity: {
-      ...opportunity,
-      customerId: selectedCustomerId
-    },
-    customers,
-    contacts,
-    countryOptions: CUSTOMER_COUNTRIES,
-    industryOptions: CUSTOMER_INDUSTRIES,
-    regionOptions: CUSTOMER_REGIONS,
-    duplicateCustomers,
-    newCustomer,
-    inlineCustomerOpen,
-    newContactUrl: newContactUrl(selectedCustomerId),
-    action,
-    pageTitle,
-    submitLabel,
-    allowInlineCreate
-  });
 }
 
 const assignmentRoles = [
@@ -766,68 +713,27 @@ export function opportunityRoutes({
   });
 
   router.get('/opportunities/new', async (req, res, next) => {
-    try {
-      await renderOpportunityForm(res, {
-        customerRepository,
-        contactRepository,
-        user: req.currentUser,
-        opportunity: {
-          customerId: req.query.customerId,
-          primaryContactId: req.query.contactId
-        },
-        action: '/opportunities'
-      });
-    } catch (error) {
-      next(error);
+    if (hasRole(req.currentUser, ROLES.SALESPERSON)) {
+      res.redirect('/lead-submissions/new');
+      return;
     }
+    if (hasRole(req.currentUser, ROLES.ADMINISTRATOR) || hasRole(req.currentUser, ROLES.SALES_MANAGER)) {
+      res.redirect('/inquiries/new');
+      return;
+    }
+    res.status(403).send('Forbidden');
   });
 
-  router.post('/opportunities/customers', async (req, res, next) => {
-    try {
-      const customer = await createCustomer(customerRepository, req.currentUser, req.body);
-      const params = new URLSearchParams({ customerId: String(customer.id) });
-      res.redirect(`/opportunities/new?${params.toString()}`);
-    } catch (error) {
-      if (error instanceof DuplicateCustomerError) {
-        res.status(409);
-        await renderOpportunityForm(res, {
-          customerRepository,
-          contactRepository,
-          user: req.currentUser,
-          duplicateCustomers: error.duplicates,
-          newCustomer: req.body,
-          inlineCustomerOpen: true
-        });
-        return;
-      }
-      next(error);
-    }
+  router.post('/opportunities/customers', (req, res) => {
+    res.status(403).send(res.locals.t('createInquiryFirst'));
   });
 
-  router.post('/opportunities/contacts', async (req, res, next) => {
-    try {
-      const contact = await createContact({ customerRepository, contactRepository }, req.currentUser, req.body);
-      const params = new URLSearchParams({
-        customerId: String(contact.customerId),
-        contactId: String(contact.id)
-      });
-      res.redirect(`/opportunities/new?${params.toString()}`);
-    } catch (error) {
-      next(error);
-    }
+  router.post('/opportunities/contacts', (req, res) => {
+    res.status(403).send(res.locals.t('createInquiryFirst'));
   });
 
-  router.post('/opportunities', async (req, res, next) => {
-    try {
-      const opportunity = await createOpportunityDraft({
-        customerRepository,
-        contactRepository,
-        opportunityRepository
-      }, req.currentUser, req.body);
-      res.redirect(`/opportunities/${opportunity.id}`);
-    } catch (error) {
-      next(error);
-    }
+  router.post('/opportunities', (req, res) => {
+    res.status(403).send(res.locals.t('createInquiryFirst'));
   });
 
   router.get('/opportunities/:id/edit', async (req, res, next) => {
@@ -1416,17 +1322,8 @@ export function opportunityRoutes({
     }
   });
 
-  router.post('/api/opportunities', async (req, res, next) => {
-    try {
-      const opportunity = await createOpportunityDraft({
-        customerRepository,
-        contactRepository,
-        opportunityRepository
-      }, req.currentUser, req.body);
-      res.status(201).json(opportunity);
-    } catch (error) {
-      next(error);
-    }
+  router.post('/api/opportunities', (req, res) => {
+    res.status(403).json({ error: res.locals.t('createInquiryFirst') });
   });
 
   return router;

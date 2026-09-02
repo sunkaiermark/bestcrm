@@ -163,7 +163,8 @@ export function createInquiryCustomerApprovalRepository(queryTarget) {
             delivery_cycle,
             expected_bid_date,
             status,
-            salesperson_id
+            salesperson_id,
+            origin_inquiry_id
           )
           SELECT
             nextval('opportunity_no_seq')::text,
@@ -177,7 +178,8 @@ export function createInquiryCustomerApprovalRepository(queryTarget) {
             $15,
             $16,
             'draft',
-            request.requested_by
+            $19,
+            request.inquiry_id
           FROM request
           RETURNING *
         ), converted AS (
@@ -186,7 +188,6 @@ export function createInquiryCustomerApprovalRepository(queryTarget) {
               matched_customer_id = opportunity.customer_id,
               matched_contact_id = opportunity.primary_contact_id,
               converted_opportunity_id = opportunity.id,
-              assigned_user_id = request.requested_by,
               reviewed_by = $2,
               reviewed_at = now(),
               updated_at = now()
@@ -232,7 +233,8 @@ export function createInquiryCustomerApprovalRepository(queryTarget) {
         input.deliveryCycle || '',
         input.expectedBidDate,
         input.allowAnyReviewer || false,
-        input.inquiryId
+        input.inquiryId,
+        input.salespersonId
       ]);
       const row = result.rows[0];
       return row ? {

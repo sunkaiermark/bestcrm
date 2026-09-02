@@ -9,6 +9,7 @@
               · <%= inquiry.sourceReceivedAt || inquiry.createdAt || '' %>
               · <span class="status"><%= t(`inquiryStatus.${inquiry.status}`) %></span>
               · <%= t(`inquiryPriority.${inquiry.priority}`) %>
+              <% if (inquiry.submissionType === 'sales_lead') { %> · <%= t('salesSubmittedLead') %><% } %>
             </p>
             <h1><%= inquiry.subject || inquiry.companyName || `${t('inquiry')} #${inquiry.id}` %></h1>
           </div>
@@ -160,6 +161,15 @@
             <section class="content-section inquiry-step-section">
               <h2><span class="inquiry-step-number">3</span><%= t('convertToOpportunity') %></h2>
               <div class="inquiry-form-grid">
+                <label>
+                  <%= t('salesOwner') %>
+                  <select name="salespersonId" required>
+                    <option value=""><%= t('selectSalesOwner') %></option>
+                    <% for (const salesperson of salespeople) { %>
+                      <option value="<%= salesperson.id %>"<%= Number(inquiry.recommendedSalespersonId) === Number(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
+                    <% } %>
+                  </select>
+                </label>
                 <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" value="<%= inquiry.subject || inquiry.productInterest || inquiry.companyName || '' %>" required></label>
                 <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount"></label>
                 <label><%= t('deliveryPeriod') %><input name="deliveryCycle"></label>
@@ -228,6 +238,8 @@
           <div class="inquiry-summary-grid">
             <span><strong><%= t('sourceReference') %>:</strong> <%= inquiry.sourceReference || '-' %></span>
             <span><strong><%= t('receivedAt') %>:</strong> <%= inquiry.sourceReceivedAt || inquiry.createdAt || '-' %></span>
+            <span><strong><%= t('leadSourceChannel') %>:</strong> <%= t(`leadSourceChannel.${inquiry.sourceChannel}`) %></span>
+            <span><strong><%= t('recommendedSalesOwner') %>:</strong> <%= inquiry.recommendedSalespersonDisplayName || '-' %></span>
           </div>
           <pre><%= JSON.stringify(inquiry.rawPayload || {}, null, 2) %></pre>
         </details>

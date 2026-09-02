@@ -13,6 +13,7 @@ function mapOpportunityRow(row) {
   }
   return {
     id: Number(row.id),
+    originInquiryId: numberOrNull(row.origin_inquiry_id),
     opportunityNo: row.opportunity_no,
     title: row.title,
     customerId: Number(row.customer_id),
@@ -43,6 +44,7 @@ function mapOpportunityRow(row) {
 const opportunitySelect = `
   SELECT
     o.id,
+    o.origin_inquiry_id,
     o.opportunity_no,
     o.title,
     o.customer_id,
@@ -256,6 +258,7 @@ export function createOpportunityRepository(queryTarget) {
     async createOpportunity(input) {
       const result = await queryTarget.query(`
         INSERT INTO opportunities (
+          origin_inquiry_id,
           opportunity_no,
           title,
           customer_id,
@@ -269,9 +272,10 @@ export function createOpportunityRepository(queryTarget) {
           status,
           salesperson_id
         )
-        VALUES (COALESCE($1, nextval('opportunity_no_seq')::text), $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
+        VALUES ($1, COALESCE($2, nextval('opportunity_no_seq')::text), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
         RETURNING *
       `, [
+        input.originInquiryId,
         input.opportunityNo,
         input.title,
         input.customerId,

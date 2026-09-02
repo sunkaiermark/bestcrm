@@ -1502,6 +1502,7 @@
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>
     <% const canSeeSystemNav = Array.isArray(currentUser?.roles) && currentUser.roles.includes('administrator'); %>
     <% const canSeeInquiryNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'sales_manager'].includes(role)); %>
+    <% const canSubmitLead = Array.isArray(currentUser?.roles) && currentUser.roles.includes('salesperson'); %>
     <div class="app-shell">
       <aside class="left-nav" aria-label="<%= t('primaryNavigation') %>">
         <a class="brand" href="/workbench" aria-label="Sunkaier workbench">
@@ -1520,6 +1521,9 @@
           </a>
           <% if (canSeeInquiryNav) { %>
             <a class="<%= navClass('inquiries') %>" href="/inquiries"><%= t('inquiries') %></a>
+          <% } %>
+          <% if (canSubmitLead) { %>
+            <a class="<%= navClass('lead-submissions') %>" href="/lead-submissions"><%= t('myLeadSubmissions') %></a>
           <% } %>
           <a class="<%= navClass('sales-work') %>" href="/sales-work/plans"><%= t('salesWork') %></a>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>

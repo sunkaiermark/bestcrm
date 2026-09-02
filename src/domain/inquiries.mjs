@@ -16,6 +16,20 @@ export const INQUIRY_STATUSES = [
 
 export const INQUIRY_PRIORITIES = ['low', 'normal', 'high', 'urgent'];
 
+export const INQUIRY_SUBMISSION_TYPES = ['standard', 'sales_lead'];
+
+export const SALES_LEAD_SOURCE_CHANNELS = [
+  'exhibition',
+  'referral',
+  'linkedin',
+  'whatsapp',
+  'phone',
+  'partner',
+  'existing_customer',
+  'email',
+  'other'
+];
+
 export function isInquirySource(value) {
   return INQUIRY_SOURCES.includes(value);
 }
@@ -34,4 +48,12 @@ export function isInquiryDispositionStatus(value) {
 
 export function isInquiryPriority(value) {
   return INQUIRY_PRIORITIES.includes(value);
+}
+
+export function isInquirySubmissionType(value) {
+  return INQUIRY_SUBMISSION_TYPES.includes(value);
+}
+
+export function isSalesLeadSourceChannel(value) {
+  return SALES_LEAD_SOURCE_CHANNELS.includes(value);
 }

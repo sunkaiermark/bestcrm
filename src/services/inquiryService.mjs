@@ -103,6 +103,30 @@ export function inquiryAssignableUsers(actor, users = []) {
   return [];
 }
 
+function isEligibleSalesperson(user) {
+  return user?.isActive !== false
+    && hasRole(user, ROLES.SALESPERSON);
+}
+
+export function inquirySalespersonUsers(actor, users = []) {
+  if (!canAccessInquiryInbox(actor)) {
+    return [];
+  }
+  return users.filter(isEligibleSalesperson);
+}
+
+async function assertSalespersonAllowed(userRepository, actor, salespersonId) {
+  const users = typeof userRepository?.listUsersWithRoles === 'function'
+    ? await userRepository.listUsersWithRoles()
+    : [];
+  const salesperson = inquirySalespersonUsers(actor, users)
+    .find((user) => Number(user.id) === Number(salespersonId));
+  if (!salesperson) {
+    throw new Error('Sales owner is required');
+  }
+  return salesperson;
+}
+
 async function assertInquiryAssigneeAllowed(userRepository, actor, assignedUserId) {
   const users = typeof userRepository?.listUsersWithRoles === 'function'
     ? await userRepository.listUsersWithRoles()
@@ -139,6 +163,8 @@ export function normalizeInquiryInput(input, actor) {
   const status = isActiveInquiryStatus(input.status) ? input.status : 'new';
   return {
     source,
+    submissionType: 'standard',
+    sourceChannel: source,
     sourceReference: text(input.sourceReference),
     sourceReceivedAt: isoTimestampOrNull(input.sourceReceivedAt),
     subject: text(input.subject),
@@ -154,6 +180,7 @@ export function normalizeInquiryInput(input, actor) {
     priority,
     status,
     assignedUserId: numberOrNull(input.assignedUserId) || actor.id,
+    recommendedSalespersonId: null,
     matchedCustomerId: numberOrNull(input.matchedCustomerId),
     matchedContactId: numberOrNull(input.matchedContactId),
     createdBy: actor.id,
@@ -248,6 +275,8 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     forbidden();
   }
   assertInquiryActionable(inquiry);
+  const salespersonId = numberOrNull(input.salespersonId) || inquiry.recommendedSalespersonId;
+  await assertSalespersonAllowed(repositories.userRepository, actor, salespersonId);
   let customerId = numberInputOrCurrent(input, 'customerId', inquiry.matchedCustomerId);
   const createMissingRecords = input.createMissingRecords !== '0';
   if (!customerId && createMissingRecords) {
@@ -257,9 +286,10 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     }
     const customer = await createCustomer(repositories.customerRepository, actor, {
       name: customerName,
+      ownerUserId: salespersonId,
       country: text(input.newCustomerCountry) || text(input.country) || inquiry.country,
       notes: text(input.newCustomerNotes) || inquiry.requirementText
-    });
+    }, { managedInquiry: true });
     customerId = customer.id;
   }
   if (!customerId) {
@@ -269,7 +299,7 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
   if (!customer) {
     throw new Error('Customer not found');
   }
-  if (!canMaintainCustomer(actor, customer)) {
+  if (Number(customer.ownerUserId) !== Number(salespersonId)) {
     throw new CustomerApprovalRequiredError(customer);
   }
   let primaryContactId = numberInputOrCurrent(input, 'primaryContactId', inquiry.matchedContactId);
@@ -284,7 +314,7 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
       phone: text(input.newContactPhone) || text(input.contactPhone) || inquiry.contactPhone,
       email: text(input.newContactEmail) || text(input.contactEmail) || inquiry.contactEmail,
       notes: text(input.newContactNotes) || inquiry.requirementText
-    });
+    }, { managedInquiry: true });
     primaryContactId = contact.id;
   }
   const opportunity = await createOpportunityDraft(repositories, actor, {
@@ -299,7 +329,12 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     deliveryCycle: input.deliveryCycle,
     expectedBidDate: input.expectedBidDate,
     status: STATUSES.DRAFT
-  }, { validatedCustomer: customer });
+  }, {
+    validatedCustomer: customer,
+    inquiryConversion: true,
+    originInquiryId: inquiry.id,
+    salespersonId
+  });
   await copyInquiryAttachmentsToOpportunity({
     inquiryAttachmentRepository: repositories.inquiryAttachmentRepository,
     attachmentRepository: repositories.attachmentRepository,
@@ -486,6 +521,7 @@ export async function saveInquiryRecords(repositories, actor, inquiry, input = {
 
 function customerApprovalPayload(inquiry, input) {
   return {
+    salespersonId: numberOrNull(input.salespersonId) || inquiry.recommendedSalespersonId,
     primaryContactId: numberInputOrCurrent(input, 'primaryContactId', inquiry.matchedContactId),
     newContactName: text(input.contactName) || text(inquiry.contactName) || text(inquiry.contactEmail) || text(inquiry.contactPhone),
     newContactTitle: text(input.contactTitle),
@@ -534,6 +570,8 @@ export async function requestInquiryCustomerApproval(repositories, actor, inquir
     forbidden();
   }
   assertInquiryActionable(inquiry);
+  const salespersonId = numberOrNull(input.salespersonId) || inquiry.recommendedSalespersonId;
+  await assertSalespersonAllowed(repositories.userRepository, actor, salespersonId);
   const customerId = numberOrNull(input.approvalCustomerId || input.customerId);
   if (!customerId) {
     throw new Error('Customer is required');
@@ -542,14 +580,14 @@ export async function requestInquiryCustomerApproval(repositories, actor, inquir
   if (!customer) {
     throw new Error('Customer not found');
   }
-  if (canMaintainCustomer(actor, customer)) {
+  if (Number(customer.ownerUserId) === Number(salespersonId)) {
     throw new Error('Customer approval is not required');
   }
   const selectedCustomerId = numberOrNull(input.customerId);
   const approvalInput = selectedCustomerId && selectedCustomerId !== Number(customer.id)
     ? { ...input, primaryContactId: '' }
     : input;
-  const payload = customerApprovalPayload(inquiry, approvalInput);
+  const payload = customerApprovalPayload(inquiry, { ...approvalInput, salespersonId });
   if (payload.primaryContactId) {
     const contact = await repositories.contactRepository.getContactDetail(payload.primaryContactId);
     if (!contact) {

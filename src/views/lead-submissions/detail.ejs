@@ -1,0 +1,37 @@
+<%- include('../partials/app-start', { title: `${t('leadSubmissionReceipt')} - BESTCRM`, activeNav: 'lead-submissions' }) %>
+        <p class="breadcrumb"><a href="/lead-submissions"><%= t('myLeadSubmissions') %></a></p>
+        <header class="page-header">
+          <div>
+            <h1><%= submission.subject || submission.companyName || `${t('leadSubmissionReceipt')} #${submission.id}` %></h1>
+            <p class="muted"><%= t('leadSubmissionReceiptNotice') %></p>
+          </div>
+          <% if (submission.convertedOpportunityId && Number(submission.convertedSalespersonId) === Number(currentUser.id)) { %>
+            <a class="quick-action" href="/opportunities/<%= submission.convertedOpportunityId %>"><%= t('viewOpportunity') %></a>
+          <% } %>
+        </header>
+
+        <section class="content-section">
+          <div class="inquiry-summary-grid">
+            <span><strong><%= t('status') %>:</strong> <%= t(`inquiryStatus.${submission.status}`) %></span>
+            <span><strong><%= t('submittedAt') %>:</strong> <%= submission.createdAt || '-' %></span>
+            <span><strong><%= t('reviewSalesManager') %>:</strong> <%= submission.assignedDisplayName || '-' %></span>
+            <span><strong><%= t('leadSourceChannel') %>:</strong> <%= t(`leadSourceChannel.${submission.sourceChannel}`) %></span>
+            <span><strong><%= t('companyName') %>:</strong> <%= submission.companyName || '-' %></span>
+            <span><strong><%= t('contactName') %>:</strong> <%= submission.contactName || '-' %></span>
+            <span><strong><%= t('email') %>:</strong> <%= submission.contactEmail || '-' %></span>
+            <span><strong><%= t('phone') %>:</strong> <%= submission.contactPhone || '-' %></span>
+            <span><strong><%= t('productInterest') %>:</strong> <%= submission.productInterest || '-' %></span>
+            <span><strong><%= t('opportunityType') %>:</strong> <%= submission.opportunityType || '-' %></span>
+            <p class="inquiry-field-full detail-text-cell"><strong><%= t('requirement') %>:</strong><br><%= submission.requirementText || '-' %></p>
+          </div>
+        </section>
+
+        <% if (attachments.length) { %>
+          <section class="content-section">
+            <h2><%= t('supportingFile') %></h2>
+            <% for (const attachment of attachments) { %>
+              <p><a href="/lead-submissions/<%= submission.id %>/attachments/<%= attachment.id %>/download"><%= attachment.originalName %></a></p>
+            <% } %>
+          </section>
+        <% } %>
+<%- include('../partials/app-end') %>

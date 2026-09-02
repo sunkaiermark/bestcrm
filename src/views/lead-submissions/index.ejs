@@ -1,0 +1,28 @@
+<%- include('../partials/app-start', { title: `${t('myLeadSubmissions')} - BESTCRM`, activeNav: 'lead-submissions' }) %>
+        <header class="page-header">
+          <h1><%= t('myLeadSubmissions') %></h1>
+          <a class="quick-action" href="/lead-submissions/new"><%= t('submitNewLead') %></a>
+        </header>
+
+        <section class="list-section">
+          <% if (submissions.length === 0) { %>
+            <p class="empty-state"><%= t('noLeadSubmissions') %></p>
+          <% } else { %>
+            <table>
+              <thead><tr><th><%= t('submittedAt') %></th><th><%= t('companyName') %></th><th><%= t('productInterest') %></th><th><%= t('reviewSalesManager') %></th><th><%= t('status') %></th><th><%= t('actions') %></th></tr></thead>
+              <tbody>
+                <% for (const submission of submissions) { %>
+                  <tr>
+                    <td><%= submission.createdAt || '' %></td>
+                    <td><%= submission.companyName || '-' %></td>
+                    <td><%= submission.productInterest || '-' %></td>
+                    <td><%= submission.assignedDisplayName || '-' %></td>
+                    <td><span class="status"><%= t(`inquiryStatus.${submission.status}`) %></span></td>
+                    <td><a href="/lead-submissions/<%= submission.id %>"><%= t('view') %></a></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          <% } %>
+        </section>
+<%- include('../partials/app-end') %>

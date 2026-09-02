@@ -23,6 +23,7 @@ import {
 
 const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
 const inquiryManager = { id: 7, roles: [ROLES.SALES_MANAGER] };
+const salesOwner = { id: 9, roles: [ROLES.SALESPERSON], isActive: true, displayName: 'Sales Owner' };
 const salesManager = { id: 2, roles: [ROLES.SALES_MANAGER] };
 const quotationEngineer = { id: 3, roles: [ROLES.QUOTATION_ENGINEER] };
 const administrator = { id: 99, roles: [ROLES.ADMINISTRATOR] };
@@ -98,6 +99,8 @@ test('createInquiry normalizes input and requires requirement text', async () =>
   assert.equal(inquiry.id, 10);
   assert.deepEqual(calls, [{
     source: 'email',
+    submissionType: 'standard',
+    sourceChannel: 'email',
     sourceReference: '',
     sourceReceivedAt: null,
     subject: 'RFQ',
@@ -113,6 +116,7 @@ test('createInquiry normalizes input and requires requirement text', async () =>
     priority: 'urgent',
     status: 'new',
     assignedUserId: 7,
+    recommendedSalespersonId: null,
     matchedCustomerId: null,
     matchedContactId: null,
     createdBy: 7,
@@ -206,6 +210,11 @@ test('updateInquiryReview validates matched customer and contact', async () => {
 test('convertInquiryToOpportunity creates draft opportunity and marks inquiry converted', async () => {
   const calls = [];
   const repositories = {
+    userRepository: {
+      async listUsersWithRoles() {
+        return [salesOwner];
+      }
+    },
     inquiryRepository: {
       async markConverted(id, input) {
         calls.push(['markConverted', id, input]);
@@ -215,13 +224,13 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
     customerRepository: {
       async getCustomerDetail(id) {
         calls.push(['getCustomer', id]);
-        return { id, ownerUserId: 7 };
+        return { id, ownerUserId: 9 };
       }
     },
     contactRepository: {
       async getContactDetail(id) {
         calls.push(['getContact', id]);
-        return { id, customerId: 20, customerOwnerUserId: 7 };
+        return { id, customerId: 20, customerOwnerUserId: 9 };
       }
     },
     opportunityRepository: {
@@ -242,13 +251,14 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
     matchedContactId: 30,
     assignedUserId: 7,
     status: 'reviewing'
-  }, {});
+  }, { salespersonId: '9' });
 
   assert.equal(opportunity.id, 40);
   assert.deepEqual(calls, [
     ['getCustomer', 20],
     ['getContact', 30],
     ['createOpportunity', {
+      originInquiryId: 11,
       opportunityNo: null,
       title: 'Need evaporator quote',
       customerId: 20,
@@ -260,7 +270,7 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
       deliveryCycle: '',
       expectedBidDate: null,
       status: 'draft',
-      salespersonId: 7
+      salespersonId: 9
     }],
     ['markConverted', 11, {
       matchedCustomerId: 20,
@@ -274,6 +284,11 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
 test('conversion can create missing customer and contact from extracted inquiry fields', async () => {
   const calls = [];
   const repositories = {
+    userRepository: {
+      async listUsersWithRoles() {
+        return [salesOwner];
+      }
+    },
     inquiryRepository: {
       async markConverted(id, input) {
         calls.push(['markConverted', id, input]);
@@ -289,7 +304,7 @@ test('conversion can create missing customer and contact from extracted inquiry 
         return { id: 20, ...input };
       },
       async getCustomerDetail(id) {
-        return { id, ownerUserId: 7 };
+        return { id, ownerUserId: 9 };
       }
     },
     contactRepository: {
@@ -298,7 +313,7 @@ test('conversion can create missing customer and contact from extracted inquiry 
         return { id: 30, ...input };
       },
       async getContactDetail(id) {
-        return { id, customerId: 20, customerOwnerUserId: 7 };
+        return { id, customerId: 20, customerOwnerUserId: 9 };
       }
     },
     opportunityRepository: {
@@ -324,11 +339,12 @@ test('conversion can create missing customer and contact from extracted inquiry 
     requirementText: 'Need quote',
     matchedCustomerId: null,
     matchedContactId: null
-  }, { createMissingRecords: '1' });
+  }, { createMissingRecords: '1', salespersonId: '9' });
 
   assert.equal(opportunity.customerId, 20);
   assert.equal(opportunity.primaryContactId, 30);
   assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].name, 'Acme');
+  assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].ownerUserId, 9);
   assert.equal(calls.find((call) => call[0] === 'createContact')[1].email, 'alice@example.com');
   assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].productInterest, 'Evaporator');
   assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].projectType, 'Expansion');
@@ -336,6 +352,11 @@ test('conversion can create missing customer and contact from extracted inquiry 
 
 test('conversion requires approval instead of duplicating another salesperson customer', async () => {
   const repositories = {
+    userRepository: {
+      async listUsersWithRoles() {
+        return [salesOwner];
+      }
+    },
     inquiryRepository: {},
     customerRepository: {
       async getCustomerDetail(id) {
@@ -359,7 +380,7 @@ test('conversion requires approval instead of duplicating another salesperson cu
       requirementText: 'Need quote',
       matchedCustomerId: 20,
       matchedContactId: null
-    }, {}),
+    }, { salespersonId: '9' }),
     (error) => error instanceof CustomerApprovalRequiredError
       && error.customer.ownerUserId === 8
   );
@@ -382,7 +403,7 @@ test('cross-sales customer request is assigned to a sales manager with proposed 
     },
     userRepository: {
       async listUsersWithRoles() {
-        return [{ id: 2, displayName: 'Sales Manager', isActive: true, roles: [ROLES.SALES_MANAGER] }];
+        return [salesOwner, { id: 2, displayName: 'Sales Manager', isActive: true, roles: [ROLES.SALES_MANAGER] }];
       }
     },
     inquiryCustomerApprovalRepository: {
@@ -406,6 +427,7 @@ test('cross-sales customer request is assigned to a sales manager with proposed 
     subject: 'Acme project'
   }, {
     approvalCustomerId: '20',
+    salespersonId: '9',
     contactName: 'Alice Ahmed',
     contactEmail: 'alice.ahmed@example.com',
     requirementText: 'Updated requirement',
@@ -422,6 +444,7 @@ test('cross-sales customer request is assigned to a sales manager with proposed 
     reviewerUserId: 2,
     matchedContactId: null,
     requestPayload: {
+      salespersonId: 9,
       primaryContactId: null,
       newContactName: 'Alice Ahmed',
       newContactTitle: '',

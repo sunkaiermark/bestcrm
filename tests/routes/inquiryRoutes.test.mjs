@@ -11,6 +11,8 @@ import { createApp } from '../../src/server.mjs';
 const inquiry = {
   id: 11,
   source: 'email',
+  submissionType: 'standard',
+  sourceChannel: 'email',
   sourceReference: 'msg-1',
   sourceReceivedAt: '2026-07-30T08:00:00.000Z',
   subject: 'Need evaporator quote',
@@ -27,6 +29,8 @@ const inquiry = {
   status: 'reviewing',
   assignedUserId: 7,
   assignedDisplayName: 'Sales One',
+  recommendedSalespersonId: 8,
+  recommendedSalespersonDisplayName: 'Sales Two',
   matchedCustomerId: 20,
   matchedCustomerName: 'Acme Co',
   matchedContactId: 30,
@@ -137,11 +141,11 @@ async function createLoggedInAgent(options = {}) {
     customerRepository: {
       async listCustomers(filter) {
         calls.push(['listCustomers', filter]);
-        return [{ id: 20, name: 'Acme Co', ownerUserId: 7 }];
+        return [{ id: 20, name: 'Acme Co', ownerUserId: 8 }];
       },
       async getCustomerDetail(id) {
         calls.push(['getCustomer', Number(id)]);
-        return { id: Number(id), name: 'Acme Co', ownerUserId: 7 };
+        return { id: Number(id), name: 'Acme Co', ownerUserId: 8 };
       },
       async findDuplicatesByName() {
         return [];
@@ -155,11 +159,11 @@ async function createLoggedInAgent(options = {}) {
     contactRepository: {
       async listContacts(filter) {
         calls.push(['listContacts', filter]);
-        return [{ id: 30, customerId: 20, customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' }];
+        return [{ id: 30, customerId: 20, customerName: 'Acme Co', customerOwnerUserId: 8, name: 'Alice' }];
       },
       async getContactDetail(id) {
         calls.push(['getContact', Number(id)]);
-        return { id: Number(id), customerId: 20, customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' };
+        return { id: Number(id), customerId: 20, customerName: 'Acme Co', customerOwnerUserId: 8, name: 'Alice' };
       },
       async createContact(input) {
         calls.push(['createContact', input]);
@@ -310,6 +314,8 @@ test('sales manager opens manual inquiry form and creates inquiry', async () => 
   assert.deepEqual(calls.filter((call) => call[0] === 'createInquiry'), [
     ['createInquiry', {
       source: 'manual',
+      submissionType: 'standard',
+      sourceChannel: 'manual',
       sourceReference: '',
       sourceReceivedAt: null,
       subject: 'Manual RFQ',
@@ -325,6 +331,7 @@ test('sales manager opens manual inquiry form and creates inquiry', async () => 
       priority: 'normal',
       status: 'new',
       assignedUserId: 7,
+      recommendedSalespersonId: null,
       matchedCustomerId: null,
       matchedContactId: null,
       createdBy: 7,
@@ -465,7 +472,7 @@ test('cross-sales duplicate customer is shown without a customer link and can be
   const foreignCustomer = {
     id: 22,
     name: 'Acme Co',
-    ownerUserId: 8,
+    ownerUserId: 9,
     ownerDisplayName: 'Sales Two',
     contactCount: 2
   };
@@ -499,6 +506,7 @@ test('cross-sales duplicate customer is shown without a customer link and can be
     .type('form')
     .send({
       approvalCustomerId: '22',
+      salespersonId: '8',
       customerId: '20',
       primaryContactId: '30',
       contactName: 'Alice',
@@ -514,6 +522,7 @@ test('cross-sales duplicate customer is shown without a customer link and can be
   assert.equal(approvalCall[1].reviewerUserId, 2);
   assert.equal(approvalCall[1].matchedContactId, null);
   assert.equal(approvalCall[1].requestPayload.primaryContactId, null);
+  assert.equal(approvalCall[1].requestPayload.salespersonId, 8);
 });
 
 test('assigned sales manager sees a pending collaboration request and approves its opportunity', async () => {
@@ -538,6 +547,7 @@ test('assigned sales manager sees a pending collaboration request and approves i
     reviewerDisplayName: 'Sales Manager',
     status: 'pending',
     requestPayload: {
+      salespersonId: 8,
       primaryContactId: null,
       newContactName: 'Alice',
       title: 'Acme project',
@@ -617,6 +627,7 @@ test('sales manager reviews inquiry and converts it to opportunity', async () =>
     .send({
       customerId: '20',
       primaryContactId: '30',
+      salespersonId: '8',
       title: 'Acme evaporator project',
       requirement: 'Need wastewater evaporation package',
       projectType: 'Evaporator'
@@ -644,6 +655,7 @@ test('sales manager reviews inquiry and converts it to opportunity', async () =>
       reviewedBy: 7
     }],
     ['createOpportunity', {
+      originInquiryId: 11,
       opportunityNo: null,
       title: 'Acme evaporator project',
       customerId: 20,
@@ -655,7 +667,7 @@ test('sales manager reviews inquiry and converts it to opportunity', async () =>
       deliveryCycle: '',
       expectedBidDate: null,
       status: 'draft',
-      salespersonId: 7
+      salespersonId: 8
     }],
     ['markConverted', 11, {
       matchedCustomerId: 20,
@@ -708,6 +720,7 @@ test('converting an inquiry copies imported email attachments to opportunity req
       .send({
         customerId: '20',
         primaryContactId: '30',
+        salespersonId: '8',
         title: 'Acme evaporator project',
         requirement: 'Need wastewater evaporation package',
         projectType: 'Evaporator'
@@ -748,6 +761,11 @@ test('sales manager can finish an inquiry as customer, contact, or spam', async 
     inquiryRepository: {
       async findById(id) {
         return Number(id) === inquiry.id ? { ...inquiry, matchedContactId: null } : null;
+      }
+    },
+    customerRepository: {
+      async getCustomerDetail(id) {
+        return { id: Number(id), name: 'Acme Co', ownerUserId: 7 };
       }
     }
   });

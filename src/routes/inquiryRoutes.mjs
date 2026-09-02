@@ -17,6 +17,7 @@ import {
   createInquiry,
   deleteInquiry,
   inquiryAssignableUsers,
+  inquirySalespersonUsers,
   inquiryFormOptions,
   inquiryListFilterFor,
   markInquiryAsSpam,
@@ -47,13 +48,6 @@ async function loadInquiryOrSend(inquiryRepository, req, res) {
   return inquiry;
 }
 
-async function listAssignableUsers(userRepository, actor) {
-  const users = typeof userRepository?.listUsersWithRoles === 'function'
-    ? await userRepository.listUsersWithRoles()
-    : [actor];
-  return inquiryAssignableUsers(actor, users);
-}
-
 async function loadCrmOptions({ customerRepository, contactRepository, userRepository }, user) {
   const customerFilter = hasRole(user, ROLES.ADMINISTRATOR) || hasRole(user, ROLES.SALES_MANAGER)
     ? {}
@@ -64,8 +58,12 @@ async function loadCrmOptions({ customerRepository, contactRepository, userRepos
   const contacts = typeof contactRepository?.listContacts === 'function'
     ? await contactRepository.listContacts(customerFilter)
     : [];
-  const assignableUsers = await listAssignableUsers(userRepository, user);
-  return { customers, contacts, assignableUsers };
+  const users = typeof userRepository?.listUsersWithRoles === 'function'
+    ? await userRepository.listUsersWithRoles()
+    : [user];
+  const assignableUsers = inquiryAssignableUsers(user, users);
+  const salespeople = inquirySalespersonUsers(user, users);
+  return { customers, contacts, assignableUsers, salespeople };
 }
 
 function renderInquiryForm(res, data = {}) {
@@ -125,7 +123,8 @@ function handleInquiryError(error, res, next) {
     'Requirement is required',
     'Customer is required',
     'Customer name is required',
-    'Contact name is required'
+    'Contact name is required',
+    'Sales owner is required'
   ].includes(error.message)) {
     res.status(400).send(error.message);
     return;

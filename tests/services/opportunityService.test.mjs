@@ -39,15 +39,15 @@ function buildRepositories({ customer, contact }) {
   };
 }
 
-test('salesperson creates draft opportunity referencing owned customer and contact', async () => {
+test('sales manager creates draft opportunity only through a reviewed inquiry', async () => {
   const repositories = buildRepositories({
     customer: { id: 10, ownerUserId: 7 },
     contact: { id: 20, customerId: 10, customerOwnerUserId: 7 }
   });
 
   const opportunity = await createOpportunityDraft(repositories, {
-    id: 7,
-    roles: [ROLES.SALESPERSON]
+    id: 2,
+    roles: [ROLES.SALES_MANAGER]
   }, {
     title: 'Factory upgrade',
     customerId: 10,
@@ -58,17 +58,19 @@ test('salesperson creates draft opportunity referencing owned customer and conta
     projectType: 'automation',
     deliveryCycle: '45 days',
     expectedBidDate: '2026-07-10'
-  });
+  }, { inquiryConversion: true, originInquiryId: 11, salespersonId: 7 });
 
   assert.equal(opportunity.status, STATUSES.DRAFT);
   assert.equal(opportunity.customerId, 10);
   assert.equal(opportunity.primaryContactId, 20);
   assert.equal(opportunity.salespersonId, 7);
+  assert.equal(opportunity.originInquiryId, 11);
   assert.equal(opportunity.opportunityNo, null);
   assert.deepEqual(repositories.calls, [
     ['getCustomer', 10],
     ['getContact', 20],
     ['createOpportunity', {
+      originInquiryId: 11,
       opportunityNo: null,
       title: 'Factory upgrade',
       customerId: 10,
@@ -85,24 +87,24 @@ test('salesperson creates draft opportunity referencing owned customer and conta
   ]);
 });
 
-test('createOpportunityDraft rejects contact from another customer', async () => {
+test('inquiry conversion rejects contact from another customer', async () => {
   const repositories = buildRepositories({
     customer: { id: 10, ownerUserId: 7 },
     contact: { id: 20, customerId: 11, customerOwnerUserId: 7 }
   });
 
   await assert.rejects(() => createOpportunityDraft(repositories, {
-    id: 7,
-    roles: [ROLES.SALESPERSON]
+    id: 2,
+    roles: [ROLES.SALES_MANAGER]
   }, {
     title: 'Factory upgrade',
     customerId: 10,
     primaryContactId: 20,
     requirement: 'Upgrade production line'
-  }), /Contact does not belong to customer/);
+  }, { inquiryConversion: true, originInquiryId: 11, salespersonId: 7 }), /Contact does not belong to customer/);
 });
 
-test('createOpportunityDraft rejects customers outside salesperson ownership', async () => {
+test('createOpportunityDraft rejects direct opportunity creation', async () => {
   const repositories = buildRepositories({
     customer: { id: 10, ownerUserId: 8 },
     contact: null
@@ -116,6 +118,8 @@ test('createOpportunityDraft rejects customers outside salesperson ownership', a
     customerId: 10,
     requirement: 'Upgrade production line'
   }), /Forbidden/);
+
+  assert.deepEqual(repositories.calls, []);
 });
 
 test('canViewOpportunity allows owner assignees and administrator', () => {
