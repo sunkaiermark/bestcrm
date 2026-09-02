@@ -33,7 +33,9 @@ const opportunityRow = {
   salesperson_username: 'sales01',
   salesperson_display_name: 'Sales One',
   sales_manager_id: null,
-  quotation_engineer_id: null,
+  quotation_engineer_id: '3',
+  quotation_engineer_username: 'lead01',
+  quotation_engineer_display_name: 'Lead Engineer',
   technical_manager_id: null,
   commercial_manager_id: null,
   final_deal_amount: null,
@@ -68,7 +70,9 @@ test('opportunity repository lists opportunities with customer and contact names
     salespersonUsername: 'sales01',
     salespersonDisplayName: 'Sales One',
     salesManagerId: null,
-    quotationEngineerId: null,
+    quotationEngineerId: 3,
+    quotationEngineerUsername: 'lead01',
+    quotationEngineerDisplayName: 'Lead Engineer',
     technicalManagerId: null,
     commercialManagerId: null,
     finalDealAmount: null,
@@ -80,6 +84,7 @@ test('opportunity repository lists opportunities with customer and contact names
   assert.match(queryTarget.queries[0].sql, /JOIN customers c/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN contacts pc/);
   assert.match(queryTarget.queries[0].sql, /JOIN users salesperson/);
+  assert.match(queryTarget.queries[0].sql, /LEFT JOIN users quotation_engineer/);
   assert.match(queryTarget.queries[0].sql, /WHERE o\.salesperson_id = \$1/);
   assert.match(queryTarget.queries[0].sql, /o\.status NOT IN \(\$2, \$3\)/);
   assert.deepEqual(queryTarget.queries[0].params, [7, STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);

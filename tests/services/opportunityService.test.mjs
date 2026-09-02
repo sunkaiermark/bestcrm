@@ -1,10 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canContributeOpportunityEngineering,
+  canManageOpportunityEngineeringTeam,
   canManageOpportunityResponsibility,
   canEditOpportunity,
   canViewOpportunity,
   createOpportunityDraft,
+  isProjectLeadEngineer,
+  isSupportingEngineer,
   updateOpportunity
 } from '../../src/services/opportunityService.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
@@ -259,6 +263,29 @@ test('canManageOpportunityResponsibility allows administrators and Sales Manager
   assert.equal(canManageOpportunityResponsibility({ id: 1, roles: [ROLES.ADMINISTRATOR] }), true);
   assert.equal(canManageOpportunityResponsibility({ id: 2, roles: [ROLES.SALES_MANAGER] }), true);
   assert.equal(canManageOpportunityResponsibility({ id: 7, roles: [ROLES.SALESPERSON] }), false);
+});
+
+test('engineering collaboration distinguishes the lead from active supporting engineers', () => {
+  const opportunity = {
+    quotationEngineerId: 3,
+    teamMembers: [
+      { userId: 8, roleCode: ROLES.QUOTATION_ENGINEER, isActive: true },
+      { userId: 9, roleCode: ROLES.QUOTATION_ENGINEER, isActive: false }
+    ]
+  };
+  const lead = { id: 3, roles: [ROLES.QUOTATION_ENGINEER] };
+  const support = { id: 8, roles: [ROLES.QUOTATION_ENGINEER] };
+  const removedSupport = { id: 9, roles: [ROLES.QUOTATION_ENGINEER] };
+
+  assert.equal(isProjectLeadEngineer(lead, opportunity), true);
+  assert.equal(isSupportingEngineer(lead, opportunity), false);
+  assert.equal(isSupportingEngineer(support, opportunity), true);
+  assert.equal(isSupportingEngineer(removedSupport, opportunity), false);
+  assert.equal(canManageOpportunityEngineeringTeam(lead, opportunity), true);
+  assert.equal(canManageOpportunityEngineeringTeam(support, opportunity), false);
+  assert.equal(canContributeOpportunityEngineering(support, opportunity), true);
+  assert.equal(canContributeOpportunityEngineering(removedSupport, opportunity), false);
+  assert.equal(canContributeOpportunityEngineering({ id: 99, roles: [ROLES.ADMINISTRATOR] }, opportunity), true);
 });
 
 test('updateOpportunity rejects non-owner salesperson', async () => {

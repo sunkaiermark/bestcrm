@@ -51,6 +51,33 @@ export function canManageOpportunityResponsibility(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) || hasRole(user, ROLES.SALES_MANAGER);
 }
 
+export function isProjectLeadEngineer(user, opportunity) {
+  return hasRole(user, ROLES.QUOTATION_ENGINEER)
+    && Number(opportunity.quotationEngineerId) === Number(user.id);
+}
+
+export function isSupportingEngineer(user, opportunity) {
+  const userId = Number(user.id);
+  return hasRole(user, ROLES.QUOTATION_ENGINEER)
+    && Array.isArray(opportunity.teamMembers)
+    && opportunity.teamMembers.some((member) => (
+      Number(member.userId) === userId
+      && member.roleCode === ROLES.QUOTATION_ENGINEER
+      && member.isActive !== false
+    ));
+}
+
+export function canManageOpportunityEngineeringTeam(user, opportunity) {
+  return canManageOpportunityResponsibility(user)
+    || isProjectLeadEngineer(user, opportunity);
+}
+
+export function canContributeOpportunityEngineering(user, opportunity) {
+  return hasRole(user, ROLES.ADMINISTRATOR)
+    || isProjectLeadEngineer(user, opportunity)
+    || isSupportingEngineer(user, opportunity);
+}
+
 export function normalizeOpportunityInput(input, actor, options = {}) {
   return {
     originInquiryId: numberOrNull(options.originInquiryId),

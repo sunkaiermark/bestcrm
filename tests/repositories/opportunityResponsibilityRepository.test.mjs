@@ -23,10 +23,17 @@ test('opportunity responsibility repository lists active team members with role 
     role_code: 'sales_support',
     role_name: 'Sales Support',
     permission_level: 'edit',
+    assignment_scope: 'Agitation chapter',
+    task_description: 'Verify motor sizing',
+    due_date: '2026-06-12',
+    can_send_external_email: false,
     is_active: true,
     added_by: '2',
     added_by_display_name: 'Sales Manager',
     added_at: '2026-06-06T08:00:00.000Z',
+    updated_by: '3',
+    updated_by_display_name: 'Lead Engineer',
+    updated_at: '2026-06-07T08:00:00.000Z',
     removed_by: null,
     removed_by_display_name: null,
     removed_at: null
@@ -44,10 +51,17 @@ test('opportunity responsibility repository lists active team members with role 
     roleCode: 'sales_support',
     roleName: 'Sales Support',
     permissionLevel: 'edit',
+    assignmentScope: 'Agitation chapter',
+    taskDescription: 'Verify motor sizing',
+    dueDate: '2026-06-12',
+    canSendExternalEmail: false,
     isActive: true,
     addedBy: 2,
     addedByDisplayName: 'Sales Manager',
     addedAt: '2026-06-06T08:00:00.000Z',
+    updatedBy: 3,
+    updatedByDisplayName: 'Lead Engineer',
+    updatedAt: '2026-06-07T08:00:00.000Z',
     removedBy: null,
     removedByDisplayName: '',
     removedAt: null
@@ -56,6 +70,7 @@ test('opportunity responsibility repository lists active team members with role 
   assert.match(queryTarget.queries[0].sql, /JOIN users member/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN roles r/);
   assert.match(queryTarget.queries[0].sql, /JOIN users added_by_user/);
+  assert.match(queryTarget.queries[0].sql, /LEFT JOIN users updated_by_user/);
   assert.match(queryTarget.queries[0].sql, /WHERE om\.opportunity_id = \$1/);
   assert.match(queryTarget.queries[0].sql, /om\.is_active = true/);
   assert.deepEqual(queryTarget.queries[0].params, [10]);
@@ -69,13 +84,28 @@ test('opportunity responsibility repository adds active team members', async () 
     opportunityId: 10,
     userId: 8,
     roleCode: 'quotation_engineer',
-    permissionLevel: 'view',
-    addedBy: 2
+    permissionLevel: 'edit',
+    addedBy: 2,
+    assignmentScope: 'Reactor section',
+    taskDescription: 'Check heat transfer area',
+    dueDate: '2026-06-15',
+    canSendExternalEmail: true
   });
 
   assert.match(queryTarget.queries[0].sql, /INSERT INTO opportunity_members/);
+  assert.match(queryTarget.queries[0].sql, /INSERT INTO opportunity_member_events/);
   assert.match(queryTarget.queries[0].sql, /ON CONFLICT \(opportunity_id, user_id, role_code\) WHERE is_active = true DO UPDATE/);
-  assert.deepEqual(queryTarget.queries[0].params, [10, 8, 'quotation_engineer', 'view', 2]);
+  assert.deepEqual(queryTarget.queries[0].params, [
+    10,
+    8,
+    'quotation_engineer',
+    'edit',
+    2,
+    'Reactor section',
+    'Check heat transfer area',
+    '2026-06-15',
+    true
+  ]);
 });
 
 test('opportunity responsibility repository removes active team members by row id', async () => {
@@ -92,10 +122,99 @@ test('opportunity responsibility repository removes active team members by row i
   assert.match(queryTarget.queries[0].sql, /SET\s+is_active = false/);
   assert.match(queryTarget.queries[0].sql, /removed_by = \$3/);
   assert.match(queryTarget.queries[0].sql, /removed_at = now\(\)/);
+  assert.match(queryTarget.queries[0].sql, /INSERT INTO opportunity_member_events/);
   assert.match(queryTarget.queries[0].sql, /AND id = \$2/);
   assert.match(queryTarget.queries[0].sql, /opportunity_id = \$1/);
   assert.match(queryTarget.queries[0].sql, /is_active = true/);
   assert.deepEqual(queryTarget.queries[0].params, [10, 41, 2]);
+});
+
+test('opportunity responsibility repository lists engineering assignment events', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    id: '61',
+    opportunity_id: '10',
+    member_id: '41',
+    user_id: '8',
+    user_display_name: 'Support Engineer',
+    event_type: 'updated',
+    role_code: 'quotation_engineer',
+    role_name: 'Quotation Engineer',
+    permission_level: 'edit',
+    assignment_scope: 'Drying section',
+    task_description: 'Update equipment list',
+    due_date: '2026-06-18',
+    can_send_external_email: true,
+    actor_user_id: '3',
+    actor_display_name: 'Lead Engineer',
+    created_at: '2026-06-08T08:00:00.000Z'
+  }]);
+  const repository = createOpportunityResponsibilityRepository(queryTarget);
+
+  const events = await repository.listTeamMemberEventsByOpportunity(10);
+
+  assert.deepEqual(events, [{
+    id: 61,
+    opportunityId: 10,
+    memberId: 41,
+    userId: 8,
+    userDisplayName: 'Support Engineer',
+    eventType: 'updated',
+    roleCode: 'quotation_engineer',
+    roleName: 'Quotation Engineer',
+    permissionLevel: 'edit',
+    assignmentScope: 'Drying section',
+    taskDescription: 'Update equipment list',
+    dueDate: '2026-06-18',
+    canSendExternalEmail: true,
+    actorUserId: 3,
+    actorDisplayName: 'Lead Engineer',
+    createdAt: '2026-06-08T08:00:00.000Z'
+  }]);
+  assert.match(queryTarget.queries[0].sql, /FROM opportunity_member_events ome/);
+  assert.deepEqual(queryTarget.queries[0].params, [10]);
+});
+
+test('opportunity responsibility repository creates and lists attributed engineering contributions', async () => {
+  const createTarget = createFakeQueryTarget([{ id: '71' }]);
+  const createRepository = createOpportunityResponsibilityRepository(createTarget);
+
+  const created = await createRepository.createEngineeringContribution({
+    opportunityId: 10,
+    contributorUserId: 8,
+    contributionSummary: 'Completed agitator calculation.',
+    createdBy: 8
+  });
+
+  assert.deepEqual(created, { id: 71 });
+  assert.match(createTarget.queries[0].sql, /INSERT INTO opportunity_engineering_contributions/);
+  assert.deepEqual(createTarget.queries[0].params, [10, 8, 'Completed agitator calculation.', 8]);
+
+  const listTarget = createFakeQueryTarget([{
+    id: '71',
+    opportunity_id: '10',
+    contributor_user_id: '8',
+    contributor_display_name: 'Support Engineer',
+    contribution_summary: 'Completed agitator calculation.',
+    created_by: '8',
+    created_by_display_name: 'Support Engineer',
+    created_at: '2026-06-09T08:00:00.000Z'
+  }]);
+  const listRepository = createOpportunityResponsibilityRepository(listTarget);
+
+  const contributions = await listRepository.listEngineeringContributionsByOpportunity(10);
+
+  assert.deepEqual(contributions, [{
+    id: 71,
+    opportunityId: 10,
+    contributorUserId: 8,
+    contributorDisplayName: 'Support Engineer',
+    contributionSummary: 'Completed agitator calculation.',
+    createdBy: 8,
+    createdByDisplayName: 'Support Engineer',
+    createdAt: '2026-06-09T08:00:00.000Z'
+  }]);
+  assert.match(listTarget.queries[0].sql, /FROM opportunity_engineering_contributions oec/);
+  assert.deepEqual(listTarget.queries[0].params, [10]);
 });
 
 test('opportunity responsibility repository lists owner transfer history', async () => {

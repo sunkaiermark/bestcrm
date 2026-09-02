@@ -298,6 +298,12 @@ const emptyOpportunityResponsibilityRepository = {
   async listTeamMembersByOpportunity() {
     return [];
   },
+  async listTeamMemberEventsByOpportunity() {
+    return [];
+  },
+  async listEngineeringContributionsByOpportunity() {
+    return [];
+  },
   async listOwnerTransfersByOpportunity() {
     return [];
   }

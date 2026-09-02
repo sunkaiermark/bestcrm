@@ -8,13 +8,15 @@ import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
 import { CUSTOMER_REGIONS } from '../domain/customerRegions.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
-import { ROLE_DETAILS } from '../domain/systemCatalog.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import {
+  canContributeOpportunityEngineering,
   canManageOpportunityResponsibility,
+  canManageOpportunityEngineeringTeam,
   canEditOpportunity,
   canViewOpportunity,
+  isSupportingEngineer,
   updateOpportunity
 } from '../services/opportunityService.mjs';
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
@@ -143,9 +145,6 @@ const preSubmissionRequirementUpdateStatuses = new Set([
   STATUSES.DRAFT,
   STATUSES.INITIATION_REJECTED
 ]);
-
-const responsibilityPermissionLevels = new Set(['view', 'edit']);
-const responsibilityRoleCodes = new Set(ROLE_DETAILS.map((role) => role.code));
 
 const supplementalRequirementStatuses = new Set([
   STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
@@ -571,12 +570,19 @@ function previewMimeType(mimeType) {
   return 'application/octet-stream';
 }
 
-function canDeleteAttachment(opportunity, attachment) {
+function canDeleteAttachment(user, opportunity, attachment) {
+  if (!canUploadAttachment(user, opportunity, attachment.category)) {
+    return false;
+  }
   if (requirementMaterialCategories.has(attachment.category)) {
     return requirementMaterialDeleteStatuses.has(opportunity.status);
   }
   if (attachment.category === 'technical_solution') {
-    return technicalSolutionDeleteStatuses.has(opportunity.status);
+    if (!technicalSolutionDeleteStatuses.has(opportunity.status)) {
+      return false;
+    }
+    return !isSupportingEngineer(user, opportunity)
+      || Number(attachment.uploadedBy) === Number(user.id);
   }
   if (attachment.category === 'commercial_quote') {
     return commercialQuoteDeleteStatuses.has(opportunity.status);
@@ -606,13 +612,14 @@ function canUploadAttachment(user, opportunity, category) {
     && Number(opportunity.salespersonId) === Number(user.id);
   const isQuotationEngineer = hasRole(user, ROLES.QUOTATION_ENGINEER)
     && Number(opportunity.quotationEngineerId) === Number(user.id);
+  const isSupportingTechnicalEngineer = isSupportingEngineer(user, opportunity);
 
   switch (category) {
     case 'requirement':
     case 'other':
       return isSalesOwner;
     case 'technical_solution':
-      return isQuotationEngineer;
+      return isQuotationEngineer || isSupportingTechnicalEngineer;
     case 'commercial_quote':
       return isSalesOwner || isQuotationEngineer;
     case 'contract':
@@ -640,6 +647,17 @@ function requiredText(value) {
 function requiredPositiveInteger(value) {
   const number = Number(value);
   return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+function requiredIsoDate(value) {
+  const normalized = requiredText(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return null;
+  }
+  const date = new Date(`${normalized}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== normalized
+    ? null
+    : normalized;
 }
 
 async function listResponsibilityUsers(userRepository) {
@@ -849,6 +867,7 @@ export function opportunityRoutes({
         return;
       }
       const canManageResponsibility = canManageOpportunityResponsibility(req.currentUser);
+      const canManageEngineeringTeam = canManageOpportunityEngineeringTeam(req.currentUser, opportunity);
       const [
         usersByRole,
         activity,
@@ -858,6 +877,8 @@ export function opportunityRoutes({
         commercialQuotes,
         materialVersions,
         teamMembers,
+        teamMemberEvents,
+        engineeringContributions,
         ownerTransfers,
         responsibilityUsers
       ] = await Promise.all([
@@ -887,10 +908,16 @@ export function opportunityRoutes({
           : typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
           ? opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
           : [],
+        typeof opportunityResponsibilityRepository?.listTeamMemberEventsByOpportunity === 'function'
+          ? opportunityResponsibilityRepository.listTeamMemberEventsByOpportunity(opportunity.id)
+          : [],
+        typeof opportunityResponsibilityRepository?.listEngineeringContributionsByOpportunity === 'function'
+          ? opportunityResponsibilityRepository.listEngineeringContributionsByOpportunity(opportunity.id)
+          : [],
         typeof opportunityResponsibilityRepository?.listOwnerTransfersByOpportunity === 'function'
           ? opportunityResponsibilityRepository.listOwnerTransfersByOpportunity(opportunity.id)
           : [],
-        canManageResponsibility ? listResponsibilityUsers(userRepository) : []
+        canManageResponsibility || canManageEngineeringTeam ? listResponsibilityUsers(userRepository) : []
       ]);
       const workflowForms = buildWorkflowForms(req.currentUser, opportunity, usersByRole, attachments, activity.contractApprovals, req.language);
       res.render('opportunities/detail', {
@@ -906,9 +933,24 @@ export function opportunityRoutes({
         commercialQuotes,
         materialVersions,
         canManageResponsibility,
+        canManageEngineeringTeam,
+        canContributeEngineering: canContributeOpportunityEngineering(req.currentUser, {
+          ...opportunity,
+          teamMembers
+        }),
+        currentUserId: req.currentUser.id,
+        currentUserIsSupportingEngineer: isSupportingEngineer(req.currentUser, {
+          ...opportunity,
+          teamMembers
+        }),
         responsibilityUsers,
+        supportingEngineerOptions: responsibilityUsers.filter((user) => (
+          userHasRole(user, ROLES.QUOTATION_ENGINEER)
+          && Number(user.id) !== Number(opportunity.quotationEngineerId)
+        )),
         salesOwnerOptions: responsibilityUsers.filter((user) => userHasRole(user, ROLES.SALESPERSON)),
-        responsibilityRoleOptions: ROLE_DETAILS,
+        teamMemberEvents,
+        engineeringContributions,
         canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity),
         canUploadAttachments: uploadPermissionsFor(req.currentUser, opportunity),
         canEditOpportunity: canEditOpportunity(req.currentUser, opportunity),
@@ -931,30 +973,37 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      if (!canManageOpportunityResponsibility(req.currentUser)) {
+      if (!canManageOpportunityEngineeringTeam(req.currentUser, opportunity)) {
         res.status(403).send('Forbidden');
         return;
       }
       const userId = requiredPositiveInteger(req.body.userId);
-      const roleCode = requiredText(req.body.roleCode);
-      const permissionLevel = responsibilityPermissionLevels.has(req.body.permissionLevel)
-        ? req.body.permissionLevel
-        : 'view';
-      if (!userId || !responsibilityRoleCodes.has(roleCode)) {
-        res.status(400).send('Team member and role are required');
+      const assignmentScope = requiredText(req.body.assignmentScope);
+      const taskDescription = requiredText(req.body.taskDescription);
+      const dueDate = requiredIsoDate(req.body.dueDate);
+      if (!userId || !assignmentScope || !taskDescription || !dueDate) {
+        res.status(400).send('Supporting Engineer, section, task and due date are required');
+        return;
+      }
+      if (Number(opportunity.quotationEngineerId) === Number(userId)) {
+        res.status(400).send('Project Lead Engineer cannot also be a Supporting Engineer');
         return;
       }
       const teamUser = await findActiveResponsibilityUser(userRepository, userId);
-      if (!teamUser || !userHasRole(teamUser, roleCode)) {
-        res.status(400).send('Selected user does not have the selected active role');
+      if (!teamUser || !userHasRole(teamUser, ROLES.QUOTATION_ENGINEER)) {
+        res.status(400).send('Supporting Engineer must be an active Quotation Engineer');
         return;
       }
       await opportunityResponsibilityRepository.addTeamMember({
         opportunityId: opportunity.id,
         userId,
-        roleCode,
-        permissionLevel,
-        addedBy: req.currentUser.id
+        roleCode: ROLES.QUOTATION_ENGINEER,
+        permissionLevel: 'edit',
+        addedBy: req.currentUser.id,
+        assignmentScope,
+        taskDescription,
+        dueDate,
+        canSendExternalEmail: req.body.canSendExternalEmail === 'on'
       });
       res.redirect(redirectToOpportunity(opportunity.id));
     } catch (error) {
@@ -974,19 +1023,64 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      if (!canManageOpportunityResponsibility(req.currentUser)) {
+      if (!canManageOpportunityEngineeringTeam(req.currentUser, opportunity)) {
         res.status(403).send('Forbidden');
         return;
       }
       const memberId = requiredPositiveInteger(req.params.memberId);
       if (!memberId) {
-        res.status(400).send('Team member is required');
+        res.status(400).send('Supporting Engineer is required');
+        return;
+      }
+      const activeMembers = typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
+        ? await opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
+        : [];
+      const supportingEngineer = activeMembers.find((member) => (
+        Number(member.id) === Number(memberId)
+        && member.roleCode === ROLES.QUOTATION_ENGINEER
+        && member.isActive !== false
+      ));
+      if (!supportingEngineer) {
+        res.status(404).send('Supporting Engineer not found');
         return;
       }
       await opportunityResponsibilityRepository.removeTeamMember({
         opportunityId: opportunity.id,
         memberId,
         removedBy: req.currentUser.id
+      });
+      res.redirect(redirectToOpportunity(opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/engineering-contributions', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canContributeOpportunityEngineering(req.currentUser, opportunity)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const contributionSummary = requiredText(req.body.contributionSummary);
+      if (!contributionSummary) {
+        res.status(400).send('Contribution summary is required');
+        return;
+      }
+      await opportunityResponsibilityRepository.createEngineeringContribution({
+        opportunityId: opportunity.id,
+        contributorUserId: req.currentUser.id,
+        contributionSummary,
+        createdBy: req.currentUser.id
       });
       res.redirect(redirectToOpportunity(opportunity.id));
     } catch (error) {
@@ -1159,7 +1253,7 @@ export function opportunityRoutes({
         res.status(404).send('Attachment not found');
         return;
       }
-      if (!canDeleteAttachment(opportunity, attachment)) {
+      if (!canDeleteAttachment(req.currentUser, opportunity, attachment)) {
         res.status(403).send('Attachment cannot be deleted after submission');
         return;
       }

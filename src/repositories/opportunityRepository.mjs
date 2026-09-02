@@ -32,6 +32,8 @@ function mapOpportunityRow(row) {
     salespersonDisplayName: row.salesperson_display_name || '',
     salesManagerId: numberOrNull(row.sales_manager_id),
     quotationEngineerId: numberOrNull(row.quotation_engineer_id),
+    quotationEngineerUsername: row.quotation_engineer_username || '',
+    quotationEngineerDisplayName: row.quotation_engineer_display_name || '',
     technicalManagerId: numberOrNull(row.technical_manager_id),
     commercialManagerId: numberOrNull(row.commercial_manager_id),
     finalDealAmount: numberOrNull(row.final_deal_amount),
@@ -63,6 +65,8 @@ const opportunitySelect = `
     salesperson.display_name AS salesperson_display_name,
     o.sales_manager_id,
     o.quotation_engineer_id,
+    quotation_engineer.username AS quotation_engineer_username,
+    quotation_engineer.display_name AS quotation_engineer_display_name,
     o.technical_manager_id,
     o.commercial_manager_id,
     o.final_deal_amount,
@@ -73,6 +77,7 @@ const opportunitySelect = `
   JOIN customers c ON c.id = o.customer_id
   LEFT JOIN contacts pc ON pc.id = o.primary_contact_id
   JOIN users salesperson ON salesperson.id = o.salesperson_id
+  LEFT JOIN users quotation_engineer ON quotation_engineer.id = o.quotation_engineer_id
 `;
 
 const workflowFieldColumns = new Map([

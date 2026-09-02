@@ -1,14 +1,16 @@
 # BESTCRM Bilingual Email Center Design
 
 - Date: 2026-09-02
-- Status: Approved V1 business workflow; Steps 1-2 complete locally
+- Status: Approved V1 business workflow; Steps 1-3 complete locally
 - Target: `https://crm.sunkaier.com` on the Singapore Tencent Cloud instance
 
-Implementation checkpoint: Steps 1-2 are complete locally and verified by
+Implementation checkpoint: Steps 1-3 are complete locally and verified by
 targeted, full-suite, and browser checks. Step 2 adds audited private sales lead
 submissions, manager-controlled inquiry conversion, and source inquiry identity
-on every resulting opportunity. Steps 3-12 remain pending; no part of this
-design has been deployed or enabled on the Singapore instance.
+on every resulting opportunity. Step 3 adds one project lead engineer, multiple
+supporting engineers, scoped assignments, contribution records, and assignment
+audit history per opportunity. Steps 4-12 remain pending; no part of this design
+has been deployed or enabled on the Singapore instance.
 
 ## 1. Objective
 
@@ -237,7 +239,7 @@ to the relevant inquiry or opportunity and be independently retained by CRM.
 
 ## 5. Data model
 
-Migration `026_email_center.sql` will add:
+Migration `027_email_center.sql` will add:
 
 ### `email_threads`
 
@@ -271,7 +273,7 @@ Migration `026_email_center.sql` will add:
 The schema will use foreign keys and indexes but will not cascade-delete email
 history when a customer, inquiry, or opportunity is archived.
 
-Migration `027_quotation_package_versions.sql` will add:
+Migration `028_quotation_package_versions.sql` will add:
 
 ### `quotation_package_versions`
 
@@ -292,7 +294,7 @@ Migration `027_quotation_package_versions.sql` will add:
 - unique membership per package version; historical package attachments are not
   cascade-deleted when a working material is later removed
 
-Migration `028_product_technical_templates.sql` will add:
+Migration `029_product_technical_templates.sql` will add:
 
 ### `technical_agreement_templates`
 

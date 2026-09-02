@@ -135,12 +135,20 @@
   const contractMaterialVersions = materialVersionsFor('contract');
   const materialVersionStatusClass = (status) => String(status || 'draft').replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
   const opportunityTeamMembers = typeof teamMembers === 'undefined' ? [] : teamMembers;
+  const supportingEngineers = opportunityTeamMembers.filter((member) => member.roleCode === 'quotation_engineer');
+  const otherOpportunityMembers = opportunityTeamMembers.filter((member) => member.roleCode !== 'quotation_engineer');
+  const engineeringAssignmentEvents = typeof teamMemberEvents === 'undefined' ? [] : teamMemberEvents;
+  const engineeringContributionRecords = typeof engineeringContributions === 'undefined' ? [] : engineeringContributions;
   const opportunityOwnerTransfers = typeof ownerTransfers === 'undefined' ? [] : ownerTransfers;
   const canManageOpportunityResponsibility = typeof canManageResponsibility === 'undefined' ? false : canManageResponsibility;
-  const activeResponsibilityUsers = typeof responsibilityUsers === 'undefined' ? [] : responsibilityUsers;
+  const canManageOpportunityEngineeringTeam = typeof canManageEngineeringTeam === 'undefined' ? false : canManageEngineeringTeam;
+  const canRecordEngineeringContribution = typeof canContributeEngineering === 'undefined' ? false : canContributeEngineering;
+  const signedInUserId = typeof currentUserId === 'undefined' ? null : currentUserId;
+  const signedInUserIsSupportingEngineer = typeof currentUserIsSupportingEngineer === 'undefined' ? false : currentUserIsSupportingEngineer;
+  const activeSupportingEngineerOptions = typeof supportingEngineerOptions === 'undefined' ? [] : supportingEngineerOptions;
   const activeSalesOwnerOptions = typeof salesOwnerOptions === 'undefined' ? [] : salesOwnerOptions;
-  const activeResponsibilityRoleOptions = typeof responsibilityRoleOptions === 'undefined' ? [] : responsibilityRoleOptions;
   const ownerName = opportunity.salespersonDisplayName || opportunity.salespersonUsername || opportunity.salespersonId || '';
+  const projectLeadEngineerName = opportunity.quotationEngineerDisplayName || opportunity.quotationEngineerUsername || t('notAssigned');
   const canAddRequirementUpdate = typeof canCreateRequirementUpdate === 'undefined' ? false : canCreateRequirementUpdate;
   const uploadPermissions = typeof canUploadAttachments === 'undefined' ? {} : canUploadAttachments;
   const allWorkflowForms = Array.isArray(workflowForms) ? workflowForms : [];
@@ -252,31 +260,39 @@
               <div class="responsibility-grid">
                 <div class="responsibility-column">
                   <div class="responsibility-block">
-                    <h3><%= t('teamMembers') %></h3>
+                    <h3><%= t('projectLeadEngineer') %></h3>
                     <div class="responsibility-content">
-                      <% if (opportunityTeamMembers.length > 0) { %>
+                      <p><strong><%= projectLeadEngineerName %></strong></p>
+                    </div>
+                  </div>
+                  <div class="responsibility-block">
+                    <h3><%= t('supportingEngineers') %></h3>
+                    <div class="responsibility-content">
+                      <% if (supportingEngineers.length > 0) { %>
                         <table class="list-table content-fit-table">
                           <thead>
                             <tr>
                               <th><%= t('member') %></th>
-                              <th><%= t('role') %></th>
-                              <th><%= t('permission') %></th>
+                              <th><%= t('assignmentScope') %></th>
+                              <th><%= t('taskDescription') %></th>
+                              <th><%= t('dueDate') %></th>
+                              <th><%= t('externalEmailPermission') %></th>
                               <th><%= t('addedBy') %></th>
-                              <th><%= t('addedAt') %></th>
-                              <% if (canManageOpportunityResponsibility) { %>
+                              <% if (canManageOpportunityEngineeringTeam) { %>
                                 <th><%= t('actions') %></th>
                               <% } %>
                             </tr>
                           </thead>
                           <tbody>
-                            <% for (const member of opportunityTeamMembers) { %>
+                            <% for (const member of supportingEngineers) { %>
                               <tr>
                                 <td><%= member.userDisplayName || member.username %></td>
-                                <td><%= member.roleName || member.roleCode %></td>
-                                <td><%= member.permissionLevel %></td>
+                                <td><%= member.assignmentScope %></td>
+                                <td><%= member.taskDescription %></td>
+                                <td><%= member.dueDate || '' %></td>
+                                <td><%= member.canSendExternalEmail ? t('directEmailAllowed') : t('emailDraftOnly') %></td>
                                 <td><%= member.addedByDisplayName || '' %></td>
-                                <td><%= member.addedAt || '' %></td>
-                                <% if (canManageOpportunityResponsibility) { %>
+                                <% if (canManageOpportunityEngineeringTeam) { %>
                                   <td>
                                     <form method="post" action="/opportunities/<%= opportunity.id %>/team-members/<%= member.id %>/remove">
                                       <%- csrfField() %>
@@ -289,40 +305,113 @@
                           </tbody>
                         </table>
                       <% } else { %>
-                        <p class="empty"><%= t('noTeamMembers') %></p>
+                        <p class="empty"><%= t('noSupportingEngineers') %></p>
                       <% } %>
-                      <% if (canManageOpportunityResponsibility) { %>
+                      <% if (canManageOpportunityEngineeringTeam) { %>
                         <details class="responsibility-disclosure">
-                          <summary><%= t('addTeamMember') %></summary>
-                          <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/team-members" data-team-member-form>
+                          <summary><%= t('addSupportingEngineer') %></summary>
+                          <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/team-members">
                             <%- csrfField() %>
                             <label>
-                              <%= t('user') %>
+                              <%= t('supportingEngineers') %>
                               <select name="userId" required>
                                 <option value=""></option>
-                                <% for (const user of activeResponsibilityUsers) { %>
-                                  <option value="<%= user.id %>" data-role-codes="<%= (user.roles || []).join(',') %>"><%= user.displayName %> (<%= user.username %>)</option>
+                                <% for (const user of activeSupportingEngineerOptions) { %>
+                                  <option value="<%= user.id %>"><%= user.displayName %> (<%= user.username %>)</option>
                                 <% } %>
                               </select>
                             </label>
                             <label>
-                              <%= t('role') %>
-                              <select name="roleCode" required>
-                                <% for (const role of activeResponsibilityRoleOptions) { %>
-                                  <option value="<%= role.code %>" data-role-code="<%= role.code %>"><%= role.name %></option>
-                                <% } %>
-                              </select>
+                              <%= t('assignmentScope') %>
+                              <input name="assignmentScope" required>
                             </label>
                             <label>
-                              <%= t('permission') %>
-                              <select name="permissionLevel" required>
-                                <option value="view"><%= t('view') %></option>
-                                <option value="edit"><%= t('edit') %></option>
-                              </select>
+                              <%= t('taskDescription') %>
+                              <textarea name="taskDescription" required></textarea>
                             </label>
-                            <button type="submit"><%= t('addTeamMember') %></button>
+                            <label>
+                              <%= t('dueDate') %>
+                              <input name="dueDate" type="date" required>
+                            </label>
+                            <label class="checkbox-label">
+                              <input type="checkbox" name="canSendExternalEmail">
+                              <%= t('directEmailAllowed') %>
+                            </label>
+                            <button type="submit"><%= t('addSupportingEngineer') %></button>
                           </form>
                         </details>
+                      <% } %>
+                    </div>
+                  </div>
+                  <div class="responsibility-block">
+                    <h3><%= t('engineeringContributions') %></h3>
+                    <div class="responsibility-content">
+                      <% if (canRecordEngineeringContribution) { %>
+                        <form class="form-panel responsibility-form" method="post" action="/opportunities/<%= opportunity.id %>/engineering-contributions">
+                          <%- csrfField() %>
+                          <label>
+                            <%= t('contributionSummary') %>
+                            <textarea name="contributionSummary" required></textarea>
+                          </label>
+                          <button type="submit"><%= t('recordContribution') %></button>
+                        </form>
+                      <% } %>
+                      <% if (engineeringContributionRecords.length > 0) { %>
+                        <table class="list-table content-fit-table">
+                          <thead>
+                            <tr>
+                              <th><%= t('member') %></th>
+                              <th><%= t('contributionSummary') %></th>
+                              <th><%= t('createdAt') %></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <% for (const contribution of engineeringContributionRecords) { %>
+                              <tr>
+                                <td><%= contribution.contributorDisplayName %></td>
+                                <td><%= contribution.contributionSummary %></td>
+                                <td><%= contribution.createdAt || '' %></td>
+                              </tr>
+                            <% } %>
+                          </tbody>
+                        </table>
+                      <% } else { %>
+                        <p class="empty"><%= t('noEngineeringContributions') %></p>
+                      <% } %>
+                    </div>
+                  </div>
+                  <div class="responsibility-block">
+                    <h3><%= t('engineeringAuditHistory') %></h3>
+                    <div class="responsibility-content">
+                      <% if (engineeringAssignmentEvents.length > 0) { %>
+                        <table class="list-table content-fit-table">
+                          <thead>
+                            <tr>
+                              <th><%= t('eventType') %></th>
+                              <th><%= t('member') %></th>
+                              <th><%= t('changedBy') %></th>
+                              <th><%= t('assignmentScope') %></th>
+                              <th><%= t('taskDescription') %></th>
+                              <th><%= t('dueDate') %></th>
+                              <th><%= t('createdAt') %></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <% for (const event of engineeringAssignmentEvents) { %>
+                              <tr>
+                                <td><%= t('memberEvent.' + event.eventType) %></td>
+                                <td><%= event.userDisplayName %></td>
+                                <td><%= event.actorDisplayName %></td>
+                                <td><%= event.assignmentScope %></td>
+                                <td><%= event.taskDescription %></td>
+                                <td><%= event.dueDate || '' %></td>
+                                <td><%= event.createdAt || '' %></td>
+                              </tr>
+                            <% } %>
+                          </tbody>
+                        </table>
+                      <% } else { %>
+                        <p class="empty"><%= t('noEngineeringAuditHistory') %></p>
                       <% } %>
                     </div>
                   </div>
@@ -383,6 +472,27 @@
                         </table>
                       <% } else { %>
                         <p class="empty"><%= t('noOwnerTransferHistory') %></p>
+                      <% } %>
+                      <% if (otherOpportunityMembers.length > 0) { %>
+                        <h3><%= t('teamMembers') %></h3>
+                        <table class="list-table content-fit-table">
+                          <thead>
+                            <tr>
+                              <th><%= t('member') %></th>
+                              <th><%= t('role') %></th>
+                              <th><%= t('permission') %></th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            <% for (const member of otherOpportunityMembers) { %>
+                              <tr>
+                                <td><%= member.userDisplayName || member.username %></td>
+                                <td><%= member.roleName || member.roleCode %></td>
+                                <td><%= member.permissionLevel %></td>
+                              </tr>
+                            <% } %>
+                          </tbody>
+                        </table>
                       <% } %>
                     </div>
                   </div>
@@ -518,7 +628,7 @@
                         <div class="inline-actions requirement-row-actions">
                           <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
                           <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
-                          <% if (canDeleteTechnicalSolutionAttachments) { %>
+                          <% if (canDeleteTechnicalSolutionAttachments && uploadPermissions.technical_solution && (!signedInUserIsSupportingEngineer || Number(item.attachment.uploadedBy) === Number(signedInUserId))) { %>
                             <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteTechnicalSolutionFileConfirm') %>')">
                               <%- csrfField() %>
                               <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
@@ -783,39 +893,4 @@
             </section>
           <% } %>
         </div>
-<% if (canManageOpportunityResponsibility) { %>
-        <script>
-          (function () {
-            function syncTeamMemberRoleOptions(form) {
-              const userSelect = form.querySelector('select[name="userId"]');
-              const roleSelect = form.querySelector('select[name="roleCode"]');
-              if (!userSelect || !roleSelect) {
-                return;
-              }
-              const selectedUser = userSelect.selectedOptions[0];
-              const roleCodes = new Set(String(selectedUser?.dataset.roleCodes || '').split(',').filter(Boolean));
-              let firstAllowedValue = '';
-              for (const option of roleSelect.options) {
-                const roleCode = option.dataset.roleCode || option.value;
-                const isAllowed = roleCodes.has(roleCode);
-                option.hidden = roleCodes.size > 0 && !isAllowed;
-                option.disabled = roleCodes.size > 0 && !isAllowed;
-                if (isAllowed && !firstAllowedValue) {
-                  firstAllowedValue = option.value;
-                }
-              }
-              roleSelect.disabled = roleCodes.size === 0;
-              if (!roleCodes.has(roleSelect.value)) {
-                roleSelect.value = firstAllowedValue;
-              }
-            }
-
-            for (const form of document.querySelectorAll('[data-team-member-form]')) {
-              const userSelect = form.querySelector('select[name="userId"]');
-              userSelect?.addEventListener('change', () => syncTeamMemberRoleOptions(form));
-              syncTeamMemberRoleOptions(form);
-            }
-          })();
-        </script>
-<% } %>
 <%- include('../partials/app-end') %>

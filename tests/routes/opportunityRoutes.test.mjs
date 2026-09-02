@@ -70,6 +70,15 @@ async function createLoggedInAgent(extraOptions = {}) {
             phone: null,
             isActive: true,
             roles: [ROLES.SALES_MANAGER]
+          },
+          {
+            id: 3,
+            username: 'quote01',
+            displayName: 'Quotation Engineer',
+            email: null,
+            phone: null,
+            isActive: true,
+            roles: [ROLES.QUOTATION_ENGINEER]
           }
         ];
       },
@@ -725,7 +734,8 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.match(detail.text, />\u4e0b\u8f7d<\/a>/);
   assert.match(detail.text, /<td>\u8349\u7a3f<\/td>/);
   assert.match(detail.text, /\u8d23\u4efb\u4eba/);
-  assert.match(detail.text, /\u534f\u540c\u4eba/);
+  assert.match(detail.text, /\u9879\u76ee\u4e3b\u4efb\u5de5\u7a0b\u5e08/);
+  assert.match(detail.text, /\u534f\u52a9\u5de5\u7a0b\u5e08/);
   assert.match(detail.text, /\u8d1f\u8d23\u4eba\u8f6c\u79fb\u5386\u53f2/);
   assert.match(detail.text, /\u9700\u6c42\u8d44\u6599/);
   assert.match(detail.text, /\u6280\u672f\u65b9\u6848/);
@@ -795,6 +805,140 @@ test('active team member can view opportunity detail without edit access', async
   assert.equal(detail.status, 200);
   assert.match(detail.text, /Team Member/);
   assert.doesNotMatch(detail.text, /href="\/opportunities\/30\/edit"/);
+});
+
+test('Supporting Engineer can access technical working area and record own contribution', async () => {
+  const contributions = [];
+  let deleteCalled = false;
+  const supportingMember = {
+    id: 41,
+    opportunityId: 30,
+    userId: 8,
+    username: 'support01',
+    userDisplayName: 'Support Engineer',
+    roleCode: ROLES.QUOTATION_ENGINEER,
+    roleName: 'Quotation Engineer',
+    permissionLevel: 'edit',
+    assignmentScope: 'Agitator section',
+    taskDescription: 'Verify shaft sizing',
+    dueDate: '2026-06-12',
+    canSendExternalEmail: false,
+    isActive: true,
+    addedBy: 3,
+    addedByDisplayName: 'Lead Engineer',
+    addedAt: '2026-06-06T08:00:00.000Z',
+    removedBy: null,
+    removedByDisplayName: '',
+    removedAt: null
+  };
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 8,
+      username: 'support01',
+      displayName: 'Support Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return opportunityDetail({
+          status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+          quotationEngineerId: 3,
+          quotationEngineerDisplayName: 'Lead Engineer'
+        });
+      }
+    },
+    attachmentRepository: {
+      async findById() {
+        return {
+          id: 55,
+          opportunityId: 30,
+          category: 'technical_solution',
+          uploadedBy: 3,
+          storedPath: '2026/06/lead-solution.pdf'
+        };
+      },
+      async deleteById() {
+        deleteCalled = true;
+      }
+    },
+    opportunityResponsibilityRepository: {
+      async listTeamMembersByOpportunity() {
+        return [supportingMember];
+      },
+      async listTeamMemberEventsByOpportunity() {
+        return [];
+      },
+      async listEngineeringContributionsByOpportunity() {
+        return [];
+      },
+      async listOwnerTransfersByOpportunity() {
+        return [];
+      },
+      async createEngineeringContribution(input) {
+        contributions.push(input);
+        return { id: 71, ...input };
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Project Lead Engineer/);
+  assert.match(detail.text, /Lead Engineer/);
+  assert.match(detail.text, /Support Engineer/);
+  assert.match(detail.text, /action="\/opportunities\/30\/attachments"/);
+  assert.match(detail.text, /value="technical_solution"/);
+  assert.match(detail.text, /action="\/opportunities\/30\/engineering-contributions"/);
+  assert.doesNotMatch(detail.text, /name="action" value="submit_technical_solution"/);
+
+  const response = await agent
+    .post('/opportunities/30/engineering-contributions')
+    .type('form')
+    .send({ contributionSummary: 'Completed shaft calculation.' });
+
+  assert.equal(response.status, 302);
+  assert.deepEqual(contributions, [{
+    opportunityId: 30,
+    contributorUserId: 8,
+    contributionSummary: 'Completed shaft calculation.',
+    createdBy: 8
+  }]);
+
+  const deleteResponse = await agent
+    .post('/opportunities/30/attachments/55/delete')
+    .type('form')
+    .send();
+  assert.equal(deleteResponse.status, 403);
+  assert.equal(deleteCalled, false);
+});
+
+test('removed Supporting Engineer loses direct opportunity access', async () => {
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 8,
+      username: 'support01',
+      displayName: 'Support Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return opportunityDetail({ quotationEngineerId: 3 });
+      }
+    },
+    opportunityResponsibilityRepository: {
+      async listTeamMembersByOpportunity() {
+        return [];
+      },
+      async listOwnerTransfersByOpportunity() {
+        return [];
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 403);
 });
 
 test('administrator sees opportunity delete action on detail page', async () => {
@@ -1041,7 +1185,7 @@ test('opportunity detail keeps workflow todos out of the detail page and shows t
   assert.match(detail.text, /ready for review/);
 });
 
-test('opportunity detail shows owner team members and transfer history without current responsible todos', async () => {
+test('opportunity detail shows lead supporting engineers and assignment history', async () => {
   const responsibilityCalls = [];
   const { agent } = await createLoggedInAgent({
     opportunityResponsibilityRepository: {
@@ -1055,7 +1199,11 @@ test('opportunity detail shows owner team members and transfer history without c
           userDisplayName: 'Quote Engineer',
           roleCode: 'quotation_engineer',
           roleName: 'Quotation Engineer',
-          permissionLevel: 'view',
+          permissionLevel: 'edit',
+          assignmentScope: 'Agitator section',
+          taskDescription: 'Verify shaft sizing',
+          dueDate: '2026-06-12',
+          canSendExternalEmail: false,
           isActive: true,
           addedBy: 2,
           addedByDisplayName: 'Sales Manager',
@@ -1063,6 +1211,33 @@ test('opportunity detail shows owner team members and transfer history without c
           removedBy: null,
           removedByDisplayName: '',
           removedAt: null
+        }];
+      },
+      async listTeamMemberEventsByOpportunity(opportunityId) {
+        responsibilityCalls.push(['memberEvents', opportunityId]);
+        return [{
+          id: 61,
+          opportunityId,
+          memberId: 41,
+          userId: 8,
+          userDisplayName: 'Quote Engineer',
+          eventType: 'assigned',
+          assignmentScope: 'Agitator section',
+          taskDescription: 'Verify shaft sizing',
+          dueDate: '2026-06-12',
+          actorDisplayName: 'Sales Manager',
+          createdAt: '2026-06-06T08:00:00.000Z'
+        }];
+      },
+      async listEngineeringContributionsByOpportunity(opportunityId) {
+        responsibilityCalls.push(['contributions', opportunityId]);
+        return [{
+          id: 71,
+          opportunityId,
+          contributorUserId: 8,
+          contributorDisplayName: 'Quote Engineer',
+          contributionSummary: 'Completed shaft calculation.',
+          createdAt: '2026-06-07T08:00:00.000Z'
         }];
       },
       async listOwnerTransfersByOpportunity(opportunityId) {
@@ -1098,19 +1273,26 @@ test('opportunity detail shows owner team members and transfer history without c
   assert.doesNotMatch(detail.text, /Current Responsible/);
   assert.doesNotMatch(detail.text, /Technical Manager/);
   assert.doesNotMatch(detail.text, /Approve technical solution/);
-  assert.match(detail.text, /Team Members/);
+  assert.match(detail.text, /Project Lead Engineer/);
+  assert.match(detail.text, /Supporting Engineers/);
   assert.match(detail.text, /Quote Engineer/);
-  assert.match(detail.text, /Quotation Engineer/);
+  assert.match(detail.text, /Agitator section/);
+  assert.match(detail.text, /Verify shaft sizing/);
+  assert.match(detail.text, /Draft only/);
+  assert.match(detail.text, /Engineering Assignment History/);
+  assert.match(detail.text, /Completed shaft calculation/);
   assert.match(detail.text, /Owner Transfer History/);
   assert.match(detail.text, /Old Sales/);
   assert.match(detail.text, /Territory realignment/);
   assert.deepEqual(responsibilityCalls, [
     ['members', 30],
+    ['memberEvents', 30],
+    ['contributions', 30],
     ['transfers', 30]
   ]);
 });
 
-test('administrator sees responsibility management forms on opportunity detail', async () => {
+test('administrator sees Supporting Engineer and owner management forms', async () => {
   const { agent } = await createLoggedInAgent({
     user: {
       id: 99,
@@ -1123,17 +1305,20 @@ test('administrator sees responsibility management forms on opportunity detail',
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /<details class="responsibility-disclosure">[\s\S]*<summary>Add Team Member<\/summary>/);
-  assert.match(detail.text, /Add Team Member/);
+  assert.match(detail.text, /<details class="responsibility-disclosure">[\s\S]*<summary>Add \/ Update Supporting Engineer<\/summary>/);
+  assert.match(detail.text, /Add \/ Update Supporting Engineer/);
   assert.match(detail.text, /name="userId"/);
-  assert.match(detail.text, /name="roleCode"/);
+  assert.match(detail.text, /name="assignmentScope"/);
+  assert.match(detail.text, /name="taskDescription"/);
+  assert.match(detail.text, /name="dueDate" type="date" required/);
+  assert.match(detail.text, /name="canSendExternalEmail"/);
   assert.match(detail.text, /<details class="responsibility-disclosure">[\s\S]*<summary>Transfer Owner<\/summary>/);
   assert.match(detail.text, /Transfer Owner/);
   assert.match(detail.text, /name="toOwnerUserId"/);
   assert.match(detail.text, /name="keepPreviousOwnerAsMember"/);
 });
 
-test('team member form carries user roles for linked role selection', async () => {
+test('Supporting Engineer form lists only active quotation engineers', async () => {
   const { agent } = await createLoggedInAgent({
     user: {
       id: 99,
@@ -1146,14 +1331,14 @@ test('team member form carries user roles for linked role selection', async () =
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /data-team-member-form/);
-  assert.match(detail.text, /<option value="8" data-role-codes="salesperson">Team Member \(team01\)<\/option>/);
-  assert.match(detail.text, /<option value="2" data-role-codes="sales_manager">Sales Manager \(manager01\)<\/option>/);
-  assert.match(detail.text, /<option value="salesperson" data-role-code="salesperson">Sales<\/option>/);
-  assert.match(detail.text, /function syncTeamMemberRoleOptions/);
+  const supportingEngineerForm = detail.text.match(/<form class="form-panel responsibility-form" method="post" action="\/opportunities\/30\/team-members">[\s\S]*?<\/form>/)?.[0] || '';
+  assert.match(supportingEngineerForm, /<option value="3">Quotation Engineer \(quote01\)<\/option>/);
+  assert.doesNotMatch(supportingEngineerForm, /<option value="8">Team Member \(team01\)<\/option>/);
+  assert.doesNotMatch(supportingEngineerForm, /<option value="2">Sales Manager \(manager01\)<\/option>/);
+  assert.doesNotMatch(supportingEngineerForm, /name="roleCode"/);
 });
 
-test('administrator adds and removes opportunity team members', async () => {
+test('administrator adds updates and removes Supporting Engineers', async () => {
   const addedMembers = [];
   const removedMembers = [];
   const { agent } = await createLoggedInAgent({
@@ -1165,7 +1350,12 @@ test('administrator adds and removes opportunity team members', async () => {
     },
     opportunityResponsibilityRepository: {
       async listTeamMembersByOpportunity() {
-        return [];
+        return [{
+          id: 41,
+          userId: 3,
+          roleCode: ROLES.QUOTATION_ENGINEER,
+          isActive: true
+        }];
       },
       async listOwnerTransfersByOpportunity() {
         return [];
@@ -1185,18 +1375,24 @@ test('administrator adds and removes opportunity team members', async () => {
     .post('/opportunities/30/team-members')
     .type('form')
     .send({
-      userId: 8,
-      roleCode: ROLES.SALESPERSON,
-      permissionLevel: 'view'
+      userId: 3,
+      assignmentScope: 'Reactor section',
+      taskDescription: 'Check heat transfer area',
+      dueDate: '2026-06-15',
+      canSendExternalEmail: 'on'
     });
 
   assert.equal(addResponse.status, 302);
   assert.deepEqual(addedMembers, [{
     opportunityId: 30,
-    userId: 8,
-    roleCode: ROLES.SALESPERSON,
-    permissionLevel: 'view',
-    addedBy: 99
+    userId: 3,
+    roleCode: ROLES.QUOTATION_ENGINEER,
+    permissionLevel: 'edit',
+    addedBy: 99,
+    assignmentScope: 'Reactor section',
+    taskDescription: 'Check heat transfer area',
+    dueDate: '2026-06-15',
+    canSendExternalEmail: true
   }]);
 
   const removeResponse = await agent
@@ -3127,6 +3323,38 @@ test('workflow route blocks technical submission without description or attachme
   assert.equal(response.status, 400);
   assert.match(response.text, /Technical solution description or attachment is required/);
   assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+});
+
+test('Supporting Engineer cannot submit the integrated technical solution', async () => {
+  const { agent, calls, getOpportunity } = await createWorkflowAgent({
+    user: {
+      id: 8,
+      username: 'support01',
+      displayName: 'Support Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7,
+      quotationEngineerId: 3
+    },
+    attachments: [{ id: 55, category: 'technical_solution' }]
+  });
+
+  const response = await agent
+    .post('/opportunities/30/workflow')
+    .type('form')
+    .send({
+      action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+      solutionSummary: 'Attempted final submission'
+    });
+
+  assert.equal(response.status, 403);
+  assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+  assert.deepEqual(calls, [
+    ['findOpportunity', 30],
+    ['findActiveApprovalSetting', 'technical_solution']
+  ]);
 });
 
 test('workflow route submits technical solution as a version for approval', async () => {

@@ -26,6 +26,7 @@ const customerWebsiteMigrationPath = new URL('../../src/db/migrations/022_custom
 const inquiryDispositionMigrationPath = new URL('../../src/db/migrations/023_inquiry_disposition_workflow.sql', import.meta.url);
 const inquiryCustomerCollaborationMigrationPath = new URL('../../src/db/migrations/024_inquiry_customer_collaboration.sql', import.meta.url);
 const salesLeadSubmissionsMigrationPath = new URL('../../src/db/migrations/025_sales_lead_submissions.sql', import.meta.url);
+const opportunityEngineeringCollaborationMigrationPath = new URL('../../src/db/migrations/026_opportunity_engineering_collaboration.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -139,6 +140,21 @@ test('opportunity responsibility migration adds team members and owner transfer 
   assert.match(sql, /reason text NOT NULL/);
   assert.match(sql, /keep_previous_owner_as_member boolean NOT NULL DEFAULT false/);
   assert.match(sql, /CREATE INDEX IF NOT EXISTS opportunity_owner_transfers_opportunity_idx/);
+});
+
+test('opportunity engineering collaboration migration adds tasks audit and contributions', async () => {
+  const sql = await readFile(opportunityEngineeringCollaborationMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE opportunity_members/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS assignment_scope text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS task_description text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS due_date date/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS can_send_external_email boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_member_events/);
+  assert.match(sql, /event_type text NOT NULL CHECK \(event_type IN \('assigned', 'updated', 'removed'\)\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_engineering_contributions/);
+  assert.match(sql, /contributor_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /contribution_summary text NOT NULL/);
 });
 
 test('customer country migration adds country to customer records', async () => {
