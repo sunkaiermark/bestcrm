@@ -862,6 +862,59 @@
         padding: 14px;
       }
 
+      .detail-section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin-bottom: 14px;
+        padding: 14px;
+      }
+
+      .detail-section > h2:first-child {
+        margin-top: 0;
+      }
+
+      .detail-grid,
+      .form-grid {
+        display: grid;
+        gap: 10px 16px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+      }
+
+      .detail-grid > div {
+        border-bottom: 1px solid var(--line);
+        padding: 6px 0;
+      }
+
+      .detail-grid dt {
+        color: var(--muted);
+        font-weight: 700;
+      }
+
+      .detail-grid dd {
+        margin: 3px 0 0;
+      }
+
+      .technical-template-revision {
+        margin-bottom: 12px;
+        max-width: none;
+      }
+
+      .technical-template-revision ol {
+        columns: 2;
+      }
+
+      @media (max-width: 900px) {
+        .detail-grid,
+        .form-grid {
+          grid-template-columns: 1fr;
+        }
+
+        .technical-template-revision ol {
+          columns: 1;
+        }
+      }
+
       .inquiry-page-header {
         margin-bottom: 12px;
       }
@@ -1503,6 +1556,7 @@
     <% const canSeeSystemNav = Array.isArray(currentUser?.roles) && currentUser.roles.includes('administrator'); %>
     <% const canSeeInquiryNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'sales_manager'].includes(role)); %>
     <% const canSubmitLead = Array.isArray(currentUser?.roles) && currentUser.roles.includes('salesperson'); %>
+    <% const canSeeTechnicalStandardsNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'technical_manager', 'quotation_engineer'].includes(role)); %>
     <div class="app-shell">
       <aside class="left-nav" aria-label="<%= t('primaryNavigation') %>">
         <a class="brand" href="/workbench" aria-label="Sunkaier workbench">
@@ -1529,6 +1583,13 @@
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>
           <a class="<%= navClass('customers') %>" href="/customers"><%= t('customers') %></a>
           <a class="<%= navClass('contacts') %>" href="/contacts"><%= t('contacts') %></a>
+          <% if (canSeeTechnicalStandardsNav) { %>
+            <div class="nav-parent"><%= t('technicalStandards') %></div>
+            <div class="nav-subgroup">
+              <a class="<%= navClass('technical-templates') %>" href="/technical-templates"><%= t('technicalTemplateLibrary') %></a>
+              <a class="<%= navClass('technical-clauses') %>" href="/technical-clauses"><%= t('standardClauseLibrary') %></a>
+            </div>
+          <% } %>
           <% if (canSeeSystemNav) { %>
             <div class="nav-parent"><%= t('system') %></div>
             <div class="nav-subgroup">

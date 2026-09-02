@@ -1,0 +1,157 @@
+<%- include('../partials/app-start', { title: `${template.templateCode} - ${template.name} - BESTCRM`, activeNav: 'technical-templates' }) %>
+        <% const hasOpenRevision = template.revisions.some((revision) => ['draft', 'review_pending'].includes(revision.status)); %>
+        <p class="breadcrumb"><a href="/technical-templates"><%= t('technicalTemplateLibrary') %></a> / <%= template.templateCode %></p>
+        <header class="page-header">
+          <div>
+            <h1><%= template.templateCode %> · <%= template.name %></h1>
+            <div class="muted"><%= t(`templateLanguage.${template.language}`) %> · <%= template.productFamily %></div>
+          </div>
+          <% if (canAuthor) { %>
+            <a class="secondary-action" href="/technical-templates/<%= template.id %>/edit"><%= t('editTechnicalTemplate') %></a>
+          <% } %>
+        </header>
+
+        <section class="detail-section">
+          <h2><%= t('templateMetadata') %></h2>
+          <dl class="detail-grid">
+            <div><dt><%= t('productFamily') %></dt><dd><%= template.productFamily %></dd></div>
+            <div><dt><%= t('productModel') %></dt><dd><%= template.productModel || '-' %></dd></div>
+            <div><dt><%= t('application') %></dt><dd><%= template.application || '-' %></dd></div>
+            <div><dt><%= t('templateCurrentRevision') %></dt><dd><%= template.currentRevisionLabel || '-' %></dd></div>
+            <div><dt><%= t('status') %></dt><dd><span class="status"><%= template.isActive ? t('activeForNewProjects') : t('inactiveForNewProjects') %></span></dd></div>
+          </dl>
+          <p class="muted"><%= t('onlyPublishedForProjects') %></p>
+        </section>
+
+        <% if (canAuthor && !hasOpenRevision && template.revisions.length) { %>
+          <section class="form-panel">
+            <h2><%= t('createNextRevision') %></h2>
+            <form method="post" action="/technical-templates/<%= template.id %>/revisions">
+              <%- csrfField() %>
+              <label><%= t('changeSummary') %><textarea name="changeSummary" maxlength="2000" required></textarea></label>
+              <button type="submit"><%= t('createNextRevision') %></button>
+            </form>
+          </section>
+        <% } %>
+
+        <section class="detail-section">
+          <h2><%= t('templateRevisions') %></h2>
+          <p class="muted"><%= t('immutableAfterSubmission') %></p>
+          <% for (const revision of template.revisions) { %>
+            <article class="form-panel technical-template-revision">
+              <header class="page-header">
+                <div>
+                  <h3><%= revision.revisionLabel %> · <%= t(`templateStatus.${revision.status}`) %></h3>
+                  <div class="muted"><%= revision.changeSummary %></div>
+                </div>
+                <% if (canAuthor) { %>
+                  <div class="inline-actions">
+                    <% if (revision.status === 'draft') { %>
+                      <form method="post" action="/technical-templates/<%= template.id %>/revisions/<%= revision.id %>/submit" onsubmit="return confirm('<%= t('submitRevisionConfirm') %>')">
+                        <%- csrfField() %>
+                        <button type="submit"><%= t('submitForReview') %></button>
+                      </form>
+                    <% } %>
+                    <% if (revision.status === 'review_pending') { %>
+                      <form method="post" action="/technical-templates/<%= template.id %>/revisions/<%= revision.id %>/publish" onsubmit="return confirm('<%= t('publishRevisionConfirm') %>')">
+                        <%- csrfField() %>
+                        <button type="submit"><%= t('publish') %></button>
+                      </form>
+                    <% } %>
+                    <% if (revision.status === 'published') { %>
+                      <form method="post" action="/technical-templates/<%= template.id %>/revisions/<%= revision.id %>/retire" onsubmit="return confirm('<%= t('retireRevisionConfirm') %>')">
+                        <%- csrfField() %>
+                        <button class="danger-action" type="submit"><%= t('retire') %></button>
+                      </form>
+                    <% } %>
+                  </div>
+                <% } %>
+              </header>
+
+              <dl class="detail-grid">
+                <div><dt><%= t('revisionCreatedBy') %></dt><dd><%= revision.createdByDisplayName || revision.createdBy %></dd></div>
+                <div><dt><%= t('submittedBy') %></dt><dd><%= revision.submittedByDisplayName || '-' %></dd></div>
+                <div><dt><%= t('publishedBy') %></dt><dd><%= revision.publishedByDisplayName || '-' %></dd></div>
+                <div><dt><%= t('retiredBy') %></dt><dd><%= revision.retiredByDisplayName || '-' %></dd></div>
+              </dl>
+
+              <h4><%= t('standardSections') %></h4>
+              <ol>
+                <% for (const section of (revision.contentSchema.sections || [])) { %>
+                  <li><%= language === 'zh' ? section.labelZh : section.labelEn %> <span class="muted">(<%= section.key %>)</span></li>
+                <% } %>
+              </ol>
+
+              <h4><%= t('variables') %></h4>
+              <div class="list-body">
+                <table class="list-table content-fit-table">
+                  <thead><tr><th><%= t('variableKey') %></th><th><%= t('dataType') %></th><th><%= t('sourceField') %></th><th><%= t('requiredVariable') %></th><th><%= t('defaultValue') %></th><% if (canAuthor && revision.status === 'draft') { %><th><%= t('actions') %></th><% } %></tr></thead>
+                  <tbody>
+                    <% for (const variable of revision.variables) { %>
+                      <tr>
+                        <td><strong><%= variable.variableKey %></strong><br><span class="muted"><%= language === 'zh' ? variable.labelZh : variable.labelEn %></span></td>
+                        <td><%= t(`variableType.${variable.dataType}`) %></td>
+                        <td><%= t(`variableSource.${variable.sourceField}`) %></td>
+                        <td><%= variable.isRequired ? t('yesValue') : t('noValue') %></td>
+                        <td><%= variable.defaultValue || '-' %></td>
+                        <% if (canAuthor && revision.status === 'draft') { %>
+                          <td>
+                            <form method="post" action="/technical-templates/<%= template.id %>/revisions/<%= revision.id %>/variables/<%= variable.id %>/delete">
+                              <%- csrfField() %><button class="danger-action" type="submit"><%= t('remove') %></button>
+                            </form>
+                          </td>
+                        <% } %>
+                      </tr>
+                    <% } %>
+                    <% if (!revision.variables.length) { %><tr><td colspan="6" class="empty"><%= t('noVariables') %></td></tr><% } %>
+                  </tbody>
+                </table>
+              </div>
+
+              <% if (canAuthor && revision.status === 'draft') { %>
+                <form method="post" action="/technical-templates/<%= template.id %>/revisions/<%= revision.id %>/variables">
+                  <%- csrfField() %>
+                  <h4><%= t('addVariable') %></h4>
+                  <label>
+                    <%= t('variableCatalog') %>
+                    <select name="variableDefinitionId" required>
+                      <% for (const definition of variableDefinitions) { %>
+                        <option value="<%= definition.id %>"><%= definition.variableKey %> · <%= language === 'zh' ? definition.labelZh : definition.labelEn %></option>
+                      <% } %>
+                    </select>
+                  </label>
+                  <div class="form-grid">
+                    <label><%= t('defaultValue') %><input name="defaultValue" maxlength="2000"></label>
+                    <label><%= t('minimumValue') %><input name="minValue" type="number" step="any"></label>
+                    <label><%= t('maximumValue') %><input name="maxValue" type="number" step="any"></label>
+                    <label><%= t('sortOrder') %><input name="sortOrder" type="number" min="1" value="1" required></label>
+                  </div>
+                  <label><%= t('allowedValues') %><textarea name="allowedValues" maxlength="6000"></textarea><span class="muted"><%= t('allowedValuesHint') %></span></label>
+                  <label class="checkbox-row"><input name="isRequired" type="checkbox"><span><%= t('requiredVariable') %></span></label>
+                  <button type="submit" <%= variableDefinitions.length ? '' : 'disabled' %>><%= t('addVariable') %></button>
+                </form>
+              <% } %>
+            </article>
+          <% } %>
+        </section>
+
+        <section class="detail-section">
+          <h2><%= t('templateAuditHistory') %></h2>
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead><tr><th><%= t('event') %></th><th><%= t('actor') %></th><th><%= t('status') %></th><th><%= t('createdAt') %></th></tr></thead>
+              <tbody>
+                <% for (const event of template.events) { %>
+                  <tr>
+                    <td><%= t(`technicalTemplateEvent.${event.eventType}`) %></td>
+                    <td><%= event.actorDisplayName || event.actorUserId %></td>
+                    <td><%= event.fromStatus ? t(`templateStatus.${event.fromStatus}`) : '-' %> → <%= event.toStatus ? t(`templateStatus.${event.toStatus}`) : '-' %></td>
+                    <td><%= event.createdAt ? new Date(event.createdAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-GB') : '-' %></td>
+                  </tr>
+                <% } %>
+                <% if (!template.events.length) { %><tr><td colspan="4" class="empty"><%= t('noTemplateAuditHistory') %></td></tr><% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

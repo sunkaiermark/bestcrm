@@ -1,0 +1,16 @@
+<%- include('../partials/app-start', { title: `${mode === 'new' ? t('newStandardClause') : t('editStandardClause')} - BESTCRM`, activeNav: 'technical-clauses' }) %>
+        <p class="breadcrumb"><a href="/technical-clauses"><%= t('standardClauseLibrary') %></a> / <%= mode === 'new' ? t('newStandardClause') : t('editStandardClause') %></p>
+        <header class="page-header"><h1><%= mode === 'new' ? t('newStandardClause') : t('editStandardClause') %></h1></header>
+        <form class="form-panel" method="post" action="<%= action %>">
+          <%- csrfField() %>
+          <% if (mode === 'new') { %><label><%= t('clauseCode') %><input name="clauseCode" maxlength="32" pattern="[A-Za-z][A-Za-z0-9-]*" value="<%= clause.clauseCode %>" required></label><% } else { %><label><%= t('clauseCode') %><input value="<%= clause.clauseCode %>" disabled></label><% } %>
+          <label><%= t('clauseTitle') %><input name="title" maxlength="300" value="<%= clause.title %>" required></label>
+          <label><%= t('outputLanguage') %><select name="language" required><% for (const option of languages) { %><option value="<%= option %>" <%= clause.language === option ? 'selected' : '' %>><%= t(`templateLanguage.${option}`) %></option><% } %></select></label>
+          <label><%= t('productFamily') %><input name="productFamily" maxlength="200" value="<%= clause.productFamily || '' %>"></label>
+          <label><%= t('productModel') %><input name="productModel" maxlength="200" value="<%= clause.productModel || '' %>"></label>
+          <label><%= t('application') %><input name="application" maxlength="300" value="<%= clause.application || '' %>"></label>
+          <label><%= t('clauseContent') %><textarea name="content" maxlength="100000" required><%= clause.content %></textarea></label>
+          <label><%= t('changeSummary') %><textarea name="changeSummary" maxlength="2000" required><%= clause.changeSummary %></textarea></label>
+          <div class="inline-actions"><button type="submit"><%= mode === 'new' ? t('createClause') : t('saveClause') %></button><a class="secondary-action" href="/technical-clauses"><%= t('cancel') %></a></div>
+        </form>
+<%- include('../partials/app-end') %>

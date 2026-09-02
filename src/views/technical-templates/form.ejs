@@ -1,0 +1,60 @@
+<%- include('../partials/app-start', { title: `${mode === 'new' ? t('newTechnicalTemplate') : t('editTechnicalTemplate')} - BESTCRM`, activeNav: 'technical-templates' }) %>
+        <p class="breadcrumb"><a href="/technical-templates"><%= t('technicalTemplateLibrary') %></a> / <%= mode === 'new' ? t('newTechnicalTemplate') : t('edit') %></p>
+        <header class="page-header">
+          <h1><%= mode === 'new' ? t('newTechnicalTemplate') : t('editTechnicalTemplate') %></h1>
+        </header>
+
+        <form class="form-panel" method="post" action="<%= action %>">
+          <%- csrfField() %>
+          <% if (mode === 'new') { %>
+            <label>
+              <%= t('templateCode') %>
+              <input name="templateCode" maxlength="32" pattern="[A-Za-z][A-Za-z0-9-]*" value="<%= template.templateCode %>" required>
+            </label>
+          <% } else { %>
+            <label>
+              <%= t('templateCode') %>
+              <input value="<%= template.templateCode %>" disabled>
+            </label>
+          <% } %>
+          <label>
+            <%= t('templateName') %>
+            <input name="name" maxlength="200" value="<%= template.name %>" required>
+          </label>
+          <label>
+            <%= t('productFamily') %>
+            <input name="productFamily" maxlength="200" value="<%= template.productFamily %>" required>
+          </label>
+          <label>
+            <%= t('productModel') %>
+            <input name="productModel" maxlength="200" value="<%= template.productModel || '' %>">
+          </label>
+          <label>
+            <%= t('application') %>
+            <input name="application" maxlength="300" value="<%= template.application || '' %>">
+          </label>
+          <% if (mode === 'new') { %>
+            <label>
+              <%= t('outputLanguage') %>
+              <select name="language" required>
+                <% for (const option of languages) { %>
+                  <option value="<%= option %>" <%= template.language === option ? 'selected' : '' %>><%= t(`templateLanguage.${option}`) %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('changeSummary') %>
+              <textarea name="changeSummary" maxlength="2000" required><%= template.changeSummary || '' %></textarea>
+            </label>
+          <% } else { %>
+            <label>
+              <%= t('outputLanguage') %>
+              <input value="<%= t(`templateLanguage.${template.language}`) %>" disabled>
+            </label>
+          <% } %>
+          <div class="inline-actions">
+            <button type="submit"><%= mode === 'new' ? t('createTemplate') : t('saveTemplate') %></button>
+            <a class="secondary-action" href="<%= mode === 'new' ? '/technical-templates' : `/technical-templates/${template.id}` %>"><%= t('cancel') %></a>
+          </div>
+        </form>
+<%- include('../partials/app-end') %>

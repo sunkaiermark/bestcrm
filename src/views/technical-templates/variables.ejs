@@ -1,0 +1,24 @@
+<%- include('../partials/app-start', { title: `${t('variableCatalog')} - BESTCRM`, activeNav: 'technical-templates' }) %>
+        <p class="breadcrumb"><a href="/technical-templates"><%= t('technicalTemplateLibrary') %></a> / <%= t('variableCatalog') %></p>
+        <header class="page-header">
+          <div><h1><%= t('variableCatalog') %></h1><div class="muted"><%= t('variableCatalogDescription') %></div></div>
+          <a class="quick-action" href="/technical-templates/variables/new"><%= t('newVariableDefinition') %></a>
+        </header>
+        <section class="form-panel"><strong><%= t('administratorVariableNotice') %></strong></section>
+        <section class="list-section"><div class="list-body"><table class="list-table content-fit-table">
+          <thead><tr><th><%= t('variableKey') %></th><th><%= t('englishLabel') %></th><th><%= t('chineseLabel') %></th><th><%= t('dataType') %></th><th><%= t('sourceField') %></th><th><%= t('status') %></th><th><%= t('actions') %></th></tr></thead>
+          <tbody>
+            <% for (const definition of definitions) { %>
+              <tr>
+                <td><strong><%= definition.variableKey %></strong></td><td><%= definition.labelEn %></td><td><%= definition.labelZh %></td>
+                <td><%= t(`variableType.${definition.dataType}`) %></td><td><%= t(`variableSource.${definition.sourceField}`) %></td>
+                <td><span class="status"><%= definition.isActive ? t('active') : t('inactive') %></span></td>
+                <td><div class="inline-actions"><a class="secondary-action" href="/technical-templates/variables/<%= definition.id %>/edit"><%= t('edit') %></a>
+                  <% if (definition.isActive) { %><form method="post" action="/technical-templates/variables/<%= definition.id %>/deactivate" onsubmit="return confirm('<%= t('deactivateVariableConfirm') %>')"><%- csrfField() %><button class="danger-action" type="submit"><%= t('deactivate') %></button></form><% } %>
+                </div></td>
+              </tr>
+            <% } %>
+            <% if (!definitions.length) { %><tr><td colspan="7" class="empty"><%= t('noVariableDefinitions') %></td></tr><% } %>
+          </tbody>
+        </table></div></section>
+<%- include('../partials/app-end') %>

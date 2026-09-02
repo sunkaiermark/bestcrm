@@ -27,6 +27,7 @@ const inquiryDispositionMigrationPath = new URL('../../src/db/migrations/023_inq
 const inquiryCustomerCollaborationMigrationPath = new URL('../../src/db/migrations/024_inquiry_customer_collaboration.sql', import.meta.url);
 const salesLeadSubmissionsMigrationPath = new URL('../../src/db/migrations/025_sales_lead_submissions.sql', import.meta.url);
 const opportunityEngineeringCollaborationMigrationPath = new URL('../../src/db/migrations/026_opportunity_engineering_collaboration.sql', import.meta.url);
+const productTechnicalTemplatesMigrationPath = new URL('../../src/db/migrations/029_product_technical_templates.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -155,6 +156,32 @@ test('opportunity engineering collaboration migration adds tasks audit and contr
   assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_engineering_contributions/);
   assert.match(sql, /contributor_user_id bigint NOT NULL REFERENCES users\(id\)/);
   assert.match(sql, /contribution_summary text NOT NULL/);
+});
+
+test('product technical template migration creates controlled immutable revision tables', async () => {
+  const sql = await readFile(productTechnicalTemplatesMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_agreement_templates/);
+  assert.match(sql, /language text NOT NULL CHECK \(language IN \('en', 'zh', 'bilingual'\)\)/);
+  assert.match(sql, /current_published_revision_id bigint/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_agreement_template_revisions/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'draft' CHECK \(status IN \('draft', 'review_pending', 'published', 'retired'\)\)/);
+  assert.match(sql, /UNIQUE \(template_id, revision_no\)/);
+  assert.match(sql, /technical_agreement_template_open_revision_idx/);
+  assert.match(sql, /technical_agreement_template_published_revision_idx/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_agreement_variable_definitions/);
+  assert.match(sql, /variable_key text NOT NULL UNIQUE CHECK/);
+  assert.match(sql, /source_field text NOT NULL DEFAULT 'manual' CHECK/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_agreement_revision_variables/);
+  assert.match(sql, /variable_key text NOT NULL CHECK/);
+  assert.match(sql, /validation_rules jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_agreement_clause_blocks/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_template_events/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION protect_technical_template_revision_content/);
+  assert.match(sql, /Submitted or published template revision content is immutable/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION require_draft_technical_template_revision/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION protect_technical_clause_content/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
 });
 
 test('customer country migration adds country to customer records', async () => {

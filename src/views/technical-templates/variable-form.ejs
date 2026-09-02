@@ -1,0 +1,14 @@
+<%- include('../partials/app-start', { title: `${mode === 'new' ? t('newVariableDefinition') : t('editVariableDefinition')} - BESTCRM`, activeNav: 'technical-templates' }) %>
+        <p class="breadcrumb"><a href="/technical-templates"><%= t('technicalTemplateLibrary') %></a> / <a href="/technical-templates/variables"><%= t('variableCatalog') %></a></p>
+        <header class="page-header"><h1><%= mode === 'new' ? t('newVariableDefinition') : t('editVariableDefinition') %></h1></header>
+        <form class="form-panel" method="post" action="<%= action %>">
+          <%- csrfField() %>
+          <label><%= t('variableKey') %><input name="variableKey" maxlength="64" pattern="[a-z][a-z0-9_]*" value="<%= definition.variableKey %>" required></label>
+          <label><%= t('englishLabel') %><input name="labelEn" maxlength="200" value="<%= definition.labelEn %>" required></label>
+          <label><%= t('chineseLabel') %><input name="labelZh" maxlength="200" value="<%= definition.labelZh %>" required></label>
+          <label><%= t('dataType') %><select name="dataType" required><% for (const type of dataTypes) { %><option value="<%= type %>" <%= definition.dataType === type ? 'selected' : '' %>><%= t(`variableType.${type}`) %></option><% } %></select></label>
+          <label><%= t('sourceField') %><select name="sourceField" required><% for (const source of sourceFields) { %><option value="<%= source %>" <%= definition.sourceField === source ? 'selected' : '' %>><%= t(`variableSource.${source}`) %></option><% } %></select></label>
+          <label class="checkbox-row"><input name="isActive" type="checkbox" <%= definition.isActive ? 'checked' : '' %>><span><%= t('active') %></span></label>
+          <div class="inline-actions"><button type="submit"><%= mode === 'new' ? t('createVariable') : t('saveVariable') %></button><a class="secondary-action" href="/technical-templates/variables"><%= t('cancel') %></a></div>
+        </form>
+<%- include('../partials/app-end') %>

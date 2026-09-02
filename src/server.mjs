@@ -26,6 +26,7 @@ import { createRequirementUpdateRepository } from './repositories/requirementUpd
 import { createRoleRepository } from './repositories/roleRepository.mjs';
 import { createSalesWorkRepository } from './repositories/salesWorkRepository.mjs';
 import { createTechnicalSolutionRepository } from './repositories/technicalSolutionRepository.mjs';
+import { createTechnicalTemplateRepository } from './repositories/technicalTemplateRepository.mjs';
 import { createTodoRepository } from './repositories/todoRepository.mjs';
 import { createUserRepository } from './repositories/userRepository.mjs';
 import { createWorkbenchRepository } from './repositories/workbenchRepository.mjs';
@@ -41,6 +42,7 @@ import { notificationRoutes } from './routes/notificationRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
+import { technicalTemplateRoutes } from './routes/technicalTemplateRoutes.mjs';
 import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
 import { createMessageLabeler, createStatusLabeler, createTodoTitleLabeler, createTranslator, createWorkflowEventLabeler, inferLanguageFromAcceptLanguage, normalizeLanguage } from './utils/i18n.mjs';
 import { isMainModule } from './utils/moduleEntry.mjs';
@@ -405,6 +407,33 @@ const emptyNotificationRepository = {
   async revokePushSubscription() { return 0; }
 };
 
+const emptyTechnicalTemplateRepository = {
+  async listTemplates() { return []; },
+  async getTemplateDetail() { return null; },
+  async findRevisionById() { return null; },
+  async listVariableDefinitions() { return []; },
+  async findVariableDefinitionById() { return null; },
+  async listClauses() { return []; },
+  async findClauseById() { return null; },
+  async createTemplate() { throw new Error('Technical template repository is not configured'); },
+  async updateTemplate() { throw new Error('Technical template repository is not configured'); },
+  async createRevision() { throw new Error('Technical template repository is not configured'); },
+  async submitRevision() { throw new Error('Technical template repository is not configured'); },
+  async publishRevision() { throw new Error('Technical template repository is not configured'); },
+  async retireRevision() { throw new Error('Technical template repository is not configured'); },
+  async upsertRevisionVariable() { throw new Error('Technical template repository is not configured'); },
+  async removeRevisionVariable() { throw new Error('Technical template repository is not configured'); },
+  async createVariableDefinition() { throw new Error('Technical template repository is not configured'); },
+  async updateVariableDefinition() { throw new Error('Technical template repository is not configured'); },
+  async deactivateVariableDefinition() { throw new Error('Technical template repository is not configured'); },
+  async createClause() { throw new Error('Technical template repository is not configured'); },
+  async updateClause() { throw new Error('Technical template repository is not configured'); },
+  async createClauseRevision() { throw new Error('Technical template repository is not configured'); },
+  async submitClause() { throw new Error('Technical template repository is not configured'); },
+  async publishClause() { throw new Error('Technical template repository is not configured'); },
+  async retireClause() { throw new Error('Technical template repository is not configured'); }
+};
+
 export function createApp(options = {}) {
   const config = { ...loadConfig(), ...options };
   const shouldCreatePool = !options.userRepository && config.databaseUrl;
@@ -442,6 +471,8 @@ export function createApp(options = {}) {
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
   const salesWorkRepository = options.salesWorkRepository || (pool ? createSalesWorkRepository(pool) : emptySalesWorkRepository);
+  const technicalTemplateRepository = options.technicalTemplateRepository
+    || (pool ? createTechnicalTemplateRepository(pool) : emptyTechnicalTemplateRepository);
   const workflowTransaction = 'workflowTransaction' in options
     ? options.workflowTransaction
     : pool ? createWorkflowTransaction(pool) : null;
@@ -514,6 +545,7 @@ export function createApp(options = {}) {
     webPushPublicKey: configuredWebPushPublicKey
   }));
   app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository, loginSecurityRepository }));
+  app.use(technicalTemplateRoutes({ technicalTemplateRepository }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
   app.use(leadSubmissionRoutes({

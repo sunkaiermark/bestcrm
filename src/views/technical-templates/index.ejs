@@ -1,0 +1,60 @@
+<%- include('../partials/app-start', { title: `${t('technicalTemplateLibrary')} - BESTCRM`, activeNav: 'technical-templates' }) %>
+        <header class="page-header">
+          <div>
+            <h1><%= t('technicalTemplateLibrary') %></h1>
+            <div class="muted"><%= t('technicalTemplateLibraryDescription') %></div>
+          </div>
+          <div class="inline-actions">
+            <% if (canManageVariables) { %>
+              <a class="secondary-action" href="/technical-templates/variables"><%= t('variableCatalog') %></a>
+            <% } %>
+            <% if (canAuthor) { %>
+              <a class="quick-action" href="/technical-templates/new"><%= t('newTechnicalTemplate') %></a>
+            <% } %>
+          </div>
+        </header>
+
+        <section class="form-panel">
+          <strong><%= canAuthor ? t('technicalManagerPublishingNotice') : t('onlyPublishedForProjects') %></strong>
+        </section>
+
+        <section class="list-section">
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead>
+                <tr>
+                  <th><%= t('templateCode') %></th>
+                  <th><%= t('templateName') %></th>
+                  <th><%= t('productFamily') %></th>
+                  <th><%= t('productModel') %></th>
+                  <th><%= t('application') %></th>
+                  <th><%= t('outputLanguage') %></th>
+                  <th><%= t('templateCurrentRevision') %></th>
+                  <th><%= t('status') %></th>
+                  <th><%= t('actions') %></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const template of templates) { %>
+                  <tr>
+                    <td><strong><%= template.templateCode %></strong></td>
+                    <td><%= template.name %></td>
+                    <td><%= template.productFamily %></td>
+                    <td><%= template.productModel || '-' %></td>
+                    <td><%= template.application || '-' %></td>
+                    <td><%= t(`templateLanguage.${template.language}`) %></td>
+                    <td><%= template.currentRevisionLabel || '-' %></td>
+                    <td>
+                      <span class="status"><%= template.isActive ? t('activeForNewProjects') : t('inactiveForNewProjects') %></span>
+                    </td>
+                    <td><a class="secondary-action" href="/technical-templates/<%= template.id %>"><%= t('openTemplate') %></a></td>
+                  </tr>
+                <% } %>
+                <% if (!templates.length) { %>
+                  <tr><td colspan="9" class="empty"><%= t('noTechnicalTemplates') %></td></tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

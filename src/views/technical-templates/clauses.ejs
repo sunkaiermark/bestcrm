@@ -1,0 +1,23 @@
+<%- include('../partials/app-start', { title: `${t('standardClauseLibrary')} - BESTCRM`, activeNav: 'technical-clauses' }) %>
+        <header class="page-header">
+          <div><h1><%= t('standardClauseLibrary') %></h1><div class="muted"><%= t('standardClauseLibraryDescription') %></div></div>
+          <% if (canAuthor) { %><a class="quick-action" href="/technical-clauses/new"><%= t('newStandardClause') %></a><% } %>
+        </header>
+        <section class="list-section"><div class="list-body"><table class="list-table content-fit-table">
+          <thead><tr><th><%= t('revision') %></th><th><%= t('clauseTitle') %></th><th><%= t('productFamily') %></th><th><%= t('outputLanguage') %></th><th><%= t('status') %></th><th><%= t('changeSummary') %></th><% if (canAuthor) { %><th><%= t('actions') %></th><% } %></tr></thead>
+          <tbody>
+            <% for (const clause of clauses) { %>
+              <tr>
+                <td><strong><%= clause.revisionLabel %></strong></td><td><%= clause.title %><br><span class="muted"><%= clause.content %></span></td><td><%= clause.productFamily || '-' %></td>
+                <td><%= t(`templateLanguage.${clause.language}`) %></td><td><span class="status"><%= t(`templateStatus.${clause.status}`) %></span></td><td><%= clause.changeSummary %></td>
+                <% if (canAuthor) { %><td><div class="inline-actions">
+                  <% if (clause.status === 'draft') { %><a class="secondary-action" href="/technical-clauses/<%= clause.id %>/edit"><%= t('edit') %></a><form method="post" action="/technical-clauses/<%= clause.id %>/submit" onsubmit="return confirm('<%= t('submitClauseConfirm') %>')"><%- csrfField() %><button type="submit"><%= t('submitForReview') %></button></form><% } %>
+                  <% if (clause.status === 'review_pending') { %><form method="post" action="/technical-clauses/<%= clause.id %>/publish" onsubmit="return confirm('<%= t('publishClauseConfirm') %>')"><%- csrfField() %><button type="submit"><%= t('publish') %></button></form><% } %>
+                  <% if (clause.status === 'published') { %><form method="post" action="/technical-clauses/<%= clause.id %>/retire" onsubmit="return confirm('<%= t('retireClauseConfirm') %>')"><%- csrfField() %><button class="danger-action" type="submit"><%= t('retire') %></button></form><form method="post" action="/technical-clauses/<%= clause.id %>/revisions"><%- csrfField() %><input name="changeSummary" aria-label="<%= t('clauseRevisionReason') %>" placeholder="<%= t('clauseRevisionReason') %>" required><button type="submit"><%= t('createClauseRevision') %></button></form><% } %>
+                </div></td><% } %>
+              </tr>
+            <% } %>
+            <% if (!clauses.length) { %><tr><td colspan="7" class="empty"><%= t('noStandardClauses') %></td></tr><% } %>
+          </tbody>
+        </table></div></section>
+<%- include('../partials/app-end') %>
