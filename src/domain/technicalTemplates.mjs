@@ -57,7 +57,10 @@ export const TECHNICAL_SECTION_CONDITION_OPERATORS = Object.freeze([
 
 export const OPPORTUNITY_TECHNICAL_DRAFT_STATUSES = Object.freeze([
   'draft',
-  'ready'
+  'ready',
+  'pending',
+  'approved',
+  'rejected'
 ]);
 
 const sectionTypeByKey = Object.freeze({

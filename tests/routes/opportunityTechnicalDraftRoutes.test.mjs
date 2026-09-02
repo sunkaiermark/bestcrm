@@ -66,6 +66,8 @@ async function createDraftAgent(options = {}) {
     draftRevisionNo: 1,
     draftLabel: 'TS-D1',
     status: options.draftStatus || 'draft',
+    formalVersionNo: options.formalVersionNo || null,
+    formalVersionLabel: options.formalVersionNo ? `TS-V${options.formalVersionNo}` : '',
     language: 'bilingual',
     templateCodeSnapshot: 'MX-100',
     templateNameSnapshot: 'Mixer Agreement',
@@ -78,6 +80,7 @@ async function createDraftAgent(options = {}) {
     validationIssues: variableValues.capacity === '' ? [{ variableKey: 'capacity', sectionKey: 'design_parameters', code: 'required', labelEn: 'Capacity', labelZh: '处理能力' }] : [],
     assignments: [{ id: 70, technicalDraftId: 41, sectionKey: 'design_parameters', assigneeUserId: 4, assigneeDisplayName: 'Support Engineer', isActive: true }],
     events: [{ id: 1, eventType: 'created', sectionKey: '', actorUserId: 3, actorDisplayName: 'Lead Engineer', createdAt: '2026-09-02' }],
+    documents: options.documents || [],
     createdBy: 3,
     updatedBy: 3,
     updatedByDisplayName: 'Lead Engineer',
@@ -88,6 +91,10 @@ async function createDraftAgent(options = {}) {
     async getGenerationContext(id) { calls.push(['getGenerationContext', Number(id)]); return { customerName: 'Acme', opportunityTitle: opportunity.title, productName: 'Mixer', opportunityOwner: 'Sales One' }; },
     async listByOpportunity(id) { calls.push(['listByOpportunity', Number(id)]); return [draft]; },
     async getDraftDetail(id) { calls.push(['getDraftDetail', Number(id)]); return Number(id) === 41 ? draft : null; },
+    async findDocument(draftId, documentId) {
+      calls.push(['findDocument', Number(draftId), Number(documentId)]);
+      return (draft.documents || []).find((document) => Number(document.id) === Number(documentId)) || null;
+    },
     async createDraft(input) { calls.push(['createDraft', input]); return { ...draft, ...input }; },
     async updateVariables(input) { calls.push(['updateVariables', input]); return { ...draft, ...input }; },
     async updateSection(input) { calls.push(['updateSection', input]); return { ...draft, ...input }; },
@@ -117,7 +124,8 @@ async function createDraftAgent(options = {}) {
       async listTeamMembersByOpportunity() { return teamMembers; }
     },
     technicalTemplateRepository,
-    opportunityTechnicalDraftRepository
+    opportunityTechnicalDraftRepository,
+    workflowAction: options.workflowAction
   });
   const agent = request.agent(app);
   if (options.language) await agent.get(`/language?lang=${options.language}&returnTo=/login`);
@@ -207,4 +215,66 @@ test('valid project values can be saved and marked ready by the Lead Engineer', 
   assert.equal(ready.status, 302);
   assert.ok(calls.some(([method]) => method === 'updateVariables'));
   assert.ok(calls.some(([method]) => method === 'markReady'));
+});
+
+test('ready TS-D draft submits through the existing technical approval workflow', async () => {
+  const workflowCalls = [];
+  const { agent } = await createDraftAgent({
+    capacity: 50,
+    draftStatus: 'ready',
+    workflowAction: async (input) => { workflowCalls.push(input); return {}; }
+  });
+  const detail = await agent.get('/opportunities/20/technical-drafts/41');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Submit Technical Version for Approval/);
+  const response = await agent.post('/opportunities/20/technical-drafts/41/submit').type('form').send({ comment: 'Ready' });
+  assert.equal(response.status, 302);
+  assert.equal(workflowCalls[0].action, 'submit_technical_solution');
+  assert.equal(workflowCalls[0].payload.technicalDraftId, 41);
+});
+
+test('assigned Technical Manager can approve or return a pending TS-D snapshot', async () => {
+  const workflowCalls = [];
+  const { agent } = await createDraftAgent({
+    userId: 6,
+    username: 'tech-manager',
+    displayName: 'Technical Manager',
+    roles: [ROLES.TECHNICAL_MANAGER],
+    draftStatus: 'pending',
+    workflowAction: async (input) => { workflowCalls.push(input); return {}; }
+  });
+  const detail = await agent.get('/opportunities/20/technical-drafts/41');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Technical Manager Review/);
+  assert.doesNotMatch(detail.text, /Save Project Section/);
+  const response = await agent.post('/opportunities/20/technical-drafts/41/review').type('form').send({ decision: 'approve', comment: 'Approved' });
+  assert.equal(response.status, 302);
+  assert.equal(workflowCalls[0].action, 'approve_technical_solution');
+});
+
+test('approved TS-V files download with exact size and checksum headers', async () => {
+  const content = Buffer.from('%PDF-technical-solution');
+  const { agent, calls } = await createDraftAgent({
+    draftStatus: 'approved',
+    formalVersionNo: 1,
+    documents: [{
+      id: 90,
+      technicalDraftId: 41,
+      documentNo: 'TS-V1',
+      format: 'pdf',
+      originalName: 'OPP-20_TS-V1.pdf',
+      mimeType: 'application/pdf',
+      byteSize: content.length,
+      sha256: 'a'.repeat(64),
+      content
+    }]
+  });
+  const detail = await agent.get('/opportunities/20/technical-drafts/41');
+  assert.match(detail.text, /TS-V1/);
+  assert.match(detail.text, new RegExp('a{64}'));
+  const response = await agent.get('/opportunities/20/technical-drafts/41/documents/90/download');
+  assert.equal(response.status, 200);
+  assert.equal(response.headers['x-content-sha256'], 'a'.repeat(64));
+  assert.equal(response.headers['content-length'], String(content.length));
+  assert.ok(calls.some(([method]) => method === 'findDocument'));
 });

@@ -1,9 +1,13 @@
 import { Router } from 'express';
+import { ACTIONS } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
+import { applyWorkflowAction, WorkflowValidationError } from '../services/workflowService.mjs';
+import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
 import {
   assignOpportunityTechnicalDraftSection,
   canCreateOpportunityTechnicalDraft,
   canEditOpportunityTechnicalDraftSection,
+  canReviewOpportunityTechnicalDraft,
   canViewOpportunityTechnicalDraft,
   generateOpportunityTechnicalDraft,
   getOpportunityTechnicalDraft,
@@ -69,14 +73,50 @@ export function opportunityTechnicalDraftRoutes({
   opportunityRepository,
   opportunityResponsibilityRepository,
   technicalTemplateRepository,
-  opportunityTechnicalDraftRepository
+  opportunityTechnicalDraftRepository,
+  approvalSettingRepository,
+  attachmentRepository,
+  commercialQuoteRepository,
+  contractApprovalRepository,
+  opportunityMaterialVersionRepository,
+  technicalSolutionRepository,
+  technicalDocumentService,
+  todoRepository,
+  workflowEventRepository,
+  workflowTransaction,
+  workflowAction = applyWorkflowAction
 }) {
   const router = Router();
   const dependencies = {
     opportunityRepository,
     opportunityResponsibilityRepository,
     technicalTemplateRepository,
-    opportunityTechnicalDraftRepository
+    opportunityTechnicalDraftRepository,
+    approvalSettingRepository,
+    attachmentRepository,
+    commercialQuoteRepository,
+    contractApprovalRepository,
+    opportunityMaterialVersionRepository,
+    technicalSolutionRepository,
+    technicalDocumentService,
+    todoRepository,
+    workflowEventRepository,
+    workflowTransaction
+  };
+
+  const workflowRepositories = {
+    opportunityRepository,
+    opportunityTechnicalDraftRepository,
+    approvalSettingRepository,
+    attachmentRepository,
+    commercialQuoteRepository,
+    contractApprovalRepository,
+    opportunityMaterialVersionRepository,
+    technicalSolutionRepository,
+    technicalDocumentService,
+    todoRepository,
+    workflowEventRepository,
+    workflowTransaction
   };
 
   router.use('/opportunities', requireLogin);
@@ -149,6 +189,18 @@ export function opportunityTechnicalDraftRoutes({
         ...context,
         clauses,
         canLead,
+        canManageDraft: canLead && ['draft', 'ready'].includes(context.draft.status),
+        canSubmitDraft: canLead
+          && context.draft.status === 'ready'
+          && ['technical_solution_in_progress', 'technical_solution_rejected'].includes(context.opportunity.status),
+        canWithdrawDraft: canLead
+          && context.draft.status === 'pending'
+          && context.opportunity.status === 'technical_solution_pending',
+        canReviewDraft: canReviewOpportunityTechnicalDraft(
+          req.currentUser,
+          context.opportunity,
+          context.draft
+        ),
         editableSectionKeys,
         supportingEngineers: context.opportunity.teamMembers.filter((member) => (
           member.roleCode === 'quotation_engineer'
@@ -258,6 +310,128 @@ export function opportunityTechnicalDraftRoutes({
         context.draft
       );
       res.redirect(`/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}`);
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/opportunities/:opportunityId/technical-drafts/:draftId/submit', async (req, res, next) => {
+    try {
+      const context = await loadDraftContext(dependencies, req, res);
+      if (!context) return;
+      if (!canCreateOpportunityTechnicalDraft(req.currentUser, context.opportunity)
+          || context.draft.status !== 'ready') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      await workflowAction({
+        actor: req.currentUser,
+        opportunityId: context.opportunity.id,
+        action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+        payload: {
+          technicalDraftId: context.draft.id,
+          comment: req.body.comment
+        },
+        repositories: workflowRepositories
+      });
+      res.redirect(`/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}`);
+    } catch (error) {
+      if (error.message === 'Action not allowed') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error instanceof WorkflowValidationError) {
+        res.status(error.statusCode).send(res.locals.messageLabel(error.message));
+        return;
+      }
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/opportunities/:opportunityId/technical-drafts/:draftId/withdraw', async (req, res, next) => {
+    try {
+      const context = await loadDraftContext(dependencies, req, res);
+      if (!context) return;
+      if (!canCreateOpportunityTechnicalDraft(req.currentUser, context.opportunity)
+          || context.draft.status !== 'pending') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      await workflowAction({
+        actor: req.currentUser,
+        opportunityId: context.opportunity.id,
+        action: ACTIONS.WITHDRAW_TECHNICAL_SOLUTION,
+        repositories: workflowRepositories
+      });
+      res.redirect(`/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}`);
+    } catch (error) {
+      if (error.message === 'Action not allowed') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error instanceof WorkflowValidationError) {
+        res.status(error.statusCode).send(res.locals.messageLabel(error.message));
+        return;
+      }
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/opportunities/:opportunityId/technical-drafts/:draftId/review', async (req, res, next) => {
+    try {
+      const context = await loadDraftContext(dependencies, req, res);
+      if (!context) return;
+      if (!canReviewOpportunityTechnicalDraft(req.currentUser, context.opportunity, context.draft)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const action = req.body.decision === 'approve'
+        ? ACTIONS.APPROVE_TECHNICAL_SOLUTION
+        : req.body.decision === 'reject'
+          ? ACTIONS.REJECT_TECHNICAL_SOLUTION
+          : null;
+      if (!action) {
+        res.status(400).send('Technical review decision is invalid');
+        return;
+      }
+      await workflowAction({
+        actor: req.currentUser,
+        opportunityId: context.opportunity.id,
+        action,
+        payload: { comment: req.body.comment },
+        repositories: workflowRepositories
+      });
+      res.redirect(`/opportunities/${context.opportunity.id}/technical-drafts`);
+    } catch (error) {
+      if (error.message === 'Action not allowed') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error instanceof WorkflowValidationError) {
+        res.status(error.statusCode).send(res.locals.messageLabel(error.message));
+        return;
+      }
+      handleError(error, res, next);
+    }
+  });
+
+  router.get('/opportunities/:opportunityId/technical-drafts/:draftId/documents/:documentId/download', async (req, res, next) => {
+    try {
+      const context = await loadDraftContext(dependencies, req, res);
+      if (!context) return;
+      const document = await opportunityTechnicalDraftRepository.findDocument(
+        context.draft.id,
+        req.params.documentId
+      );
+      if (!document) {
+        res.status(404).send('Technical solution document not found');
+        return;
+      }
+      res.type(document.mimeType);
+      res.setHeader('Content-Disposition', attachmentContentDisposition(document.originalName));
+      res.setHeader('Content-Length', String(document.byteSize));
+      res.setHeader('X-Content-SHA256', document.sha256);
+      res.send(document.content);
     } catch (error) {
       handleError(error, res, next);
     }

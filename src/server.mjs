@@ -50,6 +50,7 @@ import { createMessageLabeler, createStatusLabeler, createTodoTitleLabeler, crea
 import { isMainModule } from './utils/moduleEntry.mjs';
 import { createLoginSecurityService } from './services/loginSecurityService.mjs';
 import { createSmsSecondFactorService } from './services/smsSecondFactorService.mjs';
+import { createTechnicalDocumentService } from './services/technicalDocumentService.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -238,6 +239,9 @@ const emptyTechnicalSolutionRepository = {
   },
   async reviewLatestPending() {
     throw new Error('Technical solution repository is not configured');
+  },
+  async withdrawLatestPending() {
+    throw new Error('Technical solution repository is not configured');
   }
 };
 
@@ -317,13 +321,21 @@ const emptyOpportunityTechnicalDraftRepository = {
   async getGenerationContext() { return null; },
   async listByOpportunity() { return []; },
   async getDraftDetail() { return null; },
+  async findSubmissionCandidate() { return null; },
+  async findDocument() { return null; },
   async createDraft() { throw new Error('Opportunity technical draft repository is not configured'); },
   async updateVariables() { throw new Error('Opportunity technical draft repository is not configured'); },
   async updateSection() { throw new Error('Opportunity technical draft repository is not configured'); },
   async updateClauses() { throw new Error('Opportunity technical draft repository is not configured'); },
   async addAssignment() { throw new Error('Opportunity technical draft repository is not configured'); },
   async removeAssignment() { throw new Error('Opportunity technical draft repository is not configured'); },
-  async markReady() { throw new Error('Opportunity technical draft repository is not configured'); }
+  async markReady() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async submitForApproval() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async withdrawLatestPending() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async approveLatestPending() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async rejectLatestPending() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async cloneRejectedDraft() { throw new Error('Opportunity technical draft repository is not configured'); },
+  async saveApprovedDocuments() { throw new Error('Opportunity technical draft repository is not configured'); }
 };
 
 const emptyWorkflowEventRepository = {
@@ -491,6 +503,8 @@ export function createApp(options = {}) {
   const salesWorkRepository = options.salesWorkRepository || (pool ? createSalesWorkRepository(pool) : emptySalesWorkRepository);
   const technicalTemplateRepository = options.technicalTemplateRepository
     || (pool ? createTechnicalTemplateRepository(pool) : emptyTechnicalTemplateRepository);
+  const technicalDocumentService = options.technicalDocumentService
+    || createTechnicalDocumentService({ fontPath: config.technicalDocumentFontPath });
   const workflowTransaction = 'workflowTransaction' in options
     ? options.workflowTransaction
     : pool ? createWorkflowTransaction(pool) : null;
@@ -595,7 +609,18 @@ export function createApp(options = {}) {
     opportunityRepository,
     opportunityResponsibilityRepository,
     technicalTemplateRepository,
-    opportunityTechnicalDraftRepository
+    opportunityTechnicalDraftRepository,
+    approvalSettingRepository,
+    attachmentRepository,
+    commercialQuoteRepository,
+    contractApprovalRepository,
+    opportunityMaterialVersionRepository,
+    technicalSolutionRepository,
+    technicalDocumentService,
+    todoRepository,
+    workflowEventRepository,
+    workflowTransaction,
+    workflowAction: options.workflowAction
   }));
   app.use(opportunityRoutes({
     customerRepository,
@@ -603,6 +628,8 @@ export function createApp(options = {}) {
     attachmentRepository,
     commercialQuoteRepository,
     technicalSolutionRepository,
+    opportunityTechnicalDraftRepository,
+    technicalDocumentService,
     requirementUpdateRepository,
     opportunityMaterialVersionRepository,
     contractApprovalRepository,

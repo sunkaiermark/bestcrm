@@ -1,4 +1,4 @@
-<%- include('../partials/app-start', { title: `${draft.draftLabel} - ${opportunity.title} - BESTCRM`, activeNav: 'opportunities' }) %>
+<%- include('../partials/app-start', { title: `${draft.formalVersionLabel || draft.draftLabel} - ${opportunity.title} - BESTCRM`, activeNav: 'opportunities' }) %>
 <%
   const sections = [...(draft.renderedContent?.sections || [])].sort((left, right) => left.sortOrder - right.sortOrder);
   const activeAssignments = (draft.assignments || []).filter((assignment) => assignment.isActive !== false);
@@ -12,7 +12,7 @@
         <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a> / <a href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('projectTechnicalDrafts') %></a></p>
         <header class="page-header">
           <div>
-            <h1><%= draft.draftLabel %> · <%= draft.templateNameSnapshot %></h1>
+            <h1><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %></h1>
             <div class="muted"><%= draft.templateCodeSnapshot %> · TPL-R<%= draft.templateRevisionNoSnapshot %> · <%= t(`templateLanguage.${draft.language}`) %></div>
           </div>
           <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span>
@@ -32,12 +32,66 @@
             </div>
           <% } else { %><p class="status"><%= t('draftValidationPassed') %></p><% } %>
           <% if (draft.renderedContent?.clauseSelectionChanged) { %><p class="validation-warning"><strong><%= t('standardClauseSelectionChanged') %></strong></p><% } %>
-          <% if (canLead) { %>
+          <% if (canManageDraft) { %>
             <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/readiness">
               <%- csrfField() %><button type="submit"><%= t('checkAndMarkReady') %></button>
             </form>
           <% } %>
         </section>
+
+        <% if (canSubmitDraft) { %>
+          <section class="detail-section form-panel">
+            <h2><%= t('submitTechnicalDraftApproval') %></h2>
+            <p class="muted"><%= t('submitTechnicalDraftNotice') %></p>
+            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/submit">
+              <%- csrfField() %>
+              <label><%= t('submissionComment') %><textarea name="comment" maxlength="2000"></textarea></label>
+              <button type="submit"><%= t('submitForTechnicalApproval') %></button>
+            </form>
+          </section>
+        <% } %>
+
+        <% if (canWithdrawDraft) { %>
+          <section class="detail-section form-panel">
+            <h2><%= t('pendingTechnicalApproval') %></h2>
+            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/withdraw">
+              <%- csrfField() %><button class="secondary-action" type="submit"><%= t('withdrawTechnicalSubmission') %></button>
+            </form>
+          </section>
+        <% } %>
+
+        <% if (canReviewDraft) { %>
+          <section class="detail-section form-panel">
+            <h2><%= t('technicalManagerReview') %></h2>
+            <p class="muted"><%= t('technicalManagerReviewNotice') %></p>
+            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/review">
+              <%- csrfField() %>
+              <label><%= t('reviewComment') %><textarea name="comment" maxlength="2000"></textarea></label>
+              <div class="inline-actions">
+                <button type="submit" name="decision" value="approve"><%= t('approveTechnicalVersion') %></button>
+                <button class="danger-action" type="submit" name="decision" value="reject"><%= t('returnTechnicalVersion') %></button>
+              </div>
+            </form>
+          </section>
+        <% } %>
+
+        <% if (draft.status === 'rejected') { %>
+          <section class="detail-section validation-warning">
+            <h2><%= t('technicalVersionReturned') %></h2>
+            <p><%= draft.reviewComment || '-' %></p>
+            <p class="muted"><%= t('returnedDraftCloneNotice') %></p>
+          </section>
+        <% } %>
+
+        <% if ((draft.documents || []).length) { %>
+          <section class="detail-section">
+            <h2><%= t('approvedTechnicalDocuments') %></h2>
+            <p class="muted"><%= t('documentChecksumNotice') %></p>
+            <div class="list-body"><table class="list-table content-fit-table"><thead><tr><th><%= t('document') %></th><th><%= t('format') %></th><th><%= t('checksumSha256') %></th><th><%= t('generatedAt') %></th><th><%= t('actions') %></th></tr></thead><tbody>
+              <% for (const document of draft.documents) { %><tr><td><strong><%= document.documentNo %></strong><br><%= document.originalName %></td><td><%= document.format.toUpperCase() %></td><td><code><%= document.sha256 %></code></td><td><%= document.generatedAt || '' %></td><td><a href="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/download"><%= t('download') %></a></td></tr><% } %>
+            </tbody></table></div>
+          </section>
+        <% } %>
 
         <section class="detail-section">
           <h2><%= t('projectVariables') %></h2>
@@ -45,7 +99,7 @@
           <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/variables">
             <%- csrfField() %>
             <div class="form-grid">
-              <% for (const variable of draft.variableSchemaSnapshot || []) { const editable = canLead || editableSectionKeys.has(variable.sectionKey); %>
+              <% for (const variable of draft.variableSchemaSnapshot || []) { const editable = canManageDraft || editableSectionKeys.has(variable.sectionKey); %>
                 <label>
                   <%= language === 'zh' ? variable.labelZh : variable.labelEn %><%= variable.isRequired ? ' *' : '' %>
                   <span class="muted"><%= variable.variableKey %> · <%= sectionLabel(variable.sectionKey) %></span>
@@ -58,11 +112,11 @@
                 </label>
               <% } %>
             </div>
-            <% if (canLead || editableSectionKeys.size) { %><button type="submit"><%= t('saveProjectVariables') %></button><% } %>
+            <% if (canManageDraft || editableSectionKeys.size) { %><button type="submit"><%= t('saveProjectVariables') %></button><% } %>
           </form>
         </section>
 
-        <% if (canLead) { %>
+        <% if (canManageDraft) { %>
           <section class="detail-section">
             <h2><%= t('standardClauseSelection') %></h2>
             <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/clauses">

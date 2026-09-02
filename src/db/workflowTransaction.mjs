@@ -4,6 +4,7 @@ import { createCommercialQuoteRepository } from '../repositories/commercialQuote
 import { createContractApprovalRepository } from '../repositories/contractApprovalRepository.mjs';
 import { createOpportunityMaterialVersionRepository } from '../repositories/opportunityMaterialVersionRepository.mjs';
 import { createOpportunityRepository } from '../repositories/opportunityRepository.mjs';
+import { createOpportunityTechnicalDraftRepository } from '../repositories/opportunityTechnicalDraftRepository.mjs';
 import { createTechnicalSolutionRepository } from '../repositories/technicalSolutionRepository.mjs';
 import { createTodoRepository } from '../repositories/todoRepository.mjs';
 import { createWorkflowEventRepository } from '../repositories/workflowEventRepository.mjs';
@@ -16,6 +17,7 @@ function createWorkflowRepositories(queryTarget) {
     contractApprovalRepository: createContractApprovalRepository(queryTarget),
     opportunityMaterialVersionRepository: createOpportunityMaterialVersionRepository(queryTarget),
     opportunityRepository: createOpportunityRepository(queryTarget),
+    opportunityTechnicalDraftRepository: createOpportunityTechnicalDraftRepository(queryTarget),
     technicalSolutionRepository: createTechnicalSolutionRepository(queryTarget),
     todoRepository: createTodoRepository(queryTarget),
     workflowEventRepository: createWorkflowEventRepository(queryTarget)

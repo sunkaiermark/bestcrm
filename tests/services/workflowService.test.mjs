@@ -860,6 +860,138 @@ test('submit commercial quote requires commercial quote attachment before side e
   ]);
 });
 
+test('versioned technical draft submission is required and frozen inside the existing workflow', async () => {
+  const before = {
+    id: 10,
+    opportunityNo: 'OPP-10',
+    title: 'Mixer Project',
+    status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    salespersonId: 1,
+    salesManagerId: 2,
+    quotationEngineerId: 3,
+    technicalManagerId: null
+  };
+  const repositories = createMaterialRepositories(before);
+  const readyDraft = {
+    id: 41,
+    opportunityId: 10,
+    status: 'ready',
+    draftRevisionNo: 1,
+    templateCodeSnapshot: 'MX-100',
+    templateRevisionNoSnapshot: 1,
+    renderedContent: { sections: [{ key: 'design_parameters', labelEn: 'Design Parameters', included: true }] },
+    validationIssues: []
+  };
+  repositories.opportunityTechnicalDraftRepository = {
+    supportsVersionedTechnicalApproval: true,
+    async findSubmissionCandidate(draftId, opportunityId) {
+      repositories.calls.push(['findTechnicalDraft', draftId, opportunityId]);
+      return readyDraft;
+    },
+    async submitForApproval(input) {
+      repositories.calls.push(['submitTechnicalDraft', input]);
+      return { ...readyDraft, status: 'pending' };
+    }
+  };
+
+  await assert.rejects(
+    applyWorkflowAction({
+      actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+      opportunityId: 10,
+      action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+      repositories
+    }),
+    /ready project technical draft is required/
+  );
+
+  await applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+    payload: { technicalDraftId: 41 },
+    repositories
+  });
+
+  const legacyVersionCall = repositories.calls.find(([method]) => method === 'createTechnicalSolutionVersion');
+  assert.equal(legacyVersionCall[1].opportunityTechnicalDraftId, 41);
+  assert.match(legacyVersionCall[1].summary, /TS-D1 generated from MX-100 TPL-R1/);
+  assert.ok(repositories.calls.some(([method]) => method === 'submitTechnicalDraft'));
+});
+
+test('technical approval creates immutable TS-V documents while rejection clones the next TS-D draft', async () => {
+  const approvedBefore = {
+    id: 10,
+    opportunityNo: 'OPP-10',
+    title: 'Mixer Project',
+    status: STATUSES.TECHNICAL_SOLUTION_PENDING,
+    salespersonId: 1,
+    salesManagerId: 2,
+    quotationEngineerId: 3,
+    technicalManagerId: 4
+  };
+  const approvedRepositories = createMaterialRepositories(approvedBefore);
+  const approvedDraft = {
+    id: 41,
+    status: 'approved',
+    formalVersionNo: 1,
+    renderedContent: { sections: [], variables: [] }
+  };
+  approvedRepositories.opportunityTechnicalDraftRepository = {
+    supportsVersionedTechnicalApproval: true,
+    async approveLatestPending(input) {
+      approvedRepositories.calls.push(['approveTechnicalDraft', input]);
+      return approvedDraft;
+    },
+    async getDraftDetail() { return approvedDraft; },
+    async saveApprovedDocuments(input) {
+      approvedRepositories.calls.push(['saveApprovedDocuments', input]);
+      return input.documents;
+    }
+  };
+  approvedRepositories.technicalDocumentService = {
+    async generateApprovedDocuments(input) {
+      approvedRepositories.calls.push(['generateApprovedDocuments', input]);
+      return [{ documentNo: 'TS-V1', format: 'pdf', content: Buffer.from('pdf'), byteSize: 3, sha256: 'a'.repeat(64) }];
+    }
+  };
+
+  await applyWorkflowAction({
+    actor: { id: 4, displayName: 'Technical Manager', roles: [ROLES.TECHNICAL_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.APPROVE_TECHNICAL_SOLUTION,
+    payload: { comment: 'Approved' },
+    repositories: approvedRepositories
+  });
+  assert.ok(approvedRepositories.calls.some(([method]) => method === 'approveTechnicalDraft'));
+  assert.ok(approvedRepositories.calls.some(([method]) => method === 'generateApprovedDocuments'));
+  assert.ok(approvedRepositories.calls.some(([method]) => method === 'saveApprovedDocuments'));
+
+  const rejectedRepositories = createMaterialRepositories(approvedBefore);
+  rejectedRepositories.opportunityTechnicalDraftRepository = {
+    supportsVersionedTechnicalApproval: true,
+    async rejectLatestPending(input) {
+      rejectedRepositories.calls.push(['rejectTechnicalDraft', input]);
+      return { id: 41, submittedBy: 3, status: 'rejected' };
+    },
+    async cloneRejectedDraft(input) {
+      rejectedRepositories.calls.push(['cloneRejectedDraft', input]);
+      return { id: 42, draftRevisionNo: 2, status: 'draft' };
+    }
+  };
+  await applyWorkflowAction({
+    actor: { id: 4, roles: [ROLES.TECHNICAL_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.REJECT_TECHNICAL_SOLUTION,
+    payload: { comment: 'Revise utilities' },
+    repositories: rejectedRepositories
+  });
+  assert.ok(rejectedRepositories.calls.some(([method]) => method === 'rejectTechnicalDraft'));
+  assert.deepEqual(
+    rejectedRepositories.calls.find(([method]) => method === 'cloneRejectedDraft')[1],
+    { sourceDraftId: 41, actorUserId: 3 }
+  );
+});
+
 test('submit commercial quote stores attachment based quote version without line item details', async () => {
   const repositories = createMaterialRepositories({
     id: 10,

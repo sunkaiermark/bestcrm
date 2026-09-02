@@ -29,6 +29,7 @@ const salesLeadSubmissionsMigrationPath = new URL('../../src/db/migrations/025_s
 const opportunityEngineeringCollaborationMigrationPath = new URL('../../src/db/migrations/026_opportunity_engineering_collaboration.sql', import.meta.url);
 const productTechnicalTemplatesMigrationPath = new URL('../../src/db/migrations/029_product_technical_templates.sql', import.meta.url);
 const opportunityTechnicalDraftsMigrationPath = new URL('../../src/db/migrations/030_opportunity_technical_drafts.sql', import.meta.url);
+const technicalSolutionDocumentsMigrationPath = new URL('../../src/db/migrations/031_technical_solution_versions_and_documents.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -202,6 +203,27 @@ test('opportunity technical draft migration freezes generated snapshots and attr
   assert.match(sql, /require_current_published_technical_template_revision/);
   assert.match(sql, /Opportunity technical draft source snapshots are immutable/);
   assert.match(sql, /Opportunity technical draft events are append-only/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('technical solution version migration adds immutable approval versions and checksum-bound files', async () => {
+  const sql = await readFile(technicalSolutionDocumentsMigrationPath, 'utf8');
+
+  assert.match(sql, /CHECK \(status IN \('draft', 'ready', 'pending', 'approved', 'rejected'\)\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS source_draft_id bigint/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS formal_version_no integer/);
+  assert.match(sql, /opportunity_technical_drafts_formal_version_idx/);
+  assert.match(sql, /opportunity_technical_drafts_pending_idx/);
+  assert.match(sql, /opportunity_technical_drafts_formal_version_check/);
+  assert.match(sql, /opportunity_technical_drafts_submission_metadata_check/);
+  assert.match(sql, /opportunity_technical_drafts_review_metadata_check/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS opportunity_technical_draft_id bigint/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_solution_documents/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /content bytea NOT NULL/);
+  assert.match(sql, /Approved technical solution documents are immutable/);
+  assert.match(sql, /Submitted and approved technical solution content is immutable/);
+  assert.match(sql, /Revision drafts must preserve the rejected source snapshot/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE/);
 });
 

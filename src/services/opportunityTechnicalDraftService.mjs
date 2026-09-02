@@ -1,4 +1,4 @@
-import { ROLES } from '../domain/roles.mjs';
+import { ROLES, hasRole } from '../domain/roles.mjs';
 import { opportunityTechnicalDraftLabel } from '../domain/technicalTemplates.mjs';
 import {
   canViewOpportunity,
@@ -88,7 +88,14 @@ export function canCreateOpportunityTechnicalDraft(actor, opportunity) {
   return isProjectLeadEngineer(actor, opportunity);
 }
 
+export function canReviewOpportunityTechnicalDraft(actor, opportunity, draft) {
+  return draft?.status === 'pending'
+    && hasRole(actor, ROLES.TECHNICAL_MANAGER)
+    && Number(opportunity.technicalManagerId) === Number(actor.id);
+}
+
 export function canEditOpportunityTechnicalDraftSection(actor, opportunity, draft, sectionKey) {
+  if (!['draft', 'ready'].includes(draft?.status)) return false;
   if (isProjectLeadEngineer(actor, opportunity)) return true;
   return isSupportingEngineer(actor, opportunity) && actorSectionKeys(actor, draft).has(sectionKey);
 }
@@ -99,6 +106,12 @@ function ensureViewer(actor, opportunity) {
 
 function ensureLead(actor, opportunity) {
   if (!canCreateOpportunityTechnicalDraft(actor, opportunity)) forbidden();
+}
+
+function ensureEditableDraft(draft) {
+  if (!['draft', 'ready'].includes(draft?.status)) {
+    conflict('Submitted technical solution versions are read-only');
+  }
 }
 
 function sourceValue(variable, context, template) {
@@ -364,6 +377,7 @@ export async function getOpportunityTechnicalDraft(repository, actor, opportunit
 
 export async function updateOpportunityTechnicalDraftVariables(repository, actor, opportunity, draft, submittedValues) {
   ensureViewer(actor, opportunity);
+  ensureEditableDraft(draft);
   const lead = isProjectLeadEngineer(actor, opportunity);
   const allowedSections = actorSectionKeys(actor, draft);
   if (!lead && !isSupportingEngineer(actor, opportunity)) forbidden();
@@ -392,6 +406,7 @@ export async function updateOpportunityTechnicalDraftVariables(repository, actor
 
 export async function updateOpportunityTechnicalDraftSection(repository, actor, opportunity, draft, sectionKey, input) {
   ensureViewer(actor, opportunity);
+  ensureEditableDraft(draft);
   if (!sectionKeyPattern.test(text(sectionKey))) invalid('Technical section is invalid');
   if (!canEditOpportunityTechnicalDraftSection(actor, opportunity, draft, sectionKey)) forbidden();
   const sourceSection = (draft.contentSchemaSnapshot?.sections || []).find((section) => section.key === sectionKey);
@@ -423,6 +438,7 @@ export async function updateOpportunityTechnicalDraftSection(repository, actor, 
 
 export async function updateOpportunityTechnicalDraftClauses(repositories, actor, opportunity, draft, clauseIds) {
   ensureLead(actor, opportunity);
+  ensureEditableDraft(draft);
   const requestedIds = normalizeIdList(clauseIds);
   const clauses = await repositories.technicalTemplateRepository.listClauses({ publishedOnly: true });
   const clausesById = new Map(clauses.map((clause) => [clause.id, clause]));
@@ -467,6 +483,7 @@ export async function updateOpportunityTechnicalDraftClauses(repositories, actor
 
 export async function assignOpportunityTechnicalDraftSection(repository, actor, opportunity, draft, input) {
   ensureLead(actor, opportunity);
+  ensureEditableDraft(draft);
   const sectionKey = text(input.sectionKey);
   if (!sectionKeyPattern.test(sectionKey)
       || !(draft.contentSchemaSnapshot?.sections || []).some((section) => section.key === sectionKey)) {
@@ -493,6 +510,7 @@ export async function assignOpportunityTechnicalDraftSection(repository, actor, 
 
 export async function removeOpportunityTechnicalDraftSectionAssignment(repository, actor, opportunity, draft, assignmentId) {
   ensureLead(actor, opportunity);
+  ensureEditableDraft(draft);
   const removed = await repository.removeAssignment({
     draftId: draft.id,
     assignmentId: positiveInteger(assignmentId, 'Section assignment'),
@@ -504,6 +522,7 @@ export async function removeOpportunityTechnicalDraftSectionAssignment(repositor
 
 export async function markOpportunityTechnicalDraftReady(repository, actor, opportunity, draft) {
   ensureLead(actor, opportunity);
+  ensureEditableDraft(draft);
   const validationIssues = validateTechnicalDraftVariables(draft.variableSchemaSnapshot, draft.variableValues);
   if (validationIssues.length) {
     conflict('Required or engineering-range variables must be corrected before submission', validationIssues);
@@ -517,4 +536,16 @@ export async function markOpportunityTechnicalDraftReady(repository, actor, oppo
 
 export function technicalDraftLabel(draft) {
   return opportunityTechnicalDraftLabel(draft.draftRevisionNo);
+}
+
+export function technicalDraftDisplayLabel(draft) {
+  return draft.formalVersionLabel || technicalDraftLabel(draft);
+}
+
+export function technicalDraftSubmissionSummary(draft) {
+  const sections = (draft.renderedContent?.sections || [])
+    .filter((section) => section.included !== false)
+    .map((section) => section.labelEn || section.labelZh || section.key)
+    .filter(Boolean);
+  return `${technicalDraftLabel(draft)} generated from ${draft.templateCodeSnapshot} TPL-R${draft.templateRevisionNoSnapshot}; sections: ${sections.join(', ')}`;
 }

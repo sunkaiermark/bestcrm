@@ -16,7 +16,7 @@
               <tbody>
                 <% for (const draft of drafts) { %>
                   <tr>
-                    <td><strong><%= draft.draftLabel %></strong></td>
+                <td><strong><%= draft.formalVersionLabel || draft.draftLabel %></strong><% if (draft.formalVersionLabel) { %><br><span class="muted"><%= draft.draftLabel %></span><% } %></td>
                     <td><%= draft.templateCodeSnapshot %> · TPL-R<%= draft.templateRevisionNoSnapshot %></td>
                     <td><%= t(`templateLanguage.${draft.language}`) %></td>
                     <td><span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span></td>

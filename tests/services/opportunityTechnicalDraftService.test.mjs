@@ -5,6 +5,7 @@ import {
   assignOpportunityTechnicalDraftSection,
   canCreateOpportunityTechnicalDraft,
   canEditOpportunityTechnicalDraftSection,
+  canReviewOpportunityTechnicalDraft,
   generateOpportunityTechnicalDraft,
   markOpportunityTechnicalDraftReady,
   prefillTechnicalDraftVariables,
@@ -102,6 +103,16 @@ test('only the appointed Project Lead Engineer can generate a project draft', ()
   assert.equal(canCreateOpportunityTechnicalDraft(lead, opportunity()), true);
   assert.equal(canCreateOpportunityTechnicalDraft(support, opportunity()), false);
   assert.equal(canCreateOpportunityTechnicalDraft(salesperson, opportunity()), false);
+});
+
+test('only the assigned Technical Manager can review a pending technical draft', () => {
+  const pending = draft({ status: 'pending' });
+  const technicalManager = { id: 6, roles: [ROLES.TECHNICAL_MANAGER] };
+  const otherManager = { id: 8, roles: [ROLES.TECHNICAL_MANAGER] };
+  const assignedOpportunity = { ...opportunity(), technicalManagerId: 6 };
+  assert.equal(canReviewOpportunityTechnicalDraft(technicalManager, assignedOpportunity, pending), true);
+  assert.equal(canReviewOpportunityTechnicalDraft(otherManager, assignedOpportunity, pending), false);
+  assert.equal(canReviewOpportunityTechnicalDraft(technicalManager, assignedOpportunity, draft()), false);
 });
 
 test('generation freezes the current published template and prefills known project data', async () => {
@@ -240,6 +251,17 @@ test('Supporting Engineers edit only assigned sections and attributed changes di
     updateOpportunityTechnicalDraftSection(repository, support, opportunity(), currentDraft, 'utilities', {}),
     (error) => error.statusCode === 403
   );
+});
+
+test('submitted and approved technical drafts reject all content mutations', async () => {
+  const repository = { async updateSection() { throw new Error('should not persist'); } };
+  for (const status of ['pending', 'approved', 'rejected']) {
+    assert.equal(canEditOpportunityTechnicalDraftSection(lead, opportunity(), draft({ status }), 'design_parameters'), false);
+    await assert.rejects(
+      updateOpportunityTechnicalDraftSection(repository, lead, opportunity(), draft({ status }), 'design_parameters', {}),
+      (error) => error.statusCode === 409
+    );
+  }
 });
 
 test('Supporting Engineers update only variables belonging to their assigned section', async () => {

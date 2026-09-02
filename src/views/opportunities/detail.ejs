@@ -152,6 +152,7 @@
   const canAddRequirementUpdate = typeof canCreateRequirementUpdate === 'undefined' ? false : canCreateRequirementUpdate;
   const uploadPermissions = typeof canUploadAttachments === 'undefined' ? {} : canUploadAttachments;
   const allWorkflowForms = Array.isArray(workflowForms) ? workflowForms : [];
+  const usesVersionedTechnicalDrafts = typeof versionedTechnicalDraftsEnabled === 'undefined' ? false : versionedTechnicalDraftsEnabled;
   const initiationWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_initiation');
   const technicalSubmitWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_technical_solution');
   const commercialQuoteWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_commercial_quote');
@@ -581,24 +582,31 @@
                 </form>
               <% } %>
               <% if (technicalSubmitWorkflowForm) { %>
-                <form class="form-panel requirement-input-panel technical-solution-submit-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
-                  <%- csrfField() %>
-                  <input type="hidden" name="action" value="<%= technicalSubmitWorkflowForm.action %>">
-                  <label>
-                    <%= t('technicalSolutionDescription') %>
-                    <textarea name="solutionSummary" required></textarea>
-                  </label>
-                  <% if (technicalSubmitWorkflowForm.missingRequirements && technicalSubmitWorkflowForm.missingRequirements.length > 0) { %>
-                    <ul class="inline-list">
-                      <% for (const requirement of technicalSubmitWorkflowForm.missingRequirements) { %>
-                        <li><%= requirement %></li>
-                      <% } %>
-                    </ul>
-                  <% } %>
-                  <div class="requirement-input-actions">
-                    <button type="submit" <%= technicalSubmitWorkflowForm.blocked ? 'disabled' : '' %>><%= technicalSubmitWorkflowForm.button %></button>
+                <% if (usesVersionedTechnicalDrafts) { %>
+                  <div class="form-panel requirement-input-panel technical-solution-submit-panel">
+                    <p><%= t('versionedTechnicalDraftWorkflowNotice') %></p>
+                    <a class="quick-action" href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('openProjectTechnicalDrafts') %></a>
                   </div>
-                </form>
+                <% } else { %>
+                  <form class="form-panel requirement-input-panel technical-solution-submit-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                    <%- csrfField() %>
+                    <input type="hidden" name="action" value="<%= technicalSubmitWorkflowForm.action %>">
+                    <label>
+                      <%= t('technicalSolutionDescription') %>
+                      <textarea name="solutionSummary" required></textarea>
+                    </label>
+                    <% if (technicalSubmitWorkflowForm.missingRequirements && technicalSubmitWorkflowForm.missingRequirements.length > 0) { %>
+                      <ul class="inline-list">
+                        <% for (const requirement of technicalSubmitWorkflowForm.missingRequirements) { %>
+                          <li><%= requirement %></li>
+                        <% } %>
+                      </ul>
+                    <% } %>
+                    <div class="requirement-input-actions">
+                      <button type="submit" <%= technicalSubmitWorkflowForm.blocked ? 'disabled' : '' %>><%= technicalSubmitWorkflowForm.button %></button>
+                    </div>
+                  </form>
+                <% } %>
               <% } %>
               <% if (technicalMaterialVersions.length > 0) { %>
                 <div class="material-version-strip">

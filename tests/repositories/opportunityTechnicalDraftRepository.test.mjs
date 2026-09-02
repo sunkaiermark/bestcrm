@@ -8,6 +8,8 @@ function draftRow(overrides = {}) {
     opportunity_id: '20',
     template_revision_id: '9',
     draft_revision_no: '2',
+    source_draft_id: null,
+    formal_version_no: null,
     status: 'draft',
     language: 'bilingual',
     template_code_snapshot: 'MX-100',
@@ -20,6 +22,11 @@ function draftRow(overrides = {}) {
     rendered_content: '{"schemaVersion":1,"sections":[],"variables":[]}',
     source_metadata: '{"opportunityId":20}',
     validation_issues: '[]',
+    submitted_by: null,
+    submitted_at: null,
+    reviewed_by: null,
+    reviewed_at: null,
+    review_comment: null,
     created_by: '3',
     created_by_display_name: 'Lead Engineer',
     updated_by: '3',
@@ -149,4 +156,77 @@ test('marking ready records an append-only readiness event', async () => {
   assert.equal(ready.status, 'ready');
   assert.match(calls[0].sql, /'readiness_checked'/);
   assert.deepEqual(calls[0].params, [41, '[]', 3]);
+});
+
+test('submission freezes a validated ready draft and writes an audit event', async () => {
+  const calls = [];
+  const repository = createOpportunityTechnicalDraftRepository({
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [draftRow({ status: 'pending', submitted_by: '3' })] };
+    }
+  });
+  const submitted = await repository.submitForApproval({ draftId: 41, actorUserId: 3 });
+  assert.equal(submitted.status, 'pending');
+  assert.match(calls[0].sql, /status = 'ready'/);
+  assert.match(calls[0].sql, /jsonb_array_length\(validation_issues\) = 0/);
+  assert.match(calls[0].sql, /'submitted'/);
+});
+
+test('approval allocates the next TS-V number under an opportunity lock', async () => {
+  const calls = [];
+  const repository = createOpportunityTechnicalDraftRepository({
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [draftRow({ status: 'approved', formal_version_no: '2', reviewed_by: '6' })] };
+    }
+  });
+  const approved = await repository.approveLatestPending({ opportunityId: 20, actorUserId: 6, reviewComment: 'Approved' });
+  assert.equal(approved.formalVersionLabel, 'TS-V2');
+  assert.match(calls[0].sql, /pg_advisory_xact_lock/);
+  assert.match(calls[0].sql, /MAX\(formal_version_no\)/);
+  assert.match(calls[0].sql, /'approved'/);
+});
+
+test('rejected snapshot is cloned to the next editable TS-D revision with assignments', async () => {
+  const calls = [];
+  const repository = createOpportunityTechnicalDraftRepository({
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [draftRow({ id: '42', draft_revision_no: '3', source_draft_id: '41' })] };
+    }
+  });
+  const cloned = await repository.cloneRejectedDraft({ sourceDraftId: 41, actorUserId: 3 });
+  assert.equal(cloned.draftLabel, 'TS-D3');
+  assert.equal(cloned.sourceDraftId, 41);
+  assert.match(calls[0].sql, /source\.status = 'rejected'/);
+  assert.match(calls[0].sql, /copied_assignments/);
+  assert.match(calls[0].sql, /'revision_created'/);
+});
+
+test('approved DOCX and PDF bytes are stored with their SHA-256 metadata', async () => {
+  const calls = [];
+  const repository = createOpportunityTechnicalDraftRepository({
+    async query(sql, params) {
+      calls.push({ sql, params });
+      if (sql.includes('technical_solution_documents')) {
+        return { rows: [{
+          id: '90', technical_draft_id: '41', document_no: params[1], format: params[2],
+          original_name: params[3], mime_type: params[4], content: params[5], byte_size: params[6],
+          sha256: params[7], generated_by: params[8], generated_at: '2026-09-03'
+        }] };
+      }
+      return { rows: [] };
+    }
+  });
+  const content = Buffer.from('document');
+  const documents = await repository.saveApprovedDocuments({
+    draftId: 41,
+    actorUserId: 6,
+    documents: [{ documentNo: 'TS-V1', format: 'pdf', originalName: 'TS-V1.pdf', mimeType: 'application/pdf', content, byteSize: content.length, sha256: 'a'.repeat(64) }]
+  });
+  assert.equal(documents[0].documentNo, 'TS-V1');
+  assert.equal(documents[0].byteSize, content.length);
+  assert.match(calls[0].sql, /ON CONFLICT \(technical_draft_id, format\) DO NOTHING/);
+  assert.match(calls[1].sql, /'documents_generated'/);
 });

@@ -9,6 +9,7 @@ function mapTechnicalSolutionRow(row) {
   return {
     id: Number(row.id),
     opportunityId: Number(row.opportunity_id),
+    opportunityTechnicalDraftId: numberOrNull(row.opportunity_technical_draft_id),
     versionNo: Number(row.version_no),
     summary: row.summary,
     parameters: row.parameters,
@@ -35,7 +36,8 @@ export function createTechnicalSolutionRepository(queryTarget) {
           parameters,
           implementation_plan,
           status,
-          submitted_by
+          submitted_by,
+          opportunity_technical_draft_id
         )
         SELECT
           $1,
@@ -44,7 +46,8 @@ export function createTechnicalSolutionRepository(queryTarget) {
           $3,
           $4,
           'pending',
-          $5
+          $5,
+          $6
         FROM technical_solutions
         WHERE opportunity_id = $1
         RETURNING *
@@ -53,7 +56,8 @@ export function createTechnicalSolutionRepository(queryTarget) {
         input.summary,
         input.parameters,
         input.implementationPlan,
-        input.submittedBy
+        input.submittedBy,
+        input.opportunityTechnicalDraftId || null
       ]);
       return mapTechnicalSolutionRow(result.rows[0]);
     },
@@ -63,6 +67,7 @@ export function createTechnicalSolutionRepository(queryTarget) {
         SELECT
           ts.id,
           ts.opportunity_id,
+          ts.opportunity_technical_draft_id,
           ts.version_no,
           ts.summary,
           ts.parameters,
@@ -107,6 +112,23 @@ export function createTechnicalSolutionRepository(queryTarget) {
         input.reviewedBy,
         input.reviewComment
       ]);
+      return mapTechnicalSolutionRow(result.rows[0]);
+    },
+
+    async withdrawLatestPending(input) {
+      const result = await queryTarget.query(`
+        UPDATE technical_solutions
+        SET status = 'withdrawn'
+        WHERE id = (
+          SELECT id
+          FROM technical_solutions
+          WHERE opportunity_id = $1
+            AND status = 'pending'
+          ORDER BY version_no DESC, submitted_at DESC, id DESC
+          LIMIT 1
+        )
+        RETURNING *
+      `, [input.opportunityId]);
       return mapTechnicalSolutionRow(result.rows[0]);
     }
   };

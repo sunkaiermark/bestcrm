@@ -16,6 +16,7 @@ test('technical solution repository creates a pending version', async () => {
   const queryTarget = createFakeQueryTarget([{ rows: [{
     id: '51',
     opportunity_id: '10',
+    opportunity_technical_draft_id: '41',
     version_no: '2',
     summary: 'Updated motor control solution',
     parameters: 'IP65 cabinet',
@@ -36,7 +37,8 @@ test('technical solution repository creates a pending version', async () => {
     summary: 'Updated motor control solution',
     parameters: 'IP65 cabinet',
     implementationPlan: 'Revise layout and drawings',
-    submittedBy: 3
+    submittedBy: 3,
+    opportunityTechnicalDraftId: 41
   });
 
   assert.equal(version.id, 51);
@@ -50,7 +52,8 @@ test('technical solution repository creates a pending version', async () => {
     'Updated motor control solution',
     'IP65 cabinet',
     'Revise layout and drawings',
-    3
+    3,
+    41
   ]);
 });
 
@@ -58,6 +61,7 @@ test('technical solution repository lists versions by opportunity', async () => 
   const queryTarget = createFakeQueryTarget([{ rows: [{
     id: '51',
     opportunity_id: '10',
+    opportunity_technical_draft_id: null,
     version_no: '1',
     summary: 'Initial solution',
     parameters: 'Standard cabinet',
@@ -78,6 +82,7 @@ test('technical solution repository lists versions by opportunity', async () => 
   assert.deepEqual(versions, [{
     id: 51,
     opportunityId: 10,
+    opportunityTechnicalDraftId: null,
     versionNo: 1,
     summary: 'Initial solution',
     parameters: 'Standard cabinet',
@@ -128,4 +133,17 @@ test('technical solution repository reviews latest pending version', async () =>
   assert.match(queryTarget.queries[0].sql, /WHERE opportunity_id = \$1/);
   assert.match(queryTarget.queries[0].sql, /status = 'pending'/);
   assert.deepEqual(queryTarget.queries[0].params, [10, 'rejected', 4, 'revise drawing']);
+});
+
+test('technical solution repository withdraws the latest pending submission', async () => {
+  const queryTarget = createFakeQueryTarget([{ rows: [{
+    id: '52', opportunity_id: '10', opportunity_technical_draft_id: '41', version_no: '2',
+    summary: 'Draft-backed solution', parameters: null, implementation_plan: null,
+    status: 'withdrawn', submitted_by: '3', submitted_at: '2026-09-03'
+  }] }]);
+  const repository = createTechnicalSolutionRepository(queryTarget);
+  const version = await repository.withdrawLatestPending({ opportunityId: 10 });
+  assert.equal(version.status, 'withdrawn');
+  assert.equal(version.opportunityTechnicalDraftId, 41);
+  assert.match(queryTarget.queries[0].sql, /SET status = 'withdrawn'/);
 });

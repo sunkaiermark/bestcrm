@@ -382,6 +382,7 @@ async function createWorkflowAgent({
   commercialQuotes = [],
   contractApprovals = [],
   approvalSettings = {},
+  opportunityTechnicalDraftRepository,
   workflowTransaction
 }) {
   const actor = {
@@ -482,6 +483,7 @@ async function createWorkflowAgent({
         return { rowCount: 1 };
       }
     },
+    ...(opportunityTechnicalDraftRepository ? { opportunityTechnicalDraftRepository } : {}),
     attachmentRepository: {
       async listByOpportunity() {
         return attachments;
@@ -2020,6 +2022,32 @@ test('technical solution workflow form captures version details', async () => {
   assert.match(detail.text, /name="solutionSummary"/);
   assert.doesNotMatch(detail.text, /name="solutionParameters"/);
   assert.doesNotMatch(detail.text, /name="implementationPlan"/);
+});
+
+test('versioned technical approval directs the Project Lead to TS-D drafts', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'quote01',
+      displayName: 'Quote Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7,
+      quotationEngineerId: 3
+    },
+    opportunityTechnicalDraftRepository: {
+      supportsVersionedTechnicalApproval: true
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Technical approval is submitted from a validated TS-D project draft/);
+  assert.match(detail.text, /href="\/opportunities\/30\/technical-drafts"/);
+  assert.doesNotMatch(detail.text, /name="solutionSummary"/);
 });
 
 test('approved opportunity shows supplemental requirement form and history', async () => {

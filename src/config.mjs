@@ -85,6 +85,7 @@ export function loadConfig(env = process.env) {
       }
     },
     uploadDir: env.UPLOAD_DIR || './var/uploads',
+    technicalDocumentFontPath: env.TECHNICAL_DOCUMENT_FONT_PATH || '',
     maxUploadMb: numberEnv(env.MAX_UPLOAD_MB, 3072)
   };
 }
