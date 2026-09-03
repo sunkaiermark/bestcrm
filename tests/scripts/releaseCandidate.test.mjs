@@ -1,15 +1,32 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   assertEmailFlagsDisabled,
+  assertPortableShellScripts,
   assertSafeReleaseTree,
   buildReleaseCandidate,
   forbiddenReleasePath,
   validateReleaseVersion
 } from '../../scripts/build-release-candidate.mjs';
+
+test('release shell scripts must be portable LF-only files', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'bestcrm-release-eol-test-'));
+  try {
+    await mkdir(path.join(root, 'scripts'));
+    await writeFile(path.join(root, 'scripts', 'portable.sh'), '#!/bin/sh\necho ok\n');
+    await writeFile(path.join(root, 'scripts', 'windows.sh'), '#!/bin/sh\r\necho no\r\n');
+    await assert.doesNotReject(() => assertPortableShellScripts(root, ['scripts/portable.sh']));
+    await assert.rejects(
+      () => assertPortableShellScripts(root, ['scripts/windows.sh']),
+      /must use LF line endings/
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test('release candidate naming and tree rules reject secrets and local artifacts', () => {
   assert.equal(validateReleaseVersion('v2026.09.03-01-rc.1'), 'v2026.09.03-01-rc.1');

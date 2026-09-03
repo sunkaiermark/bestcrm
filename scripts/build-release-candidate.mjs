@@ -59,6 +59,15 @@ export function assertEmailFlagsDisabled(envExample) {
   }
 }
 
+export async function assertPortableShellScripts(rootDir, paths) {
+  for (const filePath of paths.filter((item) => item.endsWith('.sh'))) {
+    const content = await readFile(path.join(rootDir, filePath));
+    if (content.includes(13)) {
+      throw new Error(`Release shell script must use LF line endings: ${filePath}`);
+    }
+  }
+}
+
 export async function sha256File(filePath) {
   const content = await readFile(filePath);
   return createHash('sha256').update(content).digest('hex');
@@ -119,6 +128,13 @@ export async function buildReleaseCandidate({
     if (sha256 !== rehearsalSha256) {
       throw new Error('Repeated git archive output is not reproducible');
     }
+    const extractedArchive = path.join(rehearsalDir, 'extracted');
+    await mkdir(extractedArchive, { recursive: true });
+    await execFileAsync('tar', ['-xf', archivePath, '-C', extractedArchive], {
+      cwd,
+      windowsHide: true
+    });
+    await assertPortableShellScripts(extractedArchive, paths);
     const migrations = paths.filter((item) => item.startsWith('src/db/migrations/') && item.endsWith('.sql')).sort();
     const manifest = {
       schemaVersion: 1,
