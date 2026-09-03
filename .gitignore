@@ -4,3 +4,4 @@ var/
 coverage/
 playwright-report/
 test-results/
+output/

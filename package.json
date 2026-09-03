@@ -15,7 +15,9 @@
     "email:cleanup-attachments": "node scripts/cleanup-email-inquiry-attachments.mjs",
     "notifications:deliver": "node scripts/deliver-notifications.mjs",
     "notifications:deliver:once": "node scripts/deliver-notifications.mjs --once",
-    "notifications:generate-vapid": "node scripts/generate-vapid-keys.mjs"
+    "notifications:generate-vapid": "node scripts/generate-vapid-keys.mjs",
+    "release:build": "node scripts/build-release-candidate.mjs",
+    "backup:verify": "node scripts/verify-backup-artifacts.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

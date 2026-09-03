@@ -27,6 +27,27 @@ SERVICE_USER="${SERVICE_USER:-www-data}"
 SERVICE_GROUP="${BESTCRM_SERVICE_GROUP:-$(systemctl show bestcrm -p Group --value 2>/dev/null || true)}"
 SERVICE_GROUP="${SERVICE_GROUP:-$SERVICE_USER}"
 
+verify_backup_checksum() {
+  FILE_PATH="$1"
+  MANIFEST_PATH="$2"
+  MANIFEST_KEY="$3"
+  LABEL="$4"
+  EXPECTED="$(sed -n "s/^${MANIFEST_KEY}=//p" "$MANIFEST_PATH" | tail -n 1)"
+  if [ -z "$EXPECTED" ]; then
+    if [ "${BESTCRM_ALLOW_LEGACY_BACKUP:-}" = "yes" ]; then
+      echo "WARNING: $LABEL checksum is unavailable in this legacy backup." >&2
+      return
+    fi
+    echo "Backup manifest is missing $MANIFEST_KEY. Set BESTCRM_ALLOW_LEGACY_BACKUP=yes only after manually verifying this legacy backup." >&2
+    exit 1
+  fi
+  ACTUAL="$(sha256sum "$FILE_PATH" | awk '{print $1}')"
+  if [ "$ACTUAL" != "$EXPECTED" ]; then
+    echo "$LABEL checksum mismatch; refusing full rollback." >&2
+    exit 1
+  fi
+}
+
 if [ "$MODE" = "code" ]; then
   VERSION="${2:-}"
   if [ -z "$VERSION" ]; then
@@ -61,6 +82,7 @@ if [ "$MODE" = "full" ]; then
   BACKUP_PATH="$BACKUP_DIR/$BACKUP_ID"
   DB_BACKUP="$BACKUP_PATH/database.sql"
   UPLOAD_BACKUP="$BACKUP_PATH/uploads.tar.gz"
+  BACKUP_MANIFEST="$BACKUP_PATH/manifest.txt"
   RELEASE_DIR="$RELEASES_DIR/$VERSION"
   if [ ! -f "$DB_BACKUP" ]; then
     echo "Missing database backup: $DB_BACKUP" >&2
@@ -68,6 +90,10 @@ if [ "$MODE" = "full" ]; then
   fi
   if [ ! -f "$UPLOAD_BACKUP" ]; then
     echo "Missing uploads backup: $UPLOAD_BACKUP" >&2
+    exit 1
+  fi
+  if [ ! -f "$BACKUP_MANIFEST" ]; then
+    echo "Missing backup manifest: $BACKUP_MANIFEST" >&2
     exit 1
   fi
   if [ ! -d "$RELEASE_DIR" ]; then
@@ -91,6 +117,10 @@ if [ "$MODE" = "full" ]; then
     echo "DATABASE_URL is required in $ENV_FILE" >&2
     exit 1
   fi
+
+  verify_backup_checksum "$DB_BACKUP" "$BACKUP_MANIFEST" database_sha256 "Database backup"
+  verify_backup_checksum "$UPLOAD_BACKUP" "$BACKUP_MANIFEST" uploads_sha256 "Upload backup"
+  tar -tzf "$UPLOAD_BACKUP" >/dev/null
 
   sudo systemctl stop bestcrm || true
   psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -c "DROP SCHEMA public CASCADE; CREATE SCHEMA public;"

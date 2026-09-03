@@ -45,6 +45,13 @@ if [ -f "$ENV_FILE" ]; then
   chmod 600 "$BACKUP_PATH/bestcrm.env"
 fi
 
+DATABASE_SHA256="$(sha256sum "$BACKUP_PATH/database.sql" | awk '{print $1}')"
+UPLOADS_SHA256="$(sha256sum "$BACKUP_PATH/uploads.tar.gz" | awk '{print $1}')"
+ENV_SHA256=""
+if [ -f "$BACKUP_PATH/bestcrm.env" ]; then
+  ENV_SHA256="$(sha256sum "$BACKUP_PATH/bestcrm.env" | awk '{print $1}')"
+fi
+
 CURRENT_COMMIT="unknown"
 if [ -d "$APP_DIR/.git" ]; then
   CURRENT_COMMIT="$(git -C "$APP_DIR" rev-parse --short HEAD 2>/dev/null || echo unknown)"
@@ -60,6 +67,11 @@ app_dir=$APP_DIR
 upload_dir=$UPLOAD_DIR
 database_url_host_hidden=present
 current_release=$CURRENT_COMMIT
+database_size_bytes=$(stat -c%s "$BACKUP_PATH/database.sql")
+database_sha256=$DATABASE_SHA256
+uploads_size_bytes=$(stat -c%s "$BACKUP_PATH/uploads.tar.gz")
+uploads_sha256=$UPLOADS_SHA256
+env_sha256=$ENV_SHA256
 MANIFEST
 
 find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -mtime +"$KEEP_DAYS" -print -exec rm -rf {} +
