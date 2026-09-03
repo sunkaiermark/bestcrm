@@ -60,3 +60,13 @@ test('production backup and rollback scripts record and enforce artifact checksu
   assert.match(rollbackScript, /tar -tzf "\$UPLOAD_BACKUP"/);
   assert.match(rollbackScript, /BESTCRM_ALLOW_LEGACY_BACKUP/);
 });
+
+test('backup verifier streams artifact hashing for multi-gigabyte archives', async () => {
+  const root = path.resolve(import.meta.dirname, '..', '..');
+  const verifierScript = await readFile(
+    path.join(root, 'scripts', 'verify-backup-artifacts.mjs'),
+    'utf8'
+  );
+  assert.match(verifierScript, /createReadStream\(filePath\)/);
+  assert.doesNotMatch(verifierScript, /readFile\(filePath\)/);
+});

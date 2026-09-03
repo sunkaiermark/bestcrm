@@ -1,6 +1,7 @@
 import { execFile } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { access, mkdir, readFile } from 'node:fs/promises';
+import { createReadStream } from 'node:fs';
+import { access, mkdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { isMainModule } from '../src/utils/moduleEntry.mjs';
@@ -17,8 +18,14 @@ function parseManifest(text) {
 }
 
 async function sha256File(filePath) {
-  const content = await readFile(filePath);
-  return createHash('sha256').update(content).digest('hex');
+  const hash = createHash('sha256');
+  await new Promise((resolve, reject) => {
+    const stream = createReadStream(filePath);
+    stream.on('error', reject);
+    stream.on('data', (chunk) => hash.update(chunk));
+    stream.on('end', resolve);
+  });
+  return hash.digest('hex');
 }
 
 function assertSafeTarEntries(entries) {
@@ -45,8 +52,8 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
   const uploadsPath = path.join(directory, 'uploads.tar.gz');
   const manifestPath = path.join(directory, 'manifest.txt');
   await Promise.all([access(databasePath), access(uploadsPath), access(manifestPath)]);
-  const database = await readFile(databasePath);
-  if (database.length < 32) throw new Error('Database backup is empty or incomplete');
+  const databaseStats = await stat(databasePath);
+  if (databaseStats.size < 32) throw new Error('Database backup is empty or incomplete');
   const manifest = parseManifest(await readFile(manifestPath, 'utf8'));
   const expectedDatabaseSha = requireChecksum(manifest, 'database_sha256');
   const expectedUploadsSha = requireChecksum(manifest, 'uploads_sha256');
@@ -68,7 +75,7 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
   }
   return {
     backupDir: directory,
-    databaseBytes: database.length,
+    databaseBytes: databaseStats.size,
     databaseSha256,
     uploadsSha256,
     uploadEntries: entries,
