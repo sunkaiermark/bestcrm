@@ -48,6 +48,7 @@ test('config reads optional inquiry intake secret', () => {
     EMAIL_INTAKE_USER: 'sales@sunkaier.com',
     EMAIL_INTAKE_PASSWORD: 'app-password',
     EMAIL_INTAKE_MAILBOX: 'INBOX',
+    EMAIL_INTAKE_MAILBOX_KEY: 'sales@sunkaier.com',
     EMAIL_INTAKE_POLL_INTERVAL_MS: '300000',
     EMAIL_INTAKE_MAX_MESSAGES: '20',
     EMAIL_INTAKE_MARK_SEEN: 'true'
@@ -63,10 +64,16 @@ test('config reads optional inquiry intake secret', () => {
     user: 'sales@sunkaier.com',
     password: 'app-password',
     mailbox: 'INBOX',
+    mailboxKey: 'sales@sunkaier.com',
     pollIntervalMs: 300000,
     maxMessages: 20,
     markSeen: true
   });
+});
+
+test('email center interface stays disabled unless explicitly enabled', () => {
+  assert.equal(loadConfig({ NODE_ENV: 'development' }).emailCenter.enabled, false);
+  assert.equal(loadConfig({ NODE_ENV: 'development', CRM_EMAIL_CENTER_ENABLED: 'true' }).emailCenter.enabled, true);
 });
 
 test('config reads notification delivery providers without enabling them by default', () => {

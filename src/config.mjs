@@ -32,6 +32,9 @@ export function loadConfig(env = process.env) {
     sessionCookieSecure,
     inquiryIntakeSecret: env.INQUIRY_INTAKE_SECRET || '',
     chatwootInquiryIntakeSecret: env.CHATWOOT_INQUIRY_INTAKE_SECRET || '',
+    emailCenter: {
+      enabled: booleanEnv(env.CRM_EMAIL_CENTER_ENABLED ?? env.EMAIL_CENTER_ENABLED, false)
+    },
     emailIntake: {
       enabled: booleanEnv(env.EMAIL_INTAKE_ENABLED, false),
       host: env.EMAIL_INTAKE_HOST || '',
@@ -40,6 +43,7 @@ export function loadConfig(env = process.env) {
       user: env.EMAIL_INTAKE_USER || '',
       password: env.EMAIL_INTAKE_PASSWORD || '',
       mailbox: env.EMAIL_INTAKE_MAILBOX || 'INBOX',
+      mailboxKey: env.EMAIL_INTAKE_MAILBOX_KEY || env.EMAIL_INTAKE_USER || 'sales',
       pollIntervalMs: numberEnv(env.EMAIL_INTAKE_POLL_INTERVAL_MS, 5 * 60 * 1000),
       maxMessages: numberEnv(env.EMAIL_INTAKE_MAX_MESSAGES, 20),
       markSeen: booleanEnv(env.EMAIL_INTAKE_MARK_SEEN, true)

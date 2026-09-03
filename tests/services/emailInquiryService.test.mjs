@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   createEmailInquiry,
   normalizeEmailInquiryPayload,
+  parseEmailArchiveSourceWithAttachments,
   parseEmailInquirySource
 } from '../../src/services/emailInquiryService.mjs';
 
@@ -124,4 +125,33 @@ test('createEmailInquiry requires an email source reference', async () => {
     () => createEmailInquiry({ async createInquiry() {} }, { subject: 'No id', text: 'Need quote' }),
     /Email source reference is required/
   );
+});
+
+test('email archive parser normalizes reply headers and keeps HTML separate from safe plain text', async () => {
+  const raw = [
+    'Message-ID: <REPLY-2@EXAMPLE.COM>',
+    'In-Reply-To: <SENT-1@EXAMPLE.COM>',
+    'References: <ROOT@EXAMPLE.COM> <SENT-1@EXAMPLE.COM>',
+    'Date: Thu, 03 Sep 2026 01:00:00 +0000',
+    'From: Buyer <buyer@example.com>',
+    'To: Sales <sales@sunkaier.com>',
+    'Subject: Re: RFQ Mixer',
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=utf-8',
+    '',
+    '<p>Need revised quotation.</p><script>alert(1)</script>'
+  ].join('\r\n');
+
+  const result = await parseEmailArchiveSourceWithAttachments(Buffer.from(raw), {
+    uid: 9, uidValidity: '44', mailbox: 'INBOX', mailboxKey: 'sales@sunkaier.com'
+  });
+  assert.equal(result.message.messageId, 'reply-2@example.com');
+  assert.equal(result.message.inReplyTo, 'sent-1@example.com');
+  assert.deepEqual(result.message.referenceIds, ['root@example.com', 'sent-1@example.com']);
+  assert.deepEqual(result.message.replyReferenceIds, ['sent-1@example.com', 'root@example.com']);
+  assert.equal(result.message.normalizedSubject, 'rfq mixer');
+  assert.match(result.message.textBody, /Need revised quotation/);
+  assert.doesNotMatch(result.message.textBody, /alert\(1\)/);
+  assert.match(result.message.htmlBody, /<script>/);
+  assert.equal(result.message.providerUidValidity, '44');
 });

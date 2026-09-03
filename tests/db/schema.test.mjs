@@ -31,6 +31,7 @@ const productTechnicalTemplatesMigrationPath = new URL('../../src/db/migrations/
 const opportunityTechnicalDraftsMigrationPath = new URL('../../src/db/migrations/030_opportunity_technical_drafts.sql', import.meta.url);
 const technicalSolutionDocumentsMigrationPath = new URL('../../src/db/migrations/031_technical_solution_versions_and_documents.sql', import.meta.url);
 const quotationPackageVersionsMigrationPath = new URL('../../src/db/migrations/032_quotation_package_versions.sql', import.meta.url);
+const emailCenterArchiveMigrationPath = new URL('../../src/db/migrations/033_email_center_archive.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -441,4 +442,23 @@ test('workflow notification recipients migration also notifies the salesperson a
   assert.match(sql, /CREATE TRIGGER workflow_event_secondary_notification_trigger/);
   assert.match(sql, /AFTER INSERT ON workflow_events/);
   assert.match(sql, /EXECUTE FUNCTION create_workflow_secondary_notifications/);
+});
+
+test('email center migration creates immutable threaded business mail archive', async () => {
+  const sql = await readFile(emailCenterArchiveMigrationPath, 'utf8');
+
+  for (const table of ['email_threads', 'email_messages', 'email_attachments', 'email_delivery_attempts']) {
+    assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS email_messages_message_id_idx/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS email_messages_provider_uid_idx/);
+  assert.match(sql, /provider_uid_validity/);
+  assert.match(sql, /in_reply_to/);
+  assert.match(sql, /reference_ids jsonb/);
+  assert.match(sql, /sha256 char\(64\)/);
+  assert.match(sql, /ON DELETE RESTRICT/);
+  assert.match(sql, /Business email archive records cannot be deleted/);
+  assert.match(sql, /Inbound email messages are immutable/);
+  assert.match(sql, /Archived email attachments are immutable/);
+  assert.match(sql, /inquiries_link_email_threads_after_conversion/);
 });

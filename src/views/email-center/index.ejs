@@ -1,0 +1,35 @@
+<%- include('../partials/app-start', { title: `${t('emailCenter')} - BESTCRM`, activeNav: 'email-center' }) %>
+        <header class="page-header">
+          <div>
+            <p class="breadcrumb"><%= t('sharedMailboxArchive') %></p>
+            <h1><%= t('emailCenter') %></h1>
+          </div>
+        </header>
+
+        <section class="form-panel"><strong><%= t('emailArchivePermanentNotice') %></strong><p class="muted"><%= t('emailReceiveOnlyNotice') %></p></section>
+        <section class="list-section">
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead><tr><th><%= t('lastMessageAt') %></th><th><%= t('subject') %></th><th><%= t('linkedRecord') %></th><th><%= t('messageCount') %></th><th><%= t('sender') %></th><th><%= t('preview') %></th><th><%= t('actions') %></th></tr></thead>
+              <tbody>
+                <% for (const thread of threads) { %>
+                  <tr>
+                    <td><%= thread.lastMessageAt || '' %></td>
+                    <td><strong><%= thread.subject || t('noSubject') %></strong></td>
+                    <td>
+                      <% if (thread.opportunityId) { %><span class="status"><%= t('opportunity') %> <%= thread.opportunityNo || `#${thread.opportunityId}` %> · <%= thread.opportunityTitle %></span>
+                      <% } else if (thread.inquiryId) { %><span class="status"><%= t('inquiry') %> #<%= thread.inquiryId %></span>
+                      <% } else { %><span class="muted"><%= t('unlinkedEmail') %></span><% } %>
+                    </td>
+                    <td><%= thread.messageCount %></td>
+                    <td><%= thread.lastFromAddress %></td>
+                    <td><%= thread.lastTextPreview %></td>
+                    <td><a class="secondary-action" href="/email-center/threads/<%= thread.id %>"><%= t('openEmailThread') %></a></td>
+                  </tr>
+                <% } %>
+                <% if (!threads.length) { %><tr><td colspan="7" class="empty"><%= t('noEmailThreads') %></td></tr><% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

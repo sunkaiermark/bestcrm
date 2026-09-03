@@ -1,10 +1,10 @@
 # BESTCRM Bilingual Email Center Design
 
 - Date: 2026-09-02
-- Status: Approved V1 business workflow; Steps 1-5 complete locally
+- Status: Approved V1 business workflow; Steps 1-8 complete locally
 - Target: `https://crm.sunkaier.com` on the Singapore Tencent Cloud instance
 
-Implementation checkpoint: Steps 1-5 are complete locally and verified by
+Implementation checkpoint: Steps 1-8 are complete locally and verified by
 targeted, full-suite, and browser checks. Step 2 adds audited private sales lead
 submissions, manager-controlled inquiry conversion, and source inquiry identity
 on every resulting opportunity. Step 3 adds one project lead engineer, multiple
@@ -15,7 +15,11 @@ administrator, Technical Manager, and Quotation Engineer permissions. Step 5 add
 a bilingual structured template editor, conditional sections, CRM-prefilled project
 variables, immutable template/variable/clause/rendered snapshots, validation, and
 section-scoped collaboration between the Project Lead Engineer and Supporting
-Engineers. Steps 6-12 remain pending; no part of this design
+Engineers. Step 6 adds immutable approved technical-solution versions and generated
+documents. Step 7 adds revision-controlled complete quotation packages. Step 8
+adds threaded inbound email, immutable CRM archive records, attachment checksums,
+reply matching, and permission-controlled bilingual read views. Steps 9-12 remain
+pending; no part of this design
 has been deployed or enabled on the Singapore instance.
 
 ## 1. Objective
@@ -245,7 +249,7 @@ to the relevant inquiry or opportunity and be independently retained by CRM.
 
 ## 5. Data model
 
-Migration `027_email_center.sql` will add:
+Migration `033_email_center_archive.sql` adds:
 
 ### `email_threads`
 
@@ -279,7 +283,7 @@ Migration `027_email_center.sql` will add:
 The schema will use foreign keys and indexes but will not cascade-delete email
 history when a customer, inquiry, or opportunity is archived.
 
-Migration `028_quotation_package_versions.sql` will add:
+Migration `032_quotation_package_versions.sql` adds:
 
 ### `quotation_package_versions`
 

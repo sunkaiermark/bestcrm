@@ -14,6 +14,7 @@ import { createCommercialQuoteRepository } from './repositories/commercialQuoteR
 import { createContractApprovalRepository } from './repositories/contractApprovalRepository.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
+import { createEmailArchiveRepository } from './repositories/emailArchiveRepository.mjs';
 import { createInquiryAttachmentRepository } from './repositories/inquiryAttachmentRepository.mjs';
 import { createInquiryCustomerApprovalRepository } from './repositories/inquiryCustomerApprovalRepository.mjs';
 import { createInquiryRepository } from './repositories/inquiryRepository.mjs';
@@ -37,6 +38,7 @@ import { accountRoutes } from './routes/accountRoutes.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
+import { emailCenterRoutes } from './routes/emailCenterRoutes.mjs';
 import { inquiryIntakeRoutes } from './routes/inquiryIntakeRoutes.mjs';
 import { inquiryRoutes } from './routes/inquiryRoutes.mjs';
 import { leadSubmissionRoutes } from './routes/leadSubmissionRoutes.mjs';
@@ -360,6 +362,23 @@ const emptyQuotationPackageRepository = {
   async acceptSent() { throw new Error('Quotation package repository is not configured'); }
 };
 
+const emptyEmailArchiveRepository = {
+  supportsEmailArchive: false,
+  async listThreads() { return []; },
+  async findThreadById() { return null; },
+  async getThreadDetail() { return null; },
+  async findMessageById() { return null; },
+  async findMessageIdentity() { return null; },
+  async findThreadByReferences() { return null; },
+  async findAttachmentById() { return null; },
+  async listAttachmentsByMessage() { return []; },
+  async createThread() { throw new Error('Email archive repository is not configured'); },
+  async createInboundMessage() { throw new Error('Email archive repository is not configured'); },
+  async createAttachment() { throw new Error('Email archive repository is not configured'); },
+  async touchThread() { throw new Error('Email archive repository is not configured'); },
+  async createDeliveryAttempt() { throw new Error('Email archive repository is not configured'); }
+};
+
 const emptyWorkflowEventRepository = {
   async listByOpportunity() {
     return [];
@@ -501,6 +520,8 @@ export function createApp(options = {}) {
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
   const contactRepository = options.contactRepository || (pool ? createContactRepository(pool) : emptyContactRepository);
   const inquiryRepository = options.inquiryRepository || (pool ? createInquiryRepository(pool) : emptyInquiryRepository);
+  const emailArchiveRepository = options.emailArchiveRepository
+    || (pool ? createEmailArchiveRepository(pool) : emptyEmailArchiveRepository);
   const inquiryAttachmentRepository = options.inquiryAttachmentRepository || (pool
     ? createInquiryAttachmentRepository(pool)
     : emptyInquiryAttachmentRepository);
@@ -544,6 +565,7 @@ export function createApp(options = {}) {
   app.set('view engine', 'ejs');
   app.set('views', path.join(dirname, 'views'));
   app.use('/assets', express.static(path.join(dirname, 'public', 'assets')));
+  app.get('/favicon.ico', (req, res) => res.status(204).end());
   app.get('/service-worker.js', (req, res) => {
     res.type('application/javascript').sendFile(path.join(dirname, 'public', 'service-worker.js'));
   });
@@ -587,6 +609,7 @@ export function createApp(options = {}) {
     res.locals.messageLabel = createMessageLabeler(language);
     res.locals.todoTitleLabel = createTodoTitleLabeler(language);
     res.locals.webPushPublicKey = configuredWebPushPublicKey;
+    res.locals.emailCenterEnabled = Boolean(config.emailCenter?.enabled);
     next();
   });
   app.use(attachCurrentUser(userRepository));
@@ -621,6 +644,13 @@ export function createApp(options = {}) {
     attachmentRepository,
     approvalSettingRepository,
     userRepository,
+    uploadDir: config.uploadDir
+  }));
+  app.use(emailCenterRoutes({
+    enabled: Boolean(config.emailCenter?.enabled),
+    emailArchiveRepository,
+    opportunityRepository,
+    opportunityResponsibilityRepository,
     uploadDir: config.uploadDir
   }));
   app.use(salesWorkRoutes({

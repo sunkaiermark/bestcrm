@@ -1,0 +1,48 @@
+<%- include('../partials/app-start', { title: `${thread.subject || t('noSubject')} - BESTCRM`, activeNav: 'email-center' }) %>
+        <p class="breadcrumb"><a href="/email-center"><%= t('emailCenter') %></a></p>
+        <header class="page-header">
+          <div>
+            <h1><%= thread.subject || t('noSubject') %></h1>
+            <div class="muted"><%= t('mailbox') %>: <%= thread.mailboxKey %> · <%= thread.messageCount %> <%= t('messages') %></div>
+          </div>
+        </header>
+
+        <section class="detail-card">
+          <h2><%= t('linkedRecord') %></h2>
+          <% if (thread.opportunityId) { %><p><a class="secondary-action" href="/opportunities/<%= thread.opportunityId %>"><%= t('opportunity') %> <%= thread.opportunityNo || `#${thread.opportunityId}` %> · <%= thread.opportunityTitle %></a></p>
+          <% } else if (thread.inquiryId) { %><p><a class="secondary-action" href="/inquiries/<%= thread.inquiryId %>"><%= t('inquiry') %> #<%= thread.inquiryId %></a></p>
+          <% } else { %><p class="muted"><%= t('unlinkedEmail') %></p><% } %>
+        </section>
+
+        <section class="detail-card">
+          <h2><%= t('emailConversation') %></h2>
+          <% for (const message of thread.messages) { const recipients = (items) => items.map((item) => item.name ? `${item.name} <${item.address}>` : item.address).join(', '); %>
+            <article class="email-message-card email-message-<%= message.direction %>">
+              <div class="email-message-heading">
+                <strong><%= t(`emailDirection.${message.direction}`) %> · <%= message.fromName || message.fromAddress %></strong>
+                <span class="status"><%= t(`emailDeliveryStatus.${message.deliveryStatus}`) %></span>
+              </div>
+              <dl class="detail-grid">
+                <div><dt><%= t('emailFrom') %></dt><dd><%= message.fromName ? `${message.fromName} <${message.fromAddress}>` : message.fromAddress %></dd></div>
+                <div><dt><%= t('emailDate') %></dt><dd><%= message.receivedAt || message.sentAt || message.createdAt %></dd></div>
+                <div><dt><%= t('emailTo') %></dt><dd><%= recipients(message.toRecipients) || '-' %></dd></div>
+                <div><dt><%= t('emailCc') %></dt><dd><%= recipients(message.ccRecipients) || '-' %></dd></div>
+                <div><dt>Message-ID</dt><dd><%= message.messageId || '-' %></dd></div>
+                <div><dt>In-Reply-To</dt><dd><%= message.inReplyTo || '-' %></dd></div>
+              </dl>
+              <h3><%= message.subject || t('noSubject') %></h3>
+              <pre class="email-plain-body"><%= message.textBody %></pre>
+              <% if (message.htmlBody) { %><p class="muted"><%= t('htmlEmailBlockedNotice') %></p><% } %>
+              <% if (message.attachments.length) { %>
+                <div class="email-attachment-list">
+                  <strong><%= t('attachments') %></strong>
+                  <% for (const attachment of message.attachments) { %>
+                    <p><a href="/email-center/attachments/<%= attachment.id %>/download"><%= attachment.originalName %></a> · <%= attachment.fileSize %> B · SHA-256 <code><%= attachment.sha256 %></code></p>
+                  <% } %>
+                </div>
+              <% } %>
+            </article>
+          <% } %>
+          <% if (!thread.messages.length) { %><p class="empty"><%= t('noEmailMessages') %></p><% } %>
+        </section>
+<%- include('../partials/app-end') %>

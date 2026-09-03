@@ -8,8 +8,23 @@ function text(value) {
   return String(value || '').trim();
 }
 
-function normalizeMessageId(value) {
-  return text(value).replace(/^<|>$/g, '');
+export function normalizeMessageId(value) {
+  return text(value).replace(/^<|>$/g, '').toLowerCase();
+}
+
+function normalizeReferenceIds(value) {
+  const values = Array.isArray(value) ? value : text(value).split(/\s+/);
+  return [...new Set(values.map(normalizeMessageId).filter(Boolean))];
+}
+
+function normalizedThreadSubject(value) {
+  let subject = text(value);
+  let previous = '';
+  while (subject && subject !== previous) {
+    previous = subject;
+    subject = subject.replace(/^\s*(?:(?:re|fw|fwd)\s*:\s*)/i, '');
+  }
+  return subject.trim().toLowerCase();
 }
 
 function dateToIso(value) {
@@ -81,6 +96,22 @@ function attachmentMetadata(attachments) {
     : [];
 }
 
+function safeHeaders(parsed) {
+  const safe = {};
+  for (const name of ['auto-submitted', 'content-language', 'importance', 'x-mailer']) {
+    const value = parsed.headers?.get?.(name);
+    if (value !== undefined && value !== null && text(value)) {
+      safe[name] = text(value).slice(0, 500);
+    }
+  }
+  return safe;
+}
+
+function htmlBody(parsed) {
+  const value = typeof parsed.html === 'string' ? parsed.html : '';
+  return value.length > MAX_BODY_CHARS ? `${value.slice(0, MAX_BODY_CHARS)}\n<!-- truncated -->` : value;
+}
+
 function sourceReferenceFor(parsed, meta) {
   return normalizeMessageId(parsed.messageId || meta.messageId)
     || (meta.uid ? `${text(meta.mailbox || 'INBOX')}:${meta.uid}` : '');
@@ -136,6 +167,43 @@ export async function parseEmailInquirySource(source, meta = {}) {
 export async function parseEmailInquirySourceWithAttachments(source, meta = {}) {
   const parsed = await simpleParser(source);
   return {
+    inquiry: normalizeEmailInquiryPayload(parsed, meta),
+    attachments: Array.isArray(parsed.attachments) ? parsed.attachments : []
+  };
+}
+
+export function normalizeEmailArchivePayload(parsed = {}, meta = {}) {
+  const from = firstAddress(parsed.from);
+  const subject = text(parsed.subject);
+  const inReplyTo = normalizeMessageId(parsed.inReplyTo);
+  const references = normalizeReferenceIds(parsed.references);
+  const receivedAt = dateToIso(parsed.date || meta.internalDate) || new Date().toISOString();
+  return {
+    mailboxKey: text(meta.mailboxKey || meta.mailbox || 'INBOX'),
+    normalizedSubject: normalizedThreadSubject(subject),
+    messageId: normalizeMessageId(parsed.messageId || meta.messageId),
+    inReplyTo,
+    referenceIds: references,
+    replyReferenceIds: [...new Set([inReplyTo, ...references.slice().reverse()].filter(Boolean))],
+    providerMailbox: text(meta.mailbox || 'INBOX'),
+    providerUidValidity: text(meta.uidValidity),
+    providerUid: meta.uid ? Number(meta.uid) : null,
+    fromAddress: from.address,
+    fromName: from.name,
+    toRecipients: addressList(parsed.to),
+    ccRecipients: addressList(parsed.cc),
+    subject,
+    textBody: bodyText(parsed),
+    htmlBody: htmlBody(parsed),
+    safeHeaders: safeHeaders(parsed),
+    receivedAt
+  };
+}
+
+export async function parseEmailArchiveSourceWithAttachments(source, meta = {}) {
+  const parsed = await simpleParser(source);
+  return {
+    message: normalizeEmailArchivePayload(parsed, meta),
     inquiry: normalizeEmailInquiryPayload(parsed, meta),
     attachments: Array.isArray(parsed.attachments) ? parsed.attachments : []
   };

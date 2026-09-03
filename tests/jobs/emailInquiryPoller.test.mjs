@@ -89,6 +89,70 @@ function rawGoogleAdsEmailWithAttachment(id) {
   ].join('\r\n'));
 }
 
+function rawReplyEmail(id, inReplyTo) {
+  return Buffer.from([
+    `Message-ID: <${id}@example.com>`,
+    `In-Reply-To: <${inReplyTo}@example.com>`,
+    `References: <${inReplyTo}@example.com>`,
+    'Date: Sat, 01 Aug 2026 06:00:00 +0000',
+    'From: Alice <alice@example.com>',
+    'To: sales@sunkaier.com',
+    'Subject: Re: RFQ',
+    '',
+    'Please revise the quotation.'
+  ].join('\r\n'));
+}
+
+function createMemoryArchive() {
+  const threads = [];
+  const messages = [];
+  const attachments = [];
+  return {
+    threads,
+    messages,
+    attachments,
+    repository: {
+      async findMessageIdentity(identity) {
+        return messages.find((message) => (
+          (identity.messageId && message.messageId === identity.messageId)
+          || (message.providerMailbox === identity.providerMailbox
+            && message.providerUidValidity === identity.providerUidValidity
+            && Number(message.providerUid) === Number(identity.providerUid))
+        )) || null;
+      },
+      async findThreadById(id) { return threads.find((thread) => thread.id === Number(id)) || null; },
+      async findThreadByReferences(referenceIds) {
+        const parent = messages.find((message) => referenceIds.includes(message.messageId));
+        return parent ? threads.find((thread) => thread.id === parent.threadId) : null;
+      },
+      async createThread(input) {
+        const thread = { id: threads.length + 1, ...input, opportunityId: input.opportunityId || null };
+        threads.push(thread);
+        return thread;
+      },
+      async createInboundMessage(input) {
+        if (messages.some((message) => message.messageId === input.messageId)) return null;
+        const message = { id: messages.length + 1, ...input };
+        messages.push(message);
+        return message;
+      },
+      async touchThread(id, at) {
+        const thread = threads.find((item) => item.id === Number(id));
+        thread.lastMessageAt = at;
+        return thread;
+      },
+      async listAttachmentsByMessage(messageId) {
+        return attachments.filter((attachment) => attachment.messageId === Number(messageId));
+      },
+      async createAttachment(input) {
+        const record = { id: attachments.length + 1, ...input };
+        attachments.push(record);
+        return record;
+      }
+    }
+  };
+}
+
 test('validateEmailIntakeConfig requires database and IMAP credentials', () => {
   assert.throws(
     () => validateEmailIntakeConfig({ databaseUrl: '', emailIntake: {} }),
@@ -288,6 +352,99 @@ test('pollEmailInquiries skips attachment storage for archived or spam messages'
     assert.deepEqual(result.imported, [
       { uid: 401, inquiryId: 98, duplicate: false, attachments: 0, skippedAttachments: 1 }
     ]);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('archive polling deduplicates repeated Message-ID before marking both provider records seen', async () => {
+  const archive = createMemoryArchive();
+  const inquiries = [];
+  const seen = [];
+  const client = {
+    mailbox: { uidValidity: 44n },
+    async connect() {}, async mailboxOpen() {}, async search() { return [501, 502]; },
+    async fetchOne(uid) { return { uid: Number(uid), source: rawEmail('same-message') }; },
+    async messageFlagsAdd(uid) { seen.push(uid); }, async logout() {}
+  };
+  const result = await pollEmailInquiries({
+    config: config(),
+    inquiryRepository: {
+      async createInquiry(input) { const inquiry = { id: inquiries.length + 1, ...input }; inquiries.push(inquiry); return inquiry; }
+    },
+    emailArchiveRepository: archive.repository,
+    imapClientFactory: () => client
+  });
+
+  assert.equal(inquiries.length, 1);
+  assert.equal(archive.threads.length, 1);
+  assert.equal(archive.messages.length, 1);
+  assert.deepEqual(result.imported.map((item) => item.duplicate), [false, true]);
+  assert.deepEqual(seen, ['501', '502']);
+});
+
+test('archive polling uses reply headers to append to the original inquiry thread', async () => {
+  const archive = createMemoryArchive();
+  const inquiries = [];
+  let pass = 0;
+  const client = {
+    mailbox: { uidValidity: 55n },
+    async connect() {}, async mailboxOpen() {}, async search() { return [601 + pass]; },
+    async fetchOne(uid) {
+      return { uid: Number(uid), source: pass === 0 ? rawEmail('root-thread') : rawReplyEmail('reply-thread', 'root-thread') };
+    },
+    async messageFlagsAdd() {}, async logout() { pass += 1; }
+  };
+  const options = {
+    config: config(),
+    inquiryRepository: {
+      async createInquiry(input) { const inquiry = { id: inquiries.length + 1, ...input }; inquiries.push(inquiry); return inquiry; }
+    },
+    emailArchiveRepository: archive.repository,
+    imapClientFactory: () => client
+  };
+  await pollEmailInquiries(options);
+  const reply = await pollEmailInquiries(options);
+
+  assert.equal(inquiries.length, 1);
+  assert.equal(archive.threads.length, 1);
+  assert.equal(archive.messages.length, 2);
+  assert.equal(reply.imported[0].threadId, archive.threads[0].id);
+});
+
+test('attachment archive failure leaves mail unseen and a retry completes the same message', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-retry-'));
+  const archive = createMemoryArchive();
+  const originalCreateAttachment = archive.repository.createAttachment;
+  let attachmentAttempts = 0;
+  archive.repository.createAttachment = async (input) => {
+    attachmentAttempts += 1;
+    if (attachmentAttempts === 1) throw new Error('temporary storage metadata failure');
+    return originalCreateAttachment(input);
+  };
+  const seen = [];
+  const client = {
+    mailbox: { uidValidity: 66n },
+    async connect() {}, async mailboxOpen() {}, async search() { return [701]; },
+    async fetchOne(uid) { return { uid: Number(uid), source: rawEmailWithAttachment('retry-message') }; },
+    async messageFlagsAdd(uid) { seen.push(uid); }, async logout() {}
+  };
+  const inquiryRepository = {
+    async createInquiry(input) { return { id: 1, ...input }; }
+  };
+
+  try {
+    await assert.rejects(() => pollEmailInquiries({
+      config: config({ uploadDir }), inquiryRepository, emailArchiveRepository: archive.repository, imapClientFactory: () => client
+    }), /temporary storage metadata failure/);
+    assert.deepEqual(seen, []);
+
+    const retried = await pollEmailInquiries({
+      config: config({ uploadDir }), inquiryRepository, emailArchiveRepository: archive.repository, imapClientFactory: () => client
+    });
+    assert.equal(retried.imported[0].duplicate, true);
+    assert.equal(archive.attachments.length, 1);
+    assert.deepEqual(seen, ['701']);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
