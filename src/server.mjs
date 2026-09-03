@@ -6,6 +6,7 @@ import { loadConfig } from './config.mjs';
 import { createPool } from './db/pool.mjs';
 import { createSessionStore } from './db/sessionStore.mjs';
 import { createWorkflowTransaction } from './db/workflowTransaction.mjs';
+import { createEmailArchiveTransaction } from './db/emailArchiveTransaction.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
 import { csrfProtection } from './middleware/csrf.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
@@ -55,6 +56,7 @@ import { isMainModule } from './utils/moduleEntry.mjs';
 import { createLoginSecurityService } from './services/loginSecurityService.mjs';
 import { createSmsSecondFactorService } from './services/smsSecondFactorService.mjs';
 import { createTechnicalDocumentService } from './services/technicalDocumentService.mjs';
+import { createCustomerEmailTransport } from './services/customerEmailService.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -346,6 +348,7 @@ const emptyQuotationPackageRepository = {
   supportsQuotationPackages: false,
   async listByOpportunity() { return []; },
   async getPackageDetail() { return null; },
+  async getEmailAttachmentSources() { return []; },
   async listApprovedTechnicalSolutions() { return []; },
   async listApprovedCommercialQuotes() { return []; },
   async findCurrentSentByOpportunity() { return null; },
@@ -370,6 +373,12 @@ const emptyEmailArchiveRepository = {
   async findMessageById() { return null; },
   async findMessageIdentity() { return null; },
   async findThreadByReferences() { return null; },
+  async findLatestThreadByInquiry() { return null; },
+  async findLatestThreadByOpportunity() { return null; },
+  async createThread() { throw new Error('Email archive repository is not configured'); },
+  async createOutboundMessage() { throw new Error('Email archive repository is not configured'); },
+  async claimOutboundForSend() { return null; },
+  async completeOutboundDelivery() { return null; },
   async findAttachmentById() { return null; },
   async listAttachmentsByMessage() { return []; },
   async createThread() { throw new Error('Email archive repository is not configured'); },
@@ -553,6 +562,11 @@ export function createApp(options = {}) {
   const workflowTransaction = 'workflowTransaction' in options
     ? options.workflowTransaction
     : pool ? createWorkflowTransaction(pool) : null;
+  const emailArchiveTransaction = 'emailArchiveTransaction' in options
+    ? options.emailArchiveTransaction
+    : pool ? createEmailArchiveTransaction(pool) : null;
+  const customerEmailTransport = options.customerEmailTransport
+    || (config.customerEmail?.enabled ? createCustomerEmailTransport(config.customerEmail.smtp) : null);
   const sessionStore = 'sessionStore' in options ? options.sessionStore : createSessionStore(pool);
   const app = express();
   app.set('trust proxy', 'loopback');
@@ -610,6 +624,7 @@ export function createApp(options = {}) {
     res.locals.todoTitleLabel = createTodoTitleLabeler(language);
     res.locals.webPushPublicKey = configuredWebPushPublicKey;
     res.locals.emailCenterEnabled = Boolean(config.emailCenter?.enabled);
+    res.locals.customerEmailSendingEnabled = Boolean(config.customerEmail?.enabled);
     next();
   });
   app.use(attachCurrentUser(userRepository));
@@ -649,9 +664,18 @@ export function createApp(options = {}) {
   app.use(emailCenterRoutes({
     enabled: Boolean(config.emailCenter?.enabled),
     emailArchiveRepository,
+    inquiryRepository,
     opportunityRepository,
     opportunityResponsibilityRepository,
-    uploadDir: config.uploadDir
+    quotationPackageRepository,
+    emailArchiveTransaction,
+    transport: customerEmailTransport,
+    sendingEnabled: Boolean(config.customerEmail?.enabled),
+    sharedAddress: config.customerEmail?.sharedAddress || 'sales@sunkaier.com',
+    uploadDir: config.uploadDir,
+    maxUploadMb: config.customerEmail?.maxUploadMb || 25,
+    now: options.customerEmailNow,
+    randomUUID: options.customerEmailRandomUUID
   }));
   app.use(salesWorkRoutes({
     salesWorkRepository,

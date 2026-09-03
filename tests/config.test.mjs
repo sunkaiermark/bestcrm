@@ -76,6 +76,36 @@ test('email center interface stays disabled unless explicitly enabled', () => {
   assert.equal(loadConfig({ NODE_ENV: 'development', CRM_EMAIL_CENTER_ENABLED: 'true' }).emailCenter.enabled, true);
 });
 
+test('customer email sending has a separate disabled-by-default flag and fixed shared sender', () => {
+  const defaults = loadConfig({ NODE_ENV: 'development' });
+  assert.equal(defaults.customerEmail.enabled, false);
+  assert.equal(defaults.customerEmail.sharedAddress, 'sales@sunkaier.com');
+  assert.equal(defaults.customerEmail.maxUploadMb, 25);
+
+  const configured = loadConfig({
+    NODE_ENV: 'development',
+    CRM_EMAIL_SENDING_ENABLED: 'true',
+    CRM_EMAIL_MAX_UPLOAD_MB: '12',
+    CUSTOMER_SMTP_HOST: 'smtp.example.com',
+    CUSTOMER_SMTP_PORT: '587',
+    CUSTOMER_SMTP_SECURE: 'false',
+    CUSTOMER_SMTP_USER: 'sales@sunkaier.com',
+    CUSTOMER_SMTP_PASSWORD: 'app-password'
+  });
+  assert.deepEqual(configured.customerEmail, {
+    enabled: true,
+    sharedAddress: 'sales@sunkaier.com',
+    maxUploadMb: 12,
+    smtp: {
+      host: 'smtp.example.com',
+      port: 587,
+      secure: false,
+      user: 'sales@sunkaier.com',
+      password: 'app-password'
+    }
+  });
+});
+
 test('config reads notification delivery providers without enabling them by default', () => {
   const defaults = loadConfig({ NODE_ENV: 'development' });
   assert.equal(defaults.notificationDelivery.enabled, false);

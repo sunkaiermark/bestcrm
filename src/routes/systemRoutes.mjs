@@ -84,6 +84,8 @@ export function systemRoutes({ userRepository, roleRepository, approvalSettingRe
           displayName: '',
           email: '',
           phone: '',
+          emailSignatureName: '',
+          emailSignatureTitle: '',
           isActive: true,
           roles: [defaultUserRole(roles)]
         },

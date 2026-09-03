@@ -32,6 +32,7 @@ const opportunityTechnicalDraftsMigrationPath = new URL('../../src/db/migrations
 const technicalSolutionDocumentsMigrationPath = new URL('../../src/db/migrations/031_technical_solution_versions_and_documents.sql', import.meta.url);
 const quotationPackageVersionsMigrationPath = new URL('../../src/db/migrations/032_quotation_package_versions.sql', import.meta.url);
 const emailCenterArchiveMigrationPath = new URL('../../src/db/migrations/033_email_center_archive.sql', import.meta.url);
+const customerEmailSendingMigrationPath = new URL('../../src/db/migrations/034_customer_email_sending.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -461,4 +462,19 @@ test('email center migration creates immutable threaded business mail archive', 
   assert.match(sql, /Inbound email messages are immutable/);
   assert.match(sql, /Archived email attachments are immutable/);
   assert.match(sql, /inquiries_link_email_threads_after_conversion/);
+});
+
+test('customer email sending migration binds immutable outbound mail to approved quotation versions', async () => {
+  const sql = await readFile(customerEmailSendingMigrationPath, 'utf8');
+
+  assert.match(sql, /email_signature_name text NOT NULL DEFAULT ''/);
+  assert.match(sql, /email_signature_title text NOT NULL DEFAULT ''/);
+  assert.match(sql, /delivery_status IN \('received', 'draft', 'pending', 'sent', 'failed'\)/);
+  assert.match(sql, /reply_to_message_id bigint/);
+  assert.match(sql, /quotation_package_version_id bigint/);
+  assert.match(sql, /sent_email_message_id bigint/);
+  assert.match(sql, /ON DELETE RESTRICT/);
+  assert.match(sql, /Formal quotation email requires an approved quotation package from the same opportunity/);
+  assert.match(sql, /Sent quotation package requires its accepted outbound email record/);
+  assert.match(sql, /Sent email delivery state is immutable/);
 });

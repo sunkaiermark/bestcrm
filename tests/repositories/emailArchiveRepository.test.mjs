@@ -85,3 +85,62 @@ test('email archive repository writes RFC and provider identities with conflict 
   assert.equal(calls[0].params[5], '44');
   assert.equal(calls[0].params[6], 7);
 });
+
+test('outbound archive state keeps immutable content while delivery attempts increment on one message', async () => {
+  const calls = [];
+  const rows = [
+    messageRow({
+      id: 22, direction: 'outbound', delivery_status: 'draft', received_at: null,
+      message_id: '<bestcrm-22@sunkaier.com>', authored_by: 7,
+      reply_to_message_id: 11, quotation_package_version_id: 51
+    }),
+    messageRow({ id: 22, direction: 'outbound', delivery_status: 'pending', received_at: null }),
+    messageRow({ id: 22, direction: 'outbound', delivery_status: 'sent', received_at: null }),
+    { id: 1, message_id: 22, attempt_number: 2, attempted_by: 7, status: 'sent', provider_message_id: 'provider-22', safe_error: '', attempted_at: '2026-09-03' }
+  ];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [rows.shift()] };
+    }
+  });
+
+  const created = await repository.createOutboundMessage({
+    threadId: 1,
+    messageId: '<bestcrm-22@sunkaier.com>',
+    inReplyTo: 'rfq@example.com',
+    referenceIds: ['rfq@example.com'],
+    replyToMessageId: 11,
+    quotationPackageVersionId: 51,
+    fromAddress: 'sales@sunkaier.com',
+    fromName: 'Steven Yang | SUNKAIER',
+    toRecipients: [{ address: 'buyer@example.com' }],
+    ccRecipients: [],
+    subject: 'Quotation',
+    textBody: 'Frozen body',
+    safeHeaders: {},
+    deliveryStatus: 'draft',
+    authoredBy: 7
+  });
+  await repository.claimOutboundForSend(created.id);
+  await repository.completeOutboundDelivery({
+    messageId: created.id,
+    status: 'sent',
+    providerMessageId: 'provider-22',
+    sentAt: '2026-09-03T10:00:00Z'
+  });
+  await repository.createDeliveryAttempt({
+    messageId: created.id,
+    attemptedBy: 7,
+    status: 'sent',
+    providerMessageId: 'provider-22'
+  });
+
+  assert.match(calls[0].sql, /INSERT INTO email_messages/);
+  assert.match(calls[0].sql, /quotation_package_version_id/);
+  assert.equal(calls[0].params[5], 51);
+  assert.match(calls[1].sql, /delivery_status IN \('draft', 'failed'\)/);
+  assert.match(calls[2].sql, /delivery_status = 'pending'/);
+  assert.match(calls[3].sql, /MAX\(attempt_number\)/);
+  assert.equal(calls[3].params.length, 5);
+});

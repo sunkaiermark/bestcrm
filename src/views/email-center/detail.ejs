@@ -5,6 +5,7 @@
             <h1><%= thread.subject || t('noSubject') %></h1>
             <div class="muted"><%= t('mailbox') %>: <%= thread.mailboxKey %> · <%= thread.messageCount %> <%= t('messages') %></div>
           </div>
+          <% if (sendingEnabled) { %><a class="primary-action" href="/email-center/compose?threadId=<%= thread.id %>"><%= t('replyByEmail') %></a><% } %>
         </header>
 
         <section class="detail-card">
@@ -40,6 +41,11 @@
                     <p><a href="/email-center/attachments/<%= attachment.id %>/download"><%= attachment.originalName %></a> · <%= attachment.fileSize %> B · SHA-256 <code><%= attachment.sha256 %></code></p>
                   <% } %>
                 </div>
+              <% } %>
+              <% if (sendingEnabled && canSendEmail && message.direction === 'outbound' && ['draft', 'failed'].includes(message.deliveryStatus)) { %>
+                <form method="post" action="/email-center/messages/<%= message.id %>/send" class="inline-actions">
+                  <%- csrfField() %><button type="submit"><%= message.deliveryStatus === 'failed' ? t('retryCustomerEmail') : t('sendCustomerEmail') %></button>
+                </form>
               <% } %>
             </article>
           <% } %>

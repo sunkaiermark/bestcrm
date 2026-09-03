@@ -59,9 +59,7 @@
           </form>
         <% } %>
         <% if (canManage && packageVersion.status === 'approved') { %>
-          <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/quotation-packages/<%= packageVersion.id %>/mark-sent">
-            <input type="hidden" name="_csrf" value="<%= csrfToken %>"><label><%= t('sentRecordNote') %><textarea name="comment"></textarea></label><button type="submit"><%= t('markQuotationPackageSent') %></button><p class="muted"><%= t('markSentTemporaryNotice') %></p>
-          </form>
+          <% if (customerEmailSendingEnabled) { %><p><a class="quick-action" href="/email-center/compose?opportunityId=<%= opportunity.id %>&quotationPackageVersionId=<%= packageVersion.id %>"><%= t('sendCustomerEmail') %> · <%= packageVersion.label %></a></p><% } %>
         <% } %>
         <% if (canManage && packageVersion.status === 'sent') { %>
           <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/quotation-packages/<%= packageVersion.id %>/accept">

@@ -98,12 +98,14 @@ test('only assigned commercial manager sees and executes package review', async 
   assert.equal(calls[0][1].actorUserId, 9);
 });
 
-test('only sales owner sees the manual sent control on an approved package', async () => {
+test('approved package can no longer be marked sent outside the CRM email transaction', async () => {
   const salesSession = await createAgent({ userId: 7, roles: [ROLES.SALESPERSON], packageStatus: 'approved' });
   const salesDetail = await salesSession.agent.get('/opportunities/20/quotation-packages/51');
   assert.equal(salesDetail.status, 200);
-  assert.match(salesDetail.text, /Record as Sent/);
-  assert.match(salesDetail.text, /Step 9 will replace it with an atomic CRM email send/);
+  assert.doesNotMatch(salesDetail.text, /Record as Sent/);
+  const bypass = await salesSession.agent.post('/opportunities/20/quotation-packages/51/mark-sent').type('form').send();
+  assert.equal(bypass.status, 409);
+  assert.match(bypass.text, /CRM email center/);
 
   const managerSession = await createAgent({ userId: 9, roles: [ROLES.COMMERCIAL_MANAGER], packageStatus: 'approved' });
   const managerDetail = await managerSession.agent.get('/opportunities/20/quotation-packages/51');

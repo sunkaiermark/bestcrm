@@ -14,6 +14,9 @@
             <h1><%= inquiry.subject || inquiry.companyName || `${t('inquiry')} #${inquiry.id}` %></h1>
           </div>
           <div class="inline-actions">
+            <% if (customerEmailSendingEnabled) { %>
+              <a class="secondary-action" href="/email-center/compose?inquiryId=<%= inquiry.id %>"><%= t('composeCustomerEmail') %></a>
+            <% } %>
             <% if (inquiry.convertedOpportunityId) { %>
               <a class="quick-action" href="/opportunities/<%= inquiry.convertedOpportunityId %>"><%= t('viewOpportunity') %></a>
             <% } %>

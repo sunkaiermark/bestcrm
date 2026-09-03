@@ -290,6 +290,8 @@ test('administrator can add edit and deactivate system users', async () => {
     displayName: 'New User',
     email: 'new.user@bestcrm.local',
     phone: '555',
+    emailSignatureName: 'New User',
+    emailSignatureTitle: 'Sales Engineer',
     password: 'Start12345!',
     roles: ROLES.SALESPERSON,
     isActive: 'on'
@@ -299,6 +301,8 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.equal(calls[0].method, 'createUser');
   assert.equal(calls[0].input.username, 'new_user');
   assert.equal(calls[0].input.displayName, 'New User');
+  assert.equal(calls[0].input.emailSignatureName, 'New User');
+  assert.equal(calls[0].input.emailSignatureTitle, 'Sales Engineer');
   assert.deepEqual(calls[0].input.roles, [ROLES.SALESPERSON]);
   assert.equal(calls[0].input.isActive, true);
   assert.notEqual(calls[0].input.passwordHash, 'Start12345!');
@@ -317,6 +321,8 @@ test('administrator can add edit and deactivate system users', async () => {
     displayName: 'Updated Manager',
     email: 'updated.manager@bestcrm.local',
     phone: '777',
+    emailSignatureName: 'Updated Manager',
+    emailSignatureTitle: 'Technical Manager',
     roles: ROLES.TECHNICAL_MANAGER
   });
   assert.equal(updated.status, 302);
@@ -327,6 +333,8 @@ test('administrator can add edit and deactivate system users', async () => {
     displayName: 'Updated Manager',
     email: 'updated.manager@bestcrm.local',
     phone: '777',
+    emailSignatureName: 'Updated Manager',
+    emailSignatureTitle: 'Technical Manager',
     isActive: false,
     roles: [ROLES.TECHNICAL_MANAGER]
   });
@@ -335,6 +343,8 @@ test('administrator can add edit and deactivate system users', async () => {
     displayName: 'Updated Manager',
     email: 'updated.manager@bestcrm.local',
     phone: '777',
+    emailSignatureName: 'Updated Manager',
+    emailSignatureTitle: 'Technical Manager',
     password: 'Changed123!',
     roles: ROLES.TECHNICAL_MANAGER,
     isActive: 'on'

@@ -47,6 +47,9 @@ function mapMessageRow(row) {
     messageId: text(row.message_id),
     inReplyTo: text(row.in_reply_to),
     referenceIds: jsonArray(row.reference_ids),
+    replyToMessageId: numberOrNull(row.reply_to_message_id),
+    quotationPackageVersionId: numberOrNull(row.quotation_package_version_id),
+    quotationPackageLabel: text(row.quotation_package_label),
     providerMailbox: text(row.provider_mailbox),
     providerUidValidity: text(row.provider_uid_validity),
     providerUid: numberOrNull(row.provider_uid),
@@ -147,9 +150,15 @@ const threadSelect = `
 const messageSelect = `
   SELECT
     message.*,
-    author.display_name AS author_display_name
+    author.display_name AS author_display_name,
+    CASE
+      WHEN package.version_no IS NOT NULL THEN 'QP-V' || package.version_no::text
+      WHEN package.draft_revision_no IS NOT NULL THEN 'QP-D' || package.draft_revision_no::text
+      ELSE ''
+    END AS quotation_package_label
   FROM email_messages message
   LEFT JOIN users author ON author.id = message.authored_by
+  LEFT JOIN quotation_package_versions package ON package.id = message.quotation_package_version_id
 `;
 
 export function createEmailArchiveRepository(queryTarget) {
@@ -248,6 +257,26 @@ export function createEmailArchiveRepository(queryTarget) {
       return result.rows[0]?.thread_id ? this.findThreadById(result.rows[0].thread_id) : null;
     },
 
+    async findLatestThreadByInquiry(inquiryId) {
+      const result = await queryTarget.query(`
+        ${threadSelect}
+        WHERE thread.inquiry_id = $1
+        ORDER BY thread.last_message_at DESC, thread.id DESC
+        LIMIT 1
+      `, [inquiryId]);
+      return mapThreadRow(result.rows[0]);
+    },
+
+    async findLatestThreadByOpportunity(opportunityId) {
+      const result = await queryTarget.query(`
+        ${threadSelect}
+        WHERE thread.opportunity_id = $1
+        ORDER BY thread.last_message_at DESC, thread.id DESC
+        LIMIT 1
+      `, [opportunityId]);
+      return mapThreadRow(result.rows[0]);
+    },
+
     async createThread(input) {
       const result = await queryTarget.query(`
         INSERT INTO email_threads (
@@ -321,6 +350,85 @@ export function createEmailArchiveRepository(queryTarget) {
       return mapMessageRow(result.rows[0]);
     },
 
+    async createOutboundMessage(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO email_messages (
+          thread_id,
+          direction,
+          message_id,
+          in_reply_to,
+          reference_ids,
+          reply_to_message_id,
+          quotation_package_version_id,
+          from_address,
+          from_name,
+          to_recipients,
+          cc_recipients,
+          subject,
+          text_body,
+          html_body,
+          safe_headers,
+          delivery_status,
+          authored_by
+        )
+        VALUES ($1, 'outbound', $2, $3, $4::jsonb, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12, '', $13::jsonb, $14, $15)
+        RETURNING *
+      `, [
+        input.threadId,
+        input.messageId,
+        input.inReplyTo || '',
+        JSON.stringify(input.referenceIds || []),
+        input.replyToMessageId || null,
+        input.quotationPackageVersionId || null,
+        input.fromAddress,
+        input.fromName,
+        JSON.stringify(input.toRecipients || []),
+        JSON.stringify(input.ccRecipients || []),
+        input.subject || '',
+        input.textBody || '',
+        JSON.stringify(input.safeHeaders || {}),
+        input.deliveryStatus,
+        input.authoredBy
+      ]);
+      return mapMessageRow(result.rows[0]);
+    },
+
+    async claimOutboundForSend(id) {
+      const result = await queryTarget.query(`
+        UPDATE email_messages
+        SET delivery_status = 'pending', failure_code = '', failure_detail = ''
+        WHERE id = $1
+          AND direction = 'outbound'
+          AND delivery_status IN ('draft', 'failed')
+        RETURNING *
+      `, [id]);
+      return mapMessageRow(result.rows[0]);
+    },
+
+    async completeOutboundDelivery(input) {
+      const result = await queryTarget.query(`
+        UPDATE email_messages
+        SET
+          delivery_status = $2,
+          provider_message_id = $3,
+          failure_code = $4,
+          failure_detail = $5,
+          sent_at = CASE WHEN $2 = 'sent' THEN $6 ELSE sent_at END
+        WHERE id = $1
+          AND direction = 'outbound'
+          AND delivery_status = 'pending'
+        RETURNING *
+      `, [
+        input.messageId,
+        input.status,
+        input.providerMessageId || '',
+        input.failureCode || '',
+        input.failureDetail || '',
+        input.sentAt || null
+      ]);
+      return mapMessageRow(result.rows[0]);
+    },
+
     async createAttachment(input) {
       const result = await queryTarget.query(`
         INSERT INTO email_attachments (
@@ -381,6 +489,11 @@ export function createEmailArchiveRepository(queryTarget) {
 
     async createDeliveryAttempt(input) {
       const result = await queryTarget.query(`
+        WITH next_attempt AS (
+          SELECT COALESCE(MAX(attempt_number), 0) + 1 AS attempt_number
+          FROM email_delivery_attempts
+          WHERE message_id = $1
+        )
         INSERT INTO email_delivery_attempts (
           message_id,
           attempt_number,
@@ -389,11 +502,11 @@ export function createEmailArchiveRepository(queryTarget) {
           provider_message_id,
           safe_error
         )
-        VALUES ($1, $2, $3, $4, $5, $6)
+        SELECT $1, next_attempt.attempt_number, $2, $3, $4, $5
+        FROM next_attempt
         RETURNING *
       `, [
         input.messageId,
-        input.attemptNumber,
         input.attemptedBy || null,
         input.status,
         input.providerMessageId || '',

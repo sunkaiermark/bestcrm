@@ -38,6 +38,8 @@ export function normalizeSystemUserInput(input, options = {}) {
     displayName: text(input.displayName),
     email: text(input.email),
     phone: text(input.phone),
+    emailSignatureName: text(input.emailSignatureName),
+    emailSignatureTitle: text(input.emailSignatureTitle),
     isActive: checkbox(input.isActive),
     roles: normalizeRolesWithAllowedCodes(input.roles, options.allowedRoleCodes)
   };
@@ -85,6 +87,8 @@ export async function resetSystemUserPassword(userRepository, actor, userId, pas
     displayName: user.displayName,
     email: user.email,
     phone: user.phone,
+    emailSignatureName: user.emailSignatureName,
+    emailSignatureTitle: user.emailSignatureTitle,
     isActive: user.isActive,
     roles: user.roles,
     passwordHash: await hashPassword(newPassword)

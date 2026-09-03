@@ -1,0 +1,35 @@
+<%- include('../partials/app-start', { title: `${t('composeCustomerEmail')} - BESTCRM`, activeNav: 'email-center' }) %>
+        <p class="breadcrumb"><a href="/email-center"><%= t('emailCenter') %></a> / <%= t('composeCustomerEmail') %></p>
+        <header class="page-header">
+          <div>
+            <h1><%= t('composeCustomerEmail') %></h1>
+            <div class="muted"><%= context.opportunity ? `${t('opportunity')} ${context.opportunity.opportunityNo} · ${context.opportunity.title}` : `${t('inquiry')} #${context.inquiry.id}` %></div>
+          </div>
+        </header>
+
+        <section class="form-panel"><strong><%= t('customerEmailSendingNotice') %></strong></section>
+        <form class="form-panel" method="post" action="/email-center/messages" enctype="multipart/form-data">
+          <%- csrfField() %>
+          <% if (context.thread) { %><input type="hidden" name="threadId" value="<%= context.thread.id %>"><% } %>
+          <% if (context.inquiry) { %><input type="hidden" name="inquiryId" value="<%= context.inquiry.id %>"><% } %>
+          <% if (context.opportunity) { %><input type="hidden" name="opportunityId" value="<%= context.opportunity.id %>"><% } %>
+          <% if (context.defaults.replyToMessageId) { %><input type="hidden" name="replyToMessageId" value="<%= context.defaults.replyToMessageId %>"><% } %>
+          <label><%= t('emailTo') %><input type="text" name="to" value="<%= context.defaults.to %>" placeholder="buyer@example.com" required></label>
+          <label><%= t('emailCc') %><input type="text" name="cc" placeholder="colleague@example.com"></label>
+          <label><%= t('subject') %><input type="text" name="subject" value="<%= context.defaults.subject %>" maxlength="300" required></label>
+          <% if (context.opportunity) { %>
+            <label><%= t('quotationPackageEmail') %>
+              <select name="quotationPackageVersionId">
+                <option value=""><%= t('noQuotationPackage') %></option>
+                <% for (const item of context.packages) { %><option value="<%= item.id %>" <%= Number(context.defaults.quotationPackageVersionId) === Number(item.id) ? 'selected' : '' %>><%= item.label %> · <%= item.currency %> <%= item.totalPrice %></option><% } %>
+              </select>
+            </label>
+          <% } %>
+          <label><%= t('emailBody') %><textarea name="body" rows="12" required></textarea></label>
+          <label><%= t('emailAttachments') %><input type="file" name="attachments" multiple><span class="muted"><%= maxUploadMb %> MB / file</span></label>
+          <div class="inline-actions">
+            <button type="submit" name="action" value="draft" class="secondary-action"><%= t('saveEmailDraft') %></button>
+            <% if (context.canSend) { %><button type="submit" name="action" value="send"><%= t('sendCustomerEmail') %></button><% } %>
+          </div>
+        </form>
+<%- include('../partials/app-end') %>

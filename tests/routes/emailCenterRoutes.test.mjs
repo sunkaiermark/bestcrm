@@ -27,21 +27,28 @@ function thread(overrides = {}) {
   };
 }
 
-async function createAgent({ userId, roles, language = 'en', uploadDir = './var/uploads' }) {
+async function createAgent({ userId, roles, language = 'en', uploadDir = './var/uploads', sendingEnabled = false, teamMembers = [] }) {
   const passwordHash = await hashPassword('ChangeMe123!');
-  const user = { id: userId, username: `user${userId}`, displayName: `User ${userId}`, passwordHash, isActive: true, roles };
+  const user = {
+    id: userId, username: `user${userId}`, displayName: `User ${userId}`,
+    emailSignatureName: `User ${userId}`, emailSignatureTitle: 'Project Engineer',
+    email: `user${userId}@sunkaier.com`, passwordHash, isActive: true, roles
+  };
   const unlinked = thread();
   const linked = thread({ id: 2, inquiryId: 9, opportunityId: 20, opportunityNo: '800020', opportunityTitle: 'Mixer Project' });
   linked.messages = linked.messages.map((message) => ({ ...message, threadId: 2 }));
   const repository = {
     async listThreads() { return [unlinked, linked]; },
     async findThreadById(id) { return Number(id) === 2 ? linked : Number(id) === 1 ? unlinked : null; },
+    async findLatestThreadByOpportunity() { return linked; },
+    async findLatestThreadByInquiry() { return unlinked; },
     async getThreadDetail(id) { return Number(id) === 2 ? linked : Number(id) === 1 ? unlinked : null; },
     async findAttachmentById(id) { return Number(id) === 21 ? unlinked.messages[0].attachments[0] : null; },
     async findMessageById(id) { return Number(id) === 11 ? unlinked.messages[0] : null; }
   };
   const app = createApp({
-    databaseUrl: '', sessionSecret: 'test-secret', csrfProtection: false, emailCenter: { enabled: true }, uploadDir,
+    databaseUrl: '', sessionSecret: 'test-secret', csrfProtection: false, emailCenter: { enabled: true },
+    customerEmail: { enabled: sendingEnabled, sharedAddress: 'sales@sunkaier.com', maxUploadMb: 25, smtp: {} }, uploadDir,
     userRepository: {
       async findByIdWithRoles(id) { return Number(id) === user.id ? user : null; },
       async findByUsernameWithRoles(username) { return username === user.username ? user : null; },
@@ -52,12 +59,13 @@ async function createAgent({ userId, roles, language = 'en', uploadDir = './var/
       async getOpportunityDetail(id) {
         return Number(id) === 20 ? {
           id: 20, salespersonId: 7, salesManagerId: 2, quotationEngineerId: 3,
-          technicalManagerId: 6, commercialManagerId: 9
+          technicalManagerId: 6, commercialManagerId: 9, opportunityNo: '800020', title: 'Mixer Project'
         } : null;
       },
       async listOpportunities() { return []; }
     },
-    opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return []; } }
+    opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return teamMembers; } },
+    quotationPackageRepository: { async listByOpportunity() { return []; }, async getPackageDetail() { return null; } }
   });
   const agent = request.agent(app);
   if (language === 'zh') await agent.get('/language?lang=zh&returnTo=/login');
@@ -121,4 +129,30 @@ test('email attachment download enforces the same thread permission', async () =
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
+});
+
+test('compose route is separately disabled until customer SMTP sending is enabled', async () => {
+  const agent = await createAgent({ userId: 7, roles: [ROLES.SALESPERSON] });
+  assert.equal((await agent.get('/email-center/compose?opportunityId=20')).status, 404);
+});
+
+test('compose page shows send only to an authorized opportunity member and remains bilingual', async () => {
+  const salesperson = await createAgent({ userId: 7, roles: [ROLES.SALESPERSON], sendingEnabled: true });
+  const salesCompose = await salesperson.get('/email-center/compose?opportunityId=20');
+  assert.equal(salesCompose.status, 200);
+  assert.match(salesCompose.text, /Compose customer email/);
+  assert.match(salesCompose.text, /value="send"/);
+
+  const supporting = await createAgent({
+    userId: 15,
+    roles: [ROLES.QUOTATION_ENGINEER],
+    language: 'zh',
+    sendingEnabled: true,
+    teamMembers: [{ userId: 15, isActive: true, canSendExternalEmail: false }]
+  });
+  const supportingCompose = await supporting.get('/email-center/compose?opportunityId=20');
+  assert.equal(supportingCompose.status, 200);
+  assert.match(supportingCompose.text, /编写客户邮件/);
+  assert.match(supportingCompose.text, /value="draft"/);
+  assert.doesNotMatch(supportingCompose.text, /value="send"/);
 });

@@ -47,6 +47,8 @@ test('findByUsernameWithRoles returns camelCase user with roles', async () => {
     displayName: 'Sales One',
     email: 'sales01@example.com',
     phone: '123',
+    emailSignatureName: '',
+    emailSignatureTitle: '',
     isActive: true,
     roles: ['salesperson']
   });
@@ -88,6 +90,8 @@ test('listUsersByRole returns active users for assignment selects', async () => 
     displayName: 'Sales Manager',
     email: 'manager@example.com',
     phone: '456',
+    emailSignatureName: '',
+    emailSignatureTitle: '',
     isActive: true,
     roles: ['sales_manager']
   }]);
@@ -118,6 +122,8 @@ test('listUsersWithRoles returns all users for system user detail page', async (
     displayName: 'Technical Manager',
     email: 'technical.manager01@bestcrm.local',
     phone: '789',
+    emailSignatureName: '',
+    emailSignatureTitle: '',
     isActive: true,
     roles: ['technical_manager']
   }]);
@@ -148,6 +154,8 @@ test('createUser inserts user and assigns roles in one transaction', async () =>
     'New User',
     'new@example.com',
     '555',
+    '',
+    '',
     true
   ]);
   assert.match(pool.queries[2].sql, /DELETE FROM user_roles/);
@@ -178,6 +186,8 @@ test('updateUser updates profile fields and replaces roles', async () => {
     'Updated User',
     'updated@example.com',
     '777',
+    '',
+    '',
     false
   ]);
   assert.match(pool.queries[2].sql, /DELETE FROM user_roles/);
@@ -201,12 +211,14 @@ test('updateUser updates password hash when provided', async () => {
   });
 
   assert.deepEqual(user, { id: 12 });
-  assert.match(pool.queries[1].sql, /password_hash = \$6/);
+  assert.match(pool.queries[1].sql, /password_hash = \$8/);
   assert.deepEqual(pool.queries[1].params, [
     12,
     'Updated User',
     'updated@example.com',
     '777',
+    '',
+    '',
     true,
     'new-hashed-password'
   ]);

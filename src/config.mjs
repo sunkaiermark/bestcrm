@@ -35,6 +35,18 @@ export function loadConfig(env = process.env) {
     emailCenter: {
       enabled: booleanEnv(env.CRM_EMAIL_CENTER_ENABLED ?? env.EMAIL_CENTER_ENABLED, false)
     },
+    customerEmail: {
+      enabled: booleanEnv(env.CRM_EMAIL_SENDING_ENABLED, false),
+      sharedAddress: 'sales@sunkaier.com',
+      maxUploadMb: numberEnv(env.CRM_EMAIL_MAX_UPLOAD_MB, 25),
+      smtp: {
+        host: env.CUSTOMER_SMTP_HOST || env.SMTP_HOST || '',
+        port: numberEnv(env.CUSTOMER_SMTP_PORT || env.SMTP_PORT, booleanEnv(env.CUSTOMER_SMTP_SECURE ?? env.SMTP_SECURE, true) ? 465 : 587),
+        secure: booleanEnv(env.CUSTOMER_SMTP_SECURE ?? env.SMTP_SECURE, true),
+        user: env.CUSTOMER_SMTP_USER || env.SMTP_USER || '',
+        password: env.CUSTOMER_SMTP_PASSWORD || env.SMTP_PASSWORD || ''
+      }
+    },
     emailIntake: {
       enabled: booleanEnv(env.EMAIL_INTAKE_ENABLED, false),
       host: env.EMAIL_INTAKE_HOST || '',

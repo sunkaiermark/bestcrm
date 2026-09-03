@@ -38,6 +38,14 @@
             <%= t('phone') %>
             <input name="phone" value="<%= user.phone || '' %>">
           </label>
+          <label>
+            <%= t('emailSignatureName') %>
+            <input name="emailSignatureName" value="<%= user.emailSignatureName || '' %>" placeholder="e.g. Steven Yang">
+          </label>
+          <label>
+            <%= t('emailSignatureTitle') %>
+            <input name="emailSignatureTitle" value="<%= user.emailSignatureTitle || '' %>" placeholder="e.g. Sales Manager">
+          </label>
 
           <div class="checkbox-list">
             <div class="muted"><%= t('roles') %></div>

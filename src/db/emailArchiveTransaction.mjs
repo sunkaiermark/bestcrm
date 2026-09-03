@@ -1,5 +1,6 @@
 import { createEmailArchiveRepository } from '../repositories/emailArchiveRepository.mjs';
 import { createInquiryRepository } from '../repositories/inquiryRepository.mjs';
+import { createQuotationPackageRepository } from '../repositories/quotationPackageRepository.mjs';
 
 export function createEmailArchiveTransaction(pool) {
   return async function emailArchiveTransaction(callback) {
@@ -8,7 +9,8 @@ export function createEmailArchiveTransaction(pool) {
       await client.query('BEGIN');
       const result = await callback({
         emailArchiveRepository: createEmailArchiveRepository(client),
-        inquiryRepository: createInquiryRepository(client)
+        inquiryRepository: createInquiryRepository(client),
+        quotationPackageRepository: createQuotationPackageRepository(client)
       });
       await client.query('COMMIT');
       return result;

@@ -9,6 +9,8 @@ function mapUserRow(row) {
     displayName: row.display_name,
     email: row.email,
     phone: row.phone,
+    emailSignatureName: row.email_signature_name || '',
+    emailSignatureTitle: row.email_signature_title || '',
     isActive: row.is_active,
     roles: row.roles || []
   };
@@ -22,6 +24,8 @@ const userWithRolesSelect = `
     u.display_name,
     u.email,
     u.phone,
+    u.email_signature_name,
+    u.email_signature_title,
     u.is_active,
     COALESCE(array_remove(array_agg(r.code ORDER BY r.code), NULL), ARRAY[]::text[]) AS roles
   FROM users u
@@ -74,8 +78,11 @@ export function createUserRepository(pool) {
       await pool.query('BEGIN');
       try {
         const result = await pool.query(`
-          INSERT INTO users (username, password_hash, display_name, email, phone, is_active)
-          VALUES ($1, $2, $3, $4, $5, $6)
+          INSERT INTO users (
+            username, password_hash, display_name, email, phone,
+            email_signature_name, email_signature_title, is_active
+          )
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
           RETURNING id
         `, [
           user.username,
@@ -83,6 +90,8 @@ export function createUserRepository(pool) {
           user.displayName,
           user.email || null,
           user.phone || null,
+          user.emailSignatureName || '',
+          user.emailSignatureTitle || '',
           user.isActive
         ]);
         const userId = Number(result.rows[0].id);
@@ -98,12 +107,14 @@ export function createUserRepository(pool) {
     async updateUser(id, user) {
       await pool.query('BEGIN');
       try {
-        const passwordAssignment = user.passwordHash ? 'password_hash = $6,' : '';
+        const passwordAssignment = user.passwordHash ? 'password_hash = $8,' : '';
         const params = [
           id,
           user.displayName,
           user.email || null,
           user.phone || null,
+          user.emailSignatureName || '',
+          user.emailSignatureTitle || '',
           user.isActive
         ];
         if (user.passwordHash) {
@@ -115,7 +126,9 @@ export function createUserRepository(pool) {
             display_name = $2,
             email = $3,
             phone = $4,
-            is_active = $5,
+            email_signature_name = $5,
+            email_signature_title = $6,
+            is_active = $7,
             ${passwordAssignment}
             updated_at = now()
           WHERE id = $1

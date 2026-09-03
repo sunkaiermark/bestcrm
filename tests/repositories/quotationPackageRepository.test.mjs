@@ -60,9 +60,11 @@ test('sent transition supersedes the former sent package and acceptance links op
     { rows: [packageRow({ status: 'accepted', version_no: '2', sent_by: '7', sent_at: '2026-09-03', accepted_by: '7', accepted_at: '2026-09-04' })] }
   ]);
   const repository = createQuotationPackageRepository(target);
-  await repository.markSent({ packageId: 51, actorUserId: 7, comment: 'Email evidence' });
+  await repository.markSent({ packageId: 51, actorUserId: 7, comment: 'Email evidence', sentEmailMessageId: 81 });
   await repository.acceptSent({ packageId: 51, actorUserId: 7, comment: 'PO received' });
   assert.match(target.queries[0].sql, /status = 'superseded'/);
   assert.match(target.queries[0].sql, /replacementPackageId/);
+  assert.match(target.queries[0].sql, /sent_email_message_id = \$4/);
+  assert.equal(target.queries[0].params[3], 81);
   assert.match(target.queries[1].sql, /accepted_quotation_package_id = updated\.id/);
 });

@@ -58,6 +58,7 @@ function mapPackageRow(row) {
     accepterDisplayName: row.accepter_display_name || '',
     acceptedAt: row.accepted_at,
     supersededAt: row.superseded_at,
+    sentEmailMessageId: numberOrNull(row.sent_email_message_id),
     updatedBy: Number(row.updated_by),
     updatedAt: row.updated_at
   };
@@ -169,6 +170,36 @@ export function createQuotationPackageRepository(queryTarget) {
       packageVersion.attachments = attachmentResult.rows.map(mapAttachmentRow);
       packageVersion.events = eventResult.rows.map(mapEventRow);
       return packageVersion;
+    },
+
+    async getEmailAttachmentSources(packageId) {
+      const result = await queryTarget.query(`
+        SELECT
+          snapshot.source_type,
+          snapshot.original_name,
+          snapshot.mime_type,
+          snapshot.byte_size,
+          snapshot.sha256,
+          snapshot.display_order,
+          document.content,
+          attachment.stored_path
+        FROM quotation_package_attachments snapshot
+        LEFT JOIN technical_solution_documents document
+          ON document.id = snapshot.technical_solution_document_id
+        LEFT JOIN attachments attachment
+          ON attachment.id = snapshot.attachment_id
+        WHERE snapshot.quotation_package_id = $1
+        ORDER BY snapshot.display_order, snapshot.id
+      `, [packageId]);
+      return result.rows.map((row) => ({
+        sourceType: row.source_type,
+        originalName: row.original_name,
+        mimeType: row.mime_type,
+        byteSize: Number(row.byte_size),
+        sha256: row.sha256,
+        content: row.content || null,
+        storedPath: row.stored_path || ''
+      }));
     },
 
     async listApprovedTechnicalSolutions(opportunityId) {
@@ -458,7 +489,7 @@ export function createQuotationPackageRepository(queryTarget) {
       return mapPackageRow(result.rows[0]);
     },
 
-    async markSent({ packageId, actorUserId, comment }) {
+    async markSent({ packageId, actorUserId, comment, sentEmailMessageId = null }) {
       const result = await queryTarget.query(`
         WITH target AS (
           SELECT candidate.id, candidate.opportunity_id
@@ -482,7 +513,8 @@ export function createQuotationPackageRepository(queryTarget) {
           SELECT id, 'superseded', $2, jsonb_build_object('replacementPackageId', $1) FROM superseded
         ), updated AS (
           UPDATE quotation_package_versions qp
-          SET status = 'sent', sent_by = $2, sent_at = now(), updated_by = $2, updated_at = now()
+          SET status = 'sent', sent_by = $2, sent_at = now(), sent_email_message_id = $4,
+              updated_by = $2, updated_at = now()
           FROM target
           WHERE qp.id = target.id
             AND NOT EXISTS (
@@ -495,7 +527,7 @@ export function createQuotationPackageRepository(queryTarget) {
           SELECT id, 'sent', $2, $3 FROM updated
         )
         SELECT * FROM updated
-      `, [packageId, actorUserId, comment || null]);
+      `, [packageId, actorUserId, comment || null, sentEmailMessageId]);
       return mapPackageRow(result.rows[0]);
     },
 

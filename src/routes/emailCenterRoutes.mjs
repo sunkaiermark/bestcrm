@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import multer from 'multer';
+import { randomUUID as nodeRandomUUID } from 'node:crypto';
 import { requireLogin } from '../middleware/auth.mjs';
 import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
 import {
@@ -8,9 +10,15 @@ import {
   listVisibleEmailThreads
 } from '../services/emailArchiveService.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
+import {
+  CustomerEmailError,
+  createCustomerEmailDraft,
+  getCustomerEmailComposeContext,
+  sendCustomerEmail
+} from '../services/customerEmailService.mjs';
 
 function handleError(error, res, next) {
-  if (error instanceof EmailArchiveError || Number.isInteger(error?.statusCode)) {
+  if (error instanceof EmailArchiveError || error instanceof CustomerEmailError || Number.isInteger(error?.statusCode)) {
     res.status(error.statusCode || 400).send(error.message);
     return;
   }
@@ -20,15 +28,37 @@ function handleError(error, res, next) {
 export function emailCenterRoutes({
   enabled = false,
   emailArchiveRepository,
+  inquiryRepository,
   opportunityRepository,
   opportunityResponsibilityRepository,
-  uploadDir = './var/uploads'
+  quotationPackageRepository,
+  emailArchiveTransaction = null,
+  transport = null,
+  sendingEnabled = false,
+  sharedAddress = 'sales@sunkaier.com',
+  uploadDir = './var/uploads',
+  maxUploadMb = 25,
+  now = () => new Date().toISOString(),
+  randomUUID = () => nodeRandomUUID()
 }) {
   const router = Router();
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: maxUploadMb * 1024 * 1024, files: 10 }
+  });
   const dependencies = {
     emailArchiveRepository,
+    inquiryRepository,
     opportunityRepository,
-    opportunityResponsibilityRepository
+    opportunityResponsibilityRepository,
+    quotationPackageRepository,
+    emailArchiveTransaction,
+    transport,
+    sharedAddress,
+    uploadDir,
+    maxUploadMb,
+    now,
+    randomUUID
   };
 
   router.use('/email-center', (req, res, next) => {
@@ -52,7 +82,50 @@ export function emailCenterRoutes({
   router.get('/email-center/threads/:threadId', async (req, res, next) => {
     try {
       const thread = await getVisibleEmailThread(dependencies, req.currentUser, req.params.threadId);
-      res.render('email-center/detail', { thread });
+      const canSendEmail = sendingEnabled
+        ? (await getCustomerEmailComposeContext(dependencies, req.currentUser, { threadId: thread.id })).canSend
+        : false;
+      res.render('email-center/detail', { thread, sendingEnabled, canSendEmail });
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.get('/email-center/compose', async (req, res, next) => {
+    if (!sendingEnabled) return res.status(404).send('Customer email sending is disabled');
+    try {
+      const context = await getCustomerEmailComposeContext(dependencies, req.currentUser, req.query);
+      res.render('email-center/compose', { context, maxUploadMb });
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/email-center/messages', (req, res, next) => {
+    if (!sendingEnabled) return res.status(404).send('Customer email sending is disabled');
+    upload.array('attachments', 10)(req, res, (error) => {
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).send(`Email attachment exceeds ${maxUploadMb} MB`);
+      }
+      next(error);
+    });
+  }, async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        return res.status(403).send('Invalid CSRF token');
+      }
+      const message = await createCustomerEmailDraft(dependencies, req.currentUser, req.body, req.files || []);
+      res.redirect(`/email-center/threads/${message.threadId}`);
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/email-center/messages/:messageId/send', async (req, res, next) => {
+    if (!sendingEnabled) return res.status(404).send('Customer email sending is disabled');
+    try {
+      const message = await sendCustomerEmail(dependencies, req.currentUser, req.params.messageId);
+      res.redirect(`/email-center/threads/${message.threadId}`);
     } catch (error) {
       handleError(error, res, next);
     }

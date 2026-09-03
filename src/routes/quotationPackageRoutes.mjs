@@ -10,7 +10,6 @@ import {
   getQuotationPackage,
   getQuotationPackageCreationOptions,
   listQuotationPackages,
-  markQuotationPackageSent,
   reviewQuotationPackage,
   submitQuotationPackage,
   updateQuotationPackageDraft
@@ -223,20 +222,7 @@ export function quotationPackageRoutes({
   });
 
   router.post('/opportunities/:opportunityId/quotation-packages/:packageId/mark-sent', async (req, res, next) => {
-    try {
-      const context = await loadContext(dependencies, req, res);
-      if (!context) return;
-      await markQuotationPackageSent(
-        quotationPackageRepository,
-        req.currentUser,
-        context.opportunity,
-        context.packageVersion,
-        req.body.comment
-      );
-      res.redirect(`/opportunities/${context.opportunity.id}/quotation-packages/${context.packageVersion.id}`);
-    } catch (error) {
-      handleError(error, res, next);
-    }
+    res.status(409).send('Approved quotation packages must be sent through the CRM email center');
   });
 
   router.post('/opportunities/:opportunityId/quotation-packages/:packageId/accept', async (req, res, next) => {
