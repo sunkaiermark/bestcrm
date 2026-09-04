@@ -657,8 +657,17 @@ export function createBidPackageApprovalService({ enabled = false, dependencies 
     const currency = String(sourceFieldValue(commercial, 'currency')
       || input.currency || currentSent?.currency || '').trim().toUpperCase();
     if (!/^[A-Z]{3}$/.test(currency)) fail('Currency is required as a three-letter ISO code');
-    const deliveryPeriod = String(sourceFieldValue(commercial, 'delivery_period')
-      || result.sourceMetadata?.opportunity?.deliveryCycle || input.deliveryPeriod || '').trim();
+    const approvedCommercialDelivery = String(sourceFieldValue(commercial, 'delivery_period') || '').trim();
+    const requestedRevisionDelivery = currentSent ? String(input.deliveryPeriod || '').trim() : '';
+    if (approvedCommercialDelivery && requestedRevisionDelivery
+        && approvedCommercialDelivery !== requestedRevisionDelivery) {
+      fail('Delivery period must match the approved commercial package', 409, BID_CENTER_ERROR_CODES.CONFLICT);
+    }
+    const deliveryPeriod = String(approvedCommercialDelivery
+      || requestedRevisionDelivery
+      || currentSent?.deliveryPeriod
+      || result.sourceMetadata?.opportunity?.deliveryCycle
+      || input.deliveryPeriod || '').trim();
     if (!deliveryPeriod) fail('Delivery period is required');
     const created = await runTransaction(async (repositories) => {
       const row = await repositories.bidPackageApprovalRepository.createCompleteDraft({

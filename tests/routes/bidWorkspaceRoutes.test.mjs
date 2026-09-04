@@ -217,6 +217,7 @@ test('workspace index and detail expose frozen package identifiers without mutab
   assert.match(detail.text, /TPL-R2/);
   assert.match(detail.text, /CTPL-R1/);
   assert.match(detail.text, /GLOBAL-R1/);
+  assert.match(detail.text, /\.bid-output-scroll\s*\{[\s\S]*max-width:\s*100%;[\s\S]*overflow-x:\s*auto;/);
 });
 
 test('project package editor renders the frozen three-pane technical workspace', async () => {
@@ -305,6 +306,8 @@ test('generated output download sets integrity headers and blocks commercial byt
   assert.equal(technical.headers['cache-control'], 'private, no-store');
   assert.match(technical.headers['content-disposition'], /attachment/);
   assert.equal(events[0].eventType, 'downloaded_bid_output');
+  const preview = await agent.get('/bid-center/workspaces/40/outputs/1/download?inline=1');
+  assert.match(preview.headers['content-disposition'], /^inline;/);
   const commercial = await agent.get('/bid-center/workspaces/40/outputs/2/download');
   assert.equal(commercial.status, 403);
   assert.match(commercial.text, /Forbidden/);

@@ -65,6 +65,35 @@ test('repository detects an opportunity already governed by Bid Center', async (
   assert.deepEqual(target.queries[0].params, [20]);
 });
 
+test('customer email prefers the controlled complete PDF, attachment ZIP, and manifest', async () => {
+  const target = fakeTarget([{ rows: [{
+    source_type: 'complete_pdf', original_name: 'QP-V1.pdf', mime_type: 'application/pdf',
+    byte_size: '4', sha256: 'a'.repeat(64), content: Buffer.from('test'), stored_path: null
+  }] }]);
+  const repository = createQuotationPackageRepository(target);
+  const sources = await repository.getEmailAttachmentSources(51);
+  assert.equal(sources.length, 1);
+  assert.equal(sources[0].sourceType, 'complete_pdf');
+  assert.equal(sources[0].byteSize, 4);
+  assert.match(target.queries[0].sql, /FROM quotation_package_documents/);
+  assert.match(target.queries[0].sql, /'complete_pdf', 'attachments_zip', 'manifest_json'/);
+});
+
+test('customer email falls back to legacy frozen attachments before controlled outputs exist', async () => {
+  const target = fakeTarget([
+    { rows: [] },
+    { rows: [{
+      source_type: 'technical_solution_document', original_name: 'TS-V1.pdf', mime_type: 'application/pdf',
+      byte_size: '4', sha256: 'b'.repeat(64), content: Buffer.from('test'), stored_path: null
+    }] }
+  ]);
+  const repository = createQuotationPackageRepository(target);
+  const sources = await repository.getEmailAttachmentSources(51);
+  assert.equal(sources[0].sourceType, 'technical_solution_document');
+  assert.equal(target.queries.length, 2);
+  assert.match(target.queries[1].sql, /FROM quotation_package_attachments/);
+});
+
 test('bid-center package mapping retains frozen workspace and commercial-version bindings', async () => {
   const target = fakeTarget([
     { rows: [packageRow({ workspace_id: '40', commercial_draft_id: '42', commercial_draft_version_no: '3', review_source_package_id: '49' })] },

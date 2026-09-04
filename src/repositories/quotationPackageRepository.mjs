@@ -190,6 +190,36 @@ export function createQuotationPackageRepository(queryTarget) {
     },
 
     async getEmailAttachmentSources(packageId) {
+      const controlledResult = await queryTarget.query(`
+        SELECT
+          document_type AS source_type,
+          original_name,
+          mime_type,
+          byte_size,
+          sha256,
+          CASE document_type
+            WHEN 'complete_pdf' THEN 1
+            WHEN 'attachments_zip' THEN 2
+            WHEN 'manifest_json' THEN 3
+          END AS display_order,
+          content,
+          NULL::text AS stored_path
+        FROM quotation_package_documents
+        WHERE quotation_package_version_id = $1
+          AND document_type IN ('complete_pdf', 'attachments_zip', 'manifest_json')
+        ORDER BY display_order, id
+      `, [packageId]);
+      if (controlledResult.rows.length) {
+        return controlledResult.rows.map((row) => ({
+          sourceType: row.source_type,
+          originalName: row.original_name,
+          mimeType: row.mime_type,
+          byteSize: Number(row.byte_size),
+          sha256: row.sha256,
+          content: row.content || null,
+          storedPath: ''
+        }));
+      }
       const result = await queryTarget.query(`
         SELECT
           snapshot.source_type,

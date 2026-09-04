@@ -11,8 +11,9 @@ function row(overrides = {}) {
     variable_schema_snapshot: '[]', validation_rules_snapshot: '{}', variable_values: '{"total":100}',
     rendered_content: '{"schemaVersion":1,"sections":[],"variables":[]}', source_metadata: '{"snapshotAt":"now"}',
     validation_issues: '[]', revision_reason: '', change_summary: '', created_by: '3', updated_by: '3',
-    created_by_display_name: 'Lead', updated_by_display_name: 'Lead', submitted_by: null, submitted_at: null,
-    reviewed_by: null, reviewed_at: null, review_comment: '', created_at: '2026-09-04', updated_at: '2026-09-04',
+    created_by_display_name: 'Lead', updated_by_display_name: 'Lead', submitted_by: null,
+    submitter_display_name: '', submitted_at: null, reviewed_by: null, reviewer_display_name: '',
+    reviewed_at: null, review_comment: '', created_at: '2026-09-04', updated_at: '2026-09-04',
     ...overrides
   };
 }
@@ -36,16 +37,24 @@ test('commercial draft repository allocates CP-D revision under an opportunity l
   assert.equal(calls[0].params[14], 3);
 });
 
-test('commercial draft detail maps JSON snapshots and formal labels', async () => {
+test('commercial draft detail maps JSON snapshots, approval names and formal labels', async () => {
   const repository = createOpportunityCommercialDraftRepository({
     async query(sql, params) {
       assert.match(sql, /WHERE draft\.id = \$1/);
+      assert.match(sql, /submitter\.display_name AS submitter_display_name/);
+      assert.match(sql, /reviewer\.display_name AS reviewer_display_name/);
       assert.deepEqual(params, [50]);
-      return { rows: [row({ formal_version_no: '2' })] };
+      return { rows: [row({
+        formal_version_no: '2',
+        submitted_by: '3', submitter_display_name: 'Sales Lead',
+        reviewed_by: '4', reviewer_display_name: 'Commercial Manager'
+      })] };
     }
   });
   const detail = await repository.getDraftDetail(50);
   assert.equal(detail.formalVersionLabel, 'CP-V2');
   assert.equal(detail.variableValues.total, 100);
   assert.equal(detail.sourceMetadata.snapshotAt, 'now');
+  assert.equal(detail.submitterDisplayName, 'Sales Lead');
+  assert.equal(detail.reviewerDisplayName, 'Commercial Manager');
 });

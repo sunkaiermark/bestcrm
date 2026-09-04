@@ -22,7 +22,7 @@
 | ID | 文件 | 大小 | SHA-256 | 当前结论 |
 |---|---|---:|---|---|
 | BRAND-001 | `src/public/assets/sunkaier-logo.png` | 8,529 bytes | `35b0159bc7a4f20645c85c8232cc563179530a869cfa44de3f971e3b4d8b1aa3` | 可作为应用内 Logo；是否满足正式标书印刷质量待确认 |
-| BRAND-002 | `src/public/assets/sunkaier-logo-login.png` | 10,713 bytes | `13752cdd49a0422e21b3d2130bb766a0abcf320d6ce3aac8847ef1e1c615f2d4` | 登录页资产；不默认作为标书封面 Logo |
+| BRAND-002 | `src/public/assets/sunkaier-logo-login.png` | 10,713 bytes | `13752cdd49a0422e21b3d2130bb766a0abcf320d6ce3aac8847ef1e1c615f2d4` | 深蓝/橙色白底资产；第 8 步 Microsoft Word 实机验收后作为标书封面临时 Logo |
 
 排除项：
 

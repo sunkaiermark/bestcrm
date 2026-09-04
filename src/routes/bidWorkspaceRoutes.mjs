@@ -13,7 +13,7 @@ import {
   resolveStoredPath,
   storeAttachmentBuffer
 } from '../services/attachmentFileService.mjs';
-import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
+import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
 
 function handleError(error, res, next) {
   if (Number.isInteger(error?.statusCode)) {
@@ -103,7 +103,7 @@ export function bidWorkspaceRoutes({
     options: {
       ...bidDocumentOptions,
       fontPath: bidDocumentOptions.fontPath ?? process.env.TECHNICAL_DOCUMENT_FONT_PATH ?? '',
-      logoPath: bidDocumentOptions.logoPath ?? fileURLToPath(new URL('../public/assets/sunkaier-logo.png', import.meta.url)),
+      logoPath: bidDocumentOptions.logoPath ?? fileURLToPath(new URL('../public/assets/sunkaier-logo-login.png', import.meta.url)),
       fileLoader: bidDocumentOptions.fileLoader || (async (storedPath) => {
         const filePath = resolveStoredPath(uploadDir, storedPath);
         if (!filePath) {
@@ -278,7 +278,10 @@ export function bidWorkspaceRoutes({
     try {
       const document = await documentService.download(req.currentUser, req.params.id, req.params.documentId);
       res.type(document.mimeType);
-      res.setHeader('Content-Disposition', attachmentContentDisposition(document.originalName));
+      const inline = req.query.inline === '1' && document.mimeType === 'application/pdf';
+      res.setHeader('Content-Disposition', inline
+        ? inlineContentDisposition(document.originalName)
+        : attachmentContentDisposition(document.originalName));
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('X-Document-SHA256', document.sha256);

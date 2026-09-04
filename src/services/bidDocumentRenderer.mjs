@@ -26,7 +26,7 @@ import {
 import JSZip from 'jszip';
 import PDFDocument from 'pdfkit';
 
-export const BID_DOCUMENT_GENERATOR_VERSION = 'bestcrm-bid-documents-v1.0.0';
+export const BID_DOCUMENT_GENERATOR_VERSION = 'bestcrm-bid-documents-v1.0.1';
 
 const COLORS = Object.freeze({
   navy: '0B1F3A', blue: '1E5AA8', orange: 'F05A24', text: '1F2933',

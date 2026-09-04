@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 import JSZip from 'jszip';
 import { buildBidDocumentSpec, createBidDocumentRenderer } from '../../src/services/bidDocumentRenderer.mjs';
 
-const logoPath = fileURLToPath(new URL('../../src/public/assets/sunkaier-logo.png', import.meta.url));
+const logoPath = fileURLToPath(new URL('../../src/public/assets/sunkaier-logo-login.png', import.meta.url));
 const fontPath = 'C:\\Windows\\Fonts\\simhei.ttf';
 
 function draft(kind, version) {

@@ -5,7 +5,7 @@ import { createBidDocumentRenderer } from '../src/services/bidDocumentRenderer.m
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const outputDir = path.join(root, 'output', 'bid-center-step7', 'artifacts');
-const logoPath = path.join(root, 'src', 'public', 'assets', 'sunkaier-logo.png');
+const logoPath = path.join(root, 'src', 'public', 'assets', 'sunkaier-logo-login.png');
 const diagramPath = path.join(root, 'src', 'public', 'assets', 'sunkaier-logo-login.png');
 const diagram = await readFile(diagramPath);
 

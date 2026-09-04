@@ -72,7 +72,7 @@ async function verify() {
     dependencies,
     options: {
       fontPath: process.env.TECHNICAL_DOCUMENT_FONT_PATH || 'C:\\Windows\\Fonts\\simhei.ttf',
-      logoPath: fileURLToPath(new URL('../src/public/assets/sunkaier-logo.png', import.meta.url)),
+      logoPath: fileURLToPath(new URL('../src/public/assets/sunkaier-logo-login.png', import.meta.url)),
       async fileLoader(storedPath) {
         assert.equal(storedPath, 'bid-content/step4/payment.pdf');
         return controlledAttachmentContent;

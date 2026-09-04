@@ -43,8 +43,10 @@ function mapDraftRow(row) {
     updatedBy: Number(row.updated_by),
     updatedByDisplayName: row.updated_by_display_name || '',
     submittedBy: numberOrNull(row.submitted_by),
+    submitterDisplayName: row.submitter_display_name || '',
     submittedAt: row.submitted_at,
     reviewedBy: numberOrNull(row.reviewed_by),
+    reviewerDisplayName: row.reviewer_display_name || '',
     reviewedAt: row.reviewed_at,
     reviewComment: row.review_comment || '',
     createdAt: row.created_at,
@@ -55,10 +57,14 @@ function mapDraftRow(row) {
 const draftSelect = `
   SELECT draft.*,
     creator.display_name AS created_by_display_name,
-    updater.display_name AS updated_by_display_name
+    updater.display_name AS updated_by_display_name,
+    submitter.display_name AS submitter_display_name,
+    reviewer.display_name AS reviewer_display_name
   FROM opportunity_commercial_drafts draft
   JOIN users creator ON creator.id = draft.created_by
   JOIN users updater ON updater.id = draft.updated_by
+  LEFT JOIN users submitter ON submitter.id = draft.submitted_by
+  LEFT JOIN users reviewer ON reviewer.id = draft.reviewed_by
 `;
 
 export function createOpportunityCommercialDraftRepository(queryTarget) {

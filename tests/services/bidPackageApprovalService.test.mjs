@@ -164,8 +164,10 @@ function setup(overrides = {}) {
       },
       async rejectCommercial() { return null; }, async cloneRejectedCommercial() { return null; },
       async createCompleteDraft(input) {
+        const draftRevisionNo = Math.max(0, ...state.packages.map((item) => Number(item.draftRevisionNo || 0))) + 1;
         const pkg = {
-          id: 51, workspaceId: 40, opportunityId: 20, draftRevisionNo: 1, label: 'QP-D1', status: 'draft',
+          id: 50 + draftRevisionNo, workspaceId: 40, opportunityId: 20, draftRevisionNo,
+          label: `QP-D${draftRevisionNo}`, status: 'draft', sourcePackageId: input.sourcePackageId || null,
           technicalSolutionVersionId: input.technicalDraftId,
           technicalSolutionVersionNo: state.technical.find((item) => item.id === input.technicalDraftId).formalVersionNo,
           commercialDraftId: input.commercialDraftId,
@@ -176,7 +178,7 @@ function setup(overrides = {}) {
           revisionReason: input.revisionReason, changeSummary: input.changeSummary,
           submittedBy: null, reviewedBy: null
         };
-        state.packages.unshift(pkg); return { id: pkg.id, draftRevisionNo: 1 };
+        state.packages.unshift(pkg); return { id: pkg.id, draftRevisionNo };
       },
       async submitComplete({ quotationPackageId, actorUserId }) {
         const pkg = state.packages.find((item) => item.id === Number(quotationPackageId) && item.status === 'draft');
@@ -272,6 +274,46 @@ test('approved TS-V and CP-V assemble QP-D, which only assigned Sales Manager ca
   assert.equal(approved.reviewed.label, 'QP-V1');
   assert.equal(state.workspaceStatus, 'approved');
   assert.equal(state.checks[0].passed, true);
+});
+
+test('a customer revision can change delivery when the approved commercial package did not freeze it', async () => {
+  const { service, state } = setup();
+  Object.assign(state.technical[0], { status: 'approved', formalVersionNo: 1, formalVersionLabel: 'TS-V1' });
+  Object.assign(state.commercial[0], { status: 'approved', formalVersionNo: 1, formalVersionLabel: 'CP-V1' });
+  state.commercial[0].variableValues.delivery_period = '';
+  state.packages.push({
+    id: 50, workspaceId: 40, opportunityId: 20, draftRevisionNo: 1, label: 'QP-V1',
+    status: 'sent', versionNo: 1, deliveryPeriod: '12 weeks'
+  });
+
+  const revision = await service.createCompleteDraft(qe, 40, {
+    sourcePackageId: 50,
+    deliveryPeriod: '16 weeks after advance payment',
+    revisionReason: 'Customer requested a revised delivery window',
+    changeSummary: 'Delivery period revised from 12 weeks to 16 weeks after advance payment.'
+  });
+
+  assert.equal(revision.label, 'QP-D2');
+  assert.equal(revision.sourcePackageId, 50);
+  assert.equal(revision.deliveryPeriod, '16 weeks after advance payment');
+  assert.equal(revision.revisionReason, 'Customer requested a revised delivery window');
+});
+
+test('a customer revision cannot override delivery frozen by the approved commercial package', async () => {
+  const { service, state } = setup();
+  Object.assign(state.technical[0], { status: 'approved', formalVersionNo: 1, formalVersionLabel: 'TS-V1' });
+  Object.assign(state.commercial[0], { status: 'approved', formalVersionNo: 1, formalVersionLabel: 'CP-V1' });
+  state.packages.push({
+    id: 50, workspaceId: 40, opportunityId: 20, draftRevisionNo: 1, label: 'QP-V1',
+    status: 'sent', versionNo: 1, deliveryPeriod: '12 weeks'
+  });
+
+  await assert.rejects(() => service.createCompleteDraft(qe, 40, {
+    sourcePackageId: 50,
+    deliveryPeriod: '16 weeks',
+    revisionReason: 'Customer request',
+    changeSummary: 'Delivery changed.'
+  }), (error) => error.statusCode === 409 && /approved commercial package/.test(error.message));
 });
 
 test('version comparison includes variable, section, and attachment hash changes', async () => {
