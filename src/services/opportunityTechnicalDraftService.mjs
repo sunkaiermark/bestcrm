@@ -142,6 +142,13 @@ function isBlank(value) {
   return value === null || value === undefined || String(value).trim() === '';
 }
 
+function validIsoDate(value) {
+  const normalized = String(value ?? '').trim();
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) return false;
+  const parsed = new Date(`${normalized}T00:00:00Z`);
+  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === normalized;
+}
+
 function normalizeVariableValue(variable, rawValue, { strict = true } = {}) {
   if (isBlank(rawValue)) return '';
   if (variable.dataType === 'number' || variable.dataType === 'integer') {
@@ -159,7 +166,7 @@ function normalizeVariableValue(variable, rawValue, { strict = true } = {}) {
   }
   if (variable.dataType === 'date') {
     const normalized = text(rawValue);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized) && strict) invalid(`${variable.variableKey} has an invalid date value`);
+    if (!validIsoDate(normalized) && strict) invalid(`${variable.variableKey} has an invalid date value`);
     return normalized;
   }
   return safeText(rawValue, variable.variableKey, 5000);
@@ -206,6 +213,10 @@ export function validateTechnicalDraftVariables(variableSchema, variableValues) 
       if (rules.max !== undefined && numericValue > Number(rules.max)) {
         issues.push({ variableKey: variable.variableKey, sectionKey: variable.sectionKey, code: 'maximum', expected: rules.max, labelEn: variable.labelEn, labelZh: variable.labelZh });
       }
+    } else if (variable.dataType === 'boolean' && typeof value !== 'boolean') {
+      issues.push({ variableKey: variable.variableKey, sectionKey: variable.sectionKey, code: 'type', labelEn: variable.labelEn, labelZh: variable.labelZh });
+    } else if (variable.dataType === 'date' && !validIsoDate(value)) {
+      issues.push({ variableKey: variable.variableKey, sectionKey: variable.sectionKey, code: 'type', labelEn: variable.labelEn, labelZh: variable.labelZh });
     }
     if (Array.isArray(rules.allowedValues)
         && rules.allowedValues.length
@@ -312,6 +323,103 @@ function clauseSnapshotsForTemplate(contentSchema, clauses) {
   return snapshots;
 }
 
+function technicalVariableSourceSnapshots(variableSchema, context, template, variableValues) {
+  return Object.fromEntries(variableSchema.map((variable) => {
+    const sourced = sourceValue(variable, context, template);
+    const hasSourcedValue = !isBlank(sourced);
+    const hasDefault = !hasSourcedValue && !isBlank(variable.defaultValue);
+    return [variable.variableKey, {
+      sourceType: hasSourcedValue ? 'crm' : hasDefault ? 'template_default' : 'manual',
+      sourceField: variable.sourceField,
+      valueAtCreation: variableValues[variable.variableKey] ?? ''
+    }];
+  }));
+}
+
+function applyTechnicalVariableOverrides(variableSchema, variableValues, variableSources, overrides = {}) {
+  const nextValues = { ...variableValues };
+  const nextSources = deepClone(variableSources) || {};
+  for (const variable of variableSchema) {
+    if (!Object.hasOwn(overrides, variable.variableKey)) continue;
+    const normalized = normalizeVariableValue(variable, overrides[variable.variableKey]);
+    if (String(normalized) === String(variableValues[variable.variableKey] ?? '')) continue;
+    nextValues[variable.variableKey] = normalized;
+    nextSources[variable.variableKey] = {
+      sourceType: 'manual_override',
+      sourceField: variable.sourceField,
+      previousValue: variableValues[variable.variableKey] ?? '',
+      valueAtCreation: normalized
+    };
+  }
+  return { values: nextValues, sources: nextSources };
+}
+
+export async function buildOpportunityTechnicalDraftSnapshot(
+  repositories,
+  opportunity,
+  template,
+  revision,
+  {
+    language = template?.language,
+    actorUserId,
+    overrides = {},
+    context: providedContext = null,
+    snapshotAt = new Date().toISOString()
+  } = {}
+) {
+  if (!template || template.isActive !== true
+      || Number(template.currentPublishedRevisionId) !== Number(revision?.id)
+      || revision?.status !== 'published'
+      || ![language, 'bilingual'].includes(template.language)) {
+    conflict('Only a compatible active current published technical template can generate a project draft');
+  }
+  const context = providedContext
+    || await repositories.opportunityTechnicalDraftRepository.getGenerationContext(opportunity.id);
+  const clauses = await repositories.technicalTemplateRepository.listClauses({ publishedOnly: true });
+  if (!context) notFound('Opportunity generation context not found');
+  const variableSchema = deepClone(revision.variables || []);
+  const prefilledValues = prefillTechnicalDraftVariables(variableSchema, context, template);
+  const prefilledSources = technicalVariableSourceSnapshots(variableSchema, context, template, prefilledValues);
+  const resolved = applyTechnicalVariableOverrides(variableSchema, prefilledValues, prefilledSources, overrides);
+  const selectedClauses = clauseSnapshotsForTemplate(revision.contentSchema, clauses);
+  const validationIssues = validateTechnicalDraftVariables(variableSchema, resolved.values);
+  const renderedContent = renderTechnicalDraftContent({
+    contentSchema: revision.contentSchema,
+    variableSchema,
+    variableValues: resolved.values,
+    selectedClauses
+  });
+  return {
+    opportunityId: opportunity.id,
+    templateRevisionId: revision.id,
+    language,
+    templateCodeSnapshot: template.templateCode,
+    templateNameSnapshot: template.name,
+    templateRevisionNoSnapshot: revision.revisionNo,
+    contentSchemaSnapshot: deepClone(revision.contentSchema),
+    variableSchemaSnapshot: variableSchema,
+    variableValues: resolved.values,
+    selectedClauses,
+    renderedContent,
+    sourceMetadata: {
+      schemaVersion: 1,
+      snapshotAt,
+      opportunityId: opportunity.id,
+      opportunityNo: opportunity.opportunityNo,
+      customerId: opportunity.customerId,
+      contactId: opportunity.primaryContactId,
+      templateId: template.id,
+      templateRevisionId: revision.id,
+      prefilledSources: variableSchema
+        .filter((variable) => !isBlank(resolved.values[variable.variableKey]))
+        .map((variable) => variable.sourceField),
+      variableValueSources: resolved.sources
+    },
+    validationIssues,
+    actorUserId: Number(actorUserId)
+  };
+}
+
 export async function generateOpportunityTechnicalDraft(repositories, actor, opportunity, templateId) {
   ensureLead(actor, opportunity);
   const template = await repositories.technicalTemplateRepository.getTemplateDetail(positiveInteger(templateId, 'Template'));
@@ -322,45 +430,14 @@ export async function generateOpportunityTechnicalDraft(repositories, actor, opp
   if (!revision || revision.status !== 'published') {
     conflict('Only an active published template can generate a project draft');
   }
-  const [context, clauses] = await Promise.all([
-    repositories.opportunityTechnicalDraftRepository.getGenerationContext(opportunity.id),
-    repositories.technicalTemplateRepository.listClauses({ publishedOnly: true })
-  ]);
-  if (!context) notFound('Opportunity generation context not found');
-  const variableSchema = deepClone(revision.variables || []);
-  const variableValues = prefillTechnicalDraftVariables(variableSchema, context, template);
-  const selectedClauses = clauseSnapshotsForTemplate(revision.contentSchema, clauses);
-  const validationIssues = validateTechnicalDraftVariables(variableSchema, variableValues);
-  const renderedContent = renderTechnicalDraftContent({
-    contentSchema: revision.contentSchema,
-    variableSchema,
-    variableValues,
-    selectedClauses
-  });
-  return repositories.opportunityTechnicalDraftRepository.createDraft({
-    opportunityId: opportunity.id,
-    templateRevisionId: revision.id,
-    language: template.language,
-    templateCodeSnapshot: template.templateCode,
-    templateNameSnapshot: template.name,
-    templateRevisionNoSnapshot: revision.revisionNo,
-    contentSchemaSnapshot: deepClone(revision.contentSchema),
-    variableSchemaSnapshot: variableSchema,
-    variableValues,
-    selectedClauses,
-    renderedContent,
-    sourceMetadata: {
-      opportunityId: opportunity.id,
-      opportunityNo: opportunity.opportunityNo,
-      customerId: opportunity.customerId,
-      contactId: opportunity.primaryContactId,
-      templateId: template.id,
-      templateRevisionId: revision.id,
-      prefilledSources: variableSchema.filter((variable) => !isBlank(variableValues[variable.variableKey])).map((variable) => variable.sourceField)
-    },
-    validationIssues,
-    actorUserId: Number(actor.id)
-  });
+  const snapshot = await buildOpportunityTechnicalDraftSnapshot(
+    repositories,
+    opportunity,
+    template,
+    revision,
+    { language: template.language, actorUserId: actor.id }
+  );
+  return repositories.opportunityTechnicalDraftRepository.createDraft(snapshot);
 }
 
 export async function listOpportunityTechnicalDrafts(repository, actor, opportunity) {

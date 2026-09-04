@@ -1,0 +1,23 @@
+<%- include('../../partials/app-start', { title: `${t('reviewBidWorkspacePrefill')} - BESTCRM`, activeNav: 'bid-center-workspaces' }) %>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a> / <%= t('reviewBidWorkspacePrefill') %></p>
+        <header class="page-header"><div class="bid-library-title"><h1><%= t('reviewBidWorkspacePrefill') %></h1><div class="muted"><%= t('bidWorkspaceSnapshotWarning') %></div></div></header>
+        <form method="post" action="/opportunities/<%= opportunity.id %>/bid-workspace">
+          <%- csrfField() %>
+          <input type="hidden" name="language" value="<%= preview.input.language %>">
+          <input type="hidden" name="technicalTemplateRevisionId" value="<%= preview.input.technicalTemplateRevisionId %>">
+          <input type="hidden" name="commercialTemplateRevisionId" value="<%= preview.input.commercialTemplateRevisionId %>">
+          <input type="hidden" name="outputProfileId" value="<%= preview.input.outputProfileId %>">
+          <section class="form-panel"><h2><%= t('snapshotSources') %></h2><dl class="detail-grid"><div><dt><%= t('technicalTemplate') %></dt><dd><%= preview.technicalTemplate.templateCode %> · TPL-R<%= preview.technicalRevision.revisionNo %></dd></div><div><dt><%= t('commercialTemplate') %></dt><dd><%= preview.commercialTemplate.templateCode %> · CTPL-R<%= preview.commercialRevision.revisionNo %></dd></div><div><dt><%= t('outputProfile') %></dt><dd><%= preview.outputProfile.revisionLabel %></dd></div><div><dt><%= t('frozenContentComponents') %></dt><dd><%= preview.contentSnapshots.length %></dd></div></dl></section>
+          <section class="form-panel"><h2><%= t('technicalVariables') %></h2><p class="muted"><%= t('prefillSourceHelp') %></p><div class="form-grid">
+            <% for (const variable of preview.technicalSnapshot.variableSchemaSnapshot) { const value = preview.technicalSnapshot.variableValues[variable.variableKey] ?? ''; const source = preview.technicalSnapshot.sourceMetadata.variableValueSources[variable.variableKey]; %>
+              <label><%= language === 'zh' ? variable.labelZh : variable.labelEn %><span class="muted"><%= variable.variableKey %> · <%= t(`bidVariableSourceType.${source.sourceType}`) %> · <%= source.sourceField %></span><input name="<%= variableInputName('technical', variable.variableKey) %>" value="<%= value %>" <%= variable.dataType === 'number' || variable.dataType === 'integer' ? 'inputmode="decimal"' : '' %>></label>
+            <% } %>
+          </div><% if (!preview.technicalSnapshot.variableSchemaSnapshot.length) { %><p class="empty"><%= t('noTemplateVariables') %></p><% } %><% if (preview.technicalSnapshot.validationIssues.length) { %><p class="inline-error"><%= t('validationIssuesFound') %>: <%= preview.technicalSnapshot.validationIssues.length %></p><% } %></section>
+          <section class="form-panel"><h2><%= t('commercialVariables') %></h2><p class="muted"><%= t('prefillSourceHelp') %></p><div class="form-grid">
+            <% for (const variable of preview.commercialSnapshot.variableSchemaSnapshot) { const value = preview.commercialSnapshot.variableValues[variable.variableKey] ?? ''; const source = preview.commercialSnapshot.sourceMetadata.variableValueSources[variable.variableKey]; %>
+              <label><%= language === 'zh' ? variable.labelZh : variable.labelEn %><span class="muted"><%= variable.variableKey %> · <%= t(`bidVariableSourceType.${source.sourceType}`) %> · <%= source.sourceField %></span><input name="<%= variableInputName('commercial', variable.variableKey) %>" value="<%= value %>" <%= variable.dataType === 'number' || variable.dataType === 'integer' ? 'inputmode="decimal"' : '' %>></label>
+            <% } %>
+          </div><% if (!preview.commercialSnapshot.variableSchemaSnapshot.length) { %><p class="empty"><%= t('noTemplateVariables') %></p><% } %><% if (preview.commercialSnapshot.validationIssues.length) { %><p class="inline-error"><%= t('validationIssuesFound') %>: <%= preview.commercialSnapshot.validationIssues.length %></p><% } %></section>
+          <div class="inline-actions"><button type="submit"><%= t('createAndFreezeBidWorkspace') %></button><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/bid-workspace"><%= t('backToSelection') %></a></div>
+        </form>
+<%- include('../../partials/app-end') %>

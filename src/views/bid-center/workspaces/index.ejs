@@ -1,0 +1,8 @@
+<%- include('../../partials/app-start', { title: `${t('bidProjects')} - BESTCRM`, activeNav: 'bid-center-workspaces' }) %>
+        <header class="page-header"><div class="bid-library-title"><h1><%= t('bidProjects') %></h1><div class="muted"><%= t('bidProjectsDescription') %></div></div></header>
+        <section class="list-section"><div class="list-body">
+          <% if (workspaces.length) { %><table class="list-table content-fit-table"><thead><tr><th><%= t('opportunityNo') %></th><th><%= t('opportunity') %></th><th><%= t('customer') %></th><th><%= t('language') %></th><th><%= t('technicalPackage') %></th><th><%= t('commercialPackage') %></th><th><%= t('status') %></th><th><%= t('actions') %></th></tr></thead><tbody>
+            <% for (const workspace of workspaces) { %><tr><td><%= workspace.opportunity.opportunityNo %></td><td class="bid-library-title"><%= workspace.opportunity.title %></td><td><%= workspace.opportunity.customerName %></td><td><%= t(`templateLanguage.${workspace.language}`) %></td><td><%= workspace.technicalDraft?.draftLabel || '-' %></td><td><%= workspace.commercialDraft?.draftLabel || '-' %></td><td><%= t(`bidWorkspaceStatus.${workspace.status}`) %></td><td><a class="secondary-action" href="/bid-center/workspaces/<%= workspace.id %>"><%= t('open') %></a></td></tr><% } %>
+          </tbody></table><% } else { %><p class="empty"><%= t('noBidWorkspaces') %></p><% } %>
+        </div></section>
+<%- include('../../partials/app-end') %>

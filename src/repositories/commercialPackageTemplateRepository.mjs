@@ -118,10 +118,12 @@ export function createCommercialPackageTemplateRepository(queryTarget) {
     },
 
     async getTemplateDetail(id) {
-      const [templateResult, revisionsResult] = await Promise.all([
-        queryTarget.query(`${templateSelect} WHERE template.id = $1 LIMIT 1`, [id]),
-        queryTarget.query(`${revisionSelect} WHERE revision.template_id = $1 ORDER BY revision.revision_no DESC`, [id])
-      ]);
+      // queryTarget may be a transaction-scoped pg.Client, which executes one query at a time.
+      const templateResult = await queryTarget.query(`${templateSelect} WHERE template.id = $1 LIMIT 1`, [id]);
+      const revisionsResult = await queryTarget.query(
+        `${revisionSelect} WHERE revision.template_id = $1 ORDER BY revision.revision_no DESC`,
+        [id]
+      );
       const template = mapTemplateRow(templateResult.rows[0]);
       if (!template) return null;
       template.revisions = revisionsResult.rows.map(mapRevisionRow);

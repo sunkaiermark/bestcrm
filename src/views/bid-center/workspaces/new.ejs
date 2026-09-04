@@ -1,0 +1,18 @@
+<%- include('../../partials/app-start', { title: `${t('createBidWorkspace')} - BESTCRM`, activeNav: 'bid-center-workspaces' }) %>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a> / <%= t('createBidWorkspace') %></p>
+        <header class="page-header"><div class="bid-library-title"><h1><%= t('createBidWorkspace') %></h1><div class="muted"><%= t('bidWorkspaceCreationNotice') %></div></div></header>
+        <section class="form-panel">
+          <h2><%= opportunity.title %></h2><p><%= opportunity.customerName %> · <%= opportunity.requirement %></p>
+          <% if (!technicalTemplates.length || !commercialTemplates.length || !outputProfiles.length) { %><div class="inline-error"><%= t('bidWorkspaceSourcesUnavailable') %></div><% } %>
+          <form method="post" action="/opportunities/<%= opportunity.id %>/bid-workspace/preview">
+            <%- csrfField() %>
+            <div class="form-grid">
+              <label><%= t('outputLanguage') %><select name="language" required><option value="bilingual"><%= t('templateLanguage.bilingual') %></option><option value="en"><%= t('templateLanguage.en') %></option><option value="zh"><%= t('templateLanguage.zh') %></option></select></label>
+              <label><%= t('technicalTemplate') %><select name="technicalTemplateRevisionId" required><option value=""><%= t('select') %></option><% for (const template of technicalTemplates) { %><option value="<%= template.currentPublishedRevisionId %>"><%= template.templateCode %> · <%= template.name %> · <%= template.currentRevisionLabel %> · <%= t(`templateLanguage.${template.language}`) %></option><% } %></select></label>
+              <label><%= t('commercialTemplate') %><select name="commercialTemplateRevisionId" required><option value=""><%= t('select') %></option><% for (const template of commercialTemplates) { %><option value="<%= template.currentPublishedRevisionId %>"><%= template.templateCode %> · <%= language === 'zh' ? template.nameZh : template.nameEn %> · <%= template.currentRevisionLabel %> · <%= t(`templateLanguage.${template.language}`) %></option><% } %></select></label>
+              <label><%= t('outputProfile') %><select name="outputProfileId" required><option value=""><%= t('select') %></option><% for (const profile of outputProfiles) { %><option value="<%= profile.id %>"><%= profile.profileCode %> · <%= language === 'zh' ? profile.nameZh : profile.nameEn %> · <%= profile.revisionLabel %> · <%= t(`templateLanguage.${profile.languageMode}`) %></option><% } %></select></label>
+            </div>
+            <div class="inline-actions"><button type="submit" <%= !technicalTemplates.length || !commercialTemplates.length || !outputProfiles.length ? 'disabled' : '' %>><%= t('previewPrefill') %></button><a class="secondary-action" href="/opportunities/<%= opportunity.id %>"><%= t('cancel') %></a></div>
+          </form>
+        </section>
+<%- include('../../partials/app-end') %>

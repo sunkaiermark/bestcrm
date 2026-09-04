@@ -12,6 +12,7 @@ import { csrfProtection } from './middleware/csrf.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
 import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
 import { createBidContentBlockRepository } from './repositories/bidContentBlockRepository.mjs';
+import { createBidWorkspaceRepository } from './repositories/bidWorkspaceRepository.mjs';
 import { createCommercialQuoteRepository } from './repositories/commercialQuoteRepository.mjs';
 import { createCommercialPackageTemplateRepository } from './repositories/commercialPackageTemplateRepository.mjs';
 import { createContractApprovalRepository } from './repositories/contractApprovalRepository.mjs';
@@ -24,6 +25,7 @@ import { createInquiryRepository } from './repositories/inquiryRepository.mjs';
 import { createLoginSecurityRepository } from './repositories/loginSecurityRepository.mjs';
 import { createNotificationRepository } from './repositories/notificationRepository.mjs';
 import { createOpportunityMaterialVersionRepository } from './repositories/opportunityMaterialVersionRepository.mjs';
+import { createOpportunityCommercialDraftRepository } from './repositories/opportunityCommercialDraftRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
 import { createOpportunityTechnicalDraftRepository } from './repositories/opportunityTechnicalDraftRepository.mjs';
@@ -40,6 +42,7 @@ import { createWorkflowEventRepository } from './repositories/workflowEventRepos
 import { accountRoutes } from './routes/accountRoutes.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
 import { bidCenterLibraryRoutes } from './routes/bidCenterLibraryRoutes.mjs';
+import { bidWorkspaceRoutes } from './routes/bidWorkspaceRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
 import { emailCenterRoutes } from './routes/emailCenterRoutes.mjs';
@@ -542,6 +545,23 @@ const emptyBidContentBlockRepository = {
   async retireRevision() { throw new Error('Bid content repository is not configured'); }
 };
 
+const emptyBidWorkspaceRepository = {
+  async listPublishedOutputProfiles() { return []; },
+  async findPublishedOutputProfile() { return null; },
+  async listWorkspaces() { return []; },
+  async getWorkspaceDetail() { return null; },
+  async findByOpportunity() { return null; },
+  async getGenerationContext() { return null; },
+  async listCurrentPublishedContentSnapshots() { return []; },
+  async createWorkspace() { throw new Error('Bid workspace repository is not configured'); }
+};
+
+const emptyOpportunityCommercialDraftRepository = {
+  async createDraft() { throw new Error('Opportunity commercial draft repository is not configured'); },
+  async listByWorkspace() { return []; },
+  async getDraftDetail() { return null; }
+};
+
 export function createApp(options = {}) {
   const config = { ...loadConfig(), ...options };
   const shouldCreatePool = !options.userRepository && config.databaseUrl;
@@ -579,6 +599,8 @@ export function createApp(options = {}) {
     || (pool ? createOpportunityResponsibilityRepository(pool) : emptyOpportunityResponsibilityRepository);
   const opportunityTechnicalDraftRepository = options.opportunityTechnicalDraftRepository
     || (pool ? createOpportunityTechnicalDraftRepository(pool) : emptyOpportunityTechnicalDraftRepository);
+  const opportunityCommercialDraftRepository = options.opportunityCommercialDraftRepository
+    || (pool ? createOpportunityCommercialDraftRepository(pool) : emptyOpportunityCommercialDraftRepository);
   const quotationPackageRepository = options.quotationPackageRepository
     || (pool ? createQuotationPackageRepository(pool) : emptyQuotationPackageRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
@@ -591,6 +613,8 @@ export function createApp(options = {}) {
     || (pool ? createCommercialPackageTemplateRepository(pool) : emptyCommercialPackageTemplateRepository);
   const bidContentBlockRepository = options.bidContentBlockRepository
     || (pool ? createBidContentBlockRepository(pool) : emptyBidContentBlockRepository);
+  const bidWorkspaceRepository = options.bidWorkspaceRepository
+    || (pool ? createBidWorkspaceRepository(pool) : emptyBidWorkspaceRepository);
   const technicalDocumentService = options.technicalDocumentService
     || createTechnicalDocumentService({ fontPath: config.technicalDocumentFontPath });
   const workflowTransaction = 'workflowTransaction' in options
@@ -681,6 +705,18 @@ export function createApp(options = {}) {
     bidContentBlockRepository,
     uploadDir: config.uploadDir,
     maxUploadMb: config.maxUploadMb
+  }));
+  app.use(bidWorkspaceRoutes({
+    enabled: Boolean(config.bidCenter?.enabled),
+    opportunityRepository,
+    opportunityResponsibilityRepository,
+    technicalTemplateRepository,
+    commercialPackageTemplateRepository,
+    bidWorkspaceRepository,
+    opportunityTechnicalDraftRepository,
+    opportunityCommercialDraftRepository,
+    workflowTransaction,
+    uploadDir: config.uploadDir
   }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));

@@ -214,6 +214,15 @@ test('variable validation reports required, range and approved-list issues', () 
   assert.deepEqual(issues.map((issue) => issue.code), ['required', 'maximum', 'allowed_values']);
 });
 
+test('technical variable validation rejects invalid booleans and impossible calendar dates', () => {
+  const schema = [
+    variable({ variableKey: 'confirmed', dataType: 'boolean', sourceField: 'manual', validationRules: {} }),
+    variable({ variableKey: 'due_date', dataType: 'date', sourceField: 'manual', validationRules: {} })
+  ];
+  const issues = validateTechnicalDraftVariables(schema, { confirmed: 'yes', due_date: '2026-02-30' });
+  assert.deepEqual(issues.map((issue) => issue.code), ['type', 'type']);
+});
+
 test('conditions alter inclusion without executing template expressions', () => {
   const conditional = section({
     key: 'utilities',

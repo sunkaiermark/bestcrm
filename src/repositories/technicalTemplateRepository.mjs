@@ -217,24 +217,23 @@ export function createTechnicalTemplateRepository(queryTarget) {
     },
 
     async getTemplateDetail(id) {
-      const [templateResult, revisionsResult, variablesResult, eventsResult] = await Promise.all([
-        queryTarget.query(`${templateSelect} WHERE t.id = $1 LIMIT 1`, [id]),
-        queryTarget.query(`${revisionSelect} WHERE r.template_id = $1 ORDER BY r.revision_no DESC`, [id]),
-        queryTarget.query(`
+      // queryTarget may be a transaction-scoped pg.Client, which executes one query at a time.
+      const templateResult = await queryTarget.query(`${templateSelect} WHERE t.id = $1 LIMIT 1`, [id]);
+      const revisionsResult = await queryTarget.query(`${revisionSelect} WHERE r.template_id = $1 ORDER BY r.revision_no DESC`, [id]);
+      const variablesResult = await queryTarget.query(`
           SELECT rv.*
           FROM technical_agreement_revision_variables rv
           JOIN technical_agreement_template_revisions r ON r.id = rv.template_revision_id
           WHERE r.template_id = $1
           ORDER BY r.revision_no DESC, rv.sort_order ASC, rv.id ASC
-        `, [id]),
-        queryTarget.query(`
+        `, [id]);
+      const eventsResult = await queryTarget.query(`
           SELECT e.*, actor.display_name AS actor_display_name
           FROM technical_template_events e
           JOIN users actor ON actor.id = e.actor_user_id
           WHERE e.template_id = $1
           ORDER BY e.created_at DESC, e.id DESC
-        `, [id])
-      ]);
+        `, [id]);
       const template = mapTemplateRow(templateResult.rows[0]);
       if (!template) return null;
       const variables = variablesResult.rows.map(mapRevisionVariableRow);

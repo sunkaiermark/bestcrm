@@ -222,6 +222,38 @@
         white-space: pre-wrap;
       }
 
+      .bid-package-grid {
+        display: grid;
+        gap: 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-bottom: 14px;
+        max-width: 980px;
+      }
+
+      .bid-package-grid .form-panel {
+        max-width: none;
+      }
+
+      .bid-workspace-section-title {
+        margin: 0;
+        padding: 14px 14px 4px;
+      }
+
+      .inline-error {
+        background: #fef2f2;
+        border: 1px solid #fecaca;
+        border-radius: 6px;
+        color: #991b1b;
+        margin: 8px 0;
+        padding: 8px 10px;
+      }
+
+      @media (max-width: 760px) {
+        .bid-package-grid {
+          grid-template-columns: 1fr;
+        }
+      }
+
       .nav-footer {
         display: grid;
         gap: 8px;
@@ -1619,7 +1651,7 @@
           <% if (canSeeBidCenter) { %>
             <div class="nav-parent"><%= t('bidCenter') %></div>
             <div class="nav-subgroup">
-              <span class="nav-link" aria-disabled="true" title="<%= t('availableInLaterBidCenterStep') %>"><%= t('bidProjects') %></span>
+              <a class="<%= navClass('bid-center-workspaces') %>" href="/bid-center/workspaces"><%= t('bidProjects') %></a>
               <% if (canSeeTechnicalStandardsNav) { %><a class="<%= navClass('technical-templates') %>" href="/technical-templates"><%= t('bidTechnicalPackages') %></a><% } %>
               <% if (canSeeBidCommercialPackages) { %><a class="<%= navClass('bid-center-commercial') %>" href="/bid-center/commercial-templates"><%= t('bidCommercialPackages') %></a><% } %>
               <a class="<%= navClass('bid-center-clauses') %>" href="/bid-center/clauses"><%= t('bidStandardClauses') %></a>

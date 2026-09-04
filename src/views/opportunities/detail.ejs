@@ -183,6 +183,7 @@
           <div class="page-actions">
             <a class="secondary-action" href="/opportunities"><%= t('backToList') %></a>
             <% if (customerEmailSendingEnabled) { %><a class="secondary-action" href="/email-center/compose?opportunityId=<%= opportunity.id %>"><%= t('composeCustomerEmail') %></a><% } %>
+            <% if (typeof bidCenterEnabled !== 'undefined' && bidCenterEnabled) { %><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/bid-workspace"><%= t('createOrOpenBidWorkspace') %></a><% } %>
             <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('projectTechnicalDrafts') %></a>
             <% if (typeof canEditOpportunity !== 'undefined' && canEditOpportunity) { %>
               <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit"><%= t('edit') %></a>
