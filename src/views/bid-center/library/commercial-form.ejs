@@ -1,0 +1,20 @@
+<%- include('../../partials/app-start', { title: `${mode === 'new' ? t('newCommercialTemplate') : t('editCommercialTemplate')} - BESTCRM`, activeNav: 'bid-center-commercial' }) %>
+        <p class="breadcrumb"><a href="/bid-center/commercial-templates"><%= t('bidCommercialPackages') %></a> / <%= mode === 'new' ? t('newCommercialTemplate') : t('editCommercialTemplate') %></p>
+        <header class="page-header"><div class="bid-library-title"><h1><%= mode === 'new' ? t('newCommercialTemplate') : t('editCommercialTemplate') %></h1><div class="muted"><%= t('controlledTemplateMetadataNotice') %></div></div></header>
+        <form class="form-panel" method="post" action="<%= action %>">
+          <%- csrfField() %>
+          <div class="form-grid">
+            <label><%= t('templateCode') %><input name="templateCode" maxlength="32" value="<%= template.templateCode %>" pattern="[A-Za-z][A-Za-z0-9-]{0,31}" <%= mode === 'edit' ? 'readonly' : 'required' %>></label>
+            <label><%= t('outputLanguage') %><select name="language" required><% for (const item of languages) { %><option value="<%= item %>" <%= template.language === item ? 'selected' : '' %>><%= t(`templateLanguage.${item}`) %></option><% } %></select></label>
+            <label><%= t('nameEn') %><input name="nameEn" maxlength="200" value="<%= template.nameEn %>" required></label>
+            <label><%= t('nameZh') %><input name="nameZh" maxlength="200" value="<%= template.nameZh %>" required></label>
+          </div>
+          <div class="form-grid">
+            <label><%= t('applicableCountries') %><textarea name="applicableCountries" maxlength="5000"><%= template.applicableCountries.join(', ') %></textarea></label>
+            <label><%= t('applicableIndustries') %><textarea name="applicableIndustries" maxlength="5000"><%= template.applicableIndustries.join(', ') %></textarea></label>
+            <label><%= t('applicableCustomerTypes') %><textarea name="applicableCustomerTypes" maxlength="5000"><%= template.applicableCustomerTypes.join(', ') %></textarea></label>
+          </div>
+          <% if (mode === 'new') { %><label><%= t('changeSummary') %><textarea name="changeSummary" maxlength="2000" required></textarea></label><% } %>
+          <div class="inline-actions"><button type="submit"><%= mode === 'new' ? t('createCommercialTemplate') : t('save') %></button><a class="secondary-action" href="<%= mode === 'new' ? '/bid-center/commercial-templates' : `/bid-center/commercial-templates/${template.id}` %>"><%= t('cancel') %></a></div>
+        </form>
+<%- include('../../partials/app-end') %>

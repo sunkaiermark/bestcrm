@@ -8,6 +8,7 @@
     "start": "node src/server.mjs",
     "test": "node --test",
     "test:bid-center-db": "node scripts/verify-bid-center-migrations.mjs",
+    "test:bid-center-library-db": "node scripts/verify-bid-center-library.mjs",
     "db:migrate": "node src/db/migrate.mjs",
     "db:seed": "node src/db/seed.mjs",
     "email:poll": "node scripts/poll-email-inquiries.mjs",

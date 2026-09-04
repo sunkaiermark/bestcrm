@@ -1,0 +1,17 @@
+<%- include('../../partials/app-start', { title: `${t('commercialTemplateEditor')} - ${template.templateCode} - BESTCRM`, activeNav: 'bid-center-commercial' }) %>
+        <p class="breadcrumb"><a href="/bid-center/commercial-templates"><%= t('bidCommercialPackages') %></a> / <a href="/bid-center/commercial-templates/<%= template.id %>"><%= template.templateCode %></a> / <%= revision.revisionLabel %></p>
+        <header class="page-header"><div class="bid-library-title"><h1><%= t('commercialTemplateEditor') %> · <%= revision.revisionLabel %></h1><div class="muted"><%= t('commercialTemplateEditorDescription') %></div></div></header>
+        <section class="form-panel"><strong><%= t('structuredEditorSafetyNotice') %></strong></section>
+        <% for (const section of [...(revision.contentSchema.sections || [])].sort((a, b) => a.sortOrder - b.sortOrder)) { %>
+          <details class="form-panel technical-template-revision" <%= section.sortOrder === 1 ? 'open' : '' %>><summary class="bid-library-title"><strong><%= section.sortOrder %>. <%= language === 'zh' ? section.labelZh : section.labelEn %></strong> <span class="muted">(<%= section.key %>)</span></summary>
+            <form method="post" action="/bid-center/commercial-templates/<%= template.id %>/revisions/<%= revision.id %>/sections/<%= section.key %>"><%- csrfField() %>
+              <div class="form-grid"><label><%= t('sectionLabelEn') %><input name="labelEn" maxlength="200" value="<%= section.labelEn %>" required></label><label><%= t('sectionLabelZh') %><input name="labelZh" maxlength="200" value="<%= section.labelZh %>" required></label><label><%= t('sectionType') %><input name="sectionType" value="<%= section.sectionType %>" readonly></label><label><%= t('sortOrder') %><input name="sortOrder" type="number" min="1" max="99" value="<%= section.sortOrder %>" required></label></div>
+              <label class="checkbox-row"><input name="enabled" type="checkbox" <%= section.enabled !== false ? 'checked' : '' %>><span><%= t('includeSectionByDefault') %></span></label>
+              <label><%= t('sectionBodyEn') %><textarea name="bodyEn" maxlength="100000"><%= section.bodyEn || '' %></textarea></label><label><%= t('sectionBodyZh') %><textarea name="bodyZh" maxlength="100000"><%= section.bodyZh || '' %></textarea></label>
+              <label><%= t('structuredTableRows') %><textarea name="tableRows" maxlength="100000"><%= (section.tableRows || []).map((row) => row.join(' | ')).join('\n') %></textarea><span class="muted"><%= t('structuredTableRowsHint') %></span></label>
+              <fieldset><legend><%= t('referencedControlledContent') %></legend><% for (const block of contentBlocks) { %><label class="checkbox-row"><input type="checkbox" name="contentBlockIds" value="<%= block.id %>" <%= (section.contentBlockIds || []).includes(block.id) ? 'checked' : '' %>><span class="bid-library-title"><%= block.blockCode %> · <%= language === 'zh' ? block.nameZh : block.nameEn %></span></label><% } %><% if (!contentBlocks.length) { %><p class="empty"><%= t('noPublishedControlledContent') %></p><% } %></fieldset>
+              <button type="submit"><%= t('saveSection') %></button>
+            </form>
+          </details>
+        <% } %>
+<%- include('../../partials/app-end') %>

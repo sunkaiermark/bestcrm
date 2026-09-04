@@ -11,7 +11,9 @@ import { attachCurrentUser } from './middleware/auth.mjs';
 import { csrfProtection } from './middleware/csrf.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
 import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
+import { createBidContentBlockRepository } from './repositories/bidContentBlockRepository.mjs';
 import { createCommercialQuoteRepository } from './repositories/commercialQuoteRepository.mjs';
+import { createCommercialPackageTemplateRepository } from './repositories/commercialPackageTemplateRepository.mjs';
 import { createContractApprovalRepository } from './repositories/contractApprovalRepository.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
@@ -37,6 +39,7 @@ import { createWorkbenchRepository } from './repositories/workbenchRepository.mj
 import { createWorkflowEventRepository } from './repositories/workflowEventRepository.mjs';
 import { accountRoutes } from './routes/accountRoutes.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
+import { bidCenterLibraryRoutes } from './routes/bidCenterLibraryRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
 import { emailCenterRoutes } from './routes/emailCenterRoutes.mjs';
@@ -512,6 +515,33 @@ const emptyTechnicalTemplateRepository = {
   async retireClause() { throw new Error('Technical template repository is not configured'); }
 };
 
+const emptyCommercialPackageTemplateRepository = {
+  async listTemplates() { return []; },
+  async getTemplateDetail() { return null; },
+  async findRevisionById() { return null; },
+  async createTemplate() { throw new Error('Commercial template repository is not configured'); },
+  async updateTemplate() { throw new Error('Commercial template repository is not configured'); },
+  async createRevision() { throw new Error('Commercial template repository is not configured'); },
+  async updateRevisionContent() { throw new Error('Commercial template repository is not configured'); },
+  async submitRevision() { throw new Error('Commercial template repository is not configured'); },
+  async publishRevision() { throw new Error('Commercial template repository is not configured'); },
+  async retireRevision() { throw new Error('Commercial template repository is not configured'); }
+};
+
+const emptyBidContentBlockRepository = {
+  async listBlocks() { return []; },
+  async getBlockDetail() { return null; },
+  async findRevisionById() { return null; },
+  async createBlock() { throw new Error('Bid content repository is not configured'); },
+  async updateBlock() { throw new Error('Bid content repository is not configured'); },
+  async updateRevision() { throw new Error('Bid content repository is not configured'); },
+  async updateDraft() { throw new Error('Bid content repository is not configured'); },
+  async createRevision() { throw new Error('Bid content repository is not configured'); },
+  async submitRevision() { throw new Error('Bid content repository is not configured'); },
+  async publishRevision() { throw new Error('Bid content repository is not configured'); },
+  async retireRevision() { throw new Error('Bid content repository is not configured'); }
+};
+
 export function createApp(options = {}) {
   const config = { ...loadConfig(), ...options };
   const shouldCreatePool = !options.userRepository && config.databaseUrl;
@@ -557,6 +587,10 @@ export function createApp(options = {}) {
   const salesWorkRepository = options.salesWorkRepository || (pool ? createSalesWorkRepository(pool) : emptySalesWorkRepository);
   const technicalTemplateRepository = options.technicalTemplateRepository
     || (pool ? createTechnicalTemplateRepository(pool) : emptyTechnicalTemplateRepository);
+  const commercialPackageTemplateRepository = options.commercialPackageTemplateRepository
+    || (pool ? createCommercialPackageTemplateRepository(pool) : emptyCommercialPackageTemplateRepository);
+  const bidContentBlockRepository = options.bidContentBlockRepository
+    || (pool ? createBidContentBlockRepository(pool) : emptyBidContentBlockRepository);
   const technicalDocumentService = options.technicalDocumentService
     || createTechnicalDocumentService({ fontPath: config.technicalDocumentFontPath });
   const workflowTransaction = 'workflowTransaction' in options
@@ -625,6 +659,7 @@ export function createApp(options = {}) {
     res.locals.webPushPublicKey = configuredWebPushPublicKey;
     res.locals.emailCenterEnabled = Boolean(config.emailCenter?.enabled);
     res.locals.customerEmailSendingEnabled = Boolean(config.customerEmail?.enabled);
+    res.locals.bidCenterEnabled = Boolean(config.bidCenter?.enabled);
     next();
   });
   app.use(attachCurrentUser(userRepository));
@@ -640,6 +675,13 @@ export function createApp(options = {}) {
   }));
   app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository, loginSecurityRepository }));
   app.use(technicalTemplateRoutes({ technicalTemplateRepository }));
+  app.use(bidCenterLibraryRoutes({
+    enabled: Boolean(config.bidCenter?.enabled),
+    commercialPackageTemplateRepository,
+    bidContentBlockRepository,
+    uploadDir: config.uploadDir,
+    maxUploadMb: config.maxUploadMb
+  }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
   app.use(leadSubmissionRoutes({

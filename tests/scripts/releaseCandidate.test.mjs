@@ -70,7 +70,7 @@ test('release builder creates a reproducible commit-only archive and checksum ma
     assert.equal(manifest.sha256, result.sha256);
     assert.equal(manifest.reproducibleArchiveVerified, true);
     assert.match(checksum, new RegExp(`^${result.sha256}  bestcrm-v2099\\.01\\.01-01-rc\\.1\\.zip`));
-    assert.match(manifest.latestMigration, /034_customer_email_sending\.sql$/);
+    assert.match(manifest.latestMigration, /037_quotation_package_documents\.sql$/);
   } finally {
     await rm(outputDir, { recursive: true, force: true });
   }
