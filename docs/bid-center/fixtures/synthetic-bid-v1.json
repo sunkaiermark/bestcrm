@@ -1,0 +1,100 @@
+{
+  "fixtureId": "BID-TEST-001",
+  "classification": "SYNTHETIC_TEST_DATA_ONLY",
+  "warning": "All names, values, prices and commitments are fictional and must never be sent to a customer.",
+  "language": "bilingual",
+  "opportunity": {
+    "opportunityNo": "OPP-TEST-0001",
+    "titleEn": "Synthetic Mixer System Proposal",
+    "titleZh": "合成测试搅拌系统方案",
+    "owner": "Test Sales Owner"
+  },
+  "customer": {
+    "nameEn": "Example Process Industries Ltd.",
+    "nameZh": "示例流程工业有限公司",
+    "country": "Test Country",
+    "contactName": "Test Contact",
+    "email": "test-contact@example.invalid"
+  },
+  "technical": {
+    "productFamily": "Mixing Equipment",
+    "productModel": "TEST-MX-100",
+    "quantity": 2,
+    "capacityLitresPerBatch": 5000,
+    "medium": "Synthetic test medium",
+    "designTemperatureC": 160,
+    "designPressureMpa": 0.3,
+    "material": "Test material grade",
+    "motorKw": 75,
+    "voltageFrequency": "380 V / 50 Hz",
+    "hazardousAreaRating": "TEST-AREA",
+    "standards": [
+      "TEST-STANDARD-001"
+    ],
+    "deliveryDestination": "Synthetic test destination",
+    "sections": {
+      "customized": [
+        "process_description"
+      ],
+      "projectAdded": [
+        "site_specific_test_requirements"
+      ],
+      "omitted": [
+        "optional_remote_monitoring"
+      ]
+    }
+  },
+  "commercial": {
+    "currency": "USD",
+    "lineItems": [
+      {
+        "code": "TEST-EQ-001",
+        "description": "Synthetic mixer package",
+        "quantity": 2,
+        "unit": "set",
+        "unitPrice": 100000,
+        "subtotal": 200000
+      },
+      {
+        "code": "TEST-SVC-001",
+        "description": "Synthetic commissioning service",
+        "quantity": 1,
+        "unit": "lot",
+        "unitPrice": 10000,
+        "subtotal": 10000
+      }
+    ],
+    "totalPrice": 210000,
+    "taxBasis": "Synthetic test tax basis",
+    "paymentTerms": "30 percent / 60 percent / 10 percent synthetic test terms",
+    "deliveryPeriod": "16 synthetic test weeks",
+    "incoterms": "FCA TEST LOCATION",
+    "validUntil": "2099-12-31",
+    "warranty": "Synthetic test warranty only",
+    "commercialDeviation": "Synthetic deviation for workflow testing"
+  },
+  "sourceSnapshots": {
+    "technicalTemplate": "TPL-R1-TEST",
+    "commercialTemplate": "CTPL-R1-TEST",
+    "outputProfile": "OUTPUT-R1-TEST",
+    "contentBlocks": [
+      "COMMON-10-R1-TEST",
+      "COMMON-30-R1-TEST"
+    ]
+  },
+  "expectedVersions": {
+    "technical": "TS-V1",
+    "commercial": "CP-V1",
+    "completeBid": "QP-V1"
+  },
+  "expectedOutputs": [
+    "OPP-TEST-0001_Technical-Package_Bilingual_TS-V1.docx",
+    "OPP-TEST-0001_Technical-Package_Bilingual_TS-V1.pdf",
+    "OPP-TEST-0001_Commercial-Package_Bilingual_CP-V1.docx",
+    "OPP-TEST-0001_Commercial-Package_Bilingual_CP-V1.pdf",
+    "OPP-TEST-0001_Complete-Bid_Bilingual_QP-V1.docx",
+    "OPP-TEST-0001_Complete-Bid_Bilingual_QP-V1.pdf",
+    "OPP-TEST-0001_Attachments_QP-V1.zip",
+    "OPP-TEST-0001_Manifest_QP-V1.json"
+  ]
+}
