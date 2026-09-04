@@ -32,6 +32,7 @@ import { createOpportunityRepository } from './repositories/opportunityRepositor
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
 import { createOpportunityTechnicalDraftRepository } from './repositories/opportunityTechnicalDraftRepository.mjs';
 import { createQuotationPackageRepository } from './repositories/quotationPackageRepository.mjs';
+import { createQuotationPackageDocumentRepository } from './repositories/quotationPackageDocumentRepository.mjs';
 import { createRequirementUpdateRepository } from './repositories/requirementUpdateRepository.mjs';
 import { createRoleRepository } from './repositories/roleRepository.mjs';
 import { createSalesWorkRepository } from './repositories/salesWorkRepository.mjs';
@@ -524,6 +525,14 @@ const emptyTechnicalTemplateRepository = {
   async retireClause() { throw new Error('Technical template repository is not configured'); }
 };
 
+const emptyQuotationPackageDocumentRepository = {
+  async listByWorkspace() { return []; },
+  async listByPackage() { return []; },
+  async findById() { return null; },
+  async lockPackage() {},
+  async createMany() { throw new Error('Quotation package document repository is not configured'); }
+};
+
 const emptyCommercialPackageTemplateRepository = {
   async listTemplates() { return []; },
   async getTemplateDetail() { return null; },
@@ -639,6 +648,8 @@ export function createApp(options = {}) {
     || (pool ? createOpportunityCommercialDraftRepository(pool) : emptyOpportunityCommercialDraftRepository);
   const quotationPackageRepository = options.quotationPackageRepository
     || (pool ? createQuotationPackageRepository(pool) : emptyQuotationPackageRepository);
+  const quotationPackageDocumentRepository = options.quotationPackageDocumentRepository
+    || (pool ? createQuotationPackageDocumentRepository(pool) : emptyQuotationPackageDocumentRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
@@ -759,11 +770,13 @@ export function createApp(options = {}) {
     opportunityTechnicalDraftRepository,
     opportunityCommercialDraftRepository,
     quotationPackageRepository,
+    quotationPackageDocumentRepository,
     todoRepository,
     workflowEventRepository,
     workflowTransaction,
     uploadDir: config.uploadDir,
-    maxUploadMb: config.maxUploadMb
+    maxUploadMb: config.maxUploadMb,
+    bidDocumentOptions: options.bidDocumentOptions
   }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));

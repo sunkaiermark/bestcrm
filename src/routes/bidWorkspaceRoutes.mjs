@@ -1,10 +1,12 @@
 import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
+import { fileURLToPath } from 'node:url';
 import { Router } from 'express';
 import multer from 'multer';
 import { requireLogin } from '../middleware/auth.mjs';
 import { createBidPackageEditorService } from '../services/bidPackageEditorService.mjs';
 import { createBidPackageApprovalService } from '../services/bidPackageApprovalService.mjs';
+import { createQuotationPackageDocumentService } from '../services/quotationPackageDocumentService.mjs';
 import { createBidWorkspaceService, bidWorkspaceVariableInputName } from '../services/bidWorkspaceService.mjs';
 import {
   removeStoredAttachmentFile,
@@ -59,11 +61,19 @@ export function bidWorkspaceRoutes({
   opportunityTechnicalDraftRepository,
   opportunityCommercialDraftRepository,
   quotationPackageRepository,
+  quotationPackageDocumentRepository = {
+    async listByWorkspace() { return []; },
+    async listByPackage() { return []; },
+    async findById() { return null; },
+    async lockPackage() {},
+    async createMany() { throw new Error('Quotation package document repository is not configured'); }
+  },
   todoRepository,
   workflowEventRepository,
   workflowTransaction,
   uploadDir = './var/uploads',
-  maxUploadMb = 25
+  maxUploadMb = 25,
+  bidDocumentOptions = {}
 }) {
   const router = Router();
   const dependencies = {
@@ -78,6 +88,7 @@ export function bidWorkspaceRoutes({
     opportunityTechnicalDraftRepository,
     opportunityCommercialDraftRepository,
     quotationPackageRepository,
+    quotationPackageDocumentRepository,
     todoRepository,
     workflowEventRepository,
     workflowTransaction
@@ -85,6 +96,25 @@ export function bidWorkspaceRoutes({
   const service = createBidWorkspaceService({ enabled, dependencies });
   const editorService = createBidPackageEditorService({ enabled, dependencies });
   const approvalService = createBidPackageApprovalService({ enabled, dependencies });
+  dependencies.bidPackageApprovalService = approvalService;
+  const documentService = createQuotationPackageDocumentService({
+    enabled,
+    dependencies,
+    options: {
+      ...bidDocumentOptions,
+      fontPath: bidDocumentOptions.fontPath ?? process.env.TECHNICAL_DOCUMENT_FONT_PATH ?? '',
+      logoPath: bidDocumentOptions.logoPath ?? fileURLToPath(new URL('../public/assets/sunkaier-logo.png', import.meta.url)),
+      fileLoader: bidDocumentOptions.fileLoader || (async (storedPath) => {
+        const filePath = resolveStoredPath(uploadDir, storedPath);
+        if (!filePath) {
+          const error = new Error('Attachment not found');
+          error.statusCode = 404;
+          throw error;
+        }
+        return readFile(filePath);
+      })
+    }
+  });
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: maxUploadMb * 1024 * 1024, files: 1 }
@@ -237,6 +267,25 @@ export function bidWorkspaceRoutes({
     } catch (error) { handleError(error, res, next); }
   });
 
+  router.post('/bid-center/workspaces/:id/complete/:packageId/generate', async (req, res, next) => {
+    try {
+      await documentService.generate(req.currentUser, req.params.id, req.params.packageId);
+      res.redirect(`/bid-center/workspaces/${req.params.id}`);
+    } catch (error) { handleError(error, res, next); }
+  });
+
+  router.get('/bid-center/workspaces/:id/outputs/:documentId/download', async (req, res, next) => {
+    try {
+      const document = await documentService.download(req.currentUser, req.params.id, req.params.documentId);
+      res.type(document.mimeType);
+      res.setHeader('Content-Disposition', attachmentContentDisposition(document.originalName));
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Document-SHA256', document.sha256);
+      res.send(document.content);
+    } catch (error) { handleError(error, res, next); }
+  });
+
   router.post('/bid-center/workspaces/:id/packages/:packageType/sections', async (req, res, next) => {
     try {
       const sectionKey = await editorService.addSection(req.currentUser, req.params.id, req.params.packageType, req.body);
@@ -369,8 +418,11 @@ export function bidWorkspaceRoutes({
   router.get('/bid-center/workspaces/:id', async (req, res, next) => {
     try {
       const workspace = await service.get(req.currentUser, req.params.id);
-      const approval = await approvalService.getDashboard(req.currentUser, req.params.id);
-      res.render('bid-center/workspaces/detail', { workspace, approval });
+      const [approval, outputs] = await Promise.all([
+        approvalService.getDashboard(req.currentUser, req.params.id),
+        documentService.getDashboard(req.currentUser, req.params.id)
+      ]);
+      res.render('bid-center/workspaces/detail', { workspace, approval, outputs });
     } catch (error) { handleError(error, res, next); }
   });
 

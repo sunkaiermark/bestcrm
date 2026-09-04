@@ -257,3 +257,55 @@ test('direct package submission POST denies a non-owner before workflow side eff
   assert.match(response.text, /Forbidden/);
   assert.equal(calls.some(([name]) => name === 'insertPackageEvent'), false);
 });
+
+test('generated output download sets integrity headers and blocks commercial bytes from technical-only users', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const user = { id: 11, username: 'support-qe', passwordHash, displayName: 'Support QE', isActive: true, roles: [ROLES.QUOTATION_ENGINEER] };
+  const outputBytes = Buffer.from('controlled technical PDF');
+  const events = [];
+  const document = (id, documentType) => ({
+    id, workspaceId: 40, quotationPackageVersionId: 60, documentType,
+    originalName: documentType === 'technical_pdf' ? '812345_Technical-Package.pdf' : '812345_Commercial-Package.pdf',
+    mimeType: 'application/pdf', content: outputBytes, byteSize: outputBytes.length, sha256: 'a'.repeat(64)
+  });
+  const app = createApp({
+    databaseUrl: '', sessionSecret: 'test-secret', csrfProtection: false,
+    bidCenter: { enabled: true }, workflowTransaction: null,
+    userRepository: {
+      async findByIdWithRoles(id) { return Number(id) === user.id ? user : null; },
+      async findByUsernameWithRoles(username) { return username === user.username ? user : null; }
+    },
+    bidWorkspaceRepository: {
+      async getWorkspaceDetail() {
+        return {
+          id: 40, opportunityId: 20, outputProfileId: 5, sourceMetadata: {}, outputProfile: { revisionNo: 1 },
+          opportunity: {
+            id: 20, salespersonId: 7, salesManagerId: 8, quotationEngineerId: 9,
+            technicalManagerId: 10, commercialManagerId: 12
+          }
+        };
+      },
+      async listWorkspaces() { return []; }, async findByOpportunity() { return null; }
+    },
+    quotationPackageDocumentRepository: {
+      async listByWorkspace() { return []; }, async listByPackage() { return []; }, async lockPackage() {},
+      async findById(id) { return Number(id) === 1 ? document(1, 'technical_pdf') : document(2, 'commercial_pdf'); }
+    },
+    bidPackageEditorRepository: {
+      async insertEvent(value) { events.push(value); return value; },
+      async listChanges() { return []; }, async listEvents() { return []; },
+      async listAttachments() { return []; }, async listSuggestions() { return []; }, async findAttachment() { return null; }
+    }
+  });
+  const agent = request.agent(app);
+  await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
+  const technical = await agent.get('/bid-center/workspaces/40/outputs/1/download');
+  assert.equal(technical.status, 200);
+  assert.equal(technical.headers['x-document-sha256'], 'a'.repeat(64));
+  assert.equal(technical.headers['cache-control'], 'private, no-store');
+  assert.match(technical.headers['content-disposition'], /attachment/);
+  assert.equal(events[0].eventType, 'downloaded_bid_output');
+  const commercial = await agent.get('/bid-center/workspaces/40/outputs/2/download');
+  assert.equal(commercial.status, 403);
+  assert.match(commercial.text, /Forbidden/);
+});

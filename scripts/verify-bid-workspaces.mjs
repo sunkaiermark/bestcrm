@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import pg from 'pg';
 import { migrate } from '../src/db/migrate.mjs';
 import { seedInternalAccounts } from '../src/db/seed.mjs';
@@ -19,6 +20,8 @@ if (!databaseName.startsWith('bestcrm_bid_center_test')) {
 }
 
 const pool = new pg.Pool({ connectionString: databaseUrl });
+const controlledAttachmentContent = Buffer.from('Step7 attachment', 'utf8');
+const controlledAttachmentSha256 = createHash('sha256').update(controlledAttachmentContent).digest('hex');
 
 async function one(sql, parameters = []) {
   const result = await pool.query(sql, parameters);
@@ -95,7 +98,7 @@ async function publishControlledSources(actorId) {
       'bid-content/step4/payment.pdf', 'payment.pdf', 'application/pdf', 16, $2,
       DATE '2026-01-01', 'confidential', 'Step 4 controlled material', $3)
     RETURNING id
-  `, [contentBlock.id, 'a'.repeat(64), actorId]);
+  `, [contentBlock.id, controlledAttachmentSha256, actorId]);
   await pool.query(`UPDATE bid_content_block_revisions
     SET status = 'review_pending', submitted_by = $1, submitted_at = now() WHERE id = $2`, [actorId, contentRevision.id]);
   await pool.query(`UPDATE bid_content_block_revisions
@@ -268,7 +271,7 @@ async function verify() {
   assert.equal(created.technicalDraft.draftLabel, 'TS-D1');
   assert.equal(created.commercialDraft.draftLabel, 'CP-D1');
   assert.equal(created.sourceMetadata.outputProfile.layoutSettings.pageSize, 'A4');
-  assert.equal(created.sourceMetadata.contentComponentReferences[0].attachmentSha256, 'a'.repeat(64));
+  assert.equal(created.sourceMetadata.contentComponentReferences[0].attachmentSha256, controlledAttachmentSha256);
 
   const counts = await one(`SELECT
     (SELECT count(*)::int FROM opportunity_bid_workspaces WHERE opportunity_id = $1) AS workspaces,

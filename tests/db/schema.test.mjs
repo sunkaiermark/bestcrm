@@ -38,6 +38,7 @@ const opportunityBidWorkspacesMigrationPath = new URL('../../src/db/migrations/0
 const quotationPackageDocumentsMigrationPath = new URL('../../src/db/migrations/037_quotation_package_documents.sql', import.meta.url);
 const bidPackageEditorsMigrationPath = new URL('../../src/db/migrations/038_bid_package_editors.sql', import.meta.url);
 const bidPackageApprovalsMigrationPath = new URL('../../src/db/migrations/039_bid_package_approvals.sql', import.meta.url);
+const bidPackageOutputIdentityMigrationPath = new URL('../../src/db/migrations/040_bid_package_output_identity.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -387,6 +388,17 @@ test('bid package approval migration adds completeness audit, reviewer separatio
   assert.match(sql, /Submitted technical package attachments are immutable/);
   assert.match(sql, /Submitted commercial package attachments are immutable/);
   assert.match(sql, /Complete bid review revisions require a rejected source from the same workspace/);
+});
+
+test('bid package output identity migration binds all outputs to one generator and source snapshot', async () => {
+  const sql = await readFile(bidPackageOutputIdentityMigrationPath, 'utf8');
+  assert.match(sql, /output_profile_revision_no integer/);
+  assert.match(sql, /source_snapshot_sha256 char\(64\)/);
+  assert.match(sql, /generation_key char\(64\)/);
+  assert.match(sql, /validate_quotation_package_document_identity/);
+  assert.match(sql, /generated_bid_package_outputs/);
+  assert.match(sql, /downloaded_bid_output/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
 });
 
 test('customer country migration adds country to customer records', async () => {

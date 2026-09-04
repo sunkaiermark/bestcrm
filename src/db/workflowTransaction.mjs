@@ -13,6 +13,7 @@ import { createOpportunityRepository } from '../repositories/opportunityReposito
 import { createOpportunityResponsibilityRepository } from '../repositories/opportunityResponsibilityRepository.mjs';
 import { createOpportunityTechnicalDraftRepository } from '../repositories/opportunityTechnicalDraftRepository.mjs';
 import { createQuotationPackageRepository } from '../repositories/quotationPackageRepository.mjs';
+import { createQuotationPackageDocumentRepository } from '../repositories/quotationPackageDocumentRepository.mjs';
 import { createTechnicalSolutionRepository } from '../repositories/technicalSolutionRepository.mjs';
 import { createTechnicalTemplateRepository } from '../repositories/technicalTemplateRepository.mjs';
 import { createTodoRepository } from '../repositories/todoRepository.mjs';
@@ -35,6 +36,7 @@ function createWorkflowRepositories(queryTarget) {
     opportunityResponsibilityRepository: createOpportunityResponsibilityRepository(queryTarget),
     opportunityTechnicalDraftRepository: createOpportunityTechnicalDraftRepository(queryTarget),
     quotationPackageRepository: createQuotationPackageRepository(queryTarget),
+    quotationPackageDocumentRepository: createQuotationPackageDocumentRepository(queryTarget),
     technicalSolutionRepository: createTechnicalSolutionRepository(queryTarget),
     technicalTemplateRepository: createTechnicalTemplateRepository(queryTarget),
     todoRepository: createTodoRepository(queryTarget),

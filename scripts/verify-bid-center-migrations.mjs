@@ -158,6 +158,11 @@ async function verifyNewBidCenterRules(fixture) {
   const migrationCountBeforeRepeat = Number((await one('SELECT count(*)::int AS count FROM schema_migrations')).count);
   await migrate(pool);
   const migrationCountAfterRepeat = Number((await one('SELECT count(*)::int AS count FROM schema_migrations')).count);
+  const reviewer = await one(`
+    INSERT INTO users (username, password_hash, display_name, email)
+    VALUES ('bid-center-step2-reviewer', 'not-a-real-password-hash', 'Bid Center Step 2 Reviewer', 'step2-reviewer@example.invalid')
+    RETURNING id
+  `);
   assert.equal(migrationCountAfterRepeat, migrationCountBeforeRepeat, 'migration runner must be repeatable');
 
   const expectedTables = [
@@ -347,7 +352,7 @@ async function verifyNewBidCenterRules(fixture) {
     UPDATE opportunity_commercial_drafts
     SET status = 'review_pending', submitted_by = $2, submitted_at = now(), updated_by = $2, updated_at = now()
     WHERE id = $1
-  `, [commercialDraft.id, fixture.userId]);
+  `, [commercialDraft.id, reviewer.id]);
   await pool.query(`
     UPDATE opportunity_commercial_drafts
     SET status = 'approved', formal_version_no = 1,
@@ -464,7 +469,7 @@ async function verifyNewBidCenterRules(fixture) {
     UPDATE quotation_package_versions
     SET status = 'pending', submitted_by = $2, submitted_at = now(), updated_by = $2, updated_at = now()
     WHERE id = $1
-  `, [quotationPackage.id, fixture.userId]);
+  `, [quotationPackage.id, reviewer.id]);
   await pool.query(`
     UPDATE quotation_package_versions
     SET status = 'approved', version_no = 2,
@@ -478,10 +483,12 @@ async function verifyNewBidCenterRules(fixture) {
       quotation_package_version_id, workspace_id, technical_solution_version_id,
       commercial_draft_id, output_profile_id, document_type, document_no,
       original_name, mime_type, content, byte_size, sha256,
+      output_profile_revision_no, source_snapshot_sha256, generation_key,
       generator_version, generated_by
     ) VALUES (
       $1, $2, $3, $4, $5, 'complete_pdf', 'QP-V2',
-      'synthetic-bid.pdf', 'application/pdf', $6, $7, $8, 'step2-verifier', $9
+      'synthetic-bid.pdf', 'application/pdf', $6, $7, $8,
+      1, $9, $10, 'step2-verifier', $11
     )
     RETURNING id
   `, [
@@ -493,6 +500,8 @@ async function verifyNewBidCenterRules(fixture) {
     documentContent,
     documentContent.length,
     createHash('sha256').update(documentContent).digest('hex'),
+    'b'.repeat(64),
+    'c'.repeat(64),
     fixture.userId
   ]);
   await expectDatabaseError(
