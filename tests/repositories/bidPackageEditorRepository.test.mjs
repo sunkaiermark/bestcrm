@@ -50,8 +50,8 @@ test('section changes bind exactly one package draft and retain reason plus acto
   assert.equal(change.commercialDraftId, 42);
   assert.equal(calls[0].params[2], null);
   assert.equal(calls[0].params[3], 42);
-  assert.equal(calls[0].params[9], 'Customer request');
-  assert.equal(calls[0].params[10], 5);
+  assert.equal(calls[0].params[10], 'Customer request');
+  assert.equal(calls[0].params[11], 5);
 });
 
 test('editor audit reads are scoped by workspace package and exact draft', async () => {
@@ -64,10 +64,12 @@ test('editor audit reads are scoped by workspace package and exact draft', async
   await repository.listAttachments({ workspaceId: 40, packageType: 'technical', technicalDraftId: 41 });
   await repository.listSuggestions({ workspaceId: 40, packageType: 'technical', technicalDraftId: 41 });
   assert.equal(calls.length, 4);
-  for (const call of calls) {
+  for (const [index, call] of calls.entries()) {
     assert.match(call.sql, /workspace_id = \$1/);
     assert.match(call.sql, /package_type = \$2/);
-    assert.deepEqual(call.params, [40, 'technical', 41, null]);
+    assert.deepEqual(call.params, index < 2
+      ? [40, 'technical', 41, null, null]
+      : [40, 'technical', 41, null]);
   }
 });
 

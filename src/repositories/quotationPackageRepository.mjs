@@ -23,6 +23,10 @@ function mapPackageRow(row) {
     id: Number(row.id),
     opportunityId: Number(row.opportunity_id),
     sourcePackageId: numberOrNull(row.source_package_id),
+    reviewSourcePackageId: numberOrNull(row.review_source_package_id),
+    workspaceId: numberOrNull(row.workspace_id),
+    commercialDraftId: numberOrNull(row.commercial_draft_id),
+    commercialDraftVersionNo: numberOrNull(row.commercial_draft_version_no),
     draftRevisionNo: Number(row.draft_revision_no),
     versionNo: numberOrNull(row.version_no),
     status: row.status,
@@ -100,6 +104,7 @@ const packageSelect = `
     qp.*,
     ts.formal_version_no AS technical_solution_version_no,
     cq.version_no AS commercial_quote_version_no,
+    commercial_draft.formal_version_no AS commercial_draft_version_no,
     creator.display_name AS creator_display_name,
     submitter.display_name AS submitter_display_name,
     reviewer.display_name AS reviewer_display_name,
@@ -108,6 +113,7 @@ const packageSelect = `
   FROM quotation_package_versions qp
   JOIN opportunity_technical_drafts ts ON ts.id = qp.technical_solution_version_id
   JOIN commercial_quotes cq ON cq.id = qp.commercial_quote_id
+  LEFT JOIN opportunity_commercial_drafts commercial_draft ON commercial_draft.id = qp.commercial_draft_id
   JOIN users creator ON creator.id = qp.created_by
   LEFT JOIN users submitter ON submitter.id = qp.submitted_by
   LEFT JOIN users reviewer ON reviewer.id = qp.reviewed_by
@@ -140,6 +146,17 @@ export function createQuotationPackageRepository(queryTarget) {
   return {
     supportsQuotationPackages: true,
 
+    async hasBidWorkspace(opportunityId) {
+      const result = await queryTarget.query(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM opportunity_bid_workspaces
+          WHERE opportunity_id = $1
+        ) AS exists
+      `, [opportunityId]);
+      return result.rows[0]?.exists === true;
+    },
+
     async listByOpportunity(opportunityId) {
       const result = await queryTarget.query(`
         ${packageSelect}
@@ -150,21 +167,21 @@ export function createQuotationPackageRepository(queryTarget) {
     },
 
     async getPackageDetail(packageId) {
-      const [packageResult, attachmentResult, eventResult] = await Promise.all([
-        queryTarget.query(`${packageSelect} WHERE qp.id = $1 LIMIT 1`, [packageId]),
-        queryTarget.query(`
+      // A repository can be scoped to one pg.Client during an approval transaction.
+      // Keep these queries sequential so a client never executes concurrent work.
+      const packageResult = await queryTarget.query(`${packageSelect} WHERE qp.id = $1 LIMIT 1`, [packageId]);
+      const attachmentResult = await queryTarget.query(`
           SELECT * FROM quotation_package_attachments
           WHERE quotation_package_id = $1
           ORDER BY display_order ASC, id ASC
-        `, [packageId]),
-        queryTarget.query(`
+        `, [packageId]);
+      const eventResult = await queryTarget.query(`
           SELECT e.*, actor.display_name AS actor_display_name
           FROM quotation_package_events e
           JOIN users actor ON actor.id = e.actor_user_id
           WHERE e.quotation_package_id = $1
           ORDER BY e.created_at DESC, e.id DESC
-        `, [packageId])
-      ]);
+        `, [packageId]);
       const packageVersion = mapPackageRow(packageResult.rows[0]);
       if (!packageVersion) return null;
       packageVersion.attachments = attachmentResult.rows.map(mapAttachmentRow);
@@ -234,6 +251,39 @@ export function createQuotationPackageRepository(queryTarget) {
         validityDate: row.validity_date,
         reviewedAt: row.reviewed_at
       }));
+    },
+
+    async getCommercialQuoteContext({ opportunityId, commercialQuoteId }) {
+      const quoteResult = await queryTarget.query(`
+        SELECT id, opportunity_id, status, version_no, total_price,
+          payment_terms, validity_date
+        FROM commercial_quotes
+        WHERE id = $2 AND opportunity_id = $1
+        LIMIT 1
+      `, [opportunityId, commercialQuoteId]);
+      const row = quoteResult.rows[0];
+      if (!row) return null;
+      const itemResult = await queryTarget.query(`
+        SELECT item_name, specification, unit, quantity, unit_price, subtotal
+        FROM quote_items WHERE quote_id = $1 ORDER BY id ASC
+      `, [commercialQuoteId]);
+      return {
+        id: Number(row.id),
+        opportunityId: Number(row.opportunity_id),
+        status: row.status,
+        versionNo: numberOrNull(row.version_no),
+        totalPrice: Number(row.total_price),
+        paymentTerms: row.payment_terms || '',
+        validityDate: row.validity_date,
+        items: itemResult.rows.map((item) => ({
+          itemName: item.item_name,
+          specification: item.specification || '',
+          unit: item.unit || '',
+          quantity: Number(item.quantity),
+          unitPrice: Number(item.unit_price),
+          subtotal: Number(item.subtotal)
+        }))
+      };
     },
 
     async findCurrentSentByOpportunity(opportunityId) {
@@ -448,7 +498,8 @@ export function createQuotationPackageRepository(queryTarget) {
     async approvePending({ packageId, actorUserId, comment }) {
       const result = await queryTarget.query(`
         WITH target AS (
-          SELECT id, opportunity_id FROM quotation_package_versions WHERE id = $1 AND status = 'pending'
+          SELECT id, opportunity_id FROM quotation_package_versions
+          WHERE id = $1 AND status = 'pending' AND submitted_by <> $2
         ), opportunity_lock AS (
           SELECT pg_advisory_xact_lock(opportunity_id) FROM target
         ), next_version AS (
@@ -478,7 +529,7 @@ export function createQuotationPackageRepository(queryTarget) {
           UPDATE quotation_package_versions
           SET status = 'rejected', reviewed_by = $2, reviewed_at = now(), review_comment = $3,
               updated_by = $2, updated_at = now()
-          WHERE id = $1 AND status = 'pending'
+          WHERE id = $1 AND status = 'pending' AND submitted_by <> $2
           RETURNING *
         ), inserted_event AS (
           INSERT INTO quotation_package_events (quotation_package_id, event_type, actor_user_id, comment)

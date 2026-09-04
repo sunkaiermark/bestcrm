@@ -13,6 +13,7 @@ import { createAttachmentRepository } from './repositories/attachmentRepository.
 import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
 import { createBidContentBlockRepository } from './repositories/bidContentBlockRepository.mjs';
 import { createBidPackageEditorRepository } from './repositories/bidPackageEditorRepository.mjs';
+import { createBidPackageApprovalRepository } from './repositories/bidPackageApprovalRepository.mjs';
 import { createBidWorkspaceRepository } from './repositories/bidWorkspaceRepository.mjs';
 import { createCommercialQuoteRepository } from './repositories/commercialQuoteRepository.mjs';
 import { createCommercialPackageTemplateRepository } from './repositories/commercialPackageTemplateRepository.mjs';
@@ -361,6 +362,7 @@ const emptyQuotationPackageRepository = {
   async findCurrentSentByOpportunity() { return null; },
   async findAcceptedByOpportunity() { return null; },
   async getCreationContext() { return null; },
+  async getCommercialQuoteContext() { return null; },
   async createDraft() { throw new Error('Quotation package repository is not configured'); },
   async addAttachmentSnapshot() { throw new Error('Quotation package repository is not configured'); },
   async updateDraft() { throw new Error('Quotation package repository is not configured'); },
@@ -415,6 +417,9 @@ const emptyTodoRepository = {
     throw new Error('Todo repository is not configured');
   },
   async closePendingForOpportunityAndAssignee() {
+    throw new Error('Todo repository is not configured');
+  },
+  async closePendingForOpportunityAssigneeAndTitle() {
     throw new Error('Todo repository is not configured');
   }
 };
@@ -573,6 +578,20 @@ const emptyBidPackageEditorRepository = {
   async createSuggestion() { throw new Error('Bid package editor repository is not configured'); }
 };
 
+const emptyBidPackageApprovalRepository = {
+  async createCompletenessCheck() { throw new Error('Bid package approval repository is not configured'); },
+  async listCompletenessChecks() { return []; },
+  async setWorkspaceStatus() { throw new Error('Bid package approval repository is not configured'); },
+  async copyDraftArtifacts() { throw new Error('Bid package approval repository is not configured'); },
+  async submitCommercial() { throw new Error('Bid package approval repository is not configured'); },
+  async approveCommercial() { throw new Error('Bid package approval repository is not configured'); },
+  async rejectCommercial() { throw new Error('Bid package approval repository is not configured'); },
+  async cloneRejectedCommercial() { throw new Error('Bid package approval repository is not configured'); },
+  async createCompleteDraft() { throw new Error('Bid package approval repository is not configured'); },
+  async submitComplete() { throw new Error('Bid package approval repository is not configured'); },
+  async cloneRejectedComplete() { throw new Error('Bid package approval repository is not configured'); }
+};
+
 const emptyOpportunityCommercialDraftRepository = {
   async createDraft() { throw new Error('Opportunity commercial draft repository is not configured'); },
   async listByWorkspace() { return []; },
@@ -634,6 +653,8 @@ export function createApp(options = {}) {
     || (pool ? createBidWorkspaceRepository(pool) : emptyBidWorkspaceRepository);
   const bidPackageEditorRepository = options.bidPackageEditorRepository
     || (pool ? createBidPackageEditorRepository(pool) : emptyBidPackageEditorRepository);
+  const bidPackageApprovalRepository = options.bidPackageApprovalRepository
+    || (pool ? createBidPackageApprovalRepository(pool) : emptyBidPackageApprovalRepository);
   const technicalDocumentService = options.technicalDocumentService
     || createTechnicalDocumentService({ fontPath: config.technicalDocumentFontPath });
   const workflowTransaction = 'workflowTransaction' in options
@@ -734,8 +755,12 @@ export function createApp(options = {}) {
     bidContentBlockRepository,
     bidWorkspaceRepository,
     bidPackageEditorRepository,
+    bidPackageApprovalRepository,
     opportunityTechnicalDraftRepository,
     opportunityCommercialDraftRepository,
+    quotationPackageRepository,
+    todoRepository,
+    workflowEventRepository,
     workflowTransaction,
     uploadDir: config.uploadDir,
     maxUploadMb: config.maxUploadMb

@@ -91,7 +91,8 @@ export function canCreateOpportunityTechnicalDraft(actor, opportunity) {
 export function canReviewOpportunityTechnicalDraft(actor, opportunity, draft) {
   return draft?.status === 'pending'
     && hasRole(actor, ROLES.TECHNICAL_MANAGER)
-    && Number(opportunity.technicalManagerId) === Number(actor.id);
+    && Number(opportunity.technicalManagerId) === Number(actor.id)
+    && Number(draft.submittedBy) !== Number(actor.id);
 }
 
 export function canEditOpportunityTechnicalDraftSection(actor, opportunity, draft, sectionKey) {

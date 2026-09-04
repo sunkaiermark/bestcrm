@@ -134,6 +134,7 @@ function commercialViewer(actor, opportunity) {
   if (hasRole(actor, ROLES.SALESPERSON) && Number(opportunity.salespersonId) === actorId) return true;
   if (hasRole(actor, ROLES.SALES_MANAGER) && Number(opportunity.salesManagerId) === actorId) return true;
   if (hasRole(actor, ROLES.COMMERCIAL_MANAGER) && Number(opportunity.commercialManagerId) === actorId) return true;
+  if (hasRole(actor, ROLES.QUOTATION_ENGINEER) && Number(opportunity.quotationEngineerId) === actorId) return true;
   return [ROLES.LEGAL_REVIEWER, ROLES.FINANCE_REVIEWER, ROLES.GENERAL_MANAGER]
     .some((role) => hasRole(actor, role));
 }
@@ -141,6 +142,7 @@ function commercialViewer(actor, opportunity) {
 function commercialEditor(actor, opportunity, sectionKey) {
   const actorId = Number(actor.id);
   if (hasRole(actor, ROLES.COMMERCIAL_MANAGER) && Number(opportunity.commercialManagerId) === actorId) return true;
+  if (hasRole(actor, ROLES.QUOTATION_ENGINEER) && Number(opportunity.quotationEngineerId) === actorId) return true;
   return hasRole(actor, ROLES.SALESPERSON)
     && Number(opportunity.salespersonId) === actorId
     && salespersonCommercialSections.has(sectionKey);
@@ -148,8 +150,11 @@ function commercialEditor(actor, opportunity, sectionKey) {
 
 function packageLead(actor, opportunity, packageType) {
   if (packageType === 'technical') return isProjectLeadEngineer(actor, opportunity);
-  return hasRole(actor, ROLES.COMMERCIAL_MANAGER)
-    && Number(opportunity.commercialManagerId) === Number(actor.id);
+  const actorId = Number(actor.id);
+  return (hasRole(actor, ROLES.COMMERCIAL_MANAGER)
+      && Number(opportunity.commercialManagerId) === actorId)
+    || (hasRole(actor, ROLES.QUOTATION_ENGINEER)
+      && Number(opportunity.quotationEngineerId) === actorId);
 }
 
 function sourceIds(packageType, draft) {

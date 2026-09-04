@@ -58,13 +58,18 @@ export function canViewQuotationPackages(user, opportunity) {
   return canViewOpportunity(user, opportunity);
 }
 
-export function canManageQuotationPackages(user, opportunity) {
+export function canManageQuotationPackages(user, opportunity, packageVersion = null) {
+  if (packageVersion?.workspaceId) return false;
   return canManage(user, opportunity);
 }
 
-export function canReviewQuotationPackages(user, opportunity) {
+export function canReviewQuotationPackages(user, opportunity, packageVersion = null) {
+  if (packageVersion?.workspaceId) {
+    return false;
+  }
   return hasRole(user, ROLES.COMMERCIAL_MANAGER)
-    && Number(opportunity.commercialManagerId) === Number(user.id);
+    && Number(opportunity.commercialManagerId) === Number(user.id)
+    && Number(packageVersion?.submittedBy) !== Number(user.id);
 }
 
 function assertView(user, opportunity) {
@@ -75,8 +80,8 @@ function assertManage(user, opportunity) {
   if (!canManageQuotationPackages(user, opportunity)) forbidden();
 }
 
-function assertReview(user, opportunity) {
-  if (!canReviewQuotationPackages(user, opportunity)) forbidden();
+function assertReview(user, opportunity, packageVersion) {
+  if (!canReviewQuotationPackages(user, opportunity, packageVersion)) forbidden();
 }
 
 function transactionDependencies(dependencies, transactionRepositories) {
@@ -201,6 +206,10 @@ export async function getQuotationPackage(repository, user, opportunity, package
 
 export async function getQuotationPackageCreationOptions(repository, user, opportunity) {
   assertManage(user, opportunity);
+  if (typeof repository.hasBidWorkspace === 'function'
+    && await repository.hasBidWorkspace(opportunity.id)) {
+    throw new QuotationPackageValidationError('Use Bid Center to assemble this opportunity quotation package', 409);
+  }
   const [technicalSolutions, commercialQuotes, packages] = await Promise.all([
     repository.listApprovedTechnicalSolutions(opportunity.id),
     repository.listApprovedCommercialQuotes(opportunity.id),
@@ -221,6 +230,10 @@ export async function createQuotationPackageDraft(dependencies, user, opportunit
     ));
   }
   const repository = dependencies.quotationPackageRepository;
+  if (typeof repository.hasBidWorkspace === 'function'
+    && await repository.hasBidWorkspace(opportunity.id)) {
+    throw new QuotationPackageValidationError('Use Bid Center to assemble this opportunity quotation package', 409);
+  }
   const existingPackages = await repository.listByOpportunity(opportunity.id);
   if (existingPackages.some((item) => ['draft', 'pending', 'approved', 'accepted'].includes(item.status))) {
     throw new QuotationPackageValidationError('Finish the current quotation package before creating another revision', 409);
@@ -246,6 +259,7 @@ export async function createQuotationPackageDraft(dependencies, user, opportunit
 }
 
 export async function updateQuotationPackageDraft(dependencies, user, opportunity, packageVersion, input) {
+  if (packageVersion.workspaceId) forbidden();
   assertManage(user, opportunity);
   if (packageVersion.status !== 'draft') forbidden();
   if (typeof dependencies.workflowTransaction === 'function') {
@@ -265,6 +279,7 @@ export async function updateQuotationPackageDraft(dependencies, user, opportunit
 }
 
 export async function submitQuotationPackage(repository, user, opportunity, packageVersion, comment) {
+  if (packageVersion.workspaceId) forbidden();
   assertManage(user, opportunity);
   if (packageVersion.status !== 'draft') forbidden();
   assertRevisionMetadata(packageVersion.sourcePackageId, packageVersion.revisionReason, packageVersion.changeSummary);
@@ -278,7 +293,7 @@ export async function submitQuotationPackage(repository, user, opportunity, pack
 }
 
 export async function reviewQuotationPackage(repository, user, opportunity, packageVersion, decision, comment) {
-  assertReview(user, opportunity);
+  assertReview(user, opportunity, packageVersion);
   if (packageVersion.status !== 'pending') forbidden();
   const normalizedDecision = String(decision || '').trim();
   if (normalizedDecision === 'approve') {

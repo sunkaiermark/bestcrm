@@ -112,9 +112,11 @@ test('three-pane technical editor exposes assignment-scoped editing and standard
   assert.equal(editor.activeSection.responsibleNames[0], 'Support');
 });
 
-test('technical-only collaborators cannot open commercial content and salesperson pricing remains read-only', async () => {
+test('assigned Quotation Engineer owns commercial editing while salesperson pricing remains read-only', async () => {
   const { service } = setup();
-  await assert.rejects(() => service.getEditor(lead, 40, 'commercial', 'pricing'), (error) => error.statusCode === 403);
+  const leadEditor = await service.getEditor(lead, 40, 'commercial', 'pricing');
+  assert.equal(leadEditor.canEditActiveSection, true);
+  assert.equal(leadEditor.isPackageLead, true);
   const editor = await service.getEditor(salesperson, 40, 'commercial', 'pricing');
   assert.equal(editor.canEditActiveSection, false);
   assert.equal(editor.activeSection.modificationStatus, 'standard');

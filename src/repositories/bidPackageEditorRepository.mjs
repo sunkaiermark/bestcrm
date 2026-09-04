@@ -17,6 +17,7 @@ function mapChange(row) {
     packageType: row.package_type,
     technicalDraftId: numberOrNull(row.technical_draft_id),
     commercialDraftId: numberOrNull(row.commercial_draft_id),
+    quotationPackageId: numberOrNull(row.quotation_package_id),
     sectionKey: row.section_key,
     modificationStatus: row.modification_status,
     changeType: row.change_type,
@@ -34,6 +35,9 @@ function mapEvent(row) {
     id: Number(row.id),
     workspaceId: Number(row.workspace_id),
     packageType: row.package_type,
+    technicalDraftId: numberOrNull(row.technical_draft_id),
+    commercialDraftId: numberOrNull(row.commercial_draft_id),
+    quotationPackageId: numberOrNull(row.quotation_package_id),
     sectionKey: row.section_key || '',
     eventType: row.event_type,
     actorUserId: Number(row.actor_user_id),
@@ -83,26 +87,27 @@ function mapSuggestion(row) {
 }
 
 function sourceValues(input) {
-  return input.packageType === 'technical'
-    ? [input.technicalDraftId, null]
-    : [null, input.commercialDraftId];
+  if (input.packageType === 'technical') return [input.technicalDraftId, null, null];
+  if (input.packageType === 'commercial') return [null, input.commercialDraftId, null];
+  return [null, null, input.quotationPackageId];
 }
 
 export function createBidPackageEditorRepository(queryTarget) {
   async function insertChange(input) {
-    const [technicalDraftId, commercialDraftId] = sourceValues(input);
+    const [technicalDraftId, commercialDraftId, quotationPackageId] = sourceValues(input);
     const result = await queryTarget.query(`
       INSERT INTO bid_section_changes (
         workspace_id, package_type, technical_draft_id, commercial_draft_id,
-        section_key, modification_status, change_type, before_summary,
-        after_summary, reason, actor_user_id
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        quotation_package_id, section_key, modification_status, change_type,
+        before_summary, after_summary, reason, actor_user_id
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)
       RETURNING *
     `, [
       input.workspaceId,
       input.packageType,
       technicalDraftId,
       commercialDraftId,
+      quotationPackageId,
       input.sectionKey,
       input.modificationStatus,
       input.changeType,
@@ -115,18 +120,19 @@ export function createBidPackageEditorRepository(queryTarget) {
   }
 
   async function insertEvent(input) {
-    const [technicalDraftId, commercialDraftId] = sourceValues(input);
+    const [technicalDraftId, commercialDraftId, quotationPackageId] = sourceValues(input);
     const result = await queryTarget.query(`
       INSERT INTO bid_package_events (
         workspace_id, package_type, technical_draft_id, commercial_draft_id,
-        event_type, section_key, actor_user_id, details
-      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb)
+        quotation_package_id, event_type, section_key, actor_user_id, details
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
       RETURNING *
     `, [
       input.workspaceId,
       input.packageType,
       technicalDraftId,
       commercialDraftId,
+      quotationPackageId,
       input.eventType,
       input.sectionKey || null,
       input.actorUserId,
@@ -152,9 +158,11 @@ export function createBidPackageEditorRepository(queryTarget) {
         WHERE change.workspace_id = $1
           AND change.package_type = $2
           AND (($2 = 'technical' AND change.technical_draft_id = $3)
-            OR ($2 = 'commercial' AND change.commercial_draft_id = $4))
+            OR ($2 = 'commercial' AND change.commercial_draft_id = $4)
+            OR ($2 = 'complete' AND change.quotation_package_id = $5))
         ORDER BY change.created_at DESC, change.id DESC
-      `, [input.workspaceId, input.packageType, input.technicalDraftId || null, input.commercialDraftId || null]);
+      `, [input.workspaceId, input.packageType, input.technicalDraftId || null,
+        input.commercialDraftId || null, input.quotationPackageId || null]);
       return result.rows.map(mapChange);
     },
 
@@ -166,9 +174,11 @@ export function createBidPackageEditorRepository(queryTarget) {
         WHERE event.workspace_id = $1
           AND event.package_type = $2
           AND (($2 = 'technical' AND event.technical_draft_id = $3)
-            OR ($2 = 'commercial' AND event.commercial_draft_id = $4))
+            OR ($2 = 'commercial' AND event.commercial_draft_id = $4)
+            OR ($2 = 'complete' AND event.quotation_package_id = $5))
         ORDER BY event.created_at DESC, event.id DESC
-      `, [input.workspaceId, input.packageType, input.technicalDraftId || null, input.commercialDraftId || null]);
+      `, [input.workspaceId, input.packageType, input.technicalDraftId || null,
+        input.commercialDraftId || null, input.quotationPackageId || null]);
       return result.rows.map(mapEvent);
     },
 

@@ -248,3 +248,12 @@ test('section editor POST persists the project copy and redirects to the selecte
   assert.equal(calls.find(([name]) => name === 'insertPackageChange')[1].reason, 'Customer-specific cover');
   assert.equal(calls.find(([name]) => name === 'insertPackageEvent')[1].eventType, 'section_saved');
 });
+
+test('direct package submission POST denies a non-owner before workflow side effects', async () => {
+  const { agent, calls } = await createWorkspaceAgent({ role: ROLES.SALESPERSON, userId: 7 });
+  const response = await agent.post('/bid-center/workspaces/40/packages/technical/submit')
+    .type('form').send({ comment: 'bypass attempt' });
+  assert.equal(response.status, 403);
+  assert.match(response.text, /Forbidden/);
+  assert.equal(calls.some(([name]) => name === 'insertPackageEvent'), false);
+});

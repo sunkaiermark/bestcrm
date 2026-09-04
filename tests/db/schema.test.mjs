@@ -37,6 +37,7 @@ const bidCenterFoundationMigrationPath = new URL('../../src/db/migrations/035_bi
 const opportunityBidWorkspacesMigrationPath = new URL('../../src/db/migrations/036_opportunity_bid_workspaces.sql', import.meta.url);
 const quotationPackageDocumentsMigrationPath = new URL('../../src/db/migrations/037_quotation_package_documents.sql', import.meta.url);
 const bidPackageEditorsMigrationPath = new URL('../../src/db/migrations/038_bid_package_editors.sql', import.meta.url);
+const bidPackageApprovalsMigrationPath = new URL('../../src/db/migrations/039_bid_package_approvals.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -373,6 +374,19 @@ test('bid package editor migration preserves project edits, attachments, suggest
   assert.match(sql, /content_snapshot jsonb NOT NULL/);
   assert.match(sql, /Bid package source does not belong to its workspace/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('bid package approval migration adds completeness audit, reviewer separation, and immutable revisions', async () => {
+  const sql = await readFile(bidPackageApprovalsMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS bid_package_completeness_checks/);
+  assert.match(sql, /package_type IN \('technical', 'commercial', 'complete'\)/);
+  assert.match(sql, /snapshot_sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /Bid package completeness checks are append-only/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS review_source_package_id bigint/);
+  assert.match(sql, /reviewed_by <> submitted_by/);
+  assert.match(sql, /Submitted technical package attachments are immutable/);
+  assert.match(sql, /Submitted commercial package attachments are immutable/);
+  assert.match(sql, /Complete bid review revisions require a rejected source from the same workspace/);
 });
 
 test('customer country migration adds country to customer records', async () => {

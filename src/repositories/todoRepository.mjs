@@ -78,6 +78,17 @@ export function createTodoRepository(queryTarget) {
           AND assignee_user_id = $2
           AND status = 'pending'
       `, [opportunityId, assigneeUserId, status]);
+    },
+
+    async closePendingForOpportunityAssigneeAndTitle(opportunityId, assigneeUserId, title, status) {
+      return queryTarget.query(`
+        UPDATE todos
+        SET status = $4, completed_at = now()
+        WHERE opportunity_id = $1
+          AND assignee_user_id = $2
+          AND title = $3
+          AND status = 'pending'
+      `, [opportunityId, assigneeUserId, title, status]);
     }
   };
 }

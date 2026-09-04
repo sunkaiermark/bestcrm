@@ -4,6 +4,7 @@ import { Router } from 'express';
 import multer from 'multer';
 import { requireLogin } from '../middleware/auth.mjs';
 import { createBidPackageEditorService } from '../services/bidPackageEditorService.mjs';
+import { createBidPackageApprovalService } from '../services/bidPackageApprovalService.mjs';
 import { createBidWorkspaceService, bidWorkspaceVariableInputName } from '../services/bidWorkspaceService.mjs';
 import {
   removeStoredAttachmentFile,
@@ -54,8 +55,12 @@ export function bidWorkspaceRoutes({
   bidContentBlockRepository,
   bidWorkspaceRepository,
   bidPackageEditorRepository,
+  bidPackageApprovalRepository,
   opportunityTechnicalDraftRepository,
   opportunityCommercialDraftRepository,
+  quotationPackageRepository,
+  todoRepository,
+  workflowEventRepository,
   workflowTransaction,
   uploadDir = './var/uploads',
   maxUploadMb = 25
@@ -69,12 +74,17 @@ export function bidWorkspaceRoutes({
     bidContentBlockRepository,
     bidWorkspaceRepository,
     bidPackageEditorRepository,
+    bidPackageApprovalRepository,
     opportunityTechnicalDraftRepository,
     opportunityCommercialDraftRepository,
+    quotationPackageRepository,
+    todoRepository,
+    workflowEventRepository,
     workflowTransaction
   };
   const service = createBidWorkspaceService({ enabled, dependencies });
   const editorService = createBidPackageEditorService({ enabled, dependencies });
+  const approvalService = createBidPackageApprovalService({ enabled, dependencies });
   const upload = multer({
     storage: multer.memoryStorage(),
     limits: { fileSize: maxUploadMb * 1024 * 1024, files: 1 }
@@ -171,7 +181,59 @@ export function bidWorkspaceRoutes({
   router.get('/bid-center/workspaces/:id/packages/:packageType', async (req, res, next) => {
     try {
       const editor = await editorService.getEditor(req.currentUser, req.params.id, req.params.packageType, req.query.section);
-      res.render('bid-center/workspaces/editor', { editor });
+      const approval = await approvalService.getPackageApproval(
+        req.currentUser, req.params.id, req.params.packageType
+      );
+      res.render('bid-center/workspaces/editor', { editor, approval });
+    } catch (error) { handleError(error, res, next); }
+  });
+
+  router.post('/bid-center/workspaces/:id/packages/:packageType/completeness', async (req, res, next) => {
+    try {
+      await approvalService.checkPackage(req.currentUser, req.params.id, req.params.packageType);
+      res.redirect(editorPath(req.params.id, req.params.packageType));
+    } catch (error) { handleError(error, res, next); }
+  });
+
+  router.post('/bid-center/workspaces/:id/packages/:packageType/submit', async (req, res, next) => {
+    try {
+      await approvalService.submitPackage(req.currentUser, req.params.id, req.params.packageType, req.body);
+      res.redirect(editorPath(req.params.id, req.params.packageType));
+    } catch (error) { handleError(error, res, next); }
+  });
+
+  router.post('/bid-center/workspaces/:id/packages/:packageType/review', async (req, res, next) => {
+    try {
+      await approvalService.reviewPackage(req.currentUser, req.params.id, req.params.packageType, req.body);
+      res.redirect(editorPath(req.params.id, req.params.packageType));
+    } catch (error) { handleError(error, res, next); }
+  });
+
+  router.post('/bid-center/workspaces/:id/complete', async (req, res, next) => {
+    try {
+      await approvalService.createCompleteDraft(req.currentUser, req.params.id, req.body);
+      res.redirect(`/bid-center/workspaces/${req.params.id}`);
+    } catch (error) { handleError(error, res, next); }
+  });
+
+  router.post('/bid-center/workspaces/:id/complete/:packageId/completeness', async (req, res, next) => {
+    try {
+      await approvalService.checkComplete(req.currentUser, req.params.id, req.params.packageId);
+      res.redirect(`/bid-center/workspaces/${req.params.id}`);
+    } catch (error) { handleError(error, res, next); }
+  });
+
+  router.post('/bid-center/workspaces/:id/complete/:packageId/submit', async (req, res, next) => {
+    try {
+      await approvalService.submitComplete(req.currentUser, req.params.id, req.params.packageId, req.body);
+      res.redirect(`/bid-center/workspaces/${req.params.id}`);
+    } catch (error) { handleError(error, res, next); }
+  });
+
+  router.post('/bid-center/workspaces/:id/complete/:packageId/review', async (req, res, next) => {
+    try {
+      await approvalService.reviewComplete(req.currentUser, req.params.id, req.params.packageId, req.body);
+      res.redirect(`/bid-center/workspaces/${req.params.id}`);
     } catch (error) { handleError(error, res, next); }
   });
 
@@ -307,7 +369,8 @@ export function bidWorkspaceRoutes({
   router.get('/bid-center/workspaces/:id', async (req, res, next) => {
     try {
       const workspace = await service.get(req.currentUser, req.params.id);
-      res.render('bid-center/workspaces/detail', { workspace });
+      const approval = await approvalService.getDashboard(req.currentUser, req.params.id);
+      res.render('bid-center/workspaces/detail', { workspace, approval });
     } catch (error) { handleError(error, res, next); }
   });
 

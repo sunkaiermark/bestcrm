@@ -538,7 +538,7 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
           FROM next_version
           WHERE d.id = (
             SELECT id FROM opportunity_technical_drafts
-            WHERE opportunity_id = $1 AND status = 'pending'
+            WHERE opportunity_id = $1 AND status = 'pending' AND submitted_by <> $2
             ORDER BY submitted_at DESC, id DESC
             LIMIT 1
           )
@@ -568,7 +568,7 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
               updated_at = now()
           WHERE id = (
             SELECT id FROM opportunity_technical_drafts
-            WHERE opportunity_id = $1 AND status = 'pending'
+            WHERE opportunity_id = $1 AND status = 'pending' AND submitted_by <> $2
             ORDER BY submitted_at DESC, id DESC
             LIMIT 1
           )

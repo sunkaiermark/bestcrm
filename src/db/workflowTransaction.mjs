@@ -2,6 +2,7 @@ import { createAttachmentRepository } from '../repositories/attachmentRepository
 import { createApprovalSettingRepository } from '../repositories/approvalSettingRepository.mjs';
 import { createBidContentBlockRepository } from '../repositories/bidContentBlockRepository.mjs';
 import { createBidPackageEditorRepository } from '../repositories/bidPackageEditorRepository.mjs';
+import { createBidPackageApprovalRepository } from '../repositories/bidPackageApprovalRepository.mjs';
 import { createBidWorkspaceRepository } from '../repositories/bidWorkspaceRepository.mjs';
 import { createCommercialQuoteRepository } from '../repositories/commercialQuoteRepository.mjs';
 import { createCommercialPackageTemplateRepository } from '../repositories/commercialPackageTemplateRepository.mjs';
@@ -9,6 +10,7 @@ import { createContractApprovalRepository } from '../repositories/contractApprov
 import { createOpportunityMaterialVersionRepository } from '../repositories/opportunityMaterialVersionRepository.mjs';
 import { createOpportunityCommercialDraftRepository } from '../repositories/opportunityCommercialDraftRepository.mjs';
 import { createOpportunityRepository } from '../repositories/opportunityRepository.mjs';
+import { createOpportunityResponsibilityRepository } from '../repositories/opportunityResponsibilityRepository.mjs';
 import { createOpportunityTechnicalDraftRepository } from '../repositories/opportunityTechnicalDraftRepository.mjs';
 import { createQuotationPackageRepository } from '../repositories/quotationPackageRepository.mjs';
 import { createTechnicalSolutionRepository } from '../repositories/technicalSolutionRepository.mjs';
@@ -22,6 +24,7 @@ function createWorkflowRepositories(queryTarget) {
     approvalSettingRepository: createApprovalSettingRepository(queryTarget),
     bidContentBlockRepository: createBidContentBlockRepository(queryTarget),
     bidPackageEditorRepository: createBidPackageEditorRepository(queryTarget),
+    bidPackageApprovalRepository: createBidPackageApprovalRepository(queryTarget),
     bidWorkspaceRepository: createBidWorkspaceRepository(queryTarget),
     commercialQuoteRepository: createCommercialQuoteRepository(queryTarget),
     commercialPackageTemplateRepository: createCommercialPackageTemplateRepository(queryTarget),
@@ -29,6 +32,7 @@ function createWorkflowRepositories(queryTarget) {
     opportunityMaterialVersionRepository: createOpportunityMaterialVersionRepository(queryTarget),
     opportunityCommercialDraftRepository: createOpportunityCommercialDraftRepository(queryTarget),
     opportunityRepository: createOpportunityRepository(queryTarget),
+    opportunityResponsibilityRepository: createOpportunityResponsibilityRepository(queryTarget),
     opportunityTechnicalDraftRepository: createOpportunityTechnicalDraftRepository(queryTarget),
     quotationPackageRepository: createQuotationPackageRepository(queryTarget),
     technicalSolutionRepository: createTechnicalSolutionRepository(queryTarget),

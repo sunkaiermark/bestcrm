@@ -139,8 +139,8 @@ export function quotationPackageRoutes({
         ...context,
         sourcePackage,
         comparison: compareQuotationPackages(context.packageVersion, sourcePackage),
-        canManage: canManageQuotationPackages(req.currentUser, context.opportunity),
-        canReview: canReviewQuotationPackages(req.currentUser, context.opportunity)
+        canManage: canManageQuotationPackages(req.currentUser, context.opportunity, context.packageVersion),
+        canReview: canReviewQuotationPackages(req.currentUser, context.opportunity, context.packageVersion)
       });
     } catch (error) {
       handleError(error, res, next);
@@ -151,7 +151,7 @@ export function quotationPackageRoutes({
     try {
       const context = await loadContext(dependencies, req, res);
       if (!context) return;
-      if (!canManageQuotationPackages(req.currentUser, context.opportunity) || context.packageVersion.status !== 'draft') {
+      if (!canManageQuotationPackages(req.currentUser, context.opportunity, context.packageVersion) || context.packageVersion.status !== 'draft') {
         res.status(403).send('Forbidden');
         return;
       }

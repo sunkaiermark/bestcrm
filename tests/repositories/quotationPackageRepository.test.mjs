@@ -14,7 +14,9 @@ function fakeTarget(responses = []) {
 
 function packageRow(overrides = {}) {
   return {
-    id: '51', opportunity_id: '20', source_package_id: null, draft_revision_no: '1', version_no: null,
+    id: '51', opportunity_id: '20', source_package_id: null, review_source_package_id: null,
+    workspace_id: null, commercial_draft_id: null, commercial_draft_version_no: null,
+    draft_revision_no: '1', version_no: null,
     status: 'draft', technical_solution_version_id: '41', technical_solution_version_no: '2',
     commercial_quote_id: '31', commercial_quote_version_no: '3', currency: 'USD', total_price: '120000',
     delivery_period: '16 weeks', payment_terms: '30/60/10', valid_until: '2026-12-31',
@@ -52,6 +54,29 @@ test('approval allocates the formal QP version under the opportunity lock', asyn
   assert.match(target.queries[0].sql, /pg_advisory_xact_lock\(opportunity_id\)/);
   assert.match(target.queries[0].sql, /MAX\(qp\.version_no\)/);
   assert.deepEqual(target.queries[0].params, [51, 9, 'Approved']);
+  assert.match(target.queries[0].sql, /submitted_by <> \$2/);
+});
+
+test('repository detects an opportunity already governed by Bid Center', async () => {
+  const target = fakeTarget([{ rows: [{ exists: true }] }]);
+  const repository = createQuotationPackageRepository(target);
+  assert.equal(await repository.hasBidWorkspace(20), true);
+  assert.match(target.queries[0].sql, /FROM opportunity_bid_workspaces/);
+  assert.deepEqual(target.queries[0].params, [20]);
+});
+
+test('bid-center package mapping retains frozen workspace and commercial-version bindings', async () => {
+  const target = fakeTarget([
+    { rows: [packageRow({ workspace_id: '40', commercial_draft_id: '42', commercial_draft_version_no: '3', review_source_package_id: '49' })] },
+    { rows: [] },
+    { rows: [] }
+  ]);
+  const repository = createQuotationPackageRepository(target);
+  const detail = await repository.getPackageDetail(51);
+  assert.equal(detail.workspaceId, 40);
+  assert.equal(detail.commercialDraftId, 42);
+  assert.equal(detail.commercialDraftVersionNo, 3);
+  assert.equal(detail.reviewSourcePackageId, 49);
 });
 
 test('sent transition supersedes the former sent package and acceptance links opportunity', async () => {

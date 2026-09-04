@@ -103,6 +103,30 @@ test('only assigned commercial manager can approve a pending package', async () 
   );
 });
 
+test('legacy quotation package mutations cannot bypass Bid Center completeness and approval routes', async () => {
+  const bidCenterDraft = draft({ status: 'pending', workspaceId: 40, submittedBy: 7 });
+  await assert.rejects(
+    () => reviewQuotationPackage({ async approvePending() { throw new Error('must not run'); } }, commercialManager, opportunity, bidCenterDraft, 'approve', ''),
+    /Forbidden/
+  );
+});
+
+test('legacy quotation package creation cannot bypass an existing Bid Center workspace', async () => {
+  let listCalled = false;
+  const repository = {
+    async hasBidWorkspace() { return true; },
+    async listByOpportunity() { listCalled = true; return []; }
+  };
+  await assert.rejects(
+    () => createQuotationPackageDraft({ quotationPackageRepository: repository }, sales, opportunity, {
+      technicalSolutionVersionId: 41, commercialQuoteId: 31, currency: 'USD', deliveryPeriod: '16 weeks'
+    }),
+    (error) => error instanceof QuotationPackageValidationError
+      && error.statusCode === 409 && /Use Bid Center/.test(error.message)
+  );
+  assert.equal(listCalled, false);
+});
+
 test('package comparison includes commercial fields, component versions and attachment checksums', () => {
   const before = draft({ status: 'sent', versionNo: 1, technicalSolutionVersionNo: 1, commercialQuoteVersionNo: 2, attachments: [{ sourceType: 'commercial_quote_attachment', originalName: 'v1.pdf', sha256: 'a' }] });
   const after = draft({ sourcePackageId: 50, totalPrice: 125000, deliveryPeriod: '18 weeks', technicalSolutionVersionNo: 2, commercialQuoteVersionNo: 3, attachments: [{ sourceType: 'commercial_quote_attachment', originalName: 'v2.pdf', sha256: 'b' }] });

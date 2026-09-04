@@ -1,7 +1,7 @@
 <% const zh = language === 'zh'; %>
 <% const packageLabel = editor.packageType === 'technical' ? (zh ? '技术包' : 'Technical Package') : (zh ? '商务包' : 'Commercial Package'); %>
 <% const statusLabels = zh ? { standard: '标准', customized: '已定制', project_added: '项目新增', omitted: '已省略', needs_review: '待复核' } : { standard: 'Standard', customized: 'Customized', project_added: 'Project added', omitted: 'Omitted', needs_review: 'Needs review' }; %>
-<% const eventLabels = zh ? { variables_saved: '变量已保存', section_saved: '章节已保存', section_added: '章节已新增', section_omitted: '章节已省略', section_restored: '章节已恢复', sections_reordered: '章节已排序', content_selected: '内容选择已保存', attachment_added: '附件已添加', attachment_removed: '附件已移除', library_suggestion_created: '模板库建议草稿已创建', assignment_added: '章节分工已添加', assignment_removed: '章节分工已取消' } : { variables_saved: 'Variables saved', section_saved: 'Section saved', section_added: 'Section added', section_omitted: 'Section omitted', section_restored: 'Section restored', sections_reordered: 'Sections reordered', content_selected: 'Content selection saved', attachment_added: 'Attachment added', attachment_removed: 'Attachment removed', library_suggestion_created: 'Library suggestion draft created', assignment_added: 'Assignment added', assignment_removed: 'Assignment removed' }; %>
+<% const eventLabels = zh ? { variables_saved: '变量已保存', section_saved: '章节已保存', section_added: '章节已新增', section_omitted: '章节已省略', section_restored: '章节已恢复', sections_reordered: '章节已排序', content_selected: '内容选择已保存', attachment_added: '附件已添加', attachment_removed: '附件已移除', library_suggestion_created: '模板库建议草稿已创建', assignment_added: '章节分工已添加', assignment_removed: '章节分工已取消', completeness_checked: '完整性已检查', submitted: '已提交审批', approved: '审批通过', rejected: '已驳回', revision_created: '已创建下一版草稿' } : { variables_saved: 'Variables saved', section_saved: 'Section saved', section_added: 'Section added', section_omitted: 'Section omitted', section_restored: 'Section restored', sections_reordered: 'Sections reordered', content_selected: 'Content selection saved', attachment_added: 'Attachment added', attachment_removed: 'Attachment removed', library_suggestion_created: 'Library suggestion draft created', assignment_added: 'Assignment added', assignment_removed: 'Assignment removed', completeness_checked: 'Completeness checked', submitted: 'Submitted for review', approved: 'Approved', rejected: 'Rejected', revision_created: 'Next draft created' }; %>
 <%- include('../../partials/app-start', { title: `${packageLabel} - ${editor.workspace.opportunity.opportunityNo} - BESTCRM`, activeNav: 'bid-center-workspaces' }) %>
         <p class="breadcrumb"><a href="/bid-center/workspaces"><%= t('bidProjects') %></a> / <a href="/bid-center/workspaces/<%= editor.workspace.id %>"><%= editor.workspace.opportunity.opportunityNo %></a> / <%= packageLabel %></p>
         <header class="page-header bid-editor-header">
@@ -98,6 +98,22 @@
           </main>
 
           <aside class="bid-editor-reference">
+            <section class="bid-reference-card">
+              <h2><%= zh ? '完整性与审批' : 'Completeness & approval' %></h2>
+              <p><strong><%= approval.label %></strong> · <%= approval.status %></p>
+              <% const latestCheck = approval.checks[0]; %>
+              <% if (latestCheck) { %>
+                <p class="<%= latestCheck.passed ? 'muted' : 'inline-error' %>"><%= latestCheck.passed ? (zh ? '最近检查：通过' : 'Latest check: passed') : (zh ? `最近检查：${latestCheck.issues.length} 项未通过` : `Latest check: ${latestCheck.issues.length} issue(s)`) %></p>
+                <% if (!latestCheck.passed) { %><ul><% for (const checkIssue of latestCheck.issues) { %><li><%= checkIssue.message || checkIssue.code %></li><% } %></ul><% } %>
+                <p class="muted">SHA-256 <%= latestCheck.snapshotSha256.slice(0, 16) %>… · <%= latestCheck.checkedByDisplayName %></p>
+              <% } else { %><p class="empty"><%= zh ? '尚未执行完整性检查。' : 'No completeness check has been recorded.' %></p><% } %>
+              <% if (approval.canCheck) { %><form method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/completeness"><%- csrfField() %><button class="secondary-action" type="submit"><%= zh ? '检查完整性' : 'Check completeness' %></button></form><% } %>
+              <% if (approval.canSubmit) { %><form class="compact-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/submit"><%- csrfField() %><label><%= zh ? '提交说明' : 'Submission note' %><input name="comment" maxlength="2000"></label><button type="submit"><%= zh ? '提交审批' : 'Submit for approval' %></button></form><% } %>
+              <% if (approval.canReview) { %><form class="compact-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/review"><%- csrfField() %><label><%= zh ? '审批意见（驳回时必填）' : 'Review comment (required to reject)' %><textarea name="comment" maxlength="2000"></textarea></label><div class="inline-actions"><button name="decision" value="approve" type="submit"><%= zh ? '审批通过' : 'Approve' %></button><button class="danger-action" name="decision" value="reject" type="submit"><%= zh ? '驳回并创建下一稿' : 'Reject and create next draft' %></button></div></form><% } %>
+              <h3><%= zh ? '版本记录' : 'Version history' %></h3>
+              <ol class="bid-audit-list"><% for (const version of approval.versions) { %><li><strong><%= version.formalVersionLabel || version.draftLabel %></strong><span><%= version.status %></span></li><% } %></ol>
+              <% if (approval.comparison) { %><p class="muted"><%= zh ? '与上一稿差异' : 'Changes from prior draft' %>: <%= [...approval.comparison.changedVariables, ...approval.comparison.changedSections, ...approval.comparison.changedFields].join(', ') || (zh ? '仅状态/审批信息变化' : 'Status or review metadata only') %></p><% } %>
+            </section>
             <% if (editor.activeSection) { const section = editor.activeSection; %>
               <section class="bid-reference-card"><h2><%= zh ? '标准来源与差异' : 'Standard source & diff' %></h2>
                 <% if (section.baseline) { %>
