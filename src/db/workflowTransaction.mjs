@@ -1,6 +1,7 @@
 import { createAttachmentRepository } from '../repositories/attachmentRepository.mjs';
 import { createApprovalSettingRepository } from '../repositories/approvalSettingRepository.mjs';
 import { createBidContentBlockRepository } from '../repositories/bidContentBlockRepository.mjs';
+import { createBidPackageEditorRepository } from '../repositories/bidPackageEditorRepository.mjs';
 import { createBidWorkspaceRepository } from '../repositories/bidWorkspaceRepository.mjs';
 import { createCommercialQuoteRepository } from '../repositories/commercialQuoteRepository.mjs';
 import { createCommercialPackageTemplateRepository } from '../repositories/commercialPackageTemplateRepository.mjs';
@@ -20,6 +21,7 @@ function createWorkflowRepositories(queryTarget) {
     attachmentRepository: createAttachmentRepository(queryTarget),
     approvalSettingRepository: createApprovalSettingRepository(queryTarget),
     bidContentBlockRepository: createBidContentBlockRepository(queryTarget),
+    bidPackageEditorRepository: createBidPackageEditorRepository(queryTarget),
     bidWorkspaceRepository: createBidWorkspaceRepository(queryTarget),
     commercialQuoteRepository: createCommercialQuoteRepository(queryTarget),
     commercialPackageTemplateRepository: createCommercialPackageTemplateRepository(queryTarget),

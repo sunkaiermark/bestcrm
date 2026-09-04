@@ -10,6 +10,7 @@
     "test:bid-center-db": "node scripts/verify-bid-center-migrations.mjs",
     "test:bid-center-library-db": "node scripts/verify-bid-center-library.mjs",
     "test:bid-workspaces-db": "node scripts/verify-bid-workspaces.mjs",
+    "test:bid-package-editors-db": "node scripts/verify-bid-package-editors.mjs",
     "db:migrate": "node src/db/migrate.mjs",
     "db:seed": "node src/db/seed.mjs",
     "email:poll": "node scripts/poll-email-inquiries.mjs",

@@ -82,15 +82,44 @@ async function createWorkspaceAgent({ enabled = true, role = ROLES.QUOTATION_ENG
     async createWorkspace(input) { calls.push(['createWorkspace', input]); existing = workspace; return { id: 40 }; }
   };
   const opportunityTechnicalDraftRepository = {
-    async createDraft(input) { calls.push(['createTechnicalDraft', input]); return { id: 41, ...input }; }
+    async createDraft(input) { calls.push(['createTechnicalDraft', input]); return { id: 41, ...input }; },
+    async getDraftDetail() {
+      return {
+        id: 41, opportunityId: 20, status: 'draft', draftLabel: 'TS-D1', templateRevisionId: 9,
+        templateRevisionNoSnapshot: 2, contentSchemaSnapshot: technicalTemplate.revisions[0].contentSchema,
+        variableSchemaSnapshot: technicalTemplate.revisions[0].variables, variableValues: { customer_name: 'Acme' },
+        selectedClauses: [], validationIssues: [], assignments: [],
+        renderedContent: { schemaVersion: 1, sections: [{ key: 'cover', labelEn: 'Cover', labelZh: '封面', sortOrder: 1, included: true, bodyEn: '', bodyZh: '', tableRows: [], clauses: [] }], variables: [] }
+      };
+    }
   };
   const opportunityCommercialDraftRepository = {
-    async createDraft(input) { calls.push(['createCommercialDraft', input]); return { id: 42, ...input }; }
+    async createDraft(input) { calls.push(['createCommercialDraft', input]); return { id: 42, ...input }; },
+    async getDraftDetail() {
+      return {
+        id: 42, workspaceId: 40, opportunityId: 20, status: 'draft', draftLabel: 'CP-D1', templateRevisionId: 10,
+        templateRevisionNoSnapshot: 1, contentSchemaSnapshot: commercialTemplate.revisions[0].contentSchema,
+        variableSchemaSnapshot: commercialTemplate.revisions[0].variableSchema, variableValues: { total_price: 120000 },
+        validationIssues: [], sourceMetadata: { contentComponentSnapshots: [] },
+        renderedContent: { schemaVersion: 1, sections: [{ key: 'pricing', labelEn: 'Pricing', labelZh: '价格', sortOrder: 1, included: true, bodyEn: '', bodyZh: '', tableRows: [], contentBlocks: [] }], variables: [] }
+      };
+    }
+  };
+  const bidPackageEditorRepository = {
+    async listChanges() { return []; }, async listEvents() { return []; },
+    async listAttachments() { return []; }, async listSuggestions() { return []; },
+    async findAttachment() { return null; },
+    async updateTechnicalDraft(input) { calls.push(['updateTechnicalPackage', input]); return true; },
+    async updateCommercialDraft(input) { calls.push(['updateCommercialPackage', input]); return true; },
+    async insertChange(input) { calls.push(['insertPackageChange', input]); return input; },
+    async insertEvent(input) { calls.push(['insertPackageEvent', input]); return input; },
+    async touchWorkspace(id, actorId) { calls.push(['touchWorkspace', Number(id), Number(actorId)]); }
   };
   const transactionRepositories = {
     bidWorkspaceRepository,
     opportunityTechnicalDraftRepository,
     opportunityCommercialDraftRepository,
+    bidPackageEditorRepository,
     technicalTemplateRepository: {
       async listTemplates() { return [technicalTemplate]; },
       async getTemplateDetail() { return technicalTemplate; },
@@ -188,4 +217,34 @@ test('workspace index and detail expose frozen package identifiers without mutab
   assert.match(detail.text, /TPL-R2/);
   assert.match(detail.text, /CTPL-R1/);
   assert.match(detail.text, /GLOBAL-R1/);
+});
+
+test('project package editor renders the frozen three-pane technical workspace', async () => {
+  const { agent } = await createWorkspaceAgent();
+  const response = await agent.get('/bid-center/workspaces/40/packages/technical?section=cover');
+  assert.equal(response.status, 200);
+  assert.match(response.text, /Sections &amp; owners/);
+  assert.match(response.text, /Standard source &amp; diff/);
+  assert.match(response.text, /Save project draft/);
+  assert.match(response.text, /Project copy; the standard template remains unchanged/);
+});
+
+test('technical-only users cannot retrieve commercial editor content by direct URL', async () => {
+  const { agent } = await createWorkspaceAgent();
+  const response = await agent.get('/bid-center/workspaces/40/packages/commercial?section=pricing');
+  assert.equal(response.status, 403);
+  assert.match(response.text, /Forbidden/);
+});
+
+test('section editor POST persists the project copy and redirects to the selected section', async () => {
+  const { agent, calls } = await createWorkspaceAgent();
+  const response = await agent.post('/bid-center/workspaces/40/packages/technical/sections/cover').type('form').send({
+    bodyEn: 'Project cover', bodyZh: '项目封面', tableRows: 'A | B',
+    modificationStatus: 'customized', reason: 'Customer-specific cover'
+  });
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/bid-center/workspaces/40/packages/technical?section=cover');
+  assert.equal(calls.find(([name]) => name === 'updateTechnicalPackage')[1].renderedContent.sections[0].bodyEn, 'Project cover');
+  assert.equal(calls.find(([name]) => name === 'insertPackageChange')[1].reason, 'Customer-specific cover');
+  assert.equal(calls.find(([name]) => name === 'insertPackageEvent')[1].eventType, 'section_saved');
 });

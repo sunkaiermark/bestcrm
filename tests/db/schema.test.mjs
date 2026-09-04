@@ -36,6 +36,7 @@ const customerEmailSendingMigrationPath = new URL('../../src/db/migrations/034_c
 const bidCenterFoundationMigrationPath = new URL('../../src/db/migrations/035_bid_center_foundation.sql', import.meta.url);
 const opportunityBidWorkspacesMigrationPath = new URL('../../src/db/migrations/036_opportunity_bid_workspaces.sql', import.meta.url);
 const quotationPackageDocumentsMigrationPath = new URL('../../src/db/migrations/037_quotation_package_documents.sql', import.meta.url);
+const bidPackageEditorsMigrationPath = new URL('../../src/db/migrations/038_bid_package_editors.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -348,6 +349,29 @@ test('quotation package document migration binds immutable generated files to ap
   assert.match(sql, /NEW\.workspace_id IS NOT DISTINCT FROM OLD\.workspace_id/);
   assert.match(sql, /NEW\.commercial_draft_id IS NOT DISTINCT FROM OLD\.commercial_draft_id/);
   assert.match(sql, /NEW\.sent_email_message_id IS NOT DISTINCT FROM OLD\.sent_email_message_id/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('bid package editor migration preserves project edits, attachments, suggestions, and actor audit', async () => {
+  const sql = await readFile(bidPackageEditorsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS bid_package_events/);
+  assert.match(sql, /event_type IN \(/);
+  assert.match(sql, /'variables_saved'/);
+  assert.match(sql, /'section_restored'/);
+  assert.match(sql, /'assignment_added'/);
+  assert.match(sql, /Bid package events are append-only/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS bid_package_attachments/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /removed_by bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /one soft removal/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS bid_library_suggestions/);
+  assert.match(sql, /target_kind IN \('content_block', 'template_revision'\)/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'draft'/);
+  assert.match(sql, /content_snapshot jsonb NOT NULL/);
+  assert.match(sql, /Bid package source does not belong to its workspace/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE/);
 });
 

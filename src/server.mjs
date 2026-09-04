@@ -12,6 +12,7 @@ import { csrfProtection } from './middleware/csrf.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
 import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
 import { createBidContentBlockRepository } from './repositories/bidContentBlockRepository.mjs';
+import { createBidPackageEditorRepository } from './repositories/bidPackageEditorRepository.mjs';
 import { createBidWorkspaceRepository } from './repositories/bidWorkspaceRepository.mjs';
 import { createCommercialQuoteRepository } from './repositories/commercialQuoteRepository.mjs';
 import { createCommercialPackageTemplateRepository } from './repositories/commercialPackageTemplateRepository.mjs';
@@ -556,6 +557,22 @@ const emptyBidWorkspaceRepository = {
   async createWorkspace() { throw new Error('Bid workspace repository is not configured'); }
 };
 
+const emptyBidPackageEditorRepository = {
+  async listChanges() { return []; },
+  async listEvents() { return []; },
+  async listAttachments() { return []; },
+  async findAttachment() { return null; },
+  async listSuggestions() { return []; },
+  async updateTechnicalDraft() { throw new Error('Bid package editor repository is not configured'); },
+  async updateCommercialDraft() { throw new Error('Bid package editor repository is not configured'); },
+  async insertChange() { throw new Error('Bid package editor repository is not configured'); },
+  async insertEvent() { throw new Error('Bid package editor repository is not configured'); },
+  async touchWorkspace() { throw new Error('Bid package editor repository is not configured'); },
+  async createAttachment() { throw new Error('Bid package editor repository is not configured'); },
+  async removeAttachment() { throw new Error('Bid package editor repository is not configured'); },
+  async createSuggestion() { throw new Error('Bid package editor repository is not configured'); }
+};
+
 const emptyOpportunityCommercialDraftRepository = {
   async createDraft() { throw new Error('Opportunity commercial draft repository is not configured'); },
   async listByWorkspace() { return []; },
@@ -615,6 +632,8 @@ export function createApp(options = {}) {
     || (pool ? createBidContentBlockRepository(pool) : emptyBidContentBlockRepository);
   const bidWorkspaceRepository = options.bidWorkspaceRepository
     || (pool ? createBidWorkspaceRepository(pool) : emptyBidWorkspaceRepository);
+  const bidPackageEditorRepository = options.bidPackageEditorRepository
+    || (pool ? createBidPackageEditorRepository(pool) : emptyBidPackageEditorRepository);
   const technicalDocumentService = options.technicalDocumentService
     || createTechnicalDocumentService({ fontPath: config.technicalDocumentFontPath });
   const workflowTransaction = 'workflowTransaction' in options
@@ -712,11 +731,14 @@ export function createApp(options = {}) {
     opportunityResponsibilityRepository,
     technicalTemplateRepository,
     commercialPackageTemplateRepository,
+    bidContentBlockRepository,
     bidWorkspaceRepository,
+    bidPackageEditorRepository,
     opportunityTechnicalDraftRepository,
     opportunityCommercialDraftRepository,
     workflowTransaction,
-    uploadDir: config.uploadDir
+    uploadDir: config.uploadDir,
+    maxUploadMb: config.maxUploadMb
   }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));

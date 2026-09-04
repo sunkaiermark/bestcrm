@@ -1,0 +1,130 @@
+<% const zh = language === 'zh'; %>
+<% const packageLabel = editor.packageType === 'technical' ? (zh ? '技术包' : 'Technical Package') : (zh ? '商务包' : 'Commercial Package'); %>
+<% const statusLabels = zh ? { standard: '标准', customized: '已定制', project_added: '项目新增', omitted: '已省略', needs_review: '待复核' } : { standard: 'Standard', customized: 'Customized', project_added: 'Project added', omitted: 'Omitted', needs_review: 'Needs review' }; %>
+<% const eventLabels = zh ? { variables_saved: '变量已保存', section_saved: '章节已保存', section_added: '章节已新增', section_omitted: '章节已省略', section_restored: '章节已恢复', sections_reordered: '章节已排序', content_selected: '内容选择已保存', attachment_added: '附件已添加', attachment_removed: '附件已移除', library_suggestion_created: '模板库建议草稿已创建', assignment_added: '章节分工已添加', assignment_removed: '章节分工已取消' } : { variables_saved: 'Variables saved', section_saved: 'Section saved', section_added: 'Section added', section_omitted: 'Section omitted', section_restored: 'Section restored', sections_reordered: 'Sections reordered', content_selected: 'Content selection saved', attachment_added: 'Attachment added', attachment_removed: 'Attachment removed', library_suggestion_created: 'Library suggestion draft created', assignment_added: 'Assignment added', assignment_removed: 'Assignment removed' }; %>
+<%- include('../../partials/app-start', { title: `${packageLabel} - ${editor.workspace.opportunity.opportunityNo} - BESTCRM`, activeNav: 'bid-center-workspaces' }) %>
+        <p class="breadcrumb"><a href="/bid-center/workspaces"><%= t('bidProjects') %></a> / <a href="/bid-center/workspaces/<%= editor.workspace.id %>"><%= editor.workspace.opportunity.opportunityNo %></a> / <%= packageLabel %></p>
+        <header class="page-header bid-editor-header">
+          <div class="bid-library-title">
+            <h1><%= packageLabel %></h1>
+            <div class="muted"><%= editor.workspace.opportunity.title %> · <%= editor.draft.draftLabel %> · <%= zh ? '项目副本，标准模板不会被修改' : 'Project copy; the standard template remains unchanged' %></div>
+          </div>
+          <div class="inline-actions">
+            <a class="secondary-action" href="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType === 'technical' ? 'commercial' : 'technical' %>"><%= editor.packageType === 'technical' ? (zh ? '打开商务包' : 'Open Commercial Package') : (zh ? '打开技术包' : 'Open Technical Package') %></a>
+            <a class="secondary-action" href="/bid-center/workspaces/<%= editor.workspace.id %>"><%= zh ? '返回项目标书' : 'Back to Bid Workspace' %></a>
+          </div>
+        </header>
+
+        <div class="bid-editor-layout">
+          <aside class="bid-editor-tree" aria-label="<%= zh ? '章节目录' : 'Section tree' %>">
+            <div class="bid-editor-pane-title"><strong><%= zh ? '章节与责任人' : 'Sections & owners' %></strong><span><%= editor.sections.length %></span></div>
+            <nav class="bid-section-nav">
+              <% for (const section of editor.sections) { %>
+                <div class="bid-section-node <%= editor.activeSection?.key === section.key ? 'active' : '' %> <%= section.included === false ? 'omitted' : '' %>">
+                  <a href="?section=<%= encodeURIComponent(section.key) %>">
+                    <span class="bid-section-name"><%= zh ? (section.labelZh || section.labelEn || section.key) : (section.labelEn || section.labelZh || section.key) %></span>
+                    <span class="bid-status-pill status-<%= section.modificationStatus %>"><%= statusLabels[section.modificationStatus] || section.modificationStatus %></span>
+                    <small><%= section.completionStatus === 'complete' ? (zh ? '已完成' : 'Complete') : section.completionStatus === 'omitted' ? (zh ? '已省略' : 'Omitted') : (zh ? '待复核' : 'Needs review') %> · <%= section.responsibleNames.filter(Boolean).join(', ') %></small>
+                  </a>
+                  <% if (editor.isPackageLead) { %>
+                    <div class="bid-node-actions">
+                      <form method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/sections/<%= section.key %>/reorder"><%- csrfField() %><input type="hidden" name="direction" value="up"><button class="link-button" type="submit" aria-label="<%= zh ? '上移' : 'Move up' %>">↑</button></form>
+                      <form method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/sections/<%= section.key %>/reorder"><%- csrfField() %><input type="hidden" name="direction" value="down"><button class="link-button" type="submit" aria-label="<%= zh ? '下移' : 'Move down' %>">↓</button></form>
+                    </div>
+                  <% } %>
+                </div>
+              <% } %>
+            </nav>
+            <% if (editor.isPackageLead) { %>
+              <details class="bid-editor-details">
+                <summary><%= zh ? '新增项目章节' : 'Add project section' %></summary>
+                <form class="compact-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/sections"><%- csrfField() %>
+                  <label><%= zh ? '章节键' : 'Section key' %><input name="sectionKey" pattern="[a-z][a-z0-9_]{0,63}" required placeholder="project_section"></label>
+                  <label>English<input name="labelEn" maxlength="200" required></label>
+                  <label>中文<input name="labelZh" maxlength="200"></label>
+                  <label><%= zh ? '新增原因' : 'Reason' %><textarea name="reason" maxlength="2000" required></textarea></label>
+                  <button type="submit"><%= zh ? '新增章节' : 'Add section' %></button>
+                </form>
+              </details>
+            <% } %>
+          </aside>
+
+          <main class="bid-editor-document">
+            <% if (!editor.activeSection) { %>
+              <p class="empty"><%= zh ? '当前标书没有章节。' : 'This package has no sections.' %></p>
+            <% } else { const section = editor.activeSection; %>
+              <div class="bid-editor-pane-title">
+                <div><strong><%= zh ? (section.labelZh || section.labelEn || section.key) : (section.labelEn || section.labelZh || section.key) %></strong><code><%= section.key %></code></div>
+                <span class="bid-status-pill status-<%= section.modificationStatus %>"><%= statusLabels[section.modificationStatus] %></span>
+              </div>
+
+              <% if (section.included === false) { %><div class="inline-error"><%= zh ? '本章节已从项目标书中省略。可恢复为标准内容。' : 'This section is omitted from the project package. Restore it to the standard content.' %></div><% } %>
+              <% if (!editor.canEditActiveSection) { %><div class="inline-error"><%= zh ? '当前账号对此章节为只读。' : 'This section is read-only for your account.' %></div><% } %>
+
+              <form class="bid-section-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/sections/<%= section.key %>"><%- csrfField() %>
+                <label><%= zh ? '英文正文' : 'English body' %><textarea name="bodyEn" rows="10" <%= editor.canEditActiveSection ? '' : 'readonly' %>><%= section.bodyEn || '' %></textarea></label>
+                <label><%= zh ? '中文正文' : 'Chinese body' %><textarea name="bodyZh" rows="10" <%= editor.canEditActiveSection ? '' : 'readonly' %>><%= section.bodyZh || '' %></textarea></label>
+                <label><%= zh ? '结构化表格（每行一行，单元格用 | 分隔）' : 'Structured table (one row per line, cells separated by |)' %><textarea name="tableRows" rows="6" <%= editor.canEditActiveSection ? '' : 'readonly' %>><%= (section.tableRows || []).map((row) => row.join(' | ')).join('\n') %></textarea></label>
+                <% if (editor.canEditActiveSection) { %>
+                  <div class="bid-editor-save-row">
+                    <label><%= zh ? '变更状态' : 'Change status' %><select name="modificationStatus"><option value="customized"><%= statusLabels.customized %></option><option value="needs_review" <%= section.modificationStatus === 'needs_review' ? 'selected' : '' %>><%= statusLabels.needs_review %></option></select></label>
+                    <label class="bid-reason-field"><%= zh ? '变更原因（审计必填）' : 'Change reason (required for audit)' %><input name="reason" maxlength="2000" required></label>
+                    <button type="submit"><%= zh ? '保存项目草稿' : 'Save project draft' %></button>
+                  </div>
+                <% } %>
+              </form>
+
+              <% if (editor.variables.length) { %>
+                <section class="bid-editor-subsection"><h2><%= zh ? '本章节变量' : 'Section variables' %></h2>
+                  <form class="compact-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/sections/<%= section.key %>/variables"><%- csrfField() %>
+                    <div class="form-grid"><% for (const variable of editor.variables) { %><label><%= zh ? (variable.labelZh || variable.variableKey) : (variable.labelEn || variable.variableKey) %><input name="<%= variable.variableKey %>" value="<%= variable.value %>" <%= editor.canEditActiveSection ? '' : 'readonly' %>></label><% } %></div>
+                    <% if (editor.canEditActiveSection) { %><label><%= zh ? '变更原因' : 'Change reason' %><input name="reason" maxlength="2000" required></label><button type="submit"><%= zh ? '保存变量' : 'Save variables' %></button><% } %>
+                  </form>
+                </section>
+              <% } %>
+
+              <section class="bid-editor-subsection"><h2><%= zh ? '项目附件' : 'Project attachments' %></h2>
+                <% if (section.attachments.length) { %><ul class="attachment-list"><% for (const attachment of section.attachments) { %><li><% if (attachment.mimeType.startsWith('image/')) { %><img class="bid-project-image" src="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/attachments/<%= attachment.id %>?inline=1" alt="<%= attachment.originalName %>"><% } %><a href="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/attachments/<%= attachment.id %>"><%= attachment.originalName %></a> <span class="muted">(<%= attachment.byteSize %> bytes · SHA-256 <%= attachment.sha256.slice(0, 12) %>…)</span><% if (editor.canEditActiveSection) { %><form class="inline-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/attachments/<%= attachment.id %>/remove"><%- csrfField() %><input name="reason" required placeholder="<%= zh ? '移除原因' : 'Removal reason' %>"><button class="danger-action" type="submit"><%= zh ? '移除' : 'Remove' %></button></form><% } %></li><% } %></ul><% } else { %><p class="empty"><%= zh ? '尚无项目附件或图片。' : 'No project attachments or images yet.' %></p><% } %>
+                <% if (editor.canEditActiveSection) { %><form class="compact-form" method="post" enctype="multipart/form-data" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/sections/<%= section.key %>/attachments"><%- csrfField() %><label><%= zh ? '选择附件' : 'Choose attachment' %><input type="file" name="attachment" required></label><label><%= zh ? '上传原因' : 'Upload reason' %><input name="reason" maxlength="2000" required></label><button type="submit"><%= zh ? '上传到项目草稿' : 'Upload to project draft' %></button></form><% } %>
+              </section>
+
+              <% if (editor.packageType === 'technical' && editor.canManageAssignments) { %>
+                <section class="bid-editor-subsection"><h2><%= zh ? '章节分工' : 'Section assignment' %></h2>
+                  <% if (section.assignments.length) { %><ul><% for (const assignment of section.assignments) { %><li><%= assignment.assigneeDisplayName %> · <%= assignment.dueDate || '-' %><form class="inline-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/technical/assignments/<%= assignment.id %>/remove"><%- csrfField() %><button class="danger-action" type="submit"><%= zh ? '取消分工' : 'Remove assignment' %></button></form></li><% } %></ul><% } %>
+                  <% if (editor.supportingEngineers.length) { %><form class="compact-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/technical/sections/<%= section.key %>/assignments"><%- csrfField() %><label><%= zh ? '支持工程师' : 'Supporting Engineer' %><select name="assigneeUserId" required><% for (const member of editor.supportingEngineers) { %><option value="<%= member.userId %>"><%= member.displayName || member.username || member.userId %></option><% } %></select></label><label><%= zh ? '截止日期' : 'Due date' %><input type="date" name="dueDate"></label><button type="submit"><%= zh ? '分配章节' : 'Assign section' %></button></form><% } else { %><p class="empty"><%= zh ? '项目团队中暂无支持工程师。' : 'No Supporting Engineers are assigned to the project team.' %></p><% } %>
+                </section>
+              <% } %>
+            <% } %>
+          </main>
+
+          <aside class="bid-editor-reference">
+            <% if (editor.activeSection) { const section = editor.activeSection; %>
+              <section class="bid-reference-card"><h2><%= zh ? '标准来源与差异' : 'Standard source & diff' %></h2>
+                <% if (section.baseline) { %>
+                  <p class="muted"><%= editor.packageType === 'technical' ? editor.workspace.technicalTemplate.templateCode : editor.workspace.commercialTemplate.templateCode %> · R<%= editor.draft.templateRevisionNoSnapshot %></p>
+                  <h3>English</h3><pre class="bid-standard-copy <%= section.diff.bodyEnChanged ? 'changed' : '' %>"><%= section.baseline.bodyEn || '-' %></pre>
+                  <h3>中文</h3><pre class="bid-standard-copy <%= section.diff.bodyZhChanged ? 'changed' : '' %>"><%= section.baseline.bodyZh || '-' %></pre>
+                  <p><%= zh ? '差异项' : 'Changed fields' %>: <%= Object.entries(section.diff).filter(([, changed]) => changed).map(([key]) => key).join(', ') || (zh ? '无' : 'None') %></p>
+                  <% if (editor.canEditActiveSection) { %><form class="compact-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/sections/<%= section.key %>/restore"><%- csrfField() %><label><%= zh ? '恢复原因' : 'Restore reason' %><input name="reason" maxlength="2000" required></label><button type="submit"><%= zh ? '恢复本章节标准内容' : 'Restore this section' %></button></form><% } %>
+                <% } else { %><p class="empty"><%= zh ? '项目新增章节，没有模板基线。' : 'Project-added section; no template baseline.' %></p><% } %>
+                <% if (editor.isPackageLead) { %><form class="compact-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/sections/<%= section.key %>/omit"><%- csrfField() %><label><%= zh ? '省略/删除原因' : 'Omit/remove reason' %><input name="reason" maxlength="2000" required></label><button class="danger-action" type="submit"><%= section.projectAdded ? (zh ? '删除项目新增章节' : 'Remove project section') : (zh ? '省略本章节' : 'Omit this section') %></button></form><% } %>
+              </section>
+
+              <section class="bid-reference-card"><h2><%= editor.packageType === 'technical' ? (zh ? '标准条款' : 'Standard clauses') : (zh ? '公共资料' : 'Public materials') %></h2>
+                <% const selectedContentIds = editor.packageType === 'technical' ? (editor.draft.selectedClauses || []).filter((item) => item.sectionKey === section.key).map((item) => Number(item.id)) : (section.contentBlocks || []).map((item) => Number(item.blockId)); %>
+                <% if (editor.libraryItems.length) { %><form class="compact-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/sections/<%= section.key %>/content"><%- csrfField() %><div class="bid-library-picker"><% for (const item of editor.libraryItems) { const contentId = Number(item.id); %><label><input type="checkbox" name="contentIds" value="<%= contentId %>" <%= selectedContentIds.includes(contentId) ? 'checked' : '' %> <%= editor.canEditActiveSection && (editor.packageType === 'commercial' || editor.isPackageLead) ? '' : 'disabled' %>><span><strong><%= item.clauseCode || item.blockCode %></strong><small><%= zh ? (item.titleZh || item.nameZh || item.title || '') : (item.titleEn || item.nameEn || item.title || '') %></small></span></label><% } %></div><% if (editor.canEditActiveSection && (editor.packageType === 'commercial' || editor.isPackageLead)) { %><label><%= zh ? '选择原因' : 'Selection reason' %><input name="reason" maxlength="2000" required></label><button type="submit"><%= zh ? '保存内容选择' : 'Save content selection' %></button><% } %></form><% } else { %><p class="empty"><%= zh ? '没有可用的已发布内容。' : 'No published content is available.' %></p><% } %>
+              </section>
+
+              <section class="bid-reference-card"><h2><%= zh ? '变量来源与审批意见' : 'Variable sources & review comments' %></h2>
+                <% const variableSources = editor.draft.sourceMetadata?.variableValueSources || {}; %>
+                <% if (editor.variables.length) { %><dl class="bid-source-list"><% for (const variable of editor.variables) { const source = variableSources[variable.variableKey] || {}; %><div><dt><%= zh ? (variable.labelZh || variable.variableKey) : (variable.labelEn || variable.variableKey) %></dt><dd><%= source.sourceType || (zh ? '项目输入' : 'Project input') %> · <%= source.sourceField || variable.sourceField || 'manual' %></dd></div><% } %></dl><% } else { %><p class="empty"><%= zh ? '本章节没有变量。' : 'This section has no variables.' %></p><% } %>
+                <h3><%= zh ? '最近审批意见' : 'Latest review comment' %></h3><p class="bid-standard-copy"><%= editor.draft.reviewComment || (zh ? '尚无审批意见。' : 'No review comment yet.') %></p>
+              </section>
+
+              <% if (editor.canEditActiveSection) { %><section class="bid-reference-card"><h2><%= zh ? '建议纳入模板库' : 'Suggest for template library' %></h2><p class="muted"><%= zh ? '仅创建待审草稿，不会修改已发布模板。' : 'Creates a review draft only; published templates are not changed.' %></p><form class="compact-form" method="post" action="/bid-center/workspaces/<%= editor.workspace.id %>/packages/<%= editor.packageType %>/sections/<%= section.key %>/suggestions"><%- csrfField() %><label><%= zh ? '标题' : 'Title' %><input name="title" maxlength="300" value="<%= zh ? (section.labelZh || section.labelEn) : (section.labelEn || section.labelZh) %>" required></label><label><%= zh ? '目标' : 'Target' %><select name="targetKind"><option value="content_block"><%= zh ? '内容块草稿' : 'Content block draft' %></option><option value="template_revision"><%= zh ? '模板修订草稿' : 'Template revision draft' %></option></select></label><label><%= zh ? '建议原因' : 'Suggestion reason' %><textarea name="reason" maxlength="2000" required></textarea></label><button type="submit"><%= zh ? '创建建议草稿' : 'Create suggestion draft' %></button></form></section><% } %>
+            <% } %>
+
+            <section class="bid-reference-card"><h2><%= zh ? '最近审计记录' : 'Recent audit trail' %></h2><% if (editor.events.length) { %><ol class="bid-audit-list"><% for (const event of editor.events.slice(0, 10)) { %><li><strong><%= eventLabels[event.eventType] || event.eventType %></strong><span><%= event.actorDisplayName %> · <%= event.createdAt ? new Date(event.createdAt).toLocaleString(zh ? 'zh-CN' : 'en-GB') : '' %></span></li><% } %></ol><% } else { %><p class="empty"><%= zh ? '尚无项目编辑事件。' : 'No project editing events yet.' %></p><% } %></section>
+          </aside>
+        </div>
+<%- include('../../partials/app-end') %>

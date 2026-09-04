@@ -242,9 +242,10 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
     },
 
     async getDraftDetail(draftId) {
-      const [draftResult, assignmentResult, eventResult, documentResult] = await Promise.all([
-        queryTarget.query(`${draftSelect} WHERE d.id = $1 LIMIT 1`, [draftId]),
-        queryTarget.query(`
+      // A repository can be bound to one pg.Client during an editor transaction.
+      // Keep these reads sequential because concurrent queries on one client are unsupported.
+      const draftResult = await queryTarget.query(`${draftSelect} WHERE d.id = $1 LIMIT 1`, [draftId]);
+      const assignmentResult = await queryTarget.query(`
           SELECT
             a.*,
             assignee.display_name AS assignee_display_name,
@@ -255,22 +256,21 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
           JOIN users assigner ON assigner.id = a.assigned_by
           WHERE a.technical_draft_id = $1
           ORDER BY a.is_active DESC, a.section_key ASC, a.assigned_at ASC, a.id ASC
-        `, [draftId]),
-        queryTarget.query(`
+        `, [draftId]);
+      const eventResult = await queryTarget.query(`
           SELECT e.*, actor.display_name AS actor_display_name
           FROM opportunity_technical_draft_events e
           JOIN users actor ON actor.id = e.actor_user_id
           WHERE e.technical_draft_id = $1
           ORDER BY e.created_at DESC, e.id DESC
-        `, [draftId]),
-        queryTarget.query(`
+        `, [draftId]);
+      const documentResult = await queryTarget.query(`
           SELECT d.*, generator.display_name AS generator_display_name
           FROM technical_solution_documents d
           JOIN users generator ON generator.id = d.generated_by
           WHERE d.technical_draft_id = $1
           ORDER BY d.format ASC, d.id ASC
-        `, [draftId])
-      ]);
+        `, [draftId]);
       const draft = mapDraftRow(draftResult.rows[0]);
       if (!draft) return null;
       draft.assignments = assignmentResult.rows.map(mapAssignmentRow);
