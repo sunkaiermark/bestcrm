@@ -7,6 +7,7 @@
     "dev": "node --watch src/server.mjs",
     "start": "node src/server.mjs",
     "test": "node --test",
+    "test:bid-center-db": "node scripts/verify-bid-center-migrations.mjs",
     "db:migrate": "node src/db/migrate.mjs",
     "db:seed": "node src/db/seed.mjs",
     "email:poll": "node scripts/poll-email-inquiries.mjs",

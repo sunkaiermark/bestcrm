@@ -33,6 +33,9 @@ const technicalSolutionDocumentsMigrationPath = new URL('../../src/db/migrations
 const quotationPackageVersionsMigrationPath = new URL('../../src/db/migrations/032_quotation_package_versions.sql', import.meta.url);
 const emailCenterArchiveMigrationPath = new URL('../../src/db/migrations/033_email_center_archive.sql', import.meta.url);
 const customerEmailSendingMigrationPath = new URL('../../src/db/migrations/034_customer_email_sending.sql', import.meta.url);
+const bidCenterFoundationMigrationPath = new URL('../../src/db/migrations/035_bid_center_foundation.sql', import.meta.url);
+const opportunityBidWorkspacesMigrationPath = new URL('../../src/db/migrations/036_opportunity_bid_workspaces.sql', import.meta.url);
+const quotationPackageDocumentsMigrationPath = new URL('../../src/db/migrations/037_quotation_package_documents.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -256,6 +259,95 @@ test('quotation package migration creates immutable customer-facing package vers
   assert.match(sql, /Quotation package attachments are immutable after submission/);
   assert.match(sql, /CREATE OR REPLACE FUNCTION validate_accepted_quotation_package_link/);
   assert.match(sql, /Contract approval requires an accepted quotation package from the same opportunity/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('bid center foundation migration creates governed commercial templates, content blocks, and output profiles', async () => {
+  const sql = await readFile(bidCenterFoundationMigrationPath, 'utf8');
+
+  for (const table of [
+    'commercial_package_templates',
+    'commercial_package_template_revisions',
+    'bid_content_blocks',
+    'bid_content_block_revisions',
+    'bid_output_profiles'
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  assert.match(sql, /commercial_package_templates_current_revision_owner_fk/);
+  assert.match(sql, /bid_content_blocks_current_revision_owner_fk/);
+  assert.match(sql, /commercial_package_template_open_revision_idx/);
+  assert.match(sql, /commercial_package_template_published_revision_idx/);
+  assert.match(sql, /bid_content_block_open_revision_idx/);
+  assert.match(sql, /bid_content_block_published_revision_idx/);
+  assert.match(sql, /bid_output_profile_open_revision_idx/);
+  assert.match(sql, /bid_output_profile_published_revision_idx/);
+  assert.match(sql, /applicable_sections jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
+  assert.match(sql, /owner_role_code text NOT NULL REFERENCES roles\(code\) ON DELETE RESTRICT/);
+  assert.match(sql, /allowed_variables jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
+  assert.match(sql, /source_metadata jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.match(sql, /controlled_attachment/);
+  assert.match(sql, /attachment_sha256 char\(64\)/);
+  assert.match(sql, /Commercial template revisions must be created as drafts/);
+  assert.match(sql, /commercial_package_template_revisions_lifecycle_check/);
+  assert.match(sql, /bid_content_block_revisions_lifecycle_check/);
+  assert.match(sql, /bid_output_profiles_lifecycle_check/);
+  assert.match(sql, /Commercial template revision status transition is invalid/);
+  assert.match(sql, /Bid content revision status transition is invalid/);
+  assert.match(sql, /Bid output profile status transition is invalid/);
+  assert.match(sql, /Published commercial template revisions can only be retired/);
+  assert.match(sql, /Published bid content revisions can only be retired/);
+  assert.match(sql, /Published bid output profiles can only be retired/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('bid workspace migration freezes project sources and enforces one open version per opportunity', async () => {
+  const sql = await readFile(opportunityBidWorkspacesMigrationPath, 'utf8');
+
+  assert.match(sql, /opportunity_technical_drafts_open_idx/);
+  assert.match(sql, /WHERE status IN \('draft', 'ready', 'pending'\)/);
+  assert.match(sql, /quotation_package_versions_combined_open_idx/);
+  assert.match(sql, /WHERE status IN \('draft', 'pending'\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_bid_workspaces/);
+  assert.match(sql, /opportunity_id bigint NOT NULL UNIQUE REFERENCES opportunities\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /technical_template_revision_id bigint NOT NULL/);
+  assert.match(sql, /commercial_template_revision_id bigint NOT NULL/);
+  assert.match(sql, /output_profile_id bigint NOT NULL REFERENCES bid_output_profiles\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /Bid workspace requires an active current published technical template revision/);
+  assert.match(sql, /Opportunity bid workspace source snapshots are immutable/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_commercial_drafts/);
+  assert.match(sql, /opportunity_commercial_drafts_open_idx/);
+  assert.match(sql, /opportunity_commercial_drafts_formal_version_idx/);
+  assert.match(sql, /Commercial draft versions must be created as drafts/);
+  assert.match(sql, /template_content_schema IS DISTINCT FROM NEW\.content_schema_snapshot/);
+  assert.match(sql, /Approved and rejected commercial draft versions are immutable/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS bid_section_changes/);
+  assert.match(sql, /package_type IN \('technical', 'commercial', 'complete'\)/);
+  assert.match(sql, /Bid section change source does not belong to its workspace/);
+  assert.match(sql, /Bid section changes are append-only/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('quotation package document migration binds immutable generated files to approved bid versions', async () => {
+  const sql = await readFile(quotationPackageDocumentsMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS workspace_id bigint/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS commercial_draft_id bigint/);
+  assert.match(sql, /quotation_package_versions_bid_center_binding_check/);
+  assert.match(sql, /Bid center quotation package requires an approved commercial version from the same workspace/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS quotation_package_documents/);
+  assert.match(sql, /content bytea NOT NULL/);
+  assert.match(sql, /byte_size bigint NOT NULL CHECK \(byte_size > 0\)/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /UNIQUE \(quotation_package_version_id, document_type\)/);
+  assert.match(sql, /Quotation package documents require matching approved frozen source versions/);
+  assert.match(sql, /Generated quotation package documents are immutable/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION protect_quotation_package_version/);
+  assert.match(sql, /NEW\.workspace_id IS NOT DISTINCT FROM OLD\.workspace_id/);
+  assert.match(sql, /NEW\.commercial_draft_id IS NOT DISTINCT FROM OLD\.commercial_draft_id/);
+  assert.match(sql, /NEW\.sent_email_message_id IS NOT DISTINCT FROM OLD\.sent_email_message_id/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE/);
 });
 
