@@ -59,9 +59,8 @@
       .login-language-switch {
         display: flex;
         gap: 8px;
-        position: fixed;
-        right: 24px;
-        top: 18px;
+        justify-content: flex-end;
+        margin: 0 0 14px;
       }
 
       .login-language-switch a {
@@ -188,11 +187,11 @@
     <% const loginLanguage = typeof language === 'undefined' ? 'en' : language; %>
     <main class="login-shell">
       <section class="login-card" aria-label="Login">
-        <img class="login-logo" src="/assets/sunkaier-logo-login.png" alt="SUNKAIER">
-        <div class="login-language-switch" aria-label="Language">
+        <div class="login-language-switch" aria-label="<%= t('language') %>">
           <a class="<%= loginLanguage === 'en' ? 'active' : '' %>" href="/language?lang=en&amp;returnTo=%2Flogin">English</a>
           <a class="<%= loginLanguage === 'zh' ? 'active' : '' %>" href="/language?lang=zh&amp;returnTo=%2Flogin">中文</a>
         </div>
+        <img class="login-logo" src="/assets/sunkaier-logo-login.png" alt="SUNKAIER">
       <% if (error) { %>
           <p class="login-alert" role="alert"><%= error %></p>
       <% } %>

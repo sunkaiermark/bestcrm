@@ -215,31 +215,6 @@
         border: 1px solid rgba(255, 255, 255, 0.18);
       }
 
-      .nav-language-switch {
-        align-items: center;
-        border: 1px solid rgba(255, 255, 255, 0.18);
-        border-radius: 6px;
-        display: grid;
-        grid-template-columns: 1fr 1fr;
-        overflow: hidden;
-      }
-
-      .nav-language-switch a {
-        color: var(--rail-muted);
-        padding: 7px 9px;
-        text-align: center;
-      }
-
-      .nav-language-switch a + a {
-        border-left: 1px solid rgba(255, 255, 255, 0.18);
-      }
-
-      .nav-language-switch a.active {
-        background: var(--rail-active);
-        color: var(--rail-ink);
-        font-weight: 700;
-      }
-
       .logout-form {
         margin: 0;
       }
@@ -1638,11 +1613,6 @@
           <% } %>
         </nav>
         <div class="nav-footer">
-          <% const languageReturnTo = encodeURIComponent(typeof currentPath === 'string' ? currentPath : '/workbench'); %>
-          <div class="nav-language-switch" aria-label="<%= t('language') %>">
-            <a class="<%= language === 'en' ? 'active' : '' %>" href="/language?lang=en&amp;returnTo=<%= languageReturnTo %>">English</a>
-            <a class="<%= language === 'zh' ? 'active' : '' %>" href="/language?lang=zh&amp;returnTo=<%= languageReturnTo %>">中文</a>
-          </div>
           <a class="<%= navClass('account-password') %>" href="/account/password"><%= t('changePassword') %></a>
           <form class="logout-form" method="post" action="/logout">
             <%- csrfField() %>

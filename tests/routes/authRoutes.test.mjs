@@ -78,6 +78,9 @@ test('login page renders username and password form', async () => {
   assert.match(response.text, /aria-controls="login-password"/);
   assert.match(response.text, />Show<\/button>/);
   assert.match(response.text, /class="login-language-switch"/);
+  assert.match(response.text, /\.login-language-switch\s*\{[^}]*justify-content:\s*flex-end;[^}]*margin:\s*0 0 14px;/);
+  assert.doesNotMatch(response.text, /\.login-language-switch\s*\{[^}]*position:\s*fixed;/);
+  assert.match(response.text, /class="login-language-switch"[\s\S]*class="login-logo"/);
 });
 
 test('csrf protection rejects login posts without a valid token when enabled', async () => {
@@ -179,7 +182,7 @@ test('login page can switch between English and Chinese', async () => {
   assert.match(englishLogin.text, />Login</);
 });
 
-test('logged in users can switch language from the sidebar and keep the current page', async () => {
+test('language selected on the login page persists after login without a sidebar switch', async () => {
   const passwordHash = await hashPassword('ChangeMe123!');
   const user = {
     id: 7,
@@ -201,29 +204,8 @@ test('logged in users can switch language from the sidebar and keep the current 
   const workbench = await agent.get('/workbench');
   assert.equal(workbench.status, 200);
   assert.match(workbench.text, /<h1>\u5de5\u4f5c\u53f0<\/h1>/);
-  assert.match(workbench.text, /class="nav-language-switch"/);
-  assert.match(workbench.text, /href="\/language\?lang=en&amp;returnTo=%2Fworkbench"/);
-
-  const switchResponse = await agent.get('/language?lang=en&returnTo=/workbench');
-  assert.equal(switchResponse.status, 302);
-  assert.equal(switchResponse.headers.location, '/workbench');
-
-  const englishWorkbench = await agent.get('/workbench');
-  assert.match(englishWorkbench.text, /<h1>Workbench<\/h1>/);
-  assert.match(englishWorkbench.text, /class="nav-language-switch"/);
-
-  const filteredWorkbench = await agent.get('/workbench?scope=open&owner=7');
-  assert.equal(filteredWorkbench.status, 200);
-  assert.match(
-    filteredWorkbench.text,
-    /href="\/language\?lang=zh&amp;returnTo=%2Fworkbench%3Fscope%3Dopen%26owner%3D7"/
-  );
-
-  const filteredSwitch = await agent.get(
-    '/language?lang=zh&returnTo=%2Fworkbench%3Fscope%3Dopen%26owner%3D7'
-  );
-  assert.equal(filteredSwitch.status, 302);
-  assert.equal(filteredSwitch.headers.location, '/workbench?scope=open&owner=7');
+  assert.doesNotMatch(workbench.text, /class="nav-language-switch"/);
+  assert.doesNotMatch(workbench.text, /href="\/language\?lang=(?:en|zh)/);
 });
 
 test('language switch rejects external return locations', async () => {
