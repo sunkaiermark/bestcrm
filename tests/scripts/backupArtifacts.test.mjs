@@ -61,6 +61,23 @@ test('production backup and rollback scripts record and enforce artifact checksu
   assert.match(rollbackScript, /BESTCRM_ALLOW_LEGACY_BACKUP/);
 });
 
+test('production deployment and rollback keep uploads private but traversable by the service user', async () => {
+  const root = path.resolve(import.meta.dirname, '..', '..');
+  const scripts = await Promise.all([
+    readFile(path.join(root, 'scripts', 'deploy-production.sh'), 'utf8'),
+    readFile(path.join(root, 'scripts', 'rollback-production.sh'), 'utf8')
+  ]);
+
+  for (const script of scripts) {
+    assert.match(script, /ensure_upload_access\(\)/);
+    assert.match(script, /sudo chown "root:\$SERVICE_GROUP" "\$upload_parent"/);
+    assert.match(script, /sudo chmod 750 "\$upload_parent"/);
+    assert.match(script, /sudo -u "\$SERVICE_USER" test -x "\$upload_parent"/);
+    assert.match(script, /sudo -u "\$SERVICE_USER" test -r "\$UPLOAD_DIR"/);
+    assert.match(script, /sudo -u "\$SERVICE_USER" test -w "\$UPLOAD_DIR"/);
+  }
+});
+
 test('backup verifier streams artifact hashing for multi-gigabyte archives', async () => {
   const root = path.resolve(import.meta.dirname, '..', '..');
   const verifierScript = await readFile(

@@ -24,6 +24,24 @@ SERVICE_USER="${SERVICE_USER:-www-data}"
 SERVICE_GROUP="${BESTCRM_SERVICE_GROUP:-$(systemctl show bestcrm -p Group --value 2>/dev/null || true)}"
 SERVICE_GROUP="${SERVICE_GROUP:-$SERVICE_USER}"
 
+ensure_upload_access() {
+  local upload_parent
+  upload_parent="$(dirname "$UPLOAD_DIR")"
+
+  if [ "$upload_parent" = "/var/bestcrm" ]; then
+    sudo chown "root:$SERVICE_GROUP" "$upload_parent"
+    sudo chmod 750 "$upload_parent"
+  fi
+
+  sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$UPLOAD_DIR"
+  if ! sudo -u "$SERVICE_USER" test -x "$upload_parent" \
+    || ! sudo -u "$SERVICE_USER" test -r "$UPLOAD_DIR" \
+    || ! sudo -u "$SERVICE_USER" test -w "$UPLOAD_DIR"; then
+    echo "Upload directory is not accessible to service user $SERVICE_USER: $UPLOAD_DIR" >&2
+    exit 1
+  fi
+}
+
 cleanup() {
   rm -rf "$TMP_DIR"
 }
@@ -49,7 +67,13 @@ if [ ! -f "$ENV_READER" ]; then
   exit 1
 fi
 
-mkdir -p "$RELEASES_DIR" "$UPLOAD_DIR"
+mkdir -p "$RELEASES_DIR"
+if [ "$(dirname "$UPLOAD_DIR")" = "/var/bestcrm" ]; then
+  sudo mkdir -p "$UPLOAD_DIR"
+else
+  mkdir -p "$UPLOAD_DIR"
+fi
+ensure_upload_access
 
 if [ -x "$BACKUP_SCRIPT" ]; then
   "$BACKUP_SCRIPT"
@@ -104,7 +128,8 @@ if ! npm run db:migrate; then
   exit 1
 fi
 
-sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$RELEASE_DIR" "$UPLOAD_DIR"
+sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$RELEASE_DIR"
+ensure_upload_access
 echo "$VERSION" > "$APP_ROOT/current-release.txt"
 
 sudo systemctl start bestcrm

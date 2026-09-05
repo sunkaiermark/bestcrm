@@ -27,6 +27,24 @@ SERVICE_USER="${SERVICE_USER:-www-data}"
 SERVICE_GROUP="${BESTCRM_SERVICE_GROUP:-$(systemctl show bestcrm -p Group --value 2>/dev/null || true)}"
 SERVICE_GROUP="${SERVICE_GROUP:-$SERVICE_USER}"
 
+ensure_upload_access() {
+  local upload_parent
+  upload_parent="$(dirname "$UPLOAD_DIR")"
+
+  if [ "$upload_parent" = "/var/bestcrm" ]; then
+    sudo chown "root:$SERVICE_GROUP" "$upload_parent"
+    sudo chmod 750 "$upload_parent"
+  fi
+
+  sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$UPLOAD_DIR"
+  if ! sudo -u "$SERVICE_USER" test -x "$upload_parent" \
+    || ! sudo -u "$SERVICE_USER" test -r "$UPLOAD_DIR" \
+    || ! sudo -u "$SERVICE_USER" test -w "$UPLOAD_DIR"; then
+    echo "Upload directory is not accessible to service user $SERVICE_USER: $UPLOAD_DIR" >&2
+    exit 1
+  fi
+}
+
 verify_backup_checksum() {
   FILE_PATH="$1"
   MANIFEST_PATH="$2"
@@ -59,6 +77,7 @@ if [ "$MODE" = "code" ]; then
     echo "Missing release directory: $RELEASE_DIR" >&2
     exit 1
   fi
+  ensure_upload_access
   sudo systemctl stop bestcrm || true
   ln -sfn "$RELEASE_DIR" "$CURRENT_APP"
   echo "$VERSION" > "$APP_ROOT/current-release.txt"
@@ -128,7 +147,7 @@ if [ "$MODE" = "full" ]; then
   sudo rm -rf "$UPLOAD_DIR"
   sudo mkdir -p "$UPLOAD_DIR"
   sudo tar -xzf "$UPLOAD_BACKUP" -C "$(dirname "$UPLOAD_DIR")"
-  sudo chown -R "$SERVICE_USER:$SERVICE_GROUP" "$UPLOAD_DIR"
+  ensure_upload_access
   ln -sfn "$RELEASE_DIR" "$CURRENT_APP"
   echo "$VERSION" > "$APP_ROOT/current-release.txt"
   sudo systemctl start bestcrm
