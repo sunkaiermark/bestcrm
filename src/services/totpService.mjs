@@ -38,6 +38,36 @@ export function createTotpService({
 } = {}) {
   const normalizedIssuer = String(issuer || '').trim() || 'BESTCRM';
 
+  async function createEnrollmentPresentation({ username, secret } = {}) {
+    const label = String(username || '').trim();
+    if (!label) {
+      throw new Error('BESTCRM username is required for TOTP enrollment');
+    }
+    const normalizedSecret = normalizeSecret(secret);
+    if (!normalizedSecret) {
+      throw new Error('TOTP enrollment secret is invalid');
+    }
+    const otpauthUri = generateURI({
+      strategy: 'totp',
+      issuer: normalizedIssuer,
+      label,
+      secret: normalizedSecret,
+      algorithm: TOTP_PROFILE.algorithm,
+      digits: TOTP_PROFILE.digits,
+      period: TOTP_PROFILE.period
+    });
+    const qrCodeDataUrl = await generateQrCode(otpauthUri);
+    if (!String(qrCodeDataUrl || '').startsWith('data:image/png;base64,')) {
+      throw new Error('TOTP QR generator returned invalid image data');
+    }
+    return {
+      secret: normalizedSecret,
+      otpauthUri,
+      qrCodeDataUrl,
+      profile: TOTP_PROFILE
+    };
+  }
+
   return {
     async createEnrollment({ username } = {}) {
       const label = String(username || '').trim();
@@ -48,26 +78,10 @@ export function createTotpService({
       if (!secret) {
         throw new Error('TOTP secret generator returned invalid secret material');
       }
-      const otpauthUri = generateURI({
-        strategy: 'totp',
-        issuer: normalizedIssuer,
-        label,
-        secret,
-        algorithm: TOTP_PROFILE.algorithm,
-        digits: TOTP_PROFILE.digits,
-        period: TOTP_PROFILE.period
-      });
-      const qrCodeDataUrl = await generateQrCode(otpauthUri);
-      if (!String(qrCodeDataUrl || '').startsWith('data:image/png;base64,')) {
-        throw new Error('TOTP QR generator returned invalid image data');
-      }
-      return {
-        secret,
-        otpauthUri,
-        qrCodeDataUrl,
-        profile: TOTP_PROFILE
-      };
+      return createEnrollmentPresentation({ username: label, secret });
     },
+
+    createEnrollmentPresentation,
 
     async verify({ secret, token, afterTimeStep } = {}) {
       const normalizedSecret = normalizeSecret(secret);

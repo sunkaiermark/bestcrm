@@ -209,6 +209,48 @@ export function createMfaRepository(pool) {
       return mapSettingRow(result.rows[0]);
     },
 
+    async activateEnrollmentWithRecoveryCodes({
+      userId,
+      verifiedAt = new Date(),
+      generation,
+      codeHashes
+    }) {
+      return withTransaction(pool, async (queryTarget) => {
+        const activationResult = await queryTarget.query(`
+          UPDATE user_mfa_settings
+          SET
+            status = 'active',
+            enrolled_at = $2,
+            last_verified_at = $2,
+            updated_at = now()
+          WHERE user_id = $1
+            AND status = 'pending'
+          RETURNING ${safeSettingColumns}
+        `, [userId, verifiedAt]);
+        const activated = mapSettingRow(activationResult.rows[0]);
+        if (!activated) {
+          throw new Error('Pending MFA enrollment not found');
+        }
+        await queryTarget.query(`
+          UPDATE user_mfa_recovery_codes
+          SET invalidated_at = now()
+          WHERE user_id = $1
+            AND used_at IS NULL
+            AND invalidated_at IS NULL
+        `, [userId]);
+        await queryTarget.query(`
+          INSERT INTO user_mfa_recovery_codes (
+            user_id,
+            mfa_setting_id,
+            generation,
+            code_hash
+          )
+          SELECT $1, $2, $3, unnest($4::text[])
+        `, [userId, activated.id, generation, codeHashes]);
+        return activated;
+      });
+    },
+
     async recordVerification(userId, verifiedAt = new Date()) {
       const result = await pool.query(`
         UPDATE user_mfa_settings

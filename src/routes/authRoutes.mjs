@@ -61,6 +61,20 @@ function renderAuthenticatorChallenge(res, error = null, status = 200) {
   res.status(status).render('auth/verify-totp', { error });
 }
 
+function renderAuthenticatorEnrollment(res, enrollment = null, error = null, status = 200) {
+  res.set('Cache-Control', 'no-store');
+  res.status(status).render('auth/enroll-totp', {
+    error,
+    qrCodeDataUrl: enrollment?.qrCodeDataUrl || '',
+    manualSecret: enrollment?.secret || ''
+  });
+}
+
+function renderRecoveryCodes(res, codes = [], error = null, status = 200) {
+  res.set('Cache-Control', 'no-store');
+  res.status(status).render('auth/recovery-codes', { codes, error });
+}
+
 function remainingAttempts(value) {
   const attempts = Number(value);
   return Number.isInteger(attempts) && attempts > 0 ? attempts : 0;
@@ -133,6 +147,42 @@ export function authRoutes(userRepository, {
   authenticatorMfa = {}
 } = {}) {
   const router = Router();
+
+  async function enrollmentPresentationFor(user, mfaStatus) {
+    if (mfaStatus?.status === 'pending') {
+      const material = await authenticatorMfa.repository.findVerificationMaterialByUserId(user.id);
+      if (!material
+        || Number(material.userId) !== Number(user.id)
+        || material.status !== 'pending') {
+        throw new Error('Pending MFA enrollment material is unavailable');
+      }
+      const secret = authenticatorMfa.secretEncryptionService.decrypt({
+        encrypted: material,
+        userId: user.id
+      });
+      return authenticatorMfa.totpService.createEnrollmentPresentation({
+        username: user.username,
+        secret
+      });
+    }
+
+    if (mfaStatus?.status === 'disabled' && mfaStatus.isRequired === true) {
+      const enrollment = await authenticatorMfa.totpService.createEnrollment({
+        username: user.username
+      });
+      const encrypted = authenticatorMfa.secretEncryptionService.encrypt({
+        secret: enrollment.secret,
+        userId: user.id
+      });
+      await authenticatorMfa.repository.savePendingEnrollment({
+        userId: user.id,
+        ...encrypted
+      });
+      return enrollment;
+    }
+
+    throw new Error('MFA enrollment is not pending');
+  }
 
   router.get('/language', (req, res) => {
     req.session.language = normalizeLanguage(req.query.lang);
@@ -290,6 +340,211 @@ export function authRoutes(userRepository, {
       }
       await establishSession(req, user.id);
       res.redirect('/');
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/login/enroll-totp', async (req, res, next) => {
+    try {
+      const challenge = req.session.pendingAuthentication;
+      if (authenticatorMfa.enabled !== true
+        || !pendingAuthenticationIsCurrent(challenge, {
+          stage: 'totp_enrollment',
+          now: authenticatorMfa.now
+        })) {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+      const user = await userRepository.findByIdWithRoles(challenge.userId);
+      if (!user || !user.isActive || user.username !== challenge.username) {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+      const mfaStatus = await authenticatorMfa.repository.findStatusByUserId(user.id);
+      if (!mfaStatus
+        || Number(mfaStatus.userId) !== Number(user.id)
+        || (mfaStatus.status !== 'pending'
+          && !(mfaStatus.status === 'disabled' && mfaStatus.isRequired === true))) {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+      try {
+        const enrollment = await enrollmentPresentationFor(user, mfaStatus);
+        renderAuthenticatorEnrollment(res, enrollment);
+      } catch {
+        renderAuthenticatorEnrollment(res, null, res.locals.t('authenticatorSetupUnavailable'), 503);
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/login/enroll-totp', async (req, res, next) => {
+    try {
+      const challenge = req.session.pendingAuthentication;
+      if (authenticatorMfa.enabled !== true || challenge?.stage !== 'totp_enrollment') {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+      if (!pendingAuthenticationIsCurrent(challenge, {
+        stage: 'totp_enrollment',
+        now: authenticatorMfa.now
+      })) {
+        clearPendingAuthentication(req);
+        renderAuthenticatorEnrollment(res, null, res.locals.t('authenticatorEnrollmentExpired'), 401);
+        return;
+      }
+
+      const user = await userRepository.findByIdWithRoles(challenge.userId);
+      if (!user || !user.isActive || user.username !== challenge.username) {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+      const { ipAddress, userAgent } = requestContext(req);
+      if (loginSecurityService?.isLocked
+        && await loginSecurityService.isLocked({ username: user.username, ipAddress })) {
+        await loginSecurityService.recordLocked({
+          username: user.username,
+          user,
+          ipAddress,
+          userAgent
+        });
+        clearPendingAuthentication(req);
+        renderAuthenticatorEnrollment(res, null, res.locals.t('smsAttemptsExhausted'), 401);
+        return;
+      }
+
+      const mfaStatus = await authenticatorMfa.repository.findStatusByUserId(user.id);
+      if (!mfaStatus
+        || Number(mfaStatus.userId) !== Number(user.id)
+        || (mfaStatus.status !== 'pending'
+          && !(mfaStatus.status === 'disabled' && mfaStatus.isRequired === true))) {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+
+      let enrollment;
+      try {
+        enrollment = await enrollmentPresentationFor(user, mfaStatus);
+      } catch {
+        renderAuthenticatorEnrollment(res, null, res.locals.t('authenticatorSetupUnavailable'), 503);
+        return;
+      }
+
+      const verification = await authenticatorMfa.totpService.verify({
+        secret: enrollment.secret,
+        token: String(req.body.code || '').trim()
+      });
+      if (!verification.valid) {
+        challenge.attemptsRemaining = Math.max(0, remainingAttempts(challenge.attemptsRemaining) - 1);
+        if (loginSecurityService) {
+          await loginSecurityService.recordFailure({
+            username: user.username,
+            user,
+            ipAddress,
+            userAgent,
+            reason: 'invalid_second_factor'
+          });
+        }
+        if (challenge.attemptsRemaining <= 0) {
+          clearPendingAuthentication(req);
+          renderAuthenticatorEnrollment(res, null, res.locals.t('smsAttemptsExhausted'), 401);
+          return;
+        }
+        req.session.pendingAuthentication = challenge;
+        renderAuthenticatorEnrollment(res, enrollment, res.locals.t('invalidEnrollmentCode'), 401);
+        return;
+      }
+
+      try {
+        const recoveryBatch = authenticatorMfa.recoveryCodeService.generateBatch({
+          userId: user.id,
+          generation: 1
+        });
+        await authenticatorMfa.repository.activateEnrollmentWithRecoveryCodes({
+          userId: user.id,
+          verifiedAt: acceptedTimeStepDate(verification.timeStep, authenticatorMfa.now),
+          generation: recoveryBatch.generation,
+          codeHashes: recoveryBatch.codeHashes
+        });
+        req.session.pendingAuthentication = {
+          userId: Number(user.id),
+          username: user.username,
+          stage: 'recovery_codes_acknowledgement',
+          attemptsRemaining: 1,
+          expiresAt: challenge.expiresAt,
+          returnTo: safeReturnTo(challenge.returnTo || '/')
+        };
+        await saveSession(req);
+        renderRecoveryCodes(res, recoveryBatch.codes);
+      } catch {
+        renderAuthenticatorEnrollment(res, null, res.locals.t('authenticatorSetupUnavailable'), 503);
+      }
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/login/recovery-codes', (req, res) => {
+    clearPendingAuthentication(req);
+    res.set('Cache-Control', 'no-store');
+    res.redirect('/login');
+  });
+
+  router.post('/login/recovery-codes/acknowledge', async (req, res, next) => {
+    try {
+      const challenge = req.session.pendingAuthentication;
+      if (authenticatorMfa.enabled !== true
+        || !pendingAuthenticationIsCurrent(challenge, {
+          stage: 'recovery_codes_acknowledgement',
+          now: authenticatorMfa.now
+        })) {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+      const user = await userRepository.findByIdWithRoles(challenge.userId);
+      const mfaStatus = user?.isActive
+        ? await authenticatorMfa.repository.findStatusByUserId(challenge.userId)
+        : null;
+      if (!user
+        || user.username !== challenge.username
+        || !mfaStatus
+        || Number(mfaStatus.userId) !== Number(user.id)
+        || mfaStatus.status !== 'active') {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+      if (req.body.recoveryCodesSaved !== '1') {
+        renderRecoveryCodes(
+          res,
+          [],
+          res.locals.t('recoveryCodesAcknowledgementRequired'),
+          400
+        );
+        return;
+      }
+
+      const { ipAddress, userAgent } = requestContext(req);
+      if (loginSecurityService) {
+        await loginSecurityService.recordSuccess({
+          username: user.username,
+          user,
+          ipAddress,
+          userAgent
+        });
+      }
+      const returnTo = safeReturnTo(challenge.returnTo || '/');
+      await establishSession(req, user.id);
+      res.redirect(returnTo);
     } catch (error) {
       next(error);
     }

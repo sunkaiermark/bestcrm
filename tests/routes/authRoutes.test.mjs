@@ -6,6 +6,20 @@ import { createApp } from '../../src/server.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
 
+const ENROLLMENT_SECRET = 'JBSWY3DPEHPK3PXP';
+const RECOVERY_CODES = [
+  'ABCD-EFGH-JKLM-NPQR',
+  'BCDE-FGHJ-KLMN-PQRS',
+  'CDEF-GHJK-LMNP-QRST',
+  'DEFG-HJKL-MNPQ-RSTU',
+  'EFGH-JKLM-NPQR-STUV',
+  'FGHJ-KLMN-PQRS-TUVW',
+  'GHJK-LMNP-QRST-UVWX',
+  'HJKL-MNPQ-RSTU-VWXY',
+  'JKLM-NPQR-STUV-WXYZ',
+  'KLMN-PQRS-TUVW-XYZ2'
+];
+
 function buildUserRepository(user) {
   return {
     async findByIdWithRoles(id) {
@@ -80,14 +94,16 @@ async function createAuthenticatorMfaFixture({
     status,
     isRequired,
     lastVerifiedAt: null,
-    secretCiphertext: 'ciphertext',
-    secretNonce: 'nonce',
-    secretAuthTag: 'auth-tag',
-    secretKeyVersion: 1
+    secretCiphertext: status === 'disabled' ? null : 'ciphertext',
+    secretNonce: status === 'disabled' ? null : 'nonce',
+    secretAuthTag: status === 'disabled' ? null : 'auth-tag',
+    secretKeyVersion: status === 'disabled' ? null : 1
   };
   const mfaRepository = {
     verificationReads: 0,
     recordedVerifications: [],
+    pendingSaves: [],
+    enrollmentActivations: [],
     async findStatusByUserId(userId) {
       assert.equal(Number(userId), user.id);
       return { ...setting };
@@ -101,10 +117,44 @@ async function createAuthenticatorMfaFixture({
       this.recordedVerifications.push({ userId: Number(userId), verifiedAt });
       setting.lastVerifiedAt = verifiedAt;
       return { ...setting };
+    },
+    async savePendingEnrollment(enrollment) {
+      this.pendingSaves.push(enrollment);
+      setting.status = 'pending';
+      setting.secretCiphertext = enrollment.secretCiphertext;
+      setting.secretNonce = enrollment.secretNonce;
+      setting.secretAuthTag = enrollment.secretAuthTag;
+      setting.secretKeyVersion = enrollment.secretKeyVersion;
+      return { ...setting };
+    },
+    async activateEnrollmentWithRecoveryCodes(activation) {
+      this.enrollmentActivations.push(activation);
+      setting.status = 'active';
+      setting.lastVerifiedAt = activation.verifiedAt;
+      return { ...setting };
     }
   };
   const totpService = {
     calls: [],
+    enrollmentCreations: 0,
+    enrollmentPresentations: 0,
+    async createEnrollment({ username }) {
+      this.enrollmentCreations += 1;
+      return {
+        secret: ENROLLMENT_SECRET,
+        otpauthUri: `otpauth://totp/BESTCRM:${username}?secret=${ENROLLMENT_SECRET}&issuer=BESTCRM`,
+        qrCodeDataUrl: 'data:image/png;base64,dGVzdA=='
+      };
+    },
+    async createEnrollmentPresentation({ username, secret }) {
+      this.enrollmentPresentations += 1;
+      assert.equal(secret, ENROLLMENT_SECRET);
+      return {
+        secret,
+        otpauthUri: `otpauth://totp/BESTCRM:${username}?secret=${secret}&issuer=BESTCRM`,
+        qrCodeDataUrl: 'data:image/png;base64,dGVzdA=='
+      };
+    },
     async verify(input) {
       this.calls.push(input);
       return input.token === '123456'
@@ -115,16 +165,35 @@ async function createAuthenticatorMfaFixture({
   };
   const mfaRecoveryCodeService = {
     calls: [],
+    generatedBatches: [],
+    generateBatch(input) {
+      this.generatedBatches.push(input);
+      return {
+        generation: input.generation,
+        codes: [...RECOVERY_CODES],
+        codeHashes: RECOVERY_CODES.map((_, index) => (index + 1).toString(16).padStart(64, '0'))
+      };
+    },
     async consume(input) {
       this.calls.push(input);
       return input.code === 'ABCD-EFGH-JKLM-NPQR';
     }
   };
   const mfaSecretEncryptionService = {
+    encrypt({ secret, userId }) {
+      assert.equal(secret, ENROLLMENT_SECRET);
+      assert.equal(Number(userId), user.id);
+      return {
+        secretCiphertext: 'ciphertext',
+        secretNonce: 'nonce',
+        secretAuthTag: 'auth-tag',
+        secretKeyVersion: 1
+      };
+    },
     decrypt({ encrypted, userId }) {
       assert.equal(Number(userId), user.id);
       assert.equal(encrypted.secretCiphertext, 'ciphertext');
-      return 'JBSWY3DPEHPK3PXP';
+      return ENROLLMENT_SECRET;
     }
   };
   const trustedDeviceLookups = [];
@@ -1097,4 +1166,195 @@ test('Authenticator challenge requires the regenerated pending-session CSRF toke
   });
   assert.equal(verified.headers.location, '/');
   assert.equal((await agent.get('/session/me')).status, 200);
+});
+
+test('first enrollment shows a no-store QR and manual secret without putting secret material in session', async () => {
+  const fixture = await createAuthenticatorMfaFixture({ status: 'disabled', isRequired: true });
+  const sessionStore = new session.MemoryStore();
+  const agent = request.agent(createApp({ ...fixture.options, sessionStore }));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  const enrollment = await agent.get('/login/enroll-totp');
+
+  assert.equal(enrollment.status, 200);
+  assert.match(enrollment.headers['cache-control'], /no-store/);
+  assert.match(enrollment.text, /data:image\/png;base64,dGVzdA==/);
+  assert.match(enrollment.text, new RegExp(ENROLLMENT_SECRET));
+  assert.match(enrollment.text, /Microsoft Authenticator/);
+  assert.match(enrollment.text, /Google Authenticator/);
+  assert.match(enrollment.text, /name="code"/);
+  assert.equal(fixture.setting.status, 'pending');
+  assert.equal(fixture.mfaRepository.pendingSaves.length, 1);
+  assert.equal(fixture.totpService.enrollmentCreations, 1);
+
+  const storedSessions = await readStoredSessions(sessionStore);
+  const pendingAuthentication = Object.values(storedSessions)[0]?.pendingAuthentication;
+  assert.doesNotMatch(JSON.stringify(pendingAuthentication), new RegExp(ENROLLMENT_SECRET));
+  assert.doesNotMatch(JSON.stringify(pendingAuthentication), /ciphertext|auth-tag/);
+
+  const refreshed = await agent.get('/login/enroll-totp');
+  assert.equal(refreshed.status, 200);
+  assert.match(refreshed.text, new RegExp(ENROLLMENT_SECRET));
+  assert.equal(fixture.totpService.enrollmentCreations, 1);
+  assert.equal(fixture.totpService.enrollmentPresentations, 1);
+  assert.equal(fixture.mfaRepository.pendingSaves.length, 1);
+});
+
+test('invalid first TOTP keeps enrollment pending and uses existing lockout audit', async () => {
+  const fixture = await createAuthenticatorMfaFixture({ status: 'disabled', isRequired: true });
+  const loginSecurityRepository = createLoginSecurityRepository();
+  const agent = request.agent(createApp({ ...fixture.options, loginSecurityRepository }));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  await agent.get('/login/enroll-totp');
+  const invalid = await agent.post('/login/enroll-totp').type('form').send({ code: '000000' });
+
+  assert.equal(invalid.status, 401);
+  assert.match(invalid.headers['cache-control'], /no-store/);
+  assert.match(invalid.text, /Invalid Authenticator code/);
+  assert.match(invalid.text, new RegExp(ENROLLMENT_SECRET));
+  assert.equal(fixture.setting.status, 'pending');
+  assert.equal(fixture.mfaRepository.enrollmentActivations.length, 0);
+  assert.equal(loginSecurityRepository.auditEvents.at(-1).reason, 'invalid_second_factor');
+  assert.equal((await agent.get('/session/me')).status, 401);
+});
+
+test('valid first TOTP atomically activates enrollment and displays ten recovery codes once', async () => {
+  const fixture = await createAuthenticatorMfaFixture({ status: 'disabled', isRequired: true });
+  const agent = request.agent(createApp(fixture.options));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  await agent.get('/login/enroll-totp');
+  const recoveryPage = await agent.post('/login/enroll-totp').type('form').send({ code: '123456' });
+
+  assert.equal(recoveryPage.status, 200);
+  assert.match(recoveryPage.headers['cache-control'], /no-store/);
+  assert.equal((recoveryPage.text.match(/class="recovery-code"/g) || []).length, 10);
+  for (const code of RECOVERY_CODES) {
+    assert.match(recoveryPage.text, new RegExp(code));
+  }
+  assert.doesNotMatch(recoveryPage.text, new RegExp(ENROLLMENT_SECRET));
+  assert.doesNotMatch(recoveryPage.text, /ciphertext|auth-tag/);
+  assert.equal(fixture.setting.status, 'active');
+  assert.equal(fixture.mfaRepository.enrollmentActivations.length, 1);
+  assert.equal(fixture.mfaRepository.enrollmentActivations[0].generation, 1);
+  assert.equal(fixture.mfaRepository.enrollmentActivations[0].codeHashes.length, 10);
+  assert.equal((await agent.get('/session/me')).status, 401);
+
+  const refreshedEnrollmentSubmission = await agent
+    .post('/login/enroll-totp')
+    .type('form')
+    .send({ code: '123456' });
+  assert.equal(refreshedEnrollmentSubmission.status, 302);
+  assert.equal(refreshedEnrollmentSubmission.headers.location, '/login');
+  assert.doesNotMatch(refreshedEnrollmentSubmission.text, new RegExp(RECOVERY_CODES[0]));
+
+  const directRecoveryRead = await request(createApp(fixture.options)).get('/login/recovery-codes');
+  assert.equal(directRecoveryRead.status, 302);
+  assert.equal(directRecoveryRead.headers.location, '/login');
+  assert.doesNotMatch(directRecoveryRead.text, new RegExp(RECOVERY_CODES[0]));
+});
+
+test('recovery-code acknowledgement is required before the enrolled user receives a session', async () => {
+  const fixture = await createAuthenticatorMfaFixture({ status: 'disabled', isRequired: true });
+  const loginSecurityRepository = createLoginSecurityRepository();
+  const agent = request.agent(createApp({ ...fixture.options, loginSecurityRepository }));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  await agent.get('/login/enroll-totp');
+  await agent.post('/login/enroll-totp').type('form').send({ code: '123456' });
+
+  const missingAcknowledgement = await agent
+    .post('/login/recovery-codes/acknowledge')
+    .type('form')
+    .send({});
+  assert.equal(missingAcknowledgement.status, 400);
+  assert.match(missingAcknowledgement.text, /Confirm that you saved the recovery codes/);
+  assert.doesNotMatch(missingAcknowledgement.text, new RegExp(RECOVERY_CODES[0]));
+  assert.equal((await agent.get('/session/me')).status, 401);
+
+  const acknowledged = await agent
+    .post('/login/recovery-codes/acknowledge')
+    .type('form')
+    .send({ recoveryCodesSaved: '1' });
+  assert.equal(acknowledged.status, 302);
+  assert.equal(acknowledged.headers.location, '/');
+  assert.equal((await agent.get('/session/me')).status, 200);
+  assert.equal(loginSecurityRepository.auditEvents.at(-1).result, 'success');
+
+  const repeated = await agent
+    .post('/login/recovery-codes/acknowledge')
+    .type('form')
+    .send({ recoveryCodesSaved: '1' });
+  assert.equal(repeated.headers.location, '/login');
+});
+
+test('expired pending enrollment never creates or reveals a TOTP secret', async () => {
+  const fixture = await createAuthenticatorMfaFixture({ status: 'disabled', isRequired: true });
+  const agent = request.agent(createApp(fixture.options));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  fixture.setNow('2026-09-05T03:05:01.000Z');
+  const expired = await agent.get('/login/enroll-totp');
+
+  assert.equal(expired.status, 302);
+  assert.equal(expired.headers.location, '/login');
+  assert.equal(fixture.totpService.enrollmentCreations, 0);
+  assert.equal(fixture.mfaRepository.pendingSaves.length, 0);
+});
+
+test('enrollment setup failure is generic and never returns generated secret material', async () => {
+  const fixture = await createAuthenticatorMfaFixture({ status: 'disabled', isRequired: true });
+  fixture.options.mfaSecretEncryptionService = {
+    encrypt() {
+      throw new Error(`must not leak ${ENROLLMENT_SECRET}`);
+    },
+    decrypt: fixture.options.mfaSecretEncryptionService.decrypt
+  };
+  const agent = request.agent(createApp(fixture.options));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  const failed = await agent.get('/login/enroll-totp');
+
+  assert.equal(failed.status, 503);
+  assert.match(failed.text, /Authenticator setup is temporarily unavailable/);
+  assert.doesNotMatch(failed.text, new RegExp(ENROLLMENT_SECRET));
+  assert.doesNotMatch(failed.text, /must not leak/);
+  assert.equal(fixture.setting.status, 'disabled');
+});
+
+test('enrollment and recovery guidance follows the selected Chinese login language', async () => {
+  const fixture = await createAuthenticatorMfaFixture({ status: 'disabled', isRequired: true });
+  const agent = request.agent(createApp(fixture.options));
+
+  await agent.get('/language?lang=zh&returnTo=/login');
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  const enrollment = await agent.get('/login/enroll-totp');
+  assert.match(enrollment.text, /绑定验证器/);
+  assert.match(enrollment.text, /手动设置密钥/);
+
+  const recoveryPage = await agent.post('/login/enroll-totp').type('form').send({ code: '123456' });
+  assert.match(recoveryPage.text, /恢复码/);
+  assert.match(recoveryPage.text, /我已安全保存/);
 });

@@ -483,6 +483,8 @@ const emptyLoginSecurityRepository = {
 const emptyMfaRepository = {
   async findStatusByUserId() { return null; },
   async findVerificationMaterialByUserId() { return null; },
+  async savePendingEnrollment() { throw new Error('MFA repository is not configured'); },
+  async activateEnrollmentWithRecoveryCodes() { throw new Error('MFA repository is not configured'); },
   async recordVerification() { return null; },
   async consumeRecoveryCodeHash() { return null; }
 };

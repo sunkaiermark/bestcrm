@@ -203,3 +203,59 @@ test('recovery-code replacement binds its transaction to one connected PostgreSQ
   assert.match(client.queries[0].sql, /BEGIN/);
   assert.match(client.queries.at(-1).sql, /COMMIT/);
 });
+
+test('first enrollment activation and recovery-code insertion share one transaction', async () => {
+  const client = createFakePool([[settingRow], [], []]);
+  client.release = () => {};
+  const pool = {
+    async connect() {
+      return client;
+    }
+  };
+  const repository = createMfaRepository(pool);
+
+  const activated = await repository.activateEnrollmentWithRecoveryCodes({
+    userId: 7,
+    verifiedAt: new Date('2026-09-05T03:00:00.000Z'),
+    generation: 1,
+    codeHashes: ['a'.repeat(64), 'b'.repeat(64)]
+  });
+
+  assert.equal(activated.status, 'active');
+  assert.match(client.queries[0].sql, /BEGIN/);
+  assert.match(client.queries[1].sql, /UPDATE user_mfa_settings/);
+  assert.match(client.queries[1].sql, /status = 'pending'/);
+  assert.match(client.queries[2].sql, /UPDATE user_mfa_recovery_codes/);
+  assert.match(client.queries[3].sql, /INSERT INTO user_mfa_recovery_codes/);
+  assert.deepEqual(client.queries[3].params, [7, 12, 1, ['a'.repeat(64), 'b'.repeat(64)]]);
+  assert.match(client.queries[4].sql, /COMMIT/);
+});
+
+test('failed first recovery-code insertion rolls back enrollment activation', async () => {
+  const client = {
+    queries: [],
+    async query(sql, params) {
+      this.queries.push({ sql, params });
+      if (/UPDATE user_mfa_settings/.test(sql)) {
+        return { rows: [settingRow] };
+      }
+      if (/INSERT INTO user_mfa_recovery_codes/.test(sql)) {
+        throw new Error('insert failed');
+      }
+      return { rows: [] };
+    },
+    release() {}
+  };
+  const pool = { async connect() { return client; } };
+  const repository = createMfaRepository(pool);
+
+  await assert.rejects(() => repository.activateEnrollmentWithRecoveryCodes({
+    userId: 7,
+    verifiedAt: new Date('2026-09-05T03:00:00.000Z'),
+    generation: 1,
+    codeHashes: ['a'.repeat(64)]
+  }), /insert failed/);
+
+  assert.match(client.queries.at(-1).sql, /ROLLBACK/);
+  assert.doesNotMatch(client.queries.map((query) => query.sql).join('\n'), /COMMIT/);
+});

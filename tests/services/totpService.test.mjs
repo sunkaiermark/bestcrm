@@ -39,6 +39,27 @@ test('creates a BESTCRM RFC 6238 enrollment with QR and manual secret', async ()
   });
 });
 
+test('recreates an enrollment presentation from the same pending secret without rotating it', async () => {
+  let generated = false;
+  const service = createTotpService({
+    issuer: 'BESTCRM',
+    generateSecretValue: () => {
+      generated = true;
+      return 'SHOULDNOTBEUSED';
+    }
+  });
+
+  const enrollment = await service.createEnrollmentPresentation({
+    username: 'sales01',
+    secret: RFC_SECRET
+  });
+
+  assert.equal(generated, false);
+  assert.equal(enrollment.secret, RFC_SECRET);
+  assert.match(enrollment.otpauthUri, /secret=GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ/);
+  assert.match(enrollment.qrCodeDataUrl, /^data:image\/png;base64,/);
+});
+
 test('verifies current and one adjacent TOTP step but rejects two-step drift', async () => {
   const service = createTotpService({ now: () => new Date('1970-01-01T00:00:59.000Z') });
   const previous = await tokenAt(29);

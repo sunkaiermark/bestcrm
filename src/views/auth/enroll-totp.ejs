@@ -1,0 +1,147 @@
+<!doctype html>
+<html lang="<%= typeof language === 'undefined' ? 'en' : language %>">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BESTCRM <%= t('authenticatorEnrollmentTitle') %></title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f7fa;
+        --panel: #ffffff;
+        --line: #d8e1e8;
+        --ink: #17212b;
+        --muted: #647484;
+        --accent: #0f766e;
+        --accent-dark: #0b5f59;
+        --info-bg: #eff6ff;
+        --danger-bg: #fef2f2;
+        --danger: #991b1b;
+      }
+
+      * { box-sizing: border-box; }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background: linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0)), var(--bg);
+        color: var(--ink);
+        font: 18px/1.5 system-ui, "Microsoft YaHei", sans-serif;
+      }
+
+      .enrollment-shell { min-height: 100vh; display: grid; place-items: center; padding: 24px; }
+      .enrollment-card {
+        width: min(100%, 620px);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: 0 18px 48px rgba(23, 33, 43, 0.12);
+        padding: 30px;
+      }
+
+      .login-logo { display: block; height: auto; margin: 0 auto 22px; max-width: 100%; width: 224px; }
+      h1 { margin: 0 0 10px; font-size: 28px; font-weight: 650; }
+      .introduction { margin: 0 0 22px; color: var(--muted); }
+      .steps { display: grid; gap: 18px; margin: 0; padding: 0; list-style: none; counter-reset: setup-step; }
+      .steps > li { counter-increment: setup-step; display: grid; grid-template-columns: 34px 1fr; gap: 12px; align-items: start; }
+      .steps > li::before {
+        content: counter(setup-step);
+        display: grid;
+        width: 32px;
+        height: 32px;
+        place-items: center;
+        border-radius: 50%;
+        background: var(--accent);
+        color: white;
+        font-weight: 700;
+      }
+
+      .step-title { margin: 2px 0 5px; font-weight: 650; }
+      .step-copy { margin: 0; color: var(--muted); }
+      .qr-code { display: block; width: 240px; max-width: 100%; margin: 12px auto; border: 1px solid var(--line); border-radius: 8px; }
+      .manual-secret {
+        display: block;
+        overflow-wrap: anywhere;
+        margin-top: 8px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: var(--info-bg);
+        font: 600 19px/1.5 ui-monospace, Consolas, monospace;
+        letter-spacing: 0.08em;
+        padding: 10px 12px;
+        text-align: center;
+      }
+
+      .login-form { display: grid; gap: 14px; margin-top: 10px; }
+      .form-field { display: grid; gap: 6px; font-weight: 600; }
+      .form-field input {
+        width: 100%;
+        height: 48px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--ink);
+        font: 600 24px/1.2 ui-monospace, Consolas, monospace;
+        letter-spacing: 0.22em;
+        padding: 8px 10px;
+        text-align: center;
+      }
+
+      .form-field input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15); outline: none; }
+      .login-button { width: 100%; min-height: 44px; border: 0; border-radius: 6px; background: var(--accent); color: white; cursor: pointer; font: inherit; font-weight: 650; }
+      .login-button:hover { background: var(--accent-dark); }
+      .login-alert { margin: 0 0 18px; border: 1px solid #fecaca; border-radius: 6px; background: var(--danger-bg); color: var(--danger); padding: 9px 10px; }
+      .back-link { display: block; margin-top: 16px; color: var(--muted); text-align: center; }
+
+      @media (max-width: 520px) {
+        .enrollment-shell { align-items: start; padding: 14px; }
+        .enrollment-card { padding: 22px; }
+        .steps > li { grid-template-columns: 30px 1fr; gap: 9px; }
+        .steps > li::before { width: 28px; height: 28px; }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="enrollment-shell">
+      <section class="enrollment-card" aria-label="<%= t('authenticatorEnrollmentTitle') %>">
+        <img class="login-logo" src="/assets/sunkaier-logo-login.png" alt="SUNKAIER">
+        <h1><%= t('authenticatorEnrollmentTitle') %></h1>
+        <p class="introduction"><%= t('authenticatorEnrollmentIntroduction') %></p>
+        <% if (error) { %>
+          <p class="login-alert" role="alert"><%= error %></p>
+        <% } %>
+        <% if (manualSecret && qrCodeDataUrl) { %>
+          <ol class="steps">
+            <li>
+              <div>
+                <p class="step-title"><%= t('authenticatorInstallApp') %></p>
+                <p class="step-copy"><%= t('authenticatorSupportedApps') %></p>
+              </div>
+            </li>
+            <li>
+              <div>
+                <p class="step-title"><%= t('authenticatorScanQr') %></p>
+                <img class="qr-code" src="<%= qrCodeDataUrl %>" alt="<%= t('authenticatorQrAlt') %>">
+                <p class="step-copy"><%= t('authenticatorManualAlternative') %></p>
+                <span class="manual-secret" aria-label="<%= t('authenticatorManualSecret') %>"><%= manualSecret %></span>
+              </div>
+            </li>
+            <li>
+              <div>
+                <p class="step-title"><%= t('authenticatorConfirmApp') %></p>
+                <form class="login-form" method="post" action="/login/enroll-totp">
+                  <%- csrfField() %>
+                  <label class="form-field">
+                    <%= t('authenticatorVerificationCode') %>
+                    <input name="code" inputmode="numeric" pattern="[0-9]{6}" maxlength="6" autocomplete="one-time-code" autofocus required>
+                  </label>
+                  <button class="login-button" type="submit"><%= t('authenticatorConfirmEnrollment') %></button>
+                </form>
+              </div>
+            </li>
+          </ol>
+        <% } %>
+        <a class="back-link" href="/login"><%= t('backToLogin') %></a>
+      </section>
+    </main>
+  </body>
+</html>
