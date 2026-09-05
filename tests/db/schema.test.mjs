@@ -40,6 +40,7 @@ const bidPackageEditorsMigrationPath = new URL('../../src/db/migrations/038_bid_
 const bidPackageApprovalsMigrationPath = new URL('../../src/db/migrations/039_bid_package_approvals.sql', import.meta.url);
 const bidPackageOutputIdentityMigrationPath = new URL('../../src/db/migrations/040_bid_package_output_identity.sql', import.meta.url);
 const authenticatorMfaMigrationPath = new URL('../../src/db/migrations/041_authenticator_mfa.sql', import.meta.url);
+const googleWorkspaceCustomerCenterMigrationPath = new URL('../../src/db/migrations/042_google_workspace_customer_center.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -649,4 +650,73 @@ test('customer email sending migration binds immutable outbound mail to approved
   assert.match(sql, /Formal quotation email requires an approved quotation package from the same opportunity/);
   assert.match(sql, /Sent quotation package requires its accepted outbound email record/);
   assert.match(sql, /Sent email delivery state is immutable/);
+});
+
+test('Google Workspace customer center migration adds secret-safe mailbox and Gmail archive identity', async () => {
+  const sql = await readFile(googleWorkspaceCustomerCenterMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS mailbox_connections/);
+  assert.match(sql, /provider text NOT NULL/);
+  assert.match(sql, /mailbox_address text NOT NULL/);
+  assert.match(sql, /encrypted_refresh_token jsonb/);
+  assert.match(sql, /token_key_version integer/);
+  assert.match(sql, /granted_scopes text\[\]/);
+  assert.match(sql, /connection_status IN \('disconnected', 'connected', 'degraded', 'revoked'\)/);
+  assert.match(sql, /mailbox_connections_token_state_check/);
+  assert.match(sql, /octet_length\(decode\(encrypted_refresh_token ->> 'tokenNonce', 'base64'\)\) = 12/);
+  assert.match(sql, /octet_length\(decode\(encrypted_refresh_token ->> 'tokenAuthTag', 'base64'\)\) = 16/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS mailbox_connections_provider_mailbox_idx/);
+  assert.match(sql, /Mailbox connections cannot be deleted; revoke them instead/);
+  assert.doesNotMatch(sql, /google_password|client_secret|access_token/i);
+
+  for (const column of [
+    'mailbox_connection_id',
+    'workflow_status',
+    'assigned_user_id',
+    'assigned_at',
+    'assigned_by',
+    'completed_at',
+    'completed_by',
+    'last_inbound_at',
+    'last_outbound_at',
+    'provider_thread_id'
+  ]) {
+    assert.match(sql, new RegExp(`ADD COLUMN IF NOT EXISTS ${column}`));
+  }
+  assert.match(sql, /workflow_status IN \('unassigned', 'assigned', 'waiting_customer', 'completed'\)/);
+  assert.match(sql, /email_threads_assignment_state_check/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS email_threads_provider_thread_identity_idx/);
+
+  for (const column of [
+    'provider_name',
+    'provider_history_id',
+    'raw_eml_stored_path',
+    'raw_eml_file_size',
+    'raw_eml_sha256',
+    'imported_at',
+    'provider_labels'
+  ]) {
+    assert.match(sql, new RegExp(`ADD COLUMN IF NOT EXISTS ${column}`));
+  }
+  assert.match(sql, /email_messages_raw_eml_state_check/);
+  assert.match(sql, /imported_at IS NULL OR raw_eml_stored_path IS NOT NULL/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS email_messages_provider_message_identity_idx/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS email_messages_raw_eml_path_idx/);
+  assert.match(sql, /Email message mailbox connection must match its thread/);
+  assert.match(sql, /Inbound email messages are immutable/);
+  assert.match(sql, /Archived raw email identity is immutable/);
+});
+
+test('Google Workspace customer center migration creates an append-only assignment event stream', async () => {
+  const sql = await readFile(googleWorkspaceCustomerCenterMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_thread_assignment_events/);
+  assert.match(sql, /previous_assigned_user_id bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /new_assigned_user_id bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /action IN \('claim', 'assign', 'transfer', 'release', 'wait_customer', 'reopen', 'complete'\)/);
+  assert.match(sql, /acted_by bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /email_thread_assignment_events_transition_check/);
+  assert.match(sql, /action NOT IN \('transfer', 'release'\) OR btrim\(reason\) <> ''/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON email_thread_assignment_events/);
+  assert.match(sql, /Email thread assignment events are append-only/);
 });
