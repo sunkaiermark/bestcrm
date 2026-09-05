@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import session from 'express-session';
 import request from 'supertest';
 import { createApp } from '../../src/server.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
@@ -48,6 +49,118 @@ function createLoginSecurityRepository() {
 
 function extractCsrfToken(html) {
   return html.match(/name="_csrf"\s+value="([^"]+)"/)?.[1] || '';
+}
+
+function readStoredSessions(store) {
+  return new Promise((resolve, reject) => {
+    store.all((error, sessions) => error ? reject(error) : resolve(sessions || {}));
+  });
+}
+
+async function createAuthenticatorMfaFixture({
+  status = 'active',
+  isRequired = true,
+  now = '2026-09-05T03:00:00.000Z',
+  trustedDevice = null
+} = {}) {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  const user = {
+    id: 7,
+    username: 'sales01',
+    passwordHash,
+    displayName: 'Sales One',
+    isActive: true,
+    roles: [ROLES.SALESPERSON]
+  };
+  let currentTime = new Date(now);
+  const setting = {
+    id: 12,
+    userId: user.id,
+    method: 'totp',
+    status,
+    isRequired,
+    lastVerifiedAt: null,
+    secretCiphertext: 'ciphertext',
+    secretNonce: 'nonce',
+    secretAuthTag: 'auth-tag',
+    secretKeyVersion: 1
+  };
+  const mfaRepository = {
+    verificationReads: 0,
+    recordedVerifications: [],
+    async findStatusByUserId(userId) {
+      assert.equal(Number(userId), user.id);
+      return { ...setting };
+    },
+    async findVerificationMaterialByUserId(userId) {
+      assert.equal(Number(userId), user.id);
+      this.verificationReads += 1;
+      return { ...setting };
+    },
+    async recordVerification(userId, verifiedAt) {
+      this.recordedVerifications.push({ userId: Number(userId), verifiedAt });
+      setting.lastVerifiedAt = verifiedAt;
+      return { ...setting };
+    }
+  };
+  const totpService = {
+    calls: [],
+    async verify(input) {
+      this.calls.push(input);
+      return input.token === '123456'
+        && (input.afterTimeStep === undefined || input.afterTimeStep < 59619240)
+        ? { valid: true, delta: 0, epoch: 1788577200, timeStep: 59619240 }
+        : { valid: false };
+    }
+  };
+  const mfaRecoveryCodeService = {
+    calls: [],
+    async consume(input) {
+      this.calls.push(input);
+      return input.code === 'ABCD-EFGH-JKLM-NPQR';
+    }
+  };
+  const mfaSecretEncryptionService = {
+    decrypt({ encrypted, userId }) {
+      assert.equal(Number(userId), user.id);
+      assert.equal(encrypted.secretCiphertext, 'ciphertext');
+      return 'JBSWY3DPEHPK3PXP';
+    }
+  };
+  const trustedDeviceLookups = [];
+
+  return {
+    user,
+    setting,
+    mfaRepository,
+    totpService,
+    mfaRecoveryCodeService,
+    trustedDeviceLookups,
+    options: {
+      sessionSecret: 'test-secret',
+      userRepository: buildUserRepository(user),
+      authenticatorMfa: {
+        enabled: true,
+        trustDays: 10,
+        issuer: 'BESTCRM',
+        encryptionKey: Buffer.alloc(32, 7).toString('base64'),
+        encryptionKeyVersion: 1,
+        recoveryCodePepper: 'test-recovery-code-pepper-at-least-32-characters'
+      },
+      mfaRepository,
+      totpService,
+      mfaRecoveryCodeService,
+      mfaSecretEncryptionService,
+      authenticatorMfaNow: () => new Date(currentTime),
+      mfaTrustedDeviceResolver: async (lookup) => {
+        trustedDeviceLookups.push(lookup);
+        return trustedDevice;
+      }
+    },
+    setNow(value) {
+      currentTime = new Date(value);
+    }
+  };
 }
 
 test('login page renders username and password form', async () => {
@@ -738,4 +851,250 @@ test('SMS second-factor flow requires the regenerated session CSRF token', async
   });
   assert.equal(verified.status, 302);
   assert.equal(verified.headers.location, '/');
+});
+
+test('required unenrolled account enters a minimal pending enrollment stage after password', async () => {
+  const fixture = await createAuthenticatorMfaFixture({ status: 'disabled', isRequired: true });
+  const agent = request.agent(createApp(fixture.options));
+
+  const passwordStep = await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+
+  assert.equal(passwordStep.status, 302);
+  assert.equal(passwordStep.headers.location, '/login/enroll-totp');
+  assert.equal((await agent.get('/session/me')).status, 401);
+});
+
+test('active Authenticator account requires TOTP after password and exposes no secret material', async () => {
+  const fixture = await createAuthenticatorMfaFixture();
+  const sessionStore = new session.MemoryStore();
+  const agent = request.agent(createApp({ ...fixture.options, sessionStore }));
+
+  const passwordStep = await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  const challenge = await agent.get('/login/verify-totp');
+
+  assert.equal(passwordStep.status, 302);
+  assert.equal(passwordStep.headers.location, '/login/verify-totp');
+  assert.equal(challenge.status, 200);
+  assert.match(challenge.headers['cache-control'], /no-store/);
+  assert.match(challenge.text, /name="code"/);
+  assert.match(challenge.text, /Authenticator/);
+  assert.doesNotMatch(challenge.text, /ciphertext|JBSWY3DPEHPK3PXP/);
+  assert.equal((await agent.get('/session/me')).status, 401);
+  assert.equal(fixture.mfaRepository.verificationReads, 0);
+  const storedSessions = await readStoredSessions(sessionStore);
+  const pendingAuthentication = Object.values(storedSessions)[0]?.pendingAuthentication;
+  assert.deepEqual(Object.keys(pendingAuthentication).sort(), [
+    'attemptsRemaining',
+    'expiresAt',
+    'returnTo',
+    'stage',
+    'userId',
+    'username'
+  ]);
+  assert.doesNotMatch(JSON.stringify(pendingAuthentication), /ciphertext|JBSWY3DPEHPK3PXP/);
+});
+
+test('valid TOTP completes authentication and cannot be replayed after another password login', async () => {
+  const fixture = await createAuthenticatorMfaFixture();
+  const loginSecurityRepository = createLoginSecurityRepository();
+  const agent = request.agent(createApp({ ...fixture.options, loginSecurityRepository }));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  const verified = await agent.post('/login/verify-totp').type('form').send({ code: '123456' });
+
+  assert.equal(verified.status, 302);
+  assert.equal(verified.headers.location, '/');
+  assert.equal((await agent.get('/session/me')).status, 200);
+  assert.equal(fixture.mfaRepository.recordedVerifications.length, 1);
+  assert.equal(loginSecurityRepository.auditEvents.at(-1).result, 'success');
+
+  await agent.post('/logout');
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  const replay = await agent.post('/login/verify-totp').type('form').send({ code: '123456' });
+  assert.equal(replay.status, 401);
+  assert.match(replay.text, /Invalid Authenticator or recovery code/);
+  assert.equal(fixture.totpService.calls.at(-1).afterTimeStep, 59619240);
+  assert.equal((await agent.get('/session/me')).status, 401);
+});
+
+test('one-time recovery code can complete the same Authenticator challenge', async () => {
+  const fixture = await createAuthenticatorMfaFixture();
+  const agent = request.agent(createApp(fixture.options));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  const verified = await agent.post('/login/verify-totp').type('form').send({
+    code: 'ABCD-EFGH-JKLM-NPQR'
+  });
+
+  assert.equal(verified.status, 302);
+  assert.equal(verified.headers.location, '/');
+  assert.equal(fixture.mfaRecoveryCodeService.calls.length, 1);
+  assert.equal(fixture.totpService.calls.length, 0);
+  assert.equal(fixture.mfaRepository.verificationReads, 0);
+  assert.equal((await agent.get('/session/me')).status, 200);
+});
+
+test('expired Authenticator pending session is rejected without reading encrypted material', async () => {
+  const fixture = await createAuthenticatorMfaFixture();
+  const agent = request.agent(createApp(fixture.options));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  fixture.setNow('2026-09-05T03:05:01.000Z');
+  const expired = await agent.post('/login/verify-totp').type('form').send({ code: '123456' });
+
+  assert.equal(expired.status, 401);
+  assert.match(expired.text, /expired/i);
+  assert.equal(fixture.mfaRepository.verificationReads, 0);
+  assert.equal((await agent.get('/login/verify-totp')).headers.location, '/login');
+  assert.equal((await agent.get('/session/me')).status, 401);
+});
+
+test('five invalid Authenticator tokens are audited, locked, and never authenticate', async () => {
+  const fixture = await createAuthenticatorMfaFixture();
+  const loginSecurityRepository = createLoginSecurityRepository();
+  const agent = request.agent(createApp({ ...fixture.options, loginSecurityRepository }));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  for (let attempt = 1; attempt <= 5; attempt += 1) {
+    const response = await agent.post('/login/verify-totp').type('form').send({ code: '000000' });
+    assert.equal(response.status, 401);
+    if (attempt === 5) {
+      assert.match(response.text, /Too many incorrect codes/);
+    }
+  }
+
+  assert.equal(loginSecurityRepository.auditEvents.filter(
+    (event) => event.reason === 'invalid_second_factor'
+  ).length, 5);
+  assert.ok(loginSecurityRepository.states.get('user:sales01').lockedUntil);
+  assert.equal((await agent.get('/login/verify-totp')).headers.location, '/login');
+  assert.equal((await agent.get('/session/me')).status, 401);
+});
+
+test('trusted-device decision skips TOTP only after a fresh password and rejects user mismatch', async () => {
+  const trustedFixture = await createAuthenticatorMfaFixture({ trustedDevice: { id: 31, userId: 7 } });
+  const trustedAgent = request.agent(createApp(trustedFixture.options));
+
+  const trustedLogin = await trustedAgent.post('/login').type('form').send({
+    username: trustedFixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  assert.equal(trustedLogin.headers.location, '/');
+  assert.equal((await trustedAgent.get('/session/me')).status, 200);
+  assert.deepEqual(Object.keys(trustedFixture.trustedDeviceLookups[0]).sort(), [
+    'cookieHeader',
+    'ipAddress',
+    'userAgent',
+    'userId'
+  ]);
+  assert.equal('password' in trustedFixture.trustedDeviceLookups[0], false);
+
+  const mismatchFixture = await createAuthenticatorMfaFixture({ trustedDevice: { id: 32, userId: 8 } });
+  const mismatchAgent = request.agent(createApp(mismatchFixture.options));
+  const mismatchedLogin = await mismatchAgent.post('/login').type('form').send({
+    username: mismatchFixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  assert.equal(mismatchedLogin.headers.location, '/login/verify-totp');
+  assert.equal((await mismatchAgent.get('/session/me')).status, 401);
+});
+
+test('Authenticator feature-off login ignores MFA state and preserves direct password login', async () => {
+  const passwordHash = await hashPassword('ChangeMe123!');
+  let mfaReads = 0;
+  const app = createApp({
+    sessionSecret: 'test-secret',
+    authenticatorMfa: { enabled: false },
+    userRepository: buildUserRepository({
+      id: 7,
+      username: 'sales01',
+      passwordHash,
+      displayName: 'Sales One',
+      isActive: true,
+      roles: [ROLES.SALESPERSON]
+    }),
+    mfaRepository: {
+      async findStatusByUserId() {
+        mfaReads += 1;
+        return { userId: 7, status: 'active', isRequired: true };
+      }
+    }
+  });
+  const agent = request.agent(app);
+
+  const response = await agent.post('/login').type('form').send({
+    username: 'sales01',
+    password: 'ChangeMe123!'
+  });
+
+  assert.equal(response.headers.location, '/');
+  assert.equal(mfaReads, 0);
+  assert.equal((await agent.get('/session/me')).status, 200);
+});
+
+test('globally enabled Authenticator remains gradual for an account that is neither active nor required', async () => {
+  const fixture = await createAuthenticatorMfaFixture({ status: 'disabled', isRequired: false });
+  const agent = request.agent(createApp(fixture.options));
+
+  const response = await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+
+  assert.equal(response.headers.location, '/');
+  assert.equal((await agent.get('/session/me')).status, 200);
+  assert.equal(fixture.mfaRepository.verificationReads, 0);
+});
+
+test('Authenticator challenge requires the regenerated pending-session CSRF token', async () => {
+  const fixture = await createAuthenticatorMfaFixture();
+  const agent = request.agent(createApp({ ...fixture.options, csrfProtection: true }));
+
+  const loginForm = await agent.get('/login');
+  const loginToken = extractCsrfToken(loginForm.text);
+  const passwordStep = await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!',
+    _csrf: loginToken
+  });
+  assert.equal(passwordStep.headers.location, '/login/verify-totp');
+
+  const staleTokenResponse = await agent.post('/login/verify-totp').type('form').send({
+    code: '123456',
+    _csrf: loginToken
+  });
+  assert.equal(staleTokenResponse.status, 403);
+
+  const verificationForm = await agent.get('/login/verify-totp');
+  const verificationToken = extractCsrfToken(verificationForm.text);
+  assert.ok(verificationToken);
+  assert.notEqual(verificationToken, loginToken);
+
+  const verified = await agent.post('/login/verify-totp').type('form').send({
+    code: '123456',
+    _csrf: verificationToken
+  });
+  assert.equal(verified.headers.location, '/');
+  assert.equal((await agent.get('/session/me')).status, 200);
 });

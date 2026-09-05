@@ -25,6 +25,7 @@ import { createInquiryAttachmentRepository } from './repositories/inquiryAttachm
 import { createInquiryCustomerApprovalRepository } from './repositories/inquiryCustomerApprovalRepository.mjs';
 import { createInquiryRepository } from './repositories/inquiryRepository.mjs';
 import { createLoginSecurityRepository } from './repositories/loginSecurityRepository.mjs';
+import { createMfaRepository } from './repositories/mfaRepository.mjs';
 import { createNotificationRepository } from './repositories/notificationRepository.mjs';
 import { createOpportunityMaterialVersionRepository } from './repositories/opportunityMaterialVersionRepository.mjs';
 import { createOpportunityCommercialDraftRepository } from './repositories/opportunityCommercialDraftRepository.mjs';
@@ -63,8 +64,11 @@ import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
 import { createMessageLabeler, createStatusLabeler, createTodoTitleLabeler, createTranslator, createWorkflowEventLabeler, inferLanguageFromAcceptLanguage, normalizeLanguage } from './utils/i18n.mjs';
 import { isMainModule } from './utils/moduleEntry.mjs';
 import { createLoginSecurityService } from './services/loginSecurityService.mjs';
+import { createMfaRecoveryCodeService } from './services/mfaRecoveryCodeService.mjs';
+import { createMfaSecretEncryptionService } from './services/mfaSecretEncryptionService.mjs';
 import { createSmsSecondFactorService } from './services/smsSecondFactorService.mjs';
 import { createTechnicalDocumentService } from './services/technicalDocumentService.mjs';
+import { createTotpService } from './services/totpService.mjs';
 import { createCustomerEmailTransport } from './services/customerEmailService.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -476,6 +480,13 @@ const emptyLoginSecurityRepository = {
   async recordAuditEvent() {}
 };
 
+const emptyMfaRepository = {
+  async findStatusByUserId() { return null; },
+  async findVerificationMaterialByUserId() { return null; },
+  async recordVerification() { return null; },
+  async consumeRecoveryCodeHash() { return null; }
+};
+
 const emptyNotificationRepository = {
   async listForUser() { return []; },
   async listAfterId() { return []; },
@@ -613,12 +624,27 @@ export function createApp(options = {}) {
   const pool = options.pool || (shouldCreatePool ? createPool(config) : null);
   const userRepository = options.userRepository || (pool ? createUserRepository(pool) : emptyUserRepository);
   const loginSecurityRepository = options.loginSecurityRepository || (pool ? createLoginSecurityRepository(pool) : emptyLoginSecurityRepository);
+  const mfaRepository = options.mfaRepository || (pool ? createMfaRepository(pool) : emptyMfaRepository);
   const notificationRepository = options.notificationRepository || (pool ? createNotificationRepository(pool) : emptyNotificationRepository);
   const loginSecurityService = options.loginSecurityService || createLoginSecurityService(loginSecurityRepository);
   const smsSecondFactorService = options.smsSecondFactorService || createSmsSecondFactorService({
     config: config.loginSecondFactor,
     secret: config.sessionSecret
   });
+  const authenticatorMfaEnabled = config.authenticatorMfa?.enabled === true;
+  const authenticatorMfaNow = options.authenticatorMfaNow || (() => new Date());
+  const totpService = options.totpService || (authenticatorMfaEnabled
+    ? createTotpService({ issuer: config.authenticatorMfa.issuer, now: authenticatorMfaNow })
+    : null);
+  const mfaSecretEncryptionService = options.mfaSecretEncryptionService || (authenticatorMfaEnabled
+    ? createMfaSecretEncryptionService({
+      encryptionKey: config.authenticatorMfa.encryptionKey,
+      keyVersion: config.authenticatorMfa.encryptionKeyVersion
+    })
+    : null);
+  const mfaRecoveryCodeService = options.mfaRecoveryCodeService || (authenticatorMfaEnabled
+    ? createMfaRecoveryCodeService({ pepper: config.authenticatorMfa.recoveryCodePepper })
+    : null);
   const roleRepository = options.roleRepository || (pool ? createRoleRepository(pool) : emptyRoleRepository);
   const approvalSettingRepository = options.approvalSettingRepository || (pool ? createApprovalSettingRepository(pool) : emptyApprovalSettingRepository);
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
@@ -741,7 +767,19 @@ export function createApp(options = {}) {
   app.get('/', (req, res) => {
     res.redirect('/workbench');
   });
-  app.use(authRoutes(userRepository, { loginSecurityService, smsSecondFactorService }));
+  app.use(authRoutes(userRepository, {
+    loginSecurityService,
+    smsSecondFactorService,
+    authenticatorMfa: {
+      enabled: authenticatorMfaEnabled,
+      repository: mfaRepository,
+      totpService,
+      secretEncryptionService: mfaSecretEncryptionService,
+      recoveryCodeService: mfaRecoveryCodeService,
+      resolveTrustedDevice: options.mfaTrustedDeviceResolver,
+      now: authenticatorMfaNow
+    }
+  }));
   app.use(accountRoutes({ userRepository, loginSecurityRepository }));
   app.use(workbenchRoutes({ workbenchRepository }));
   app.use(notificationRoutes({

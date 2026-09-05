@@ -2,6 +2,10 @@ import { Router } from 'express';
 import { sanitizeSessionUser, verifyPassword } from '../services/authService.mjs';
 import { normalizeLanguage } from '../utils/i18n.mjs';
 
+const PENDING_AUTHENTICATION_TTL_MS = 5 * 60 * 1000;
+const PENDING_AUTHENTICATION_MAX_ATTEMPTS = 5;
+const TOTP_PERIOD_MS = 30 * 1000;
+
 function safeReturnTo(value) {
   const target = String(value || '/workbench');
   if (!target.startsWith('/') || target.startsWith('//')) {
@@ -52,12 +56,82 @@ function renderSecondFactor(res, challenge, error = null, status = 200) {
   });
 }
 
+function renderAuthenticatorChallenge(res, error = null, status = 200) {
+  res.set('Cache-Control', 'no-store');
+  res.status(status).render('auth/verify-totp', { error });
+}
+
 function remainingAttempts(value) {
   const attempts = Number(value);
   return Number.isInteger(attempts) && attempts > 0 ? attempts : 0;
 }
 
-export function authRoutes(userRepository, { loginSecurityService, smsSecondFactorService } = {}) {
+function currentDate(now) {
+  const value = typeof now === 'function' ? now() : new Date();
+  const date = value instanceof Date ? new Date(value.getTime()) : new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    throw new Error('Authenticator MFA clock returned an invalid time');
+  }
+  return date;
+}
+
+function pendingAuthenticationIsCurrent(challenge, { stage, now }) {
+  const expiresAt = new Date(challenge?.expiresAt).getTime();
+  return Boolean(challenge)
+    && challenge.stage === stage
+    && remainingAttempts(challenge.attemptsRemaining) > 0
+    && Number.isFinite(expiresAt)
+    && expiresAt > currentDate(now).getTime();
+}
+
+function pendingAuthenticationMatches(challenge, { user, stage, now }) {
+  return pendingAuthenticationIsCurrent(challenge, { stage, now })
+    && Number(challenge.userId) === Number(user.id)
+    && challenge.username === user.username;
+}
+
+function createPendingAuthentication({ user, stage, returnTo, now, extra = {} }) {
+  return {
+    userId: Number(user.id),
+    username: user.username,
+    stage,
+    attemptsRemaining: PENDING_AUTHENTICATION_MAX_ATTEMPTS,
+    expiresAt: new Date(currentDate(now).getTime() + PENDING_AUTHENTICATION_TTL_MS).toISOString(),
+    returnTo: safeReturnTo(returnTo || '/'),
+    ...extra
+  };
+}
+
+async function storePendingAuthentication(req, challenge) {
+  await regenerateSession(req);
+  req.session.pendingAuthentication = challenge;
+  await saveSession(req);
+}
+
+function clearPendingAuthentication(req) {
+  delete req.session.pendingAuthentication;
+  delete req.session.pendingSecondFactor;
+}
+
+function lastVerifiedTimeStep(value) {
+  if (!value) {
+    return undefined;
+  }
+  const milliseconds = new Date(value).getTime();
+  return Number.isFinite(milliseconds) ? Math.floor(milliseconds / TOTP_PERIOD_MS) : undefined;
+}
+
+function acceptedTimeStepDate(timeStep, fallback) {
+  return Number.isInteger(timeStep) && timeStep >= 0
+    ? new Date(timeStep * TOTP_PERIOD_MS)
+    : currentDate(fallback);
+}
+
+export function authRoutes(userRepository, {
+  loginSecurityService,
+  smsSecondFactorService,
+  authenticatorMfa = {}
+} = {}) {
   const router = Router();
 
   router.get('/language', (req, res) => {
@@ -86,7 +160,7 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
         : false;
 
       if (locked) {
-        delete req.session.pendingSecondFactor;
+        clearPendingAuthentication(req);
         if (loginSecurityService) {
           await loginSecurityService.recordLocked({ username, user, ipAddress, userAgent });
         }
@@ -97,7 +171,7 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
       const valid = user && user.isActive && await verifyPassword(password, user.passwordHash);
 
       if (!valid) {
-        delete req.session.pendingSecondFactor;
+        clearPendingAuthentication(req);
         if (loginSecurityService) {
           await loginSecurityService.recordFailure({
             username,
@@ -111,9 +185,76 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
         return;
       }
 
+      const returnTo = safeReturnTo(req.body.returnTo || '/');
+      if (authenticatorMfa.enabled === true) {
+        const mfaStatus = await authenticatorMfa.repository.findStatusByUserId(user.id);
+        if (mfaStatus?.status === 'active') {
+          let trustedDevice = null;
+          if (typeof authenticatorMfa.resolveTrustedDevice === 'function') {
+            try {
+              trustedDevice = await authenticatorMfa.resolveTrustedDevice({
+                userId: Number(user.id),
+                cookieHeader: req.get('cookie') || '',
+                ipAddress,
+                userAgent
+              });
+            } catch {
+              trustedDevice = null;
+            }
+          }
+          if (trustedDevice && Number(trustedDevice.userId) === Number(user.id)) {
+            if (loginSecurityService) {
+              await loginSecurityService.recordSuccess({ username, user, ipAddress, userAgent });
+            }
+            await establishSession(req, user.id);
+            res.redirect(returnTo);
+            return;
+          }
+
+          const pendingChallenge = req.session.pendingAuthentication;
+          if (pendingAuthenticationMatches(pendingChallenge, {
+            user,
+            stage: 'totp_challenge',
+            now: authenticatorMfa.now
+          })) {
+            res.redirect('/login/verify-totp');
+            return;
+          }
+          clearPendingAuthentication(req);
+          await storePendingAuthentication(req, createPendingAuthentication({
+            user,
+            stage: 'totp_challenge',
+            returnTo,
+            now: authenticatorMfa.now
+          }));
+          res.redirect('/login/verify-totp');
+          return;
+        }
+
+        if (mfaStatus?.status === 'pending' || mfaStatus?.isRequired === true) {
+          const pendingChallenge = req.session.pendingAuthentication;
+          if (!pendingAuthenticationMatches(pendingChallenge, {
+            user,
+            stage: 'totp_enrollment',
+            now: authenticatorMfa.now
+          })) {
+            clearPendingAuthentication(req);
+            await storePendingAuthentication(req, createPendingAuthentication({
+              user,
+              stage: 'totp_enrollment',
+              returnTo,
+              now: authenticatorMfa.now
+            }));
+          }
+          res.redirect('/login/enroll-totp');
+          return;
+        }
+      }
+
       if (smsSecondFactorService?.isEnabled()) {
-        const pendingChallenge = req.session.pendingSecondFactor;
+        const pendingChallenge = req.session.pendingAuthentication;
         const pendingMatchesUser = pendingChallenge
+          && pendingChallenge.stage === 'sms_challenge'
           && Number(pendingChallenge.userId) === Number(user.id)
           && pendingChallenge.username === user.username;
         if (pendingMatchesUser
@@ -123,7 +264,7 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
           return;
         }
         if (!pendingMatchesUser) {
-          delete req.session.pendingSecondFactor;
+          clearPendingAuthentication(req);
         }
         let challenge;
         try {
@@ -135,9 +276,11 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
           });
           return;
         }
-        await regenerateSession(req);
-        req.session.pendingSecondFactor = challenge;
-        await saveSession(req);
+        await storePendingAuthentication(req, {
+          ...challenge,
+          stage: 'sms_challenge',
+          returnTo
+        });
         res.redirect('/login/verify-sms');
         return;
       }
@@ -152,25 +295,40 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
     }
   });
 
-  router.get('/login/verify-sms', (req, res) => {
-    const challenge = req.session.pendingSecondFactor;
-    if (!smsSecondFactorService?.isEnabled() || !challenge) {
+  router.get('/login/verify-totp', (req, res) => {
+    const challenge = req.session.pendingAuthentication;
+    if (authenticatorMfa.enabled !== true
+      || !pendingAuthenticationIsCurrent(challenge, {
+        stage: 'totp_challenge',
+        now: authenticatorMfa.now
+      })) {
+      clearPendingAuthentication(req);
       res.redirect('/login');
       return;
     }
-    renderSecondFactor(res, challenge);
+    renderAuthenticatorChallenge(res);
   });
 
-  router.post('/login/verify-sms', async (req, res, next) => {
+  router.post('/login/verify-totp', async (req, res, next) => {
     try {
-      const challenge = req.session.pendingSecondFactor;
-      if (!smsSecondFactorService?.isEnabled() || !challenge) {
+      const challenge = req.session.pendingAuthentication;
+      if (authenticatorMfa.enabled !== true || challenge?.stage !== 'totp_challenge') {
+        clearPendingAuthentication(req);
         res.redirect('/login');
         return;
       }
+      if (!pendingAuthenticationIsCurrent(challenge, {
+        stage: 'totp_challenge',
+        now: authenticatorMfa.now
+      })) {
+        clearPendingAuthentication(req);
+        renderAuthenticatorChallenge(res, res.locals.t('authenticatorCodeExpired'), 401);
+        return;
+      }
+
       const user = await userRepository.findByIdWithRoles(challenge.userId);
       if (!user || !user.isActive || user.username !== challenge.username) {
-        delete req.session.pendingSecondFactor;
+        clearPendingAuthentication(req);
         res.redirect('/login');
         return;
       }
@@ -183,7 +341,137 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
           ipAddress,
           userAgent
         });
-        delete req.session.pendingSecondFactor;
+        clearPendingAuthentication(req);
+        renderAuthenticatorChallenge(res, res.locals.t('smsAttemptsExhausted'), 401);
+        return;
+      }
+
+      const mfaStatus = await authenticatorMfa.repository.findStatusByUserId(user.id);
+      if (!mfaStatus
+        || Number(mfaStatus.userId) !== Number(user.id)
+        || mfaStatus.status !== 'active') {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+
+      const code = String(req.body.code || '').trim();
+      let valid = false;
+      try {
+        if (/^\d{6}$/.test(code)) {
+          const material = await authenticatorMfa.repository.findVerificationMaterialByUserId(user.id);
+          if (!material
+            || Number(material.userId) !== Number(user.id)
+            || material.status !== 'active') {
+            clearPendingAuthentication(req);
+            res.redirect('/login');
+            return;
+          }
+          const secret = authenticatorMfa.secretEncryptionService.decrypt({
+            encrypted: material,
+            userId: user.id
+          });
+          const verification = await authenticatorMfa.totpService.verify({
+            secret,
+            token: code,
+            afterTimeStep: lastVerifiedTimeStep(material.lastVerifiedAt)
+          });
+          if (verification.valid) {
+            const recorded = await authenticatorMfa.repository.recordVerification(
+              user.id,
+              acceptedTimeStepDate(verification.timeStep, authenticatorMfa.now)
+            );
+            valid = Boolean(recorded);
+          }
+        } else {
+          valid = await authenticatorMfa.recoveryCodeService.consume({
+            repository: authenticatorMfa.repository,
+            userId: user.id,
+            code
+          });
+          if (valid) {
+            await authenticatorMfa.repository.recordVerification(
+              user.id,
+              currentDate(authenticatorMfa.now)
+            );
+          }
+        }
+      } catch {
+        renderAuthenticatorChallenge(res, res.locals.t('authenticatorUnavailable'), 503);
+        return;
+      }
+
+      if (!valid) {
+        challenge.attemptsRemaining = Math.max(0, remainingAttempts(challenge.attemptsRemaining) - 1);
+        if (loginSecurityService) {
+          await loginSecurityService.recordFailure({
+            username: user.username,
+            user,
+            ipAddress,
+            userAgent,
+            reason: 'invalid_second_factor'
+          });
+        }
+        if (challenge.attemptsRemaining <= 0) {
+          clearPendingAuthentication(req);
+          renderAuthenticatorChallenge(res, res.locals.t('smsAttemptsExhausted'), 401);
+          return;
+        }
+        req.session.pendingAuthentication = challenge;
+        renderAuthenticatorChallenge(res, res.locals.t('invalidAuthenticatorCode'), 401);
+        return;
+      }
+
+      if (loginSecurityService) {
+        await loginSecurityService.recordSuccess({
+          username: user.username,
+          user,
+          ipAddress,
+          userAgent
+        });
+      }
+      const returnTo = safeReturnTo(challenge.returnTo || '/');
+      await establishSession(req, user.id);
+      res.redirect(returnTo);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/login/verify-sms', (req, res) => {
+    const challenge = req.session.pendingAuthentication;
+    if (!smsSecondFactorService?.isEnabled() || challenge?.stage !== 'sms_challenge') {
+      clearPendingAuthentication(req);
+      res.redirect('/login');
+      return;
+    }
+    renderSecondFactor(res, challenge);
+  });
+
+  router.post('/login/verify-sms', async (req, res, next) => {
+    try {
+      const challenge = req.session.pendingAuthentication;
+      if (!smsSecondFactorService?.isEnabled() || challenge?.stage !== 'sms_challenge') {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+      const user = await userRepository.findByIdWithRoles(challenge.userId);
+      if (!user || !user.isActive || user.username !== challenge.username) {
+        clearPendingAuthentication(req);
+        res.redirect('/login');
+        return;
+      }
+      const { ipAddress, userAgent } = requestContext(req);
+      if (loginSecurityService?.isLocked
+        && await loginSecurityService.isLocked({ username: user.username, ipAddress })) {
+        await loginSecurityService.recordLocked({
+          username: user.username,
+          user,
+          ipAddress,
+          userAgent
+        });
+        clearPendingAuthentication(req);
         renderSecondFactor(res, challenge, res.locals.t('smsAttemptsExhausted'), 401);
         return;
       }
@@ -193,7 +481,7 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
         code: req.body.code
       });
       if (verification === 'expired') {
-        delete req.session.pendingSecondFactor;
+        clearPendingAuthentication(req);
         renderSecondFactor(res, challenge, res.locals.t('smsCodeExpired'), 401);
         return;
       }
@@ -209,11 +497,11 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
           });
         }
         if (challenge.attemptsRemaining <= 0) {
-          delete req.session.pendingSecondFactor;
+          clearPendingAuthentication(req);
           renderSecondFactor(res, challenge, res.locals.t('smsAttemptsExhausted'), 401);
           return;
         }
-        req.session.pendingSecondFactor = challenge;
+        req.session.pendingAuthentication = challenge;
         renderSecondFactor(res, challenge, res.locals.t('invalidSmsCode'), 401);
         return;
       }
@@ -226,8 +514,9 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
           userAgent
         });
       }
+      const returnTo = safeReturnTo(challenge.returnTo || '/');
       await establishSession(req, user.id);
-      res.redirect('/');
+      res.redirect(returnTo);
     } catch (error) {
       next(error);
     }
@@ -235,8 +524,9 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
 
   router.post('/login/verify-sms/resend', async (req, res, next) => {
     try {
-      const challenge = req.session.pendingSecondFactor;
-      if (!smsSecondFactorService?.isEnabled() || !challenge) {
+      const challenge = req.session.pendingAuthentication;
+      if (!smsSecondFactorService?.isEnabled() || challenge?.stage !== 'sms_challenge') {
+        clearPendingAuthentication(req);
         res.redirect('/login');
         return;
       }
@@ -246,7 +536,7 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
       }
       const user = await userRepository.findByIdWithRoles(challenge.userId);
       if (!user || !user.isActive || user.username !== challenge.username) {
-        delete req.session.pendingSecondFactor;
+        clearPendingAuthentication(req);
         res.redirect('/login');
         return;
       }
@@ -259,7 +549,7 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
           ipAddress,
           userAgent
         });
-        delete req.session.pendingSecondFactor;
+        clearPendingAuthentication(req);
         renderSecondFactor(res, challenge, res.locals.t('smsAttemptsExhausted'), 401);
         return;
       }
@@ -269,7 +559,9 @@ export function authRoutes(userRepository, { loginSecurityService, smsSecondFact
           remainingAttempts(challenge.attemptsRemaining),
           remainingAttempts(nextChallenge.attemptsRemaining)
         );
-        req.session.pendingSecondFactor = nextChallenge;
+        nextChallenge.stage = 'sms_challenge';
+        nextChallenge.returnTo = challenge.returnTo;
+        req.session.pendingAuthentication = nextChallenge;
         renderSecondFactor(res, nextChallenge, res.locals.t('smsCodeResent'));
       } catch {
         renderSecondFactor(res, challenge, res.locals.t('smsSecondFactorUnavailable'), 503);
