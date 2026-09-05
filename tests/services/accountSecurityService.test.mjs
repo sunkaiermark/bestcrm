@@ -13,7 +13,7 @@ async function buildHarness() {
     id: 7,
     username: 'sales01',
     displayName: 'Sales One',
-    passwordHash: await hashPassword('Old123'),
+    passwordHash: await hashPassword('482951'),
     isActive: true,
     roles: ['salesperson']
   };
@@ -39,18 +39,18 @@ async function expectPasswordError(promise, code) {
   });
 }
 
-test('changeOwnPassword enforces the confirmed six-character minimum', async () => {
+test('changeOwnPassword enforces the confirmed six-digit policy', async () => {
   const { user, changes, repository } = await buildHarness();
 
   await expectPasswordError(changeOwnPassword(repository, user, {
-    currentPassword: 'Old123',
+    currentPassword: '482951',
     newPassword: '12345',
     confirmPassword: '12345'
   }), 'passwordTooShort');
   await expectPasswordError(changeOwnPassword(repository, user, {
-    currentPassword: 'Old123',
-    newPassword: 'New123',
-    confirmPassword: 'New124'
+    currentPassword: '482951',
+    newPassword: '730846',
+    confirmPassword: '730845'
   }), 'passwordConfirmationMismatch');
 
   assert.equal(changes.length, 0);
@@ -61,13 +61,13 @@ test('changeOwnPassword rejects an incorrect current password and password reuse
 
   await expectPasswordError(changeOwnPassword(repository, user, {
     currentPassword: 'Wrong1',
-    newPassword: 'New123',
-    confirmPassword: 'New123'
+    newPassword: '730846',
+    confirmPassword: '730846'
   }), 'currentPasswordIncorrect');
   await expectPasswordError(changeOwnPassword(repository, user, {
-    currentPassword: 'Old123',
-    newPassword: 'Old123',
-    confirmPassword: 'Old123'
+    currentPassword: '482951',
+    newPassword: '482951',
+    confirmPassword: '482951'
   }), 'newPasswordMustDiffer');
 
   assert.equal(changes.length, 0);
@@ -78,16 +78,16 @@ test('changeOwnPassword hashes the new password and forwards the audit event', a
   const auditEvent = { result: 'success', reason: 'password_changed' };
 
   const result = await changeOwnPassword(repository, user, {
-    currentPassword: 'Old123',
-    newPassword: 'New123',
-    confirmPassword: 'New123'
+    currentPassword: '482951',
+    newPassword: '730846',
+    confirmPassword: '730846'
   }, auditEvent);
 
   assert.deepEqual(result, { id: 7 });
   assert.equal(changes.length, 1);
   assert.equal(changes[0].auditEvent, auditEvent);
-  assert.equal(await verifyPassword('New123', changes[0].passwordHash), true);
-  assert.equal(await verifyPassword('Old123', changes[0].passwordHash), false);
+  assert.equal(await verifyPassword('730846', changes[0].passwordHash), true);
+  assert.equal(await verifyPassword('482951', changes[0].passwordHash), false);
 });
 
 test('MFA self-service authorization accepts current password alone for first binding', async () => {
@@ -98,7 +98,7 @@ test('MFA self-service authorization accepts current password alone for first bi
     userRepository: repository,
     mfaRepository: { async findVerificationMaterialByUserId() { verificationReads += 1; } },
     actor: user,
-    currentPassword: 'Old123',
+    currentPassword: '482951',
     requireTotp: false
   });
 
@@ -145,7 +145,7 @@ test('MFA self-service authorization requires current password and a fresh activ
       }
     },
     actor: user,
-    currentPassword: 'Old123',
+    currentPassword: '482951',
     requireTotp: true
   };
 
@@ -176,7 +176,7 @@ test('MFA self-service authorization maps secret or repository failures to a gen
     totpService: { async verify() { return { valid: true }; } },
     secretEncryptionService: { decrypt() { throw new Error('cipher detail'); } },
     actor: user,
-    currentPassword: 'Old123',
+    currentPassword: '482951',
     authenticatorCode: '123456',
     requireTotp: true
   }), (error) => {

@@ -1,9 +1,13 @@
 import { hashPassword, verifyPassword } from './authService.mjs';
+import {
+  MAX_PASSWORD_LENGTH,
+  MIN_PASSWORD_LENGTH,
+  passwordPolicyErrorCode
+} from './passwordPolicy.mjs';
 
 const TOTP_PERIOD_MS = 30 * 1000;
 
-export const MIN_PASSWORD_LENGTH = 6;
-export const MAX_PASSWORD_LENGTH = 128;
+export { MAX_PASSWORD_LENGTH, MIN_PASSWORD_LENGTH };
 
 export class PasswordChangeError extends Error {
   constructor(code) {
@@ -125,14 +129,9 @@ export async function changeOwnPassword(userRepository, actor, input, auditEvent
   if (!currentPassword) {
     throw new PasswordChangeError('currentPasswordRequired');
   }
-  if (newPassword.length < MIN_PASSWORD_LENGTH) {
-    throw new PasswordChangeError('passwordTooShort');
-  }
-  if (newPassword.length > MAX_PASSWORD_LENGTH) {
-    throw new PasswordChangeError('passwordTooLong');
-  }
-  if (!/\S/.test(newPassword)) {
-    throw new PasswordChangeError('passwordCannotBeBlank');
+  const passwordPolicyError = passwordPolicyErrorCode(newPassword);
+  if (passwordPolicyError) {
+    throw new PasswordChangeError(passwordPolicyError);
   }
   if (newPassword !== confirmPassword) {
     throw new PasswordChangeError('passwordConfirmationMismatch');

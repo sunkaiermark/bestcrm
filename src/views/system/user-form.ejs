@@ -13,7 +13,7 @@
             </label>
             <label>
               <%= t('initialPassword') %>
-              <input name="password" type="password" required>
+              <input name="password" type="password" autocomplete="new-password" minlength="6" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" aria-describedby="system-password-requirements" required>
             </label>
           <% } else { %>
             <label>
@@ -22,9 +22,10 @@
             </label>
             <label>
               <%= t('newLoginPassword') %>
-              <input name="password" type="password" autocomplete="new-password">
+              <input name="password" type="password" autocomplete="new-password" minlength="6" maxlength="6" inputmode="numeric" pattern="[0-9]{6}" aria-describedby="system-password-requirements">
             </label>
           <% } %>
+          <p id="system-password-requirements" class="muted"><%= t('passwordRequirements') %></p>
 
           <label>
             <%= t('displayName') %>

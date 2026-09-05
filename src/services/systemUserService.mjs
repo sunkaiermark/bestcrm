@@ -1,6 +1,7 @@
 import { ROLE_DETAILS } from '../domain/systemCatalog.mjs';
 import { ROLES } from '../domain/roles.mjs';
 import { hashPassword, requireRole } from './authService.mjs';
+import { assertPasswordPolicy } from './passwordPolicy.mjs';
 
 const roleCodes = new Set(ROLE_DETAILS.map((role) => role.code));
 
@@ -79,6 +80,7 @@ export async function createSystemUser(userRepository, actor, input, options = {
   if (!username || !base.displayName || !password) {
     throw new Error('Missing required user fields');
   }
+  assertPasswordPolicy(password);
   return userRepository.createUser({
     ...base,
     username,
@@ -94,6 +96,7 @@ export async function updateSystemUser(userRepository, actor, userId, input, opt
   }
   const password = String(input.password || '');
   if (password) {
+    assertPasswordPolicy(password);
     base.passwordHash = await hashPassword(password);
   }
   return userRepository.updateUser(userId, base);
@@ -105,6 +108,7 @@ export async function resetSystemUserPassword(userRepository, actor, userId, pas
   if (!newPassword) {
     throw new Error('Missing required user fields');
   }
+  assertPasswordPolicy(newPassword);
   const user = await userRepository.findByIdWithRoles(userId);
   if (!user) {
     return null;

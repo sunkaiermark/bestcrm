@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import vm from 'node:vm';
 import session from 'express-session';
 import request from 'supertest';
 import { createApp } from '../../src/server.mjs';
@@ -298,8 +299,14 @@ test('login page renders username and password form', async () => {
   assert.match(response.text, /\.login-button\s*\{[\s\S]*height:\s*44px;[\s\S]*line-height:\s*1;/);
   assert.match(response.text, /class="form-field"/);
   assert.match(response.text, /class="login-button"/);
-  assert.match(response.text, /name="username"/);
-  assert.match(response.text, /id="login-password"\s+name="password"/);
+  assert.match(response.text, /id="login-username"\s+name="username"\s+autocomplete="off"/);
+  assert.match(response.text, /id="login-password"\s+name="password"\s+type="password"\s+autocomplete="off"/);
+  assert.doesNotMatch(response.text, /name="password"[^>]*value=/);
+  assert.match(response.text, /name="rememberUsername"\s+type="checkbox"\s+value="1"/);
+  assert.match(response.text, /Remember username on this computer/);
+  assert.match(response.text, /Only the username is saved\. The password must be entered every time\./);
+  assert.match(response.text, /bestcrm\.rememberedUsername\.v1/);
+  assert.doesNotMatch(response.text, /localStorage\.(?:setItem|getItem)\([^\n]*password/i);
   assert.match(response.text, /class="password-toggle"/);
   assert.match(response.text, /aria-controls="login-password"/);
   assert.match(response.text, />Show<\/button>/);
@@ -307,6 +314,69 @@ test('login page renders username and password form', async () => {
   assert.match(response.text, /\.login-language-switch\s*\{[^}]*justify-content:\s*flex-end;[^}]*margin:\s*0 0 14px;/);
   assert.doesNotMatch(response.text, /\.login-language-switch\s*\{[^}]*position:\s*fixed;/);
   assert.match(response.text, /class="login-language-switch"[\s\S]*class="login-logo"/);
+});
+
+test('login page remembers only the username and clears browser-filled passwords', async () => {
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
+  const response = await request(app).get('/login');
+  const script = response.text.match(/<script>([\s\S]*?)<\/script>/)?.[1] || '';
+  const listeners = new Map();
+  const element = (initial = {}) => ({
+    ...initial,
+    dataset: initial.dataset || {},
+    addEventListener(type, listener) { this.listeners.set(type, listener); },
+    setAttribute(name, value) { this.attributes.set(name, value); },
+    attributes: new Map(),
+    listeners: new Map()
+  });
+  const loginForm = element();
+  const usernameInput = element({ value: '' });
+  const passwordInput = element({ value: 'browser-filled-password', type: 'text' });
+  const passwordToggle = element({
+    dataset: { showLabel: 'Show', hideLabel: 'Hide' },
+    textContent: 'Hide'
+  });
+  const rememberUsernameInput = element({ checked: false });
+  const storage = new Map([['bestcrm.rememberedUsername.v1', 'sales01']]);
+  const window = {
+    localStorage: {
+      getItem(key) { return storage.get(key) || null; },
+      setItem(key, value) { storage.set(key, value); },
+      removeItem(key) { storage.delete(key); }
+    },
+    addEventListener(type, listener) { listeners.set(type, listener); }
+  };
+  const document = {
+    querySelector(selector) {
+      return selector === '.login-form' ? loginForm : passwordToggle;
+    },
+    getElementById(id) {
+      return {
+        'login-username': usernameInput,
+        'login-password': passwordInput,
+        'remember-username': rememberUsernameInput
+      }[id] || null;
+    }
+  };
+
+  vm.runInNewContext(script, { document, window });
+
+  assert.equal(usernameInput.value, 'sales01');
+  assert.equal(rememberUsernameInput.checked, true);
+  assert.equal(passwordInput.value, '');
+  assert.equal(passwordInput.type, 'password');
+
+  usernameInput.value = 'sales02';
+  loginForm.listeners.get('submit')();
+  assert.equal(storage.get('bestcrm.rememberedUsername.v1'), 'sales02');
+
+  passwordInput.value = 'browser-filled-again';
+  listeners.get('pageshow')();
+  assert.equal(passwordInput.value, '');
+
+  rememberUsernameInput.checked = false;
+  rememberUsernameInput.listeners.get('change')();
+  assert.equal(storage.has('bestcrm.rememberedUsername.v1'), false);
 });
 
 test('csrf protection rejects login posts without a valid token when enabled', async () => {
@@ -395,6 +465,8 @@ test('login page can switch between English and Chinese', async () => {
   assert.equal(chineseLogin.status, 200);
   assert.match(chineseLogin.text, /用户名/);
   assert.match(chineseLogin.text, /密码/);
+  assert.match(chineseLogin.text, /在此电脑记住用户名/);
+  assert.match(chineseLogin.text, /密码每次都必须重新输入/);
   assert.match(chineseLogin.text, />登录</);
   assert.match(chineseLogin.text, /href="\/language\?lang=en&amp;returnTo=%2Flogin"/);
 

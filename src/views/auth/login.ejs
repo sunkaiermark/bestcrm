@@ -136,6 +136,28 @@
         background: #dbeafe;
       }
 
+      .remember-username {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        color: var(--ink);
+        font-size: 18px;
+        font-weight: 400;
+      }
+
+      .remember-username input {
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+        margin: 5px 0 0;
+      }
+
+      .remember-username small {
+        display: block;
+        color: var(--muted);
+        font-size: 15px;
+      }
+
       .login-button {
         width: 100%;
         height: 44px;
@@ -198,16 +220,16 @@
       <% if (typeof notice !== 'undefined' && notice) { %>
           <p class="login-notice" role="status"><%= notice %></p>
       <% } %>
-        <form class="login-form" method="post" action="/login">
+        <form class="login-form" method="post" action="/login" autocomplete="off">
           <%- csrfField() %>
           <label class="form-field">
           <%= t('username') %>
-            <input name="username" autocomplete="username" value="<%= username %>" required>
+            <input id="login-username" name="username" autocomplete="off" value="<%= username %>" required>
           </label>
           <label class="form-field">
           <%= t('password') %>
             <span class="password-field">
-              <input id="login-password" name="password" type="password" autocomplete="current-password" required>
+              <input id="login-password" name="password" type="password" autocomplete="off" required>
               <button
                 class="password-toggle"
                 type="button"
@@ -218,13 +240,84 @@
               ><%= t('showPassword') %></button>
             </span>
           </label>
+          <label class="remember-username">
+            <input id="remember-username" name="rememberUsername" type="checkbox" value="1">
+            <span>
+              <%= t('rememberUsername') %>
+              <small><%= t('rememberUsernameDescription') %></small>
+            </span>
+          </label>
           <button class="login-button" type="submit"><%= t('login') %></button>
         </form>
       </section>
     </main>
     <script>
+      const loginForm = document.querySelector('.login-form');
+      const usernameInput = document.getElementById('login-username');
       const passwordInput = document.getElementById('login-password');
       const passwordToggle = document.querySelector('.password-toggle');
+      const rememberUsernameInput = document.getElementById('remember-username');
+      const rememberedUsernameKey = 'bestcrm.rememberedUsername.v1';
+
+      function readRememberedUsername() {
+        try {
+          return window.localStorage.getItem(rememberedUsernameKey) || '';
+        } catch {
+          return '';
+        }
+      }
+
+      function storeRememberedUsername(username) {
+        try {
+          if (username) {
+            window.localStorage.setItem(rememberedUsernameKey, username);
+          } else {
+            window.localStorage.removeItem(rememberedUsernameKey);
+          }
+        } catch {
+          // Private browsing or browser policy may disable local storage.
+        }
+      }
+
+      const rememberedUsername = readRememberedUsername();
+      if (usernameInput && rememberUsernameInput && rememberedUsername) {
+        if (!usernameInput.value) {
+          usernameInput.value = rememberedUsername;
+        }
+        rememberUsernameInput.checked = true;
+      }
+
+      if (rememberUsernameInput) {
+        rememberUsernameInput.addEventListener('change', () => {
+          if (!rememberUsernameInput.checked) {
+            storeRememberedUsername('');
+          }
+        });
+      }
+
+      if (loginForm && usernameInput && rememberUsernameInput) {
+        loginForm.addEventListener('submit', () => {
+          storeRememberedUsername(
+            rememberUsernameInput.checked ? usernameInput.value.trim() : ''
+          );
+        });
+      }
+
+      function clearPasswordField() {
+        if (!passwordInput) {
+          return;
+        }
+        passwordInput.value = '';
+        passwordInput.type = 'password';
+        if (passwordToggle) {
+          passwordToggle.setAttribute('aria-pressed', 'false');
+          passwordToggle.textContent = passwordToggle.dataset.showLabel;
+        }
+      }
+
+      clearPasswordField();
+      window.addEventListener('pageshow', clearPasswordField);
+
       if (passwordInput && passwordToggle) {
         passwordToggle.addEventListener('click', () => {
           const shouldShow = passwordInput.type === 'password';

@@ -380,6 +380,7 @@ test('system framework text uses selected Chinese language', async () => {
   const userForm = await agent.get('/system/users/new');
   assert.equal(userForm.status, 200);
   assert.match(userForm.text, /\u521d\u59cb\u5bc6\u7801/);
+  assert.match(userForm.text, /name="password"[^>]*minlength="6"[^>]*maxlength="6"[^>]*pattern="\[0-9\]\{6\}"/);
   assert.match(userForm.text, /\u663e\u793a\u540d\u79f0/);
   assert.match(userForm.text, /\u6fc0\u6d3b\u767b\u5f55\u8d26\u53f7/);
   assert.match(userForm.text, /\u53d6\u6d88/);
@@ -415,7 +416,18 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.match(newForm.text, /New User/);
   assert.match(newForm.text, /name="username"/);
   assert.match(newForm.text, /name="password"/);
+  assert.match(newForm.text, /Use exactly 6 digits/);
   assert.match(newForm.text, /value="service_manager"/);
+
+  const weakPassword = await agent.post('/system/users').type('form').send({
+    username: 'weak_user',
+    displayName: 'Weak User',
+    password: '123456',
+    roles: ROLES.SALESPERSON,
+    isActive: 'on'
+  });
+  assert.equal(weakPassword.status, 400);
+  assert.match(weakPassword.text, /sequential digits/);
 
   const created = await agent.post('/system/users').type('form').send({
     username: 'new_user',
@@ -424,7 +436,7 @@ test('administrator can add edit and deactivate system users', async () => {
     phone: '555',
     emailSignatureName: 'New User',
     emailSignatureTitle: 'Sales Engineer',
-    password: 'Start12345!',
+    password: '482951',
     roles: ROLES.SALESPERSON,
     isActive: 'on'
   });
@@ -437,8 +449,8 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.equal(calls[0].input.emailSignatureTitle, 'Sales Engineer');
   assert.deepEqual(calls[0].input.roles, [ROLES.SALESPERSON]);
   assert.equal(calls[0].input.isActive, true);
-  assert.notEqual(calls[0].input.passwordHash, 'Start12345!');
-  assert.equal(await verifyPassword('Start12345!', calls[0].input.passwordHash), true);
+  assert.notEqual(calls[0].input.passwordHash, '482951');
+  assert.equal(await verifyPassword('482951', calls[0].input.passwordHash), true);
 
   const editForm = await agent.get('/system/users/11/edit');
   assert.equal(editForm.status, 200);
@@ -477,7 +489,7 @@ test('administrator can add edit and deactivate system users', async () => {
     phone: '777',
     emailSignatureName: 'Updated Manager',
     emailSignatureTitle: 'Technical Manager',
-    password: 'Changed123!',
+    password: '730846',
     roles: ROLES.TECHNICAL_MANAGER,
     isActive: 'on'
   });
@@ -487,8 +499,8 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.equal(calls[2].id, 11);
   assert.equal(calls[2].input.displayName, 'Updated Manager');
   assert.equal(calls[2].input.isActive, true);
-  assert.notEqual(calls[2].input.passwordHash, 'Changed123!');
-  assert.equal(await verifyPassword('Changed123!', calls[2].input.passwordHash), true);
+  assert.notEqual(calls[2].input.passwordHash, '730846');
+  assert.equal(await verifyPassword('730846', calls[2].input.passwordHash), true);
 
   const deleted = await agent.post('/system/users/11/delete').type('form').send();
   assert.equal(deleted.status, 302);
@@ -500,7 +512,7 @@ test('administrator can reset user password and unlock login attempts', async ()
   const { agent, calls } = await createSystemAgent();
 
   const reset = await agent.post('/system/users/11/reset-password').type('form').send({
-    password: 'NewTemp123!'
+    password: '269470'
   });
   assert.equal(reset.status, 302);
   assert.equal(reset.headers.location, '/system/users');
@@ -509,8 +521,8 @@ test('administrator can reset user password and unlock login attempts', async ()
   assert.equal(calls[0].input.displayName, 'Sales Manager');
   assert.equal(calls[0].input.isActive, true);
   assert.deepEqual(calls[0].input.roles, [ROLES.SALES_MANAGER]);
-  assert.notEqual(calls[0].input.passwordHash, 'NewTemp123!');
-  assert.equal(await verifyPassword('NewTemp123!', calls[0].input.passwordHash), true);
+  assert.notEqual(calls[0].input.passwordHash, '269470');
+  assert.equal(await verifyPassword('269470', calls[0].input.passwordHash), true);
 
   const unlock = await agent.post('/system/users/11/unlock-login').type('form').send();
   assert.equal(unlock.status, 302);
@@ -651,7 +663,7 @@ test('non administrators cannot manage system users', async () => {
     () => agent.post('/system/users').type('form').send({ username: 'x' }),
     () => agent.get('/system/users/11/edit'),
     () => agent.post('/system/users/11').type('form').send({ displayName: 'x' }),
-    () => agent.post('/system/users/11/reset-password').type('form').send({ password: 'NewTemp123!' }),
+    () => agent.post('/system/users/11/reset-password').type('form').send({ password: '269470' }),
     () => agent.post('/system/users/11/unlock-login').type('form').send(),
     () => agent.post('/system/users/11/delete').type('form').send(),
     () => agent.get('/system/users/11/security'),

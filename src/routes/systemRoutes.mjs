@@ -4,6 +4,7 @@ import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { createSystemApprovalSetting, deactivateSystemApprovalSetting, updateSystemApprovalSetting } from '../services/systemApprovalSettingService.mjs';
 import { createSystemRole, deactivateSystemRole, updateSystemRole } from '../services/systemRoleService.mjs';
+import { PasswordPolicyError } from '../services/passwordPolicy.mjs';
 import {
   SystemMfaAdministrationError,
   createSystemUser,
@@ -132,6 +133,14 @@ export function systemRoutes({
       return;
     }
     res.status(mfaAdministrationErrorStatus(error)).send(res.locals.t(error.code));
+  }
+
+  function handlePasswordPolicyError(error, res, next) {
+    if (!(error instanceof PasswordPolicyError)) {
+      next(error);
+      return;
+    }
+    res.status(400).send(res.locals.t(error.code));
   }
 
   router.use('/system', requireLogin, (req, res, next) => {
@@ -319,7 +328,7 @@ export function systemRoutes({
       await createSystemUser(userRepository, req.currentUser, req.body, { allowedRoleCodes: activeRoleCodes(roles) });
       res.redirect('/system/users');
     } catch (error) {
-      next(error);
+      handlePasswordPolicyError(error, res, next);
     }
   });
 
@@ -358,7 +367,7 @@ export function systemRoutes({
       }
       res.redirect('/system/users');
     } catch (error) {
-      next(error);
+      handlePasswordPolicyError(error, res, next);
     }
   });
 
@@ -374,7 +383,7 @@ export function systemRoutes({
       }
       res.redirect('/system/users');
     } catch (error) {
-      next(error);
+      handlePasswordPolicyError(error, res, next);
     }
   });
 
