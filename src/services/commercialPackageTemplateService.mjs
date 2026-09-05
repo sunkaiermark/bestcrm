@@ -238,7 +238,7 @@ export function createCommercialPackageTemplateService({ enabled = false, reposi
         schemaVersion: 1,
         sections: sections.map((candidate, index) => ({ ...candidate, sortOrder: index + 1 }))
       };
-      const saved = await repository.updateRevisionContent(revision.id, contentSchema, Number(actor.id));
+      const saved = await repository.updateRevisionContent(revision.id, contentSchema);
       if (!saved) fail('Only draft template revisions can be edited', 409, BID_CENTER_ERROR_CODES.CONFLICT);
       return saved;
     },

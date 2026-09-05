@@ -237,7 +237,7 @@ export function createCommercialPackageTemplateRepository(queryTarget) {
       } : null;
     },
 
-    async updateRevisionContent(revisionId, contentSchema, actorUserId) {
+    async updateRevisionContent(revisionId, contentSchema) {
       const result = await queryTarget.query(`
         UPDATE commercial_package_template_revisions
         SET content_schema = $2::jsonb, updated_at = now()

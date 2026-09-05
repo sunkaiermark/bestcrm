@@ -11,8 +11,9 @@ function safeRecord(record) {
   if (!record) {
     return null;
   }
-  const { tokenHash, ...safe } = record;
-  return { ...safe };
+  const safe = { ...record };
+  delete safe.tokenHash;
+  return safe;
 }
 
 test('trusted-device integration stores only a token hash and writes the frozen secure cookie', async () => {

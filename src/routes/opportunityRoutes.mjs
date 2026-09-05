@@ -738,7 +738,7 @@ export function opportunityRoutes({
     }
   });
 
-  router.get('/opportunities/new', async (req, res, next) => {
+  router.get('/opportunities/new', async (req, res) => {
     if (hasRole(req.currentUser, ROLES.SALESPERSON)) {
       res.redirect('/lead-submissions/new');
       return;

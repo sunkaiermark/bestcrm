@@ -221,7 +221,7 @@ export function quotationPackageRoutes({
     }
   });
 
-  router.post('/opportunities/:opportunityId/quotation-packages/:packageId/mark-sent', async (req, res, next) => {
+  router.post('/opportunities/:opportunityId/quotation-packages/:packageId/mark-sent', async (req, res) => {
     res.status(409).send('Approved quotation packages must be sent through the CRM email center');
   });
 

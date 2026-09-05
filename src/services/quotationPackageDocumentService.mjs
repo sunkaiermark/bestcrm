@@ -54,14 +54,9 @@ function snapshotHash(value) {
 }
 
 function safeName(value, fallback = 'attachment') {
+  // eslint-disable-next-line no-control-regex -- control characters are intentionally removed from filenames
   const name = String(value || '').replace(/[\\/:*?"<>|\x00-\x1F]+/g, '-').replace(/^\.+|\.+$/g, '').trim();
   return name || fallback;
-}
-
-function compactDate(value) {
-  const date = new Date(value);
-  return (Number.isNaN(date.getTime()) ? new Date('2000-01-01T00:00:00.000Z') : date)
-    .toISOString().slice(0, 10).replaceAll('-', '');
 }
 
 function visibleUserId(actor) {

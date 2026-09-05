@@ -110,8 +110,9 @@ async function createAuthenticatorMfaFixture({
     if (!record) {
       return null;
     }
-    const { tokenHash, ...safeRecord } = record;
-    return { ...safeRecord };
+    const safeRecord = { ...record };
+    delete safeRecord.tokenHash;
+    return safeRecord;
   };
   const mfaRepository = {
     verificationReads: 0,

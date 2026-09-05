@@ -391,7 +391,6 @@ const emptyEmailArchiveRepository = {
   async findThreadByReferences() { return null; },
   async findLatestThreadByInquiry() { return null; },
   async findLatestThreadByOpportunity() { return null; },
-  async createThread() { throw new Error('Email archive repository is not configured'); },
   async createOutboundMessage() { throw new Error('Email archive repository is not configured'); },
   async claimOutboundForSend() { return null; },
   async completeOutboundDelivery() { return null; },
