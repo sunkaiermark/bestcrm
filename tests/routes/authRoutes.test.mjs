@@ -3,7 +3,9 @@ import assert from 'node:assert/strict';
 import session from 'express-session';
 import request from 'supertest';
 import { createApp } from '../../src/server.mjs';
+import { TRUSTED_DEVICE_COOKIE_NAME } from '../../src/middleware/trustedDevice.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
+import { createTrustedDeviceService } from '../../src/services/trustedDeviceService.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
 
 const ENROLLMENT_SECRET = 'JBSWY3DPEHPK3PXP';
@@ -65,6 +67,10 @@ function extractCsrfToken(html) {
   return html.match(/name="_csrf"\s+value="([^"]+)"/)?.[1] || '';
 }
 
+function findSetCookie(response, cookieName) {
+  return (response.headers['set-cookie'] || []).find((value) => value.startsWith(`${cookieName}=`)) || '';
+}
+
 function readStoredSessions(store) {
   return new Promise((resolve, reject) => {
     store.all((error, sessions) => error ? reject(error) : resolve(sessions || {}));
@@ -99,6 +105,14 @@ async function createAuthenticatorMfaFixture({
     secretAuthTag: status === 'disabled' ? null : 'auth-tag',
     secretKeyVersion: status === 'disabled' ? null : 1
   };
+  const trustedDeviceRecords = [];
+  const safeTrustedDevice = (record) => {
+    if (!record) {
+      return null;
+    }
+    const { tokenHash, ...safeRecord } = record;
+    return { ...safeRecord };
+  };
   const mfaRepository = {
     verificationReads: 0,
     recordedVerifications: [],
@@ -132,6 +146,33 @@ async function createAuthenticatorMfaFixture({
       setting.status = 'active';
       setting.lastVerifiedAt = activation.verifiedAt;
       return { ...setting };
+    },
+    async createTrustedDevice(record) {
+      const stored = {
+        id: trustedDeviceRecords.length + 31,
+        ...record,
+        createdAt: new Date(currentTime),
+        lastUsedAt: null,
+        revokedAt: null
+      };
+      trustedDeviceRecords.push(stored);
+      return safeTrustedDevice(stored);
+    },
+    async findActiveTrustedDeviceByTokenHash(tokenHash) {
+      const record = trustedDeviceRecords.find((candidate) => candidate.tokenHash === tokenHash);
+      if (!record || record.revokedAt || new Date(record.expiresAt) <= currentTime) {
+        return null;
+      }
+      return safeTrustedDevice(record);
+    },
+    async touchTrustedDevice(id, lastIp, usedAt) {
+      const record = trustedDeviceRecords.find((candidate) => candidate.id === Number(id));
+      if (!record || record.revokedAt || new Date(record.expiresAt) <= new Date(usedAt)) {
+        return null;
+      }
+      record.lastIp = lastIp || null;
+      record.lastUsedAt = new Date(usedAt);
+      return safeTrustedDevice(record);
     }
   };
   const totpService = {
@@ -205,6 +246,7 @@ async function createAuthenticatorMfaFixture({
     totpService,
     mfaRecoveryCodeService,
     trustedDeviceLookups,
+    trustedDeviceRecords,
     options: {
       sessionSecret: 'test-secret',
       userRepository: buildUserRepository(user),
@@ -1000,6 +1042,11 @@ test('valid TOTP completes authentication and cannot be replayed after another p
 
 test('one-time recovery code can complete the same Authenticator challenge', async () => {
   const fixture = await createAuthenticatorMfaFixture();
+  const trustedDeviceIssues = [];
+  fixture.options.mfaTrustedDeviceIssuer = async (issue) => {
+    trustedDeviceIssues.push(issue);
+    return { id: 31, userId: fixture.user.id };
+  };
   const agent = request.agent(createApp(fixture.options));
 
   await agent.post('/login').type('form').send({
@@ -1007,7 +1054,8 @@ test('one-time recovery code can complete the same Authenticator challenge', asy
     password: 'ChangeMe123!'
   });
   const verified = await agent.post('/login/verify-totp').type('form').send({
-    code: 'ABCD-EFGH-JKLM-NPQR'
+    code: 'ABCD-EFGH-JKLM-NPQR',
+    trustDevice: '1'
   });
 
   assert.equal(verified.status, 302);
@@ -1015,6 +1063,8 @@ test('one-time recovery code can complete the same Authenticator challenge', asy
   assert.equal(fixture.mfaRecoveryCodeService.calls.length, 1);
   assert.equal(fixture.totpService.calls.length, 0);
   assert.equal(fixture.mfaRepository.verificationReads, 0);
+  assert.equal(trustedDeviceIssues.length, 1);
+  assert.equal(trustedDeviceIssues[0].userId, fixture.user.id);
   assert.equal((await agent.get('/session/me')).status, 200);
 });
 
@@ -1087,6 +1137,117 @@ test('trusted-device decision skips TOTP only after a fresh password and rejects
   });
   assert.equal(mismatchedLogin.headers.location, '/login/verify-totp');
   assert.equal((await mismatchAgent.get('/session/me')).status, 401);
+});
+
+test('Authenticator challenge offers an unchecked bilingual ten-day trust choice', async () => {
+  const fixture = await createAuthenticatorMfaFixture();
+  delete fixture.options.mfaTrustedDeviceResolver;
+  const agent = request.agent(createApp(fixture.options));
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  const englishPage = await agent.get('/login/verify-totp');
+  const checkbox = englishPage.text.match(/<input[^>]*name="trustDevice"[^>]*>/i)?.[0] || '';
+
+  assert.match(englishPage.text, /Trust this device for 10 days/);
+  assert.match(englishPage.text, /shared or public computer/i);
+  assert.match(checkbox, /value="1"/);
+  assert.doesNotMatch(checkbox, /\schecked(?:\s|=|>)/i);
+
+  await agent.get('/language?lang=zh&returnTo=/login');
+  const chinesePage = await agent.get('/login/verify-totp');
+  assert.match(chinesePage.text, /信任此设备 10 天/);
+  assert.match(chinesePage.text, /公共电脑/);
+
+  const verifiedWithoutTrust = await agent
+    .post('/login/verify-totp')
+    .type('form')
+    .send({ code: '123456' });
+  assert.equal(verifiedWithoutTrust.headers.location, '/');
+  assert.equal(findSetCookie(verifiedWithoutTrust, TRUSTED_DEVICE_COOKIE_NAME), '');
+  assert.equal(fixture.trustedDeviceRecords.length, 0);
+});
+
+test('opted-in trust cookie is issued only after valid MFA and skips only TOTP after another password', async () => {
+  const fixture = await createAuthenticatorMfaFixture();
+  delete fixture.options.mfaTrustedDeviceResolver;
+  fixture.options.trustedDeviceService = createTrustedDeviceService({
+    now: fixture.options.authenticatorMfaNow,
+    randomBytesFn: () => Buffer.alloc(32, 9)
+  });
+  const sessionStore = new session.MemoryStore();
+  fixture.options.sessionStore = sessionStore;
+  const app = createApp(fixture.options);
+  const agent = request.agent(app);
+
+  await agent.post('/login').type('form').send({
+    username: fixture.user.username,
+    password: 'ChangeMe123!'
+  });
+  const invalid = await agent
+    .post('/login/verify-totp')
+    .type('form')
+    .send({ code: '000000', trustDevice: '1' });
+  assert.equal(invalid.status, 401);
+  assert.equal(findSetCookie(invalid, TRUSTED_DEVICE_COOKIE_NAME), '');
+  assert.equal(fixture.trustedDeviceRecords.length, 0);
+
+  const verified = await agent
+    .post('/login/verify-totp')
+    .set('User-Agent', 'Mozilla/5.0 (Windows NT 10.0) Edg/140.0')
+    .type('form')
+    .send({ code: '123456', trustDevice: '1' });
+  assert.equal(verified.status, 302);
+  assert.equal(verified.headers.location, '/');
+
+  const trustedCookie = findSetCookie(verified, TRUSTED_DEVICE_COOKIE_NAME);
+  assert.match(trustedCookie, new RegExp(`^${TRUSTED_DEVICE_COOKIE_NAME}=[A-Za-z0-9_-]{43};`));
+  assert.match(trustedCookie, /Max-Age=864000/);
+  assert.match(trustedCookie, /Path=\//);
+  assert.match(trustedCookie, /HttpOnly/);
+  assert.match(trustedCookie, /Secure/);
+  assert.match(trustedCookie, /SameSite=Lax/);
+  assert.equal(fixture.trustedDeviceRecords.length, 1);
+
+  const rawToken = trustedCookie.split(';')[0].split('=')[1];
+  const stored = fixture.trustedDeviceRecords[0];
+  assert.equal(stored.tokenHash, fixture.options.trustedDeviceService.hashToken(rawToken));
+  assert.notEqual(stored.tokenHash, rawToken);
+  assert.equal(new Date(stored.expiresAt).toISOString(), '2026-09-15T03:00:00.000Z');
+  const storedSessions = JSON.stringify(await readStoredSessions(sessionStore));
+  assert.doesNotMatch(storedSessions, new RegExp(rawToken));
+  assert.doesNotMatch(storedSessions, /tokenHash/);
+
+  const cookiePair = trustedCookie.split(';')[0];
+  const tokenAlone = await request(app).get('/session/me').set('Cookie', cookiePair);
+  assert.equal(tokenAlone.status, 401);
+
+  const wrongPassword = await request(app)
+    .post('/login')
+    .set('Cookie', cookiePair)
+    .type('form')
+    .send({ username: fixture.user.username, password: 'incorrect' });
+  assert.equal(wrongPassword.status, 401);
+
+  fixture.setNow('2026-09-06T03:00:00.000Z');
+  const verificationReadsBeforeTrustedLogin = fixture.mfaRepository.verificationReads;
+  const trustedAgent = request.agent(app);
+  const trustedLogin = await trustedAgent
+    .post('/login')
+    .set('Cookie', cookiePair)
+    .set('User-Agent', 'Mozilla/5.0 (Macintosh) Safari/605.1.15')
+    .type('form')
+    .send({ username: fixture.user.username, password: 'ChangeMe123!' });
+
+  assert.equal(trustedLogin.status, 302);
+  assert.equal(trustedLogin.headers.location, '/');
+  assert.equal(findSetCookie(trustedLogin, TRUSTED_DEVICE_COOKIE_NAME), '');
+  assert.equal((await trustedAgent.get('/session/me')).status, 200);
+  assert.equal(fixture.mfaRepository.verificationReads, verificationReadsBeforeTrustedLogin);
+  assert.equal(new Date(stored.lastUsedAt).toISOString(), '2026-09-06T03:00:00.000Z');
+  assert.equal(new Date(stored.expiresAt).toISOString(), '2026-09-15T03:00:00.000Z');
 });
 
 test('Authenticator feature-off login ignores MFA state and preserves direct password login', async () => {

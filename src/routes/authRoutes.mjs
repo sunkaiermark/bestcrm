@@ -685,6 +685,19 @@ export function authRoutes(userRepository, {
           userAgent
         });
       }
+      if (req.body.trustDevice === '1'
+        && typeof authenticatorMfa.issueTrustedDevice === 'function') {
+        try {
+          await authenticatorMfa.issueTrustedDevice({
+            res,
+            userId: Number(user.id),
+            ipAddress,
+            userAgent
+          });
+        } catch {
+          // Trust is optional; a persistence or cookie failure must not block a valid MFA login.
+        }
+      }
       const returnTo = safeReturnTo(challenge.returnTo || '/');
       await establishSession(req, user.id);
       res.redirect(returnTo);

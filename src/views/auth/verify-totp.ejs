@@ -76,6 +76,21 @@
         outline: none;
       }
 
+      .trust-device {
+        display: grid;
+        grid-template-columns: 22px 1fr;
+        gap: 9px;
+        align-items: start;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        background: #f8fafc;
+        padding: 10px 12px;
+      }
+
+      .trust-device input { width: 20px; height: 20px; margin: 2px 0 0; }
+      .trust-device-copy { font-weight: 600; }
+      .trust-device-warning { display: block; margin-top: 3px; color: var(--muted); font-size: 14px; font-weight: 400; }
+
       .login-button {
         width: 100%;
         min-height: 44px;
@@ -121,6 +136,13 @@
               autofocus
               required
             >
+          </label>
+          <label class="trust-device">
+            <input type="checkbox" name="trustDevice" value="1">
+            <span class="trust-device-copy">
+              <%= t('trustDeviceForTenDays') %>
+              <small class="trust-device-warning"><%= t('trustDeviceWarning') %></small>
+            </span>
           </label>
           <button class="login-button" type="submit"><%= t('verify') %></button>
         </form>

@@ -153,6 +153,69 @@ test('trusted-device lookup selects safe metadata but not the stored token hash'
   assert.match(pool.queries[0].sql, /WHERE token_hash = \$1/);
 });
 
+test('trusted-device creation persists only the hash and returns no credential material', async () => {
+  const pool = createFakePool([[
+    {
+      id: '31',
+      user_id: '7',
+      device_label: 'Edge on Windows',
+      user_agent_hash: 'b'.repeat(64),
+      last_ip: '203.0.113.5',
+      created_at: '2026-09-05T03:00:00.000Z',
+      last_used_at: null,
+      expires_at: '2026-09-15T03:00:00.000Z',
+      revoked_at: null
+    }
+  ]]);
+  const repository = createMfaRepository(pool);
+
+  const created = await repository.createTrustedDevice({
+    userId: 7,
+    tokenHash: 'c'.repeat(64),
+    deviceLabel: 'Edge on Windows',
+    userAgentHash: 'b'.repeat(64),
+    lastIp: '203.0.113.5',
+    expiresAt: new Date('2026-09-15T03:00:00.000Z')
+  });
+
+  assert.equal(created.id, 31);
+  assert.equal('tokenHash' in created, false);
+  assert.match(pool.queries[0].sql, /INSERT INTO user_trusted_devices/);
+  assert.deepEqual(pool.queries[0].params, [
+    7,
+    'c'.repeat(64),
+    'Edge on Windows',
+    'b'.repeat(64),
+    '203.0.113.5',
+    new Date('2026-09-15T03:00:00.000Z')
+  ]);
+});
+
+test('trusted-device use updates audit metadata without extending fixed expiry', async () => {
+  const pool = createFakePool([[
+    {
+      id: '31',
+      user_id: '7',
+      device_label: 'Edge on Windows',
+      user_agent_hash: 'b'.repeat(64),
+      last_ip: '198.51.100.8',
+      created_at: '2026-09-05T03:00:00.000Z',
+      last_used_at: '2026-09-10T03:00:00.000Z',
+      expires_at: '2026-09-15T03:00:00.000Z',
+      revoked_at: null
+    }
+  ]]);
+  const repository = createMfaRepository(pool);
+  const usedAt = new Date('2026-09-10T03:00:00.000Z');
+
+  const touched = await repository.touchTrustedDevice(31, '198.51.100.8', usedAt);
+
+  assert.equal(touched.expiresAt, '2026-09-15T03:00:00.000Z');
+  assert.match(pool.queries[0].sql, /SET last_used_at = \$3, last_ip = \$2/);
+  assert.doesNotMatch(pool.queries[0].sql, /SET[\s\S]*expires_at\s*=/);
+  assert.deepEqual(pool.queries[0].params, [31, '198.51.100.8', usedAt]);
+});
+
 test('replacing recovery codes invalidates old values and inserts the new generation transactionally', async () => {
   const pool = createFakePool([[{ id: '12' }], []]);
   const repository = createMfaRepository(pool);

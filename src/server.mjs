@@ -9,6 +9,7 @@ import { createWorkflowTransaction } from './db/workflowTransaction.mjs';
 import { createEmailArchiveTransaction } from './db/emailArchiveTransaction.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
 import { csrfProtection } from './middleware/csrf.mjs';
+import { createTrustedDeviceIntegration } from './middleware/trustedDevice.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
 import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
 import { createBidContentBlockRepository } from './repositories/bidContentBlockRepository.mjs';
@@ -69,6 +70,7 @@ import { createMfaSecretEncryptionService } from './services/mfaSecretEncryption
 import { createSmsSecondFactorService } from './services/smsSecondFactorService.mjs';
 import { createTechnicalDocumentService } from './services/technicalDocumentService.mjs';
 import { createTotpService } from './services/totpService.mjs';
+import { createTrustedDeviceService } from './services/trustedDeviceService.mjs';
 import { createCustomerEmailTransport } from './services/customerEmailService.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -486,7 +488,10 @@ const emptyMfaRepository = {
   async savePendingEnrollment() { throw new Error('MFA repository is not configured'); },
   async activateEnrollmentWithRecoveryCodes() { throw new Error('MFA repository is not configured'); },
   async recordVerification() { return null; },
-  async consumeRecoveryCodeHash() { return null; }
+  async consumeRecoveryCodeHash() { return null; },
+  async createTrustedDevice() { throw new Error('MFA repository is not configured'); },
+  async findActiveTrustedDeviceByTokenHash() { return null; },
+  async touchTrustedDevice() { return null; }
 };
 
 const emptyNotificationRepository = {
@@ -647,6 +652,15 @@ export function createApp(options = {}) {
   const mfaRecoveryCodeService = options.mfaRecoveryCodeService || (authenticatorMfaEnabled
     ? createMfaRecoveryCodeService({ pepper: config.authenticatorMfa.recoveryCodePepper })
     : null);
+  const trustedDeviceService = options.trustedDeviceService || createTrustedDeviceService({
+    trustDays: config.authenticatorMfa?.trustDays,
+    now: authenticatorMfaNow
+  });
+  const trustedDeviceIntegration = options.trustedDeviceIntegration || createTrustedDeviceIntegration({
+    repository: mfaRepository,
+    service: trustedDeviceService,
+    now: authenticatorMfaNow
+  });
   const roleRepository = options.roleRepository || (pool ? createRoleRepository(pool) : emptyRoleRepository);
   const approvalSettingRepository = options.approvalSettingRepository || (pool ? createApprovalSettingRepository(pool) : emptyApprovalSettingRepository);
   const customerRepository = options.customerRepository || (pool ? createCustomerRepository(pool) : emptyCustomerRepository);
@@ -778,7 +792,8 @@ export function createApp(options = {}) {
       totpService,
       secretEncryptionService: mfaSecretEncryptionService,
       recoveryCodeService: mfaRecoveryCodeService,
-      resolveTrustedDevice: options.mfaTrustedDeviceResolver,
+      resolveTrustedDevice: options.mfaTrustedDeviceResolver || trustedDeviceIntegration.resolve,
+      issueTrustedDevice: options.mfaTrustedDeviceIssuer || trustedDeviceIntegration.issue,
       now: authenticatorMfaNow
     }
   }));
