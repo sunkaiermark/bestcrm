@@ -41,6 +41,99 @@ test('config reads optional SMS login second-factor settings', () => {
   assert.equal(config.loginSecondFactor.sms.templateId, 'login-template-id');
 });
 
+test('Authenticator MFA stays disabled by default with the frozen 10-day trust period', () => {
+  const config = loadConfig({ NODE_ENV: 'development' });
+
+  assert.deepEqual(config.authenticatorMfa, {
+    enabled: false,
+    trustDays: 10,
+    issuer: 'BESTCRM',
+    encryptionKey: '',
+    encryptionKeyVersion: 1,
+    recoveryCodePepper: ''
+  });
+});
+
+test('production accepts valid independent Authenticator MFA keys when enabled', () => {
+  const encryptionKey = Buffer.alloc(32, 7).toString('base64');
+  const recoveryCodePepper = 'recovery-pepper-with-at-least-32-chars';
+  const config = loadConfig({
+    NODE_ENV: 'production',
+    SESSION_SECRET: 'independent-session-secret',
+    LOGIN_TOTP_2FA_ENABLED: 'true',
+    LOGIN_TOTP_TRUST_DAYS: '10',
+    LOGIN_TOTP_ISSUER: 'SUNKAIER BESTCRM',
+    TOTP_ENCRYPTION_KEY: encryptionKey,
+    TOTP_ENCRYPTION_KEY_VERSION: '2',
+    TOTP_RECOVERY_CODE_PEPPER: recoveryCodePepper
+  });
+
+  assert.equal(config.authenticatorMfa.enabled, true);
+  assert.equal(config.authenticatorMfa.trustDays, 10);
+  assert.equal(config.authenticatorMfa.issuer, 'SUNKAIER BESTCRM');
+  assert.equal(config.authenticatorMfa.encryptionKey, encryptionKey);
+  assert.equal(config.authenticatorMfa.encryptionKeyVersion, 2);
+  assert.equal(config.authenticatorMfa.recoveryCodePepper, recoveryCodePepper);
+});
+
+test('production fails closed when enabled Authenticator MFA keys are missing or invalid', () => {
+  const base = {
+    NODE_ENV: 'production',
+    SESSION_SECRET: 'independent-session-secret',
+    LOGIN_TOTP_2FA_ENABLED: 'true',
+    TOTP_RECOVERY_CODE_PEPPER: 'recovery-pepper-with-at-least-32-chars'
+  };
+
+  assert.throws(
+    () => loadConfig(base),
+    /TOTP_ENCRYPTION_KEY must be a base64-encoded 32-byte key/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, TOTP_ENCRYPTION_KEY: 'not-a-valid-key' }),
+    /TOTP_ENCRYPTION_KEY must be a base64-encoded 32-byte key/
+  );
+  assert.throws(
+    () => loadConfig({
+      ...base,
+      TOTP_ENCRYPTION_KEY: Buffer.alloc(32, 7).toString('base64'),
+      TOTP_RECOVERY_CODE_PEPPER: 'too-short'
+    }),
+    /TOTP_RECOVERY_CODE_PEPPER must be at least 32 characters/
+  );
+});
+
+test('production rejects non-frozen trust periods and reused Authenticator MFA secrets', () => {
+  const encryptionKey = Buffer.alloc(32, 7).toString('base64');
+  const base = {
+    NODE_ENV: 'production',
+    SESSION_SECRET: 'independent-session-secret',
+    LOGIN_TOTP_2FA_ENABLED: 'true',
+    TOTP_ENCRYPTION_KEY: encryptionKey,
+    TOTP_RECOVERY_CODE_PEPPER: 'recovery-pepper-with-at-least-32-chars'
+  };
+
+  assert.throws(
+    () => loadConfig({ ...base, LOGIN_TOTP_TRUST_DAYS: '30' }),
+    /LOGIN_TOTP_TRUST_DAYS must be 10/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, TOTP_ENCRYPTION_KEY_VERSION: '1.5' }),
+    /TOTP_ENCRYPTION_KEY_VERSION must be a positive integer/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, SESSION_SECRET: encryptionKey }),
+    /TOTP_ENCRYPTION_KEY must not reuse SESSION_SECRET/
+  );
+  assert.throws(
+    () => loadConfig({
+      ...base,
+      SESSION_SECRET: 'same-session-secret-with-at-least-32-characters',
+      TOTP_RECOVERY_CODE_PEPPER: 'same-session-secret-with-at-least-32-characters'
+    }),
+    /TOTP_RECOVERY_CODE_PEPPER must not reuse SESSION_SECRET/
+  );
+});
+
 test('config accepts a positive custom upload limit and rejects invalid values', () => {
   assert.equal(loadConfig({ NODE_ENV: 'development', MAX_UPLOAD_MB: '500' }).maxUploadMb, 500);
   assert.equal(loadConfig({ NODE_ENV: 'development', MAX_UPLOAD_MB: 'invalid' }).maxUploadMb, 3072);

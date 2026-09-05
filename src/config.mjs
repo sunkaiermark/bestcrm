@@ -12,6 +12,24 @@ function numberEnv(value, defaultValue) {
   return Number.isFinite(number) && number > 0 ? number : defaultValue;
 }
 
+function positiveIntegerEnv(value, defaultValue) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : defaultValue;
+}
+
+function isBase64Encoded32ByteKey(value) {
+  const encoded = String(value || '').trim();
+  if (!encoded) {
+    return false;
+  }
+  try {
+    const decoded = Buffer.from(encoded, 'base64');
+    return decoded.length === 32 && decoded.toString('base64') === encoded;
+  } catch {
+    return false;
+  }
+}
+
 export function loadConfig(env = process.env) {
   const nodeEnv = env.NODE_ENV || 'development';
   const baseUrl = env.BASE_URL || 'http://127.0.0.1:3000';
@@ -22,6 +40,35 @@ export function loadConfig(env = process.env) {
   const sessionCookieSecure = 'SESSION_COOKIE_SECURE' in env
     ? env.SESSION_COOKIE_SECURE !== 'false'
     : nodeEnv === 'production' && baseUrl.startsWith('https://');
+  const authenticatorMfaEnabled = booleanEnv(env.LOGIN_TOTP_2FA_ENABLED, false);
+  const authenticatorMfaTrustDays = positiveIntegerEnv(env.LOGIN_TOTP_TRUST_DAYS, 10);
+  const authenticatorMfaEncryptionKey = String(env.TOTP_ENCRYPTION_KEY || '').trim();
+  const authenticatorMfaEncryptionKeyVersion = positiveIntegerEnv(env.TOTP_ENCRYPTION_KEY_VERSION, 1);
+  const authenticatorMfaRecoveryCodePepper = String(env.TOTP_RECOVERY_CODE_PEPPER || '').trim();
+
+  if (nodeEnv === 'production' && authenticatorMfaEnabled) {
+    if (authenticatorMfaTrustDays !== 10) {
+      throw new Error('LOGIN_TOTP_TRUST_DAYS must be 10 for Authenticator MFA V1');
+    }
+    if (!isBase64Encoded32ByteKey(authenticatorMfaEncryptionKey)) {
+      throw new Error('TOTP_ENCRYPTION_KEY must be a base64-encoded 32-byte key');
+    }
+    if (String(env.TOTP_ENCRYPTION_KEY_VERSION || '1') !== String(authenticatorMfaEncryptionKeyVersion)) {
+      throw new Error('TOTP_ENCRYPTION_KEY_VERSION must be a positive integer');
+    }
+    if (authenticatorMfaRecoveryCodePepper.length < 32) {
+      throw new Error('TOTP_RECOVERY_CODE_PEPPER must be at least 32 characters');
+    }
+    if (authenticatorMfaEncryptionKey === sessionSecret) {
+      throw new Error('TOTP_ENCRYPTION_KEY must not reuse SESSION_SECRET');
+    }
+    if (authenticatorMfaRecoveryCodePepper === sessionSecret) {
+      throw new Error('TOTP_RECOVERY_CODE_PEPPER must not reuse SESSION_SECRET');
+    }
+    if (authenticatorMfaRecoveryCodePepper === authenticatorMfaEncryptionKey) {
+      throw new Error('TOTP_RECOVERY_CODE_PEPPER must not reuse TOTP_ENCRYPTION_KEY');
+    }
+  }
 
   return {
     nodeEnv,
@@ -102,6 +149,14 @@ export function loadConfig(env = process.env) {
         signName: env.TENCENT_SMS_SIGN_NAME || '',
         templateId: env.TENCENT_SMS_LOGIN_TEMPLATE_ID || ''
       }
+    },
+    authenticatorMfa: {
+      enabled: authenticatorMfaEnabled,
+      trustDays: authenticatorMfaTrustDays,
+      issuer: String(env.LOGIN_TOTP_ISSUER || 'BESTCRM').trim() || 'BESTCRM',
+      encryptionKey: authenticatorMfaEncryptionKey,
+      encryptionKeyVersion: authenticatorMfaEncryptionKeyVersion,
+      recoveryCodePepper: authenticatorMfaRecoveryCodePepper
     },
     uploadDir: env.UPLOAD_DIR || './var/uploads',
     technicalDocumentFontPath: env.TECHNICAL_DOCUMENT_FONT_PATH || '',

@@ -39,6 +39,7 @@ const quotationPackageDocumentsMigrationPath = new URL('../../src/db/migrations/
 const bidPackageEditorsMigrationPath = new URL('../../src/db/migrations/038_bid_package_editors.sql', import.meta.url);
 const bidPackageApprovalsMigrationPath = new URL('../../src/db/migrations/039_bid_package_approvals.sql', import.meta.url);
 const bidPackageOutputIdentityMigrationPath = new URL('../../src/db/migrations/040_bid_package_output_identity.sql', import.meta.url);
+const authenticatorMfaMigrationPath = new URL('../../src/db/migrations/041_authenticator_mfa.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -63,6 +64,35 @@ test('initial schema declares first-version tables', async () => {
   }
   assert.match(sql, /sales_manager_id/);
   assert.doesNotMatch(sql, /department_manager_id/);
+});
+
+test('Authenticator MFA migration creates the three frozen secret-safe tables', async () => {
+  const sql = await readFile(authenticatorMfaMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS user_mfa_settings/);
+  assert.match(sql, /user_id bigint NOT NULL UNIQUE REFERENCES users\(id\) ON DELETE CASCADE/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'disabled'/);
+  assert.match(sql, /CHECK \(status IN \('pending', 'active', 'disabled'\)\)/);
+  assert.match(sql, /secret_ciphertext text/);
+  assert.match(sql, /secret_nonce text/);
+  assert.match(sql, /secret_auth_tag text/);
+  assert.match(sql, /secret_key_version integer/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS user_mfa_recovery_codes/);
+  assert.match(sql, /code_hash char\(64\) NOT NULL/);
+  assert.match(sql, /generation integer NOT NULL/);
+  assert.match(sql, /used_at timestamptz/);
+  assert.match(sql, /invalidated_at timestamptz/);
+  assert.match(sql, /FOREIGN KEY \(mfa_setting_id, user_id\)/);
+  assert.match(sql, /REFERENCES user_mfa_settings\(id, user_id\) ON DELETE CASCADE/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS user_trusted_devices/);
+  assert.match(sql, /token_hash char\(64\) NOT NULL UNIQUE/);
+  assert.match(sql, /expires_at timestamptz NOT NULL/);
+  assert.match(sql, /revoked_at timestamptz/);
+  assert.match(sql, /user_mfa_settings_active_lookup_idx/);
+  assert.match(sql, /user_mfa_recovery_codes_available_idx/);
+  assert.match(sql, /user_trusted_devices_expiry_cleanup_idx/);
 });
 
 test('opportunity number migration creates six digit sequence starting at 800000', async () => {
