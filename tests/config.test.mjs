@@ -179,6 +179,179 @@ test('email center interface stays disabled unless explicitly enabled', () => {
   assert.equal(loadConfig({ NODE_ENV: 'development', CRM_EMAIL_CENTER_ENABLED: 'true' }).emailCenter.enabled, true);
 });
 
+test('Google mail stays fully disabled with the frozen single mailbox defaults', () => {
+  const config = loadConfig({ NODE_ENV: 'development' });
+
+  assert.deepEqual(config.googleMail, {
+    enabled: false,
+    inboundEnabled: false,
+    outboundEnabled: false,
+    pushEnabled: false,
+    providerName: 'google_gmail',
+    mailboxAddress: 'sales@sunkaier.com',
+    reconcileIntervalMs: 300000,
+    watchRenewalIntervalMs: 86400000,
+    oauth: {
+      clientId: '',
+      clientSecret: '',
+      redirectUri: '',
+      encryptionKey: '',
+      encryptionKeyVersion: 1
+    },
+    pubsub: {
+      topic: '',
+      audience: ''
+    }
+  });
+});
+
+test('production accepts an independent Google OAuth configuration while mail flow remains dark', () => {
+  const encryptionKey = Buffer.alloc(32, 31).toString('base64');
+  const config = loadConfig({
+    NODE_ENV: 'production',
+    BASE_URL: 'https://crm.sunkaier.com',
+    SESSION_SECRET: 'independent-session-secret',
+    CRM_EMAIL_CENTER_ENABLED: 'true',
+    GOOGLE_MAIL_ENABLED: 'true',
+    GOOGLE_MAILBOX_ADDRESS: 'SALES@SUNKAIER.COM',
+    GOOGLE_MAIL_OAUTH_CLIENT_ID: 'bestcrm.apps.googleusercontent.com',
+    GOOGLE_MAIL_OAUTH_CLIENT_SECRET: 'independent-google-client-secret',
+    GOOGLE_MAIL_OAUTH_REDIRECT_URI: 'https://crm.sunkaier.com/system/mail-connections/google/callback',
+    MAIL_OAUTH_ENCRYPTION_KEY: encryptionKey,
+    MAIL_OAUTH_ENCRYPTION_KEY_VERSION: '2'
+  });
+
+  assert.equal(config.googleMail.enabled, true);
+  assert.equal(config.googleMail.inboundEnabled, false);
+  assert.equal(config.googleMail.outboundEnabled, false);
+  assert.equal(config.googleMail.pushEnabled, false);
+  assert.equal(config.googleMail.mailboxAddress, 'sales@sunkaier.com');
+  assert.equal(config.googleMail.oauth.encryptionKeyVersion, 2);
+});
+
+test('Google mail sub-features fail closed unless their parent features are enabled', () => {
+  assert.throws(
+    () => loadConfig({ NODE_ENV: 'development', GOOGLE_MAIL_INBOUND_ENABLED: 'true' }),
+    /GOOGLE_MAIL_ENABLED must be true/
+  );
+  assert.throws(
+    () => loadConfig({
+      NODE_ENV: 'development',
+      GOOGLE_MAIL_ENABLED: 'true',
+      GOOGLE_MAIL_PUSH_ENABLED: 'true'
+    }),
+    /GOOGLE_MAIL_INBOUND_ENABLED must be true/
+  );
+});
+
+test('production Google mail requires the frozen mailbox, HTTPS callback, credentials, and key', () => {
+  const encryptionKey = Buffer.alloc(32, 31).toString('base64');
+  const base = {
+    NODE_ENV: 'production',
+    BASE_URL: 'https://crm.sunkaier.com',
+    SESSION_SECRET: 'independent-session-secret',
+    CRM_EMAIL_CENTER_ENABLED: 'true',
+    GOOGLE_MAIL_ENABLED: 'true',
+    GOOGLE_MAIL_OAUTH_CLIENT_ID: 'bestcrm.apps.googleusercontent.com',
+    GOOGLE_MAIL_OAUTH_CLIENT_SECRET: 'independent-google-client-secret',
+    GOOGLE_MAIL_OAUTH_REDIRECT_URI: 'https://crm.sunkaier.com/system/mail-connections/google/callback',
+    MAIL_OAUTH_ENCRYPTION_KEY: encryptionKey
+  };
+
+  assert.throws(
+    () => loadConfig({ ...base, CRM_EMAIL_CENTER_ENABLED: 'false' }),
+    /CRM_EMAIL_CENTER_ENABLED must be true/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, GOOGLE_MAILBOX_ADDRESS: 'info@sunkaier.com' }),
+    /GOOGLE_MAILBOX_ADDRESS must be sales@sunkaier.com/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, GOOGLE_MAIL_OAUTH_CLIENT_ID: '' }),
+    /GOOGLE_MAIL_OAUTH_CLIENT_ID is required/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, GOOGLE_MAIL_OAUTH_CLIENT_ID: 'not-a-google-client' }),
+    /must be a Google OAuth web client ID/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, GOOGLE_MAIL_OAUTH_CLIENT_SECRET: '' }),
+    /GOOGLE_MAIL_OAUTH_CLIENT_SECRET is required/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, BASE_URL: 'http://crm.sunkaier.com' }),
+    /BASE_URL must be an absolute HTTPS URL/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, GOOGLE_MAIL_OAUTH_REDIRECT_URI: 'https://other.example.com/system/mail-connections/google/callback' }),
+    /must use the BASE_URL origin/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, GOOGLE_MAIL_OAUTH_REDIRECT_URI: 'https://crm.sunkaier.com/wrong' }),
+    /must use the frozen Google callback path/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, MAIL_OAUTH_ENCRYPTION_KEY: 'invalid' }),
+    /base64-encoded 32-byte key/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, MAIL_OAUTH_ENCRYPTION_KEY_VERSION: '1.5' }),
+    /must be a positive integer/
+  );
+});
+
+test('production Google mail rejects reused secrets and validates Pub/Sub settings', () => {
+  const encryptionKey = Buffer.alloc(32, 31).toString('base64');
+  const base = {
+    NODE_ENV: 'production',
+    BASE_URL: 'https://crm.sunkaier.com',
+    SESSION_SECRET: 'independent-session-secret',
+    CRM_EMAIL_CENTER_ENABLED: 'true',
+    GOOGLE_MAIL_ENABLED: 'true',
+    GOOGLE_MAIL_INBOUND_ENABLED: 'true',
+    GOOGLE_MAIL_OAUTH_CLIENT_ID: 'bestcrm.apps.googleusercontent.com',
+    GOOGLE_MAIL_OAUTH_CLIENT_SECRET: 'independent-google-client-secret',
+    GOOGLE_MAIL_OAUTH_REDIRECT_URI: 'https://crm.sunkaier.com/system/mail-connections/google/callback',
+    MAIL_OAUTH_ENCRYPTION_KEY: encryptionKey
+  };
+
+  assert.throws(
+    () => loadConfig({ ...base, SESSION_SECRET: encryptionKey }),
+    /MAIL_OAUTH_ENCRYPTION_KEY must not reuse SESSION_SECRET/
+  );
+  assert.throws(
+    () => loadConfig({ ...base, GOOGLE_MAIL_OAUTH_CLIENT_SECRET: encryptionKey }),
+    /MAIL_OAUTH_ENCRYPTION_KEY must not reuse GOOGLE_MAIL_OAUTH_CLIENT_SECRET/
+  );
+  assert.throws(
+    () => loadConfig({
+      ...base,
+      GOOGLE_MAIL_PUSH_ENABLED: 'true',
+      GOOGLE_MAIL_PUBSUB_TOPIC: 'bad-topic',
+      GOOGLE_MAIL_PUBSUB_AUDIENCE: 'https://crm.sunkaier.com/api/mail/google/pubsub'
+    }),
+    /GOOGLE_MAIL_PUBSUB_TOPIC must be a full Google Cloud Pub\/Sub topic name/
+  );
+  assert.throws(
+    () => loadConfig({
+      ...base,
+      GOOGLE_MAIL_PUSH_ENABLED: 'true',
+      GOOGLE_MAIL_PUBSUB_TOPIC: 'projects/bestcrm-mail-prod/topics/gmail-events',
+      GOOGLE_MAIL_PUBSUB_AUDIENCE: 'https://other.example.com/api/mail/google/pubsub'
+    }),
+    /must use the frozen BESTCRM Pub\/Sub callback/
+  );
+
+  const config = loadConfig({
+    ...base,
+    GOOGLE_MAIL_PUSH_ENABLED: 'true',
+    GOOGLE_MAIL_PUBSUB_TOPIC: 'projects/bestcrm-mail-prod/topics/gmail-events',
+    GOOGLE_MAIL_PUBSUB_AUDIENCE: 'https://crm.sunkaier.com/api/mail/google/pubsub'
+  });
+  assert.equal(config.googleMail.pushEnabled, true);
+  assert.equal(config.googleMail.pubsub.topic, 'projects/bestcrm-mail-prod/topics/gmail-events');
+});
+
 test('customer email sending has a separate disabled-by-default flag and fixed shared sender', () => {
   const defaults = loadConfig({ NODE_ENV: 'development' });
   assert.equal(defaults.customerEmail.enabled, false);
