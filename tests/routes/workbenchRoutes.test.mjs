@@ -222,12 +222,30 @@ test('left sidebar uses selected Chinese language after login', async () => {
 
   assert.equal(response.status, 200);
   assert.match(response.text, /href="\/workbench">工作台<\/a>/);
+  assert.match(response.text, /href="\/sales-work\/plans">工作<\/a>/);
   assert.match(response.text, /href="\/opportunities">商机<\/a>/);
   assert.match(response.text, /href="\/customers">客户<\/a>/);
   assert.match(response.text, /href="\/contacts">联系人<\/a>/);
   assert.match(response.text, /class="nav-parent">系统<\/div>/);
   assert.match(response.text, /href="\/system\/users">用户<\/a>/);
   assert.match(response.text, /href="\/system\/roles">角色<\/a>/);
-  assert.match(response.text, /href="\/system\/approval-settings">审批人配置<\/a>/);
+  assert.match(response.text, /href="\/system\/approval-settings">审批人<\/a>/);
   assert.match(response.text, />退出登录<\/button>/);
+});
+
+test('salesperson sidebar uses concise Chinese lead and work labels', async () => {
+  const agent = await createWorkbenchAgent({
+    username: 'sales01',
+    displayName: 'Sales One',
+    roles: [ROLES.SALESPERSON],
+    language: 'zh'
+  });
+
+  const response = await agent.get('/workbench');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /href="\/lead-submissions">线索<\/a>/);
+  assert.match(response.text, /href="\/sales-work\/plans">工作<\/a>/);
+  assert.doesNotMatch(response.text, /href="\/lead-submissions">我提交的线索<\/a>/);
+  assert.doesNotMatch(response.text, /href="\/sales-work\/plans">工作管理<\/a>/);
 });

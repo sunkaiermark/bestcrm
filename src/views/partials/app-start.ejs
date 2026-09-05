@@ -1946,9 +1946,9 @@
             <a class="<%= navClass('email-center') %>" href="/email-center"><%= t('emailCenter') %></a>
           <% } %>
           <% if (canSubmitLead) { %>
-            <a class="<%= navClass('lead-submissions') %>" href="/lead-submissions"><%= t('myLeadSubmissions') %></a>
+            <a class="<%= navClass('lead-submissions') %>" href="/lead-submissions"><%= t('navLeadSubmissions') %></a>
           <% } %>
-          <a class="<%= navClass('sales-work') %>" href="/sales-work/plans"><%= t('salesWork') %></a>
+          <a class="<%= navClass('sales-work') %>" href="/sales-work/plans"><%= t('navSalesWork') %></a>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>
           <a class="<%= navClass('customers') %>" href="/customers"><%= t('customers') %></a>
           <a class="<%= navClass('contacts') %>" href="/contacts"><%= t('contacts') %></a>
@@ -1959,7 +1959,7 @@
               <% if (canSeeTechnicalStandardsNav) { %><a class="<%= navClass('technical-templates') %>" href="/technical-templates"><%= t('bidTechnicalPackages') %></a><% } %>
               <% if (canSeeBidCommercialPackages) { %><a class="<%= navClass('bid-center-commercial') %>" href="/bid-center/commercial-templates"><%= t('bidCommercialPackages') %></a><% } %>
               <a class="<%= navClass('bid-center-clauses') %>" href="/bid-center/clauses"><%= t('bidStandardClauses') %></a>
-              <a class="<%= navClass('bid-center-public-materials') %>" href="/bid-center/public-materials"><%= t('bidPublicMaterials') %></a>
+              <a class="<%= navClass('bid-center-public-materials') %>" href="/bid-center/public-materials"><%= t('navBidPublicMaterials') %></a>
               <span class="nav-link" aria-disabled="true" title="<%= t('availableInLaterBidCenterStep') %>"><%= t('bidOutputRecords') %></span>
             </div>
           <% } else if (canSeeTechnicalStandardsNav) { %>
@@ -1974,7 +1974,7 @@
             <div class="nav-subgroup">
               <a class="<%= navClass('system-users') %>" href="/system/users"><%= t('users') %></a>
               <a class="<%= navClass('system-roles') %>" href="/system/roles"><%= t('roles') %></a>
-              <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings"><%= t('approvalSettings') %></a>
+              <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings"><%= t('navApprovalSettings') %></a>
             </div>
           <% } %>
         </nav>

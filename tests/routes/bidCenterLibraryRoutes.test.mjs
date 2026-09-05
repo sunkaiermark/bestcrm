@@ -118,7 +118,7 @@ test('enabled bilingual navigation uses the frozen Bid Center structure without 
   assert.match(response.text, /href="\/technical-templates">技术包/);
   assert.match(response.text, /href="\/bid-center\/commercial-templates">商务包/);
   assert.match(response.text, /href="\/bid-center\/clauses">标准条款/);
-  assert.match(response.text, /href="\/bid-center\/public-materials">公共资料库/);
+  assert.match(response.text, /href="\/bid-center\/public-materials">公共资料/);
   assert.match(response.text, /输出记录/);
   assert.doesNotMatch(response.text, />技术标准</);
 });
