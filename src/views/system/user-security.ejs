@@ -1,0 +1,82 @@
+<%- include('../partials/app-start', { title: `${t('manageSecurity')} - ${user.displayName} - BESTCRM`, activeNav: 'system-users' }) %>
+        <p class="breadcrumb"><a href="/system/users"><%= t('systemUsers') %></a> / <%= user.displayName %> / <%= t('manageSecurity') %></p>
+        <header class="page-header">
+          <div>
+            <div class="eyebrow"><%= t('administratorControls') %></div>
+            <h1><%= t('manageUserMfa') %>: <%= user.displayName %></h1>
+            <p class="muted"><%= user.username %> · <%= t(`adminMfaStatus.${mfa.status}`) %> · <%= mfa.isRequired ? t('mfaRequired') : t('mfaNotRequired') %></p>
+          </div>
+          <a class="secondary-action" href="/system/users"><%= t('backToList') %></a>
+        </header>
+
+        <% if (notice) { %><p class="success-text" role="status"><%= notice %></p><% } %>
+        <% if (!authenticatorMfaEnabled) { %><p class="warning-text"><%= t('authenticatorFeatureDisabledAdmin') %></p><% } %>
+
+        <div class="account-security-grid">
+          <section class="form-panel">
+            <h2><%= t('mfaRequirement') %></h2>
+            <p class="muted"><%= t('mfaRequirementDescription') %></p>
+            <% if (authenticatorMfaEnabled) { %>
+              <% if (!mfa.isRequired) { %>
+                <form method="post" action="/system/users/<%= user.id %>/security/requirement" onsubmit="return confirm('<%= t('requireMfaConfirm') %>')">
+                  <%- csrfField() %><input type="hidden" name="isRequired" value="1">
+                  <button type="submit"><%= t('requireMfa') %></button>
+                </form>
+              <% } else if (isSelf) { %>
+                <p class="warning-text"><%= t('cannotDisableOwnMfaRequirement') %></p>
+              <% } else { %>
+                <form method="post" action="/system/users/<%= user.id %>/security/requirement" onsubmit="return confirm('<%= t('removeMfaRequirementConfirm') %>')">
+                  <%- csrfField() %><input type="hidden" name="isRequired" value="0">
+                  <button class="danger-action" type="submit"><%= t('removeMfaRequirement') %></button>
+                </form>
+              <% } %>
+            <% } %>
+          </section>
+
+          <section class="form-panel">
+            <h2><%= t('resetMfaEnrollment') %></h2>
+            <p class="muted"><%= t('resetMfaEnrollmentDescription') %></p>
+            <% if (authenticatorMfaEnabled) { %>
+              <form method="post" action="/system/users/<%= user.id %>/security/reset-enrollment" onsubmit="return confirm('<%= t('resetMfaEnrollmentConfirm') %>')">
+                <%- csrfField() %>
+                <label class="checkbox-row">
+                  <input name="identityVerified" type="checkbox" value="1" required>
+                  <span><%= t('independentIdentityCheckAttestation') %></span>
+                </label>
+                <button class="danger-action" type="submit"><%= t('resetMfaEnrollment') %></button>
+              </form>
+            <% } %>
+          </section>
+        </div>
+
+        <section class="list-section account-trusted-devices">
+          <div class="section-heading-row list-heading">
+            <div><h2><%= t('trustedDevices') %></h2><p class="muted"><%= t('adminTrustedDevicesDescription') %></p></div>
+            <% if (authenticatorMfaEnabled && trustedDevices.some((device) => device.state === 'active')) { %>
+              <form method="post" action="/system/users/<%= user.id %>/security/trusted-devices/revoke-all" onsubmit="return confirm('<%= t('revokeAllTrustedDevicesConfirm') %>')">
+                <%- csrfField() %><button class="danger-action" type="submit"><%= t('revokeAllTrustedDevices') %></button>
+              </form>
+            <% } %>
+          </div>
+          <div class="list-body">
+            <% if (!trustedDevices.length) { %><p class="empty"><%= t('noTrustedDevices') %></p><% } else { %>
+              <table class="list-table content-fit-table">
+                <thead><tr><th><%= t('device') %></th><th><%= t('lastUsed') %></th><th><%= t('expiresAt') %></th><th><%= t('status') %></th><th><%= t('actions') %></th></tr></thead>
+                <tbody><% for (const device of trustedDevices) { %>
+                  <tr>
+                    <td><strong><%= device.deviceLabel %></strong><div class="muted"><%= device.lastIp || '' %></div></td>
+                    <td><%= device.lastUsedAt ? new Date(device.lastUsedAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-SG') : '—' %></td>
+                    <td><%= device.expiresAt ? new Date(device.expiresAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-SG') : '—' %></td>
+                    <td><%= t(`trustedDeviceState.${device.state}`) %></td>
+                    <td><% if (authenticatorMfaEnabled && device.state === 'active') { %>
+                      <form method="post" action="/system/users/<%= user.id %>/security/trusted-devices/<%= device.id %>/revoke" onsubmit="return confirm('<%= t('revokeTrustedDeviceConfirm') %>')">
+                        <%- csrfField() %><button class="danger-action" type="submit"><%= t('revokeTrustedDevice') %></button>
+                      </form>
+                    <% } else { %>—<% } %></td>
+                  </tr>
+                <% } %></tbody>
+              </table>
+            <% } %>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

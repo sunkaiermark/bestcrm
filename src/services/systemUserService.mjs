@@ -33,6 +33,32 @@ function requireAdmin(actor) {
   requireRole(actor, ROLES.ADMINISTRATOR);
 }
 
+function positiveInteger(value, name) {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new SystemMfaAdministrationError('invalidMfaAdministrationTarget', `${name} is invalid`);
+  }
+  return parsed;
+}
+
+function exactBoolean(value) {
+  if ([true, 'true', '1', 'on'].includes(value)) {
+    return true;
+  }
+  if ([false, 'false', '0', 'off'].includes(value)) {
+    return false;
+  }
+  throw new SystemMfaAdministrationError('invalidMfaRequirement');
+}
+
+export class SystemMfaAdministrationError extends Error {
+  constructor(code, message = code) {
+    super(message);
+    this.name = 'SystemMfaAdministrationError';
+    this.code = code;
+  }
+}
+
 export function normalizeSystemUserInput(input, options = {}) {
   return {
     displayName: text(input.displayName),
@@ -112,4 +138,61 @@ export async function unlockSystemUserLogin(userRepository, loginSecurityReposit
 export async function deactivateSystemUser(userRepository, actor, userId) {
   requireAdmin(actor);
   return userRepository.deactivateUser(userId);
+}
+
+async function findMfaTarget(userRepository, userId) {
+  const targetUserId = positiveInteger(userId, 'MFA user ID');
+  const user = await userRepository.findByIdWithRoles(targetUserId);
+  return { targetUserId, user };
+}
+
+export async function updateSystemUserMfaRequirement({
+  userRepository,
+  mfaRepository
+}, actor, userId, isRequired) {
+  requireAdmin(actor);
+  const required = exactBoolean(isRequired);
+  const { targetUserId, user } = await findMfaTarget(userRepository, userId);
+  if (!user) {
+    return null;
+  }
+  if (!required && Number(actor.id) === targetUserId) {
+    throw new SystemMfaAdministrationError('cannotDisableOwnMfaRequirement');
+  }
+  const setting = await mfaRepository.setRequired(targetUserId, required);
+  return { user, setting };
+}
+
+export async function resetSystemUserMfaEnrollment({
+  userRepository,
+  mfaRepository
+}, actor, userId, { identityVerified } = {}) {
+  requireAdmin(actor);
+  if (identityVerified !== true && identityVerified !== '1' && identityVerified !== 'on') {
+    throw new SystemMfaAdministrationError('independentIdentityCheckRequired');
+  }
+  const { targetUserId, user } = await findMfaTarget(userRepository, userId);
+  if (!user) {
+    return null;
+  }
+  const setting = await mfaRepository.prepareSelfServiceEnrollment(targetUserId);
+  return { user, setting };
+}
+
+export async function revokeSystemUserTrustedDevices({
+  userRepository,
+  mfaRepository
+}, actor, userId, deviceId = null) {
+  requireAdmin(actor);
+  const { targetUserId, user } = await findMfaTarget(userRepository, userId);
+  if (!user) {
+    return null;
+  }
+  if (deviceId === null || deviceId === undefined || deviceId === '') {
+    const revokedIds = await mfaRepository.revokeAllTrustedDevices(targetUserId);
+    return { user, revokedIds };
+  }
+  const trustedDeviceId = positiveInteger(deviceId, 'Trusted device ID');
+  const device = await mfaRepository.revokeTrustedDevice(targetUserId, trustedDeviceId);
+  return { user, device };
 }

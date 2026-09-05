@@ -484,8 +484,10 @@ const emptyLoginSecurityRepository = {
 
 const emptyMfaRepository = {
   async findStatusByUserId() { return null; },
+  async listStatusForAdministration() { return []; },
   async listTrustedDevicesByUserId() { return []; },
   async findVerificationMaterialByUserId() { return null; },
+  async setRequired() { throw new Error('MFA repository is not configured'); },
   async savePendingEnrollment() { throw new Error('MFA repository is not configured'); },
   async activateEnrollmentWithRecoveryCodes() { throw new Error('MFA repository is not configured'); },
   async replaceRecoveryCodeHashesWithNextGeneration() { throw new Error('MFA repository is not configured'); },
@@ -821,7 +823,14 @@ export function createApp(options = {}) {
     notificationRepository,
     webPushPublicKey: configuredWebPushPublicKey
   }));
-  app.use(systemRoutes({ userRepository, roleRepository, approvalSettingRepository, loginSecurityRepository }));
+  app.use(systemRoutes({
+    userRepository,
+    roleRepository,
+    approvalSettingRepository,
+    loginSecurityRepository,
+    mfaRepository,
+    authenticatorMfaEnabled
+  }));
   app.use(technicalTemplateRoutes({ technicalTemplateRepository }));
   app.use(bidCenterLibraryRoutes({
     enabled: Boolean(config.bidCenter?.enabled),

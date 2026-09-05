@@ -5,6 +5,10 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword, verifyPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
+function extractCsrfToken(html) {
+  return html.match(/name="_csrf"\s+value="([^"]+)"/)?.[1] || '';
+}
+
 async function createSystemAgent(options = {}) {
   const currentUser = {
     id: 7,
@@ -22,6 +26,15 @@ async function createSystemAgent(options = {}) {
     phone: '',
     isActive: true,
     roles: [ROLES.SALES_MANAGER]
+  };
+  const pendingUser = {
+    id: 12,
+    username: 'pending01',
+    displayName: 'Pending User',
+    email: 'pending01@bestcrm.local',
+    phone: '',
+    isActive: true,
+    roles: [ROLES.SALESPERSON]
   };
   const role = {
     id: 21,
@@ -64,6 +77,41 @@ async function createSystemAgent(options = {}) {
     isActive: true
   };
   const calls = [];
+  const mfaStatuses = new Map([
+    [currentUser.id, {
+      userId: currentUser.id,
+      username: currentUser.username,
+      displayName: currentUser.displayName,
+      status: 'disabled',
+      isRequired: false
+    }],
+    [managedUser.id, {
+      userId: managedUser.id,
+      username: managedUser.username,
+      displayName: managedUser.displayName,
+      status: 'active',
+      isRequired: true,
+      enrolledAt: '2026-09-05T03:00:00.000Z',
+      lastVerifiedAt: '2026-09-05T04:00:00.000Z'
+    }],
+    [pendingUser.id, {
+      userId: pendingUser.id,
+      username: pendingUser.username,
+      displayName: pendingUser.displayName,
+      status: 'pending',
+      isRequired: true
+    }]
+  ]);
+  const trustedDevices = [{
+    id: 31,
+    userId: managedUser.id,
+    deviceLabel: 'Edge on Windows',
+    lastIp: '203.0.113.5',
+    createdAt: '2026-09-01T03:00:00.000Z',
+    lastUsedAt: '2026-09-04T03:00:00.000Z',
+    expiresAt: '2026-09-15T03:00:00.000Z',
+    revokedAt: null
+  }];
   const { language } = options;
   const app = createApp({
     sessionSecret: 'test-secret',
@@ -75,13 +123,16 @@ async function createSystemAgent(options = {}) {
         if (Number(id) === managedUser.id) {
           return managedUser;
         }
+        if (Number(id) === pendingUser.id) {
+          return pendingUser;
+        }
         return null;
       },
       async findByUsernameWithRoles(username) {
         return username === currentUser.username ? currentUser : null;
       },
       async listUsersWithRoles() {
-        return [managedUser, currentUser];
+        return [managedUser, pendingUser, currentUser];
       },
       async createUser(input) {
         calls.push({ method: 'createUser', input });
@@ -151,15 +202,96 @@ async function createSystemAgent(options = {}) {
       async resetAttemptsForUsername(username) {
         calls.push({ method: 'resetLoginAttemptsForUsername', username });
       },
-      async recordAuditEvent() {
+      async recordAuditEvent(event) {
+        if (String(event.reason || '').startsWith('admin_mfa_')) {
+          calls.push({ method: 'recordMfaAudit', event });
+        }
       }
-    }
+    },
+    mfaRepository: {
+      async listStatusForAdministration() {
+        return [...mfaStatuses.values()].map((status) => ({ ...status }));
+      },
+      async findStatusByUserId(userId) {
+        return mfaStatuses.get(Number(userId)) || null;
+      },
+      async listTrustedDevicesByUserId(userId) {
+        return trustedDevices
+          .filter((device) => device.userId === Number(userId))
+          .map((device) => ({ ...device }));
+      },
+      async setRequired(userId, isRequired) {
+        const current = mfaStatuses.get(Number(userId)) || {
+          userId: Number(userId),
+          status: 'disabled'
+        };
+        const setting = { ...current, isRequired };
+        mfaStatuses.set(Number(userId), setting);
+        calls.push({ method: 'setMfaRequired', userId: Number(userId), isRequired });
+        return setting;
+      },
+      async prepareSelfServiceEnrollment(userId) {
+        const setting = {
+          ...(mfaStatuses.get(Number(userId)) || {}),
+          userId: Number(userId),
+          status: 'disabled',
+          isRequired: true,
+          enrolledAt: null,
+          lastVerifiedAt: null
+        };
+        mfaStatuses.set(Number(userId), setting);
+        calls.push({ method: 'resetMfaEnrollment', userId: Number(userId) });
+        return setting;
+      },
+      async revokeTrustedDevice(userId, deviceId) {
+        calls.push({ method: 'revokeMfaDevice', userId: Number(userId), deviceId: Number(deviceId) });
+        const device = trustedDevices.find((candidate) => candidate.userId === Number(userId)
+          && candidate.id === Number(deviceId));
+        if (device) device.revokedAt = new Date().toISOString();
+        return device || null;
+      },
+      async revokeAllTrustedDevices(userId) {
+        calls.push({ method: 'revokeAllMfaDevices', userId: Number(userId) });
+        return trustedDevices.filter((device) => {
+          if (device.userId === Number(userId) && !device.revokedAt) {
+            device.revokedAt = new Date().toISOString();
+            return true;
+          }
+          return false;
+        }).map((device) => device.id);
+      },
+      async findVerificationMaterialByUserId() { return null; },
+      async recordVerification() { return null; },
+      async consumeRecoveryCodeHash() { return null; },
+      async savePendingEnrollment() { throw new Error('not expected'); },
+      async activateEnrollmentWithRecoveryCodes() { throw new Error('not expected'); },
+      async createTrustedDevice() { throw new Error('not expected'); },
+      async findActiveTrustedDeviceByTokenHash() { return null; },
+      async touchTrustedDevice() { return null; }
+    },
+    authenticatorMfa: {
+      enabled: options.authenticatorMfaEnabled === true,
+      issuer: 'BESTCRM',
+      trustDays: 10
+    },
+    totpService: { async verify() { return { valid: false }; } },
+    mfaSecretEncryptionService: { decrypt() { throw new Error('not expected'); } },
+    mfaRecoveryCodeService: { generateBatch() { throw new Error('not expected'); }, async consume() { return false; } },
+    csrfProtection: options.csrfProtection === true
   });
   const agent = request.agent(app);
   if (language) {
     await agent.get(`/language?lang=${language}&returnTo=/login`);
   }
-  await agent.post('/login').type('form').send({ username: currentUser.username, password: 'ChangeMe123!' });
+  let csrf = '';
+  if (options.csrfProtection === true) {
+    csrf = extractCsrfToken((await agent.get('/login')).text);
+  }
+  await agent.post('/login').type('form').send({
+    username: currentUser.username,
+    password: 'ChangeMe123!',
+    ...(csrf ? { _csrf: csrf } : {})
+  });
   return { agent, calls };
 }
 
@@ -174,7 +306,7 @@ function assertSystemSidebar(html, activeHref) {
 test('anonymous users are redirected from system pages', async () => {
   const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
-  for (const path of ['/system/users', '/system/roles', '/system/approval-settings']) {
+  for (const path of ['/system/users', '/system/users/11/security', '/system/roles', '/system/approval-settings']) {
     const response = await request(app).get(path);
     assert.equal(response.status, 302);
     assert.equal(response.headers.location, '/login');
@@ -389,6 +521,124 @@ test('administrator can reset user password and unlock login attempts', async ()
   });
 });
 
+test('administrator sees safe Not enrolled Pending and Active MFA status and a secret-free user security page', async () => {
+  const { agent } = await createSystemAgent({ authenticatorMfaEnabled: true });
+
+  const users = await agent.get('/system/users');
+  assert.equal(users.status, 200);
+  assert.match(users.text, /Not enrolled/);
+  assert.match(users.text, /Pending/);
+  assert.match(users.text, /Active/);
+  assert.match(users.text, /href="\/system\/users\/11\/security"/);
+
+  const security = await agent.get('/system/users/11/security');
+  assert.equal(security.status, 200);
+  assert.match(security.headers['cache-control'], /no-store/);
+  assert.match(security.text, /Manage user MFA/);
+  assert.match(security.text, /Edge on Windows/);
+  assert.match(security.text, /independently verified this user’s identity/);
+  assert.doesNotMatch(security.text, /secret_(ciphertext|nonce|auth_tag)|secretCiphertext|BASE32|otpauth:/i);
+});
+
+test('administrator MFA controls render complete Chinese labels', async () => {
+  const { agent } = await createSystemAgent({ language: 'zh', authenticatorMfaEnabled: true });
+  const security = await agent.get('/system/users/11/security');
+
+  assert.equal(security.status, 200);
+  assert.match(security.text, /管理用户 MFA/);
+  assert.match(security.text, /重置验证器绑定/);
+  assert.match(security.text, /独立渠道核实该用户身份/);
+  assert.match(security.text, /受信任设备/);
+});
+
+test('administrator manages per-user requirement and cannot disable their own MFA through a direct URL', async () => {
+  const { agent, calls } = await createSystemAgent({ authenticatorMfaEnabled: true });
+
+  const required = await agent.post('/system/users/11/security/requirement').type('form').send({ isRequired: '1' });
+  assert.equal(required.status, 302);
+  assert.equal(required.headers.location, '/system/users/11/security?notice=required');
+  assert.deepEqual(calls.filter((call) => call.method === 'setMfaRequired')[0], {
+    method: 'setMfaRequired',
+    userId: 11,
+    isRequired: true
+  });
+  assert.match(calls.find((call) => call.method === 'recordMfaAudit').event.reason, /admin_mfa_requirement_enabled_by_7/);
+
+  const selfBypass = await agent.post('/system/users/7/security/requirement').type('form').send({ isRequired: '0' });
+  assert.equal(selfBypass.status, 409);
+  assert.match(selfBypass.text, /cannot remove their own required MFA/i);
+  assert.equal(calls.filter((call) => call.method === 'setMfaRequired').length, 1);
+});
+
+test('administrator reset requires independent identity confirmation and revokes enrollment sessions and devices through the atomic reset', async () => {
+  const { agent, calls } = await createSystemAgent({ authenticatorMfaEnabled: true });
+
+  const blocked = await agent.post('/system/users/11/security/reset-enrollment').type('form').send();
+  assert.equal(blocked.status, 400);
+  assert.match(blocked.text, /independent identity check/i);
+  assert.equal(calls.some((call) => call.method === 'resetMfaEnrollment'), false);
+
+  const reset = await agent.post('/system/users/11/security/reset-enrollment').type('form').send({
+    identityVerified: '1'
+  });
+  assert.equal(reset.status, 302);
+  assert.equal(reset.headers.location, '/system/users/11/security?notice=reset');
+  assert.deepEqual(calls.find((call) => call.method === 'resetMfaEnrollment'), {
+    method: 'resetMfaEnrollment',
+    userId: 11
+  });
+  assert.match(calls.find((call) => call.method === 'recordMfaAudit').event.reason, /admin_mfa_enrollment_reset_by_7/);
+});
+
+test('administrator revokes one or every trusted device with user-scoped audited routes', async () => {
+  const { agent, calls } = await createSystemAgent({ authenticatorMfaEnabled: true });
+
+  const one = await agent.post('/system/users/11/security/trusted-devices/31/revoke');
+  assert.equal(one.status, 302);
+  assert.deepEqual(calls.find((call) => call.method === 'revokeMfaDevice'), {
+    method: 'revokeMfaDevice',
+    userId: 11,
+    deviceId: 31
+  });
+
+  const all = await agent.post('/system/users/11/security/trusted-devices/revoke-all');
+  assert.equal(all.status, 302);
+  assert.deepEqual(calls.find((call) => call.method === 'revokeAllMfaDevices'), {
+    method: 'revokeAllMfaDevices',
+    userId: 11
+  });
+  assert.equal(calls.filter((call) => call.method === 'recordMfaAudit').length, 2);
+});
+
+test('administrator MFA mutations require CSRF and remain unavailable while the global feature is off', async () => {
+  const protectedHarness = await createSystemAgent({
+    authenticatorMfaEnabled: true,
+    csrfProtection: true
+  });
+  const blocked = await protectedHarness.agent
+    .post('/system/users/11/security/requirement')
+    .type('form')
+    .send({ isRequired: '1' });
+  assert.equal(blocked.status, 403);
+  assert.equal(protectedHarness.calls.some((call) => call.method === 'setMfaRequired'), false);
+
+  const page = await protectedHarness.agent.get('/system/users/11/security');
+  const csrf = extractCsrfToken(page.text);
+  const allowed = await protectedHarness.agent
+    .post('/system/users/11/security/requirement')
+    .type('form')
+    .send({ isRequired: '1', _csrf: csrf });
+  assert.equal(allowed.status, 302);
+
+  const featureOff = await createSystemAgent();
+  const unavailable = await featureOff.agent
+    .post('/system/users/11/security/requirement')
+    .type('form')
+    .send({ isRequired: '1' });
+  assert.equal(unavailable.status, 503);
+  assert.equal(featureOff.calls.some((call) => call.method === 'setMfaRequired'), false);
+});
+
 test('non administrators cannot manage system users', async () => {
   const { agent, calls } = await createSystemAgent({
     username: 'sales01',
@@ -403,7 +653,12 @@ test('non administrators cannot manage system users', async () => {
     () => agent.post('/system/users/11').type('form').send({ displayName: 'x' }),
     () => agent.post('/system/users/11/reset-password').type('form').send({ password: 'NewTemp123!' }),
     () => agent.post('/system/users/11/unlock-login').type('form').send(),
-    () => agent.post('/system/users/11/delete').type('form').send()
+    () => agent.post('/system/users/11/delete').type('form').send(),
+    () => agent.get('/system/users/11/security'),
+    () => agent.post('/system/users/11/security/requirement').type('form').send({ isRequired: '1' }),
+    () => agent.post('/system/users/11/security/reset-enrollment').type('form').send({ identityVerified: '1' }),
+    () => agent.post('/system/users/11/security/trusted-devices/revoke-all').type('form').send(),
+    () => agent.post('/system/users/11/security/trusted-devices/31/revoke').type('form').send()
   ]) {
     const response = await requestCall();
     assert.equal(response.status, 403);

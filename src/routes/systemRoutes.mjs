@@ -4,7 +4,17 @@ import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { createSystemApprovalSetting, deactivateSystemApprovalSetting, updateSystemApprovalSetting } from '../services/systemApprovalSettingService.mjs';
 import { createSystemRole, deactivateSystemRole, updateSystemRole } from '../services/systemRoleService.mjs';
-import { createSystemUser, deactivateSystemUser, resetSystemUserPassword, unlockSystemUserLogin, updateSystemUser } from '../services/systemUserService.mjs';
+import {
+  SystemMfaAdministrationError,
+  createSystemUser,
+  deactivateSystemUser,
+  resetSystemUserMfaEnrollment,
+  resetSystemUserPassword,
+  revokeSystemUserTrustedDevices,
+  unlockSystemUserLogin,
+  updateSystemUser,
+  updateSystemUserMfaRequirement
+} from '../services/systemUserService.mjs';
 
 function canManageSystem(user) {
   return hasRole(user, ROLES.ADMINISTRATOR);
@@ -52,8 +62,77 @@ function defaultApprovalSetting(options) {
   };
 }
 
-export function systemRoutes({ userRepository, roleRepository, approvalSettingRepository, loginSecurityRepository }) {
+function requestContext(req) {
+  return {
+    ipAddress: req.ip || req.socket?.remoteAddress || '',
+    userAgent: req.get('user-agent') || ''
+  };
+}
+
+function adminMfaNotice(req, res) {
+  const notices = {
+    required: 'adminMfaRequirementEnabled',
+    optional: 'adminMfaRequirementDisabled',
+    reset: 'adminMfaEnrollmentReset',
+    deviceRevoked: 'adminTrustedDeviceRevoked',
+    devicesRevoked: 'adminTrustedDevicesRevoked'
+  };
+  return notices[req.query.notice] ? res.locals.t(notices[req.query.notice]) : null;
+}
+
+function trustedDeviceState(device, now = new Date()) {
+  if (device.revokedAt) {
+    return 'revoked';
+  }
+  return new Date(device.expiresAt).getTime() <= now.getTime() ? 'expired' : 'active';
+}
+
+function mfaAdministrationErrorStatus(error) {
+  if (error.code === 'cannotDisableOwnMfaRequirement') {
+    return 409;
+  }
+  return 400;
+}
+
+export function systemRoutes({
+  userRepository,
+  roleRepository,
+  approvalSettingRepository,
+  loginSecurityRepository,
+  mfaRepository,
+  authenticatorMfaEnabled = false
+}) {
   const router = Router();
+
+  const mfaServices = { userRepository, mfaRepository };
+
+  function requireAuthenticatorFeature(res) {
+    if (authenticatorMfaEnabled !== true) {
+      res.status(503).send(res.locals.t('authenticatorFeatureDisabled'));
+      return false;
+    }
+    return true;
+  }
+
+  async function recordMfaAdministration(req, user, action) {
+    const { ipAddress, userAgent } = requestContext(req);
+    await loginSecurityRepository.recordAuditEvent({
+      username: user.username,
+      userId: user.id,
+      ipAddress,
+      userAgent,
+      result: 'success',
+      reason: `${action}_by_${Number(req.currentUser.id)}`
+    });
+  }
+
+  function handleMfaAdministrationError(error, res, next) {
+    if (!(error instanceof SystemMfaAdministrationError)) {
+      next(error);
+      return;
+    }
+    res.status(mfaAdministrationErrorStatus(error)).send(res.locals.t(error.code));
+  }
 
   router.use('/system', requireLogin, (req, res, next) => {
     if (!requireSystemAdministrator(req, res)) {
@@ -64,10 +143,145 @@ export function systemRoutes({ userRepository, roleRepository, approvalSettingRe
 
   router.get('/system/users', async (req, res, next) => {
     try {
-      const users = await userRepository.listUsersWithRoles();
-      res.render('system/users', { users, canManageUsers: canManageSystem(req.currentUser) });
+      const [users, mfaStatuses] = await Promise.all([
+        userRepository.listUsersWithRoles(),
+        mfaRepository.listStatusForAdministration()
+      ]);
+      const mfaByUserId = new Map(mfaStatuses.map((status) => [Number(status.userId), status]));
+      res.render('system/users', {
+        users: users.map((user) => ({
+          ...user,
+          mfa: mfaByUserId.get(Number(user.id)) || {
+            userId: Number(user.id),
+            status: 'disabled',
+            isRequired: false
+          }
+        })),
+        canManageUsers: canManageSystem(req.currentUser),
+        authenticatorMfaEnabled
+      });
     } catch (error) {
       next(error);
+    }
+  });
+
+  router.get('/system/users/:id/security', async (req, res, next) => {
+    try {
+      const user = await userRepository.findByIdWithRoles(req.params.id);
+      if (!user) {
+        res.status(404).send('User not found');
+        return;
+      }
+      const [mfa, trustedDevices] = await Promise.all([
+        mfaRepository.findStatusByUserId(user.id),
+        mfaRepository.listTrustedDevicesByUserId(user.id)
+      ]);
+      res.set('Cache-Control', 'no-store');
+      res.render('system/user-security', {
+        user,
+        mfa: mfa || { userId: user.id, status: 'disabled', isRequired: false },
+        trustedDevices: trustedDevices.map((device) => ({
+          ...device,
+          state: trustedDeviceState(device)
+        })),
+        authenticatorMfaEnabled,
+        isSelf: Number(user.id) === Number(req.currentUser.id),
+        notice: adminMfaNotice(req, res)
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/system/users/:id/security/requirement', async (req, res, next) => {
+    if (!requireAuthenticatorFeature(res)) {
+      return;
+    }
+    try {
+      const result = await updateSystemUserMfaRequirement(
+        mfaServices,
+        req.currentUser,
+        req.params.id,
+        req.body.isRequired
+      );
+      if (!result) {
+        res.status(404).send('User not found');
+        return;
+      }
+      const required = result.setting?.isRequired === true;
+      await recordMfaAdministration(
+        req,
+        result.user,
+        required ? 'admin_mfa_requirement_enabled' : 'admin_mfa_requirement_disabled'
+      );
+      res.redirect(`/system/users/${result.user.id}/security?notice=${required ? 'required' : 'optional'}`);
+    } catch (error) {
+      handleMfaAdministrationError(error, res, next);
+    }
+  });
+
+  router.post('/system/users/:id/security/reset-enrollment', async (req, res, next) => {
+    if (!requireAuthenticatorFeature(res)) {
+      return;
+    }
+    try {
+      const result = await resetSystemUserMfaEnrollment(
+        mfaServices,
+        req.currentUser,
+        req.params.id,
+        { identityVerified: req.body.identityVerified }
+      );
+      if (!result) {
+        res.status(404).send('User not found');
+        return;
+      }
+      await recordMfaAdministration(req, result.user, 'admin_mfa_enrollment_reset');
+      res.redirect(`/system/users/${result.user.id}/security?notice=reset`);
+    } catch (error) {
+      handleMfaAdministrationError(error, res, next);
+    }
+  });
+
+  router.post('/system/users/:id/security/trusted-devices/revoke-all', async (req, res, next) => {
+    if (!requireAuthenticatorFeature(res)) {
+      return;
+    }
+    try {
+      const result = await revokeSystemUserTrustedDevices(
+        mfaServices,
+        req.currentUser,
+        req.params.id
+      );
+      if (!result) {
+        res.status(404).send('User not found');
+        return;
+      }
+      await recordMfaAdministration(req, result.user, 'admin_mfa_trusted_devices_revoked');
+      res.redirect(`/system/users/${result.user.id}/security?notice=devicesRevoked`);
+    } catch (error) {
+      handleMfaAdministrationError(error, res, next);
+    }
+  });
+
+  router.post('/system/users/:id/security/trusted-devices/:deviceId/revoke', async (req, res, next) => {
+    if (!requireAuthenticatorFeature(res)) {
+      return;
+    }
+    try {
+      const result = await revokeSystemUserTrustedDevices(
+        mfaServices,
+        req.currentUser,
+        req.params.id,
+        req.params.deviceId
+      );
+      if (!result) {
+        res.status(404).send('User not found');
+        return;
+      }
+      await recordMfaAdministration(req, result.user, 'admin_mfa_trusted_device_revoked');
+      res.redirect(`/system/users/${result.user.id}/security?notice=deviceRevoked`);
+    } catch (error) {
+      handleMfaAdministrationError(error, res, next);
     }
   });
 

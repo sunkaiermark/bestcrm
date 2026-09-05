@@ -20,6 +20,7 @@
                   <th><%= t('email') %></th>
                   <th><%= t('phone') %></th>
                   <th><%= t('status') %></th>
+                  <th><%= t('multiFactorAuthentication') %></th>
                   <% if (canManageUsers) { %>
                     <th><%= t('actions') %></th>
                   <% } %>
@@ -40,6 +41,11 @@
                     <td><%= user.email || '-' %></td>
                     <td><%= user.phone || '-' %></td>
                     <td><span class="status"><%= user.isActive ? t('active') : t('inactive') %></span></td>
+                    <td>
+                      <span class="status"><%= t(`adminMfaStatus.${user.mfa.status}`) %></span>
+                      <% if (user.mfa.isRequired) { %><div class="muted"><%= t('mfaRequired') %></div><% } %>
+                      <a class="secondary-action" href="/system/users/<%= user.id %>/security"><%= t('manageSecurity') %></a>
+                    </td>
                     <% if (canManageUsers) { %>
                       <td class="actions-cell">
                         <div class="inline-actions system-actions">

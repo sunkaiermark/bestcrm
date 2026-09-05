@@ -140,6 +140,18 @@ export function createUserRepository(pool) {
         }
         const userId = Number(result.rows[0].id);
         await replaceUserRoles(pool, userId, user.roles);
+        if (user.passwordHash || user.isActive === false) {
+          await pool.query(`
+            UPDATE user_trusted_devices
+            SET revoked_at = COALESCE(revoked_at, now())
+            WHERE user_id = $1
+              AND revoked_at IS NULL
+          `, [userId]);
+          await pool.query(`
+            DELETE FROM "session"
+            WHERE sess ->> 'userId' = $1
+          `, [String(userId)]);
+        }
         await pool.query('COMMIT');
         return { id: userId };
       } catch (error) {
@@ -201,13 +213,35 @@ export function createUserRepository(pool) {
     },
 
     async deactivateUser(id) {
-      const result = await pool.query(`
-        UPDATE users
-        SET is_active = false, updated_at = now()
-        WHERE id = $1
-        RETURNING id
-      `, [id]);
-      return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
+      await pool.query('BEGIN');
+      try {
+        const result = await pool.query(`
+          UPDATE users
+          SET is_active = false, updated_at = now()
+          WHERE id = $1
+          RETURNING id
+        `, [id]);
+        if (!result.rows[0]) {
+          await pool.query('COMMIT');
+          return null;
+        }
+        const userId = Number(result.rows[0].id);
+        await pool.query(`
+          UPDATE user_trusted_devices
+          SET revoked_at = COALESCE(revoked_at, now())
+          WHERE user_id = $1
+            AND revoked_at IS NULL
+        `, [userId]);
+        await pool.query(`
+          DELETE FROM "session"
+          WHERE sess ->> 'userId' = $1
+        `, [String(userId)]);
+        await pool.query('COMMIT');
+        return { id: userId };
+      } catch (error) {
+        await pool.query('ROLLBACK');
+        throw error;
+      }
     },
 
     async listUsersByRole(role) {
