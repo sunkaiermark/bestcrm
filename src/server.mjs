@@ -484,14 +484,19 @@ const emptyLoginSecurityRepository = {
 
 const emptyMfaRepository = {
   async findStatusByUserId() { return null; },
+  async listTrustedDevicesByUserId() { return []; },
   async findVerificationMaterialByUserId() { return null; },
   async savePendingEnrollment() { throw new Error('MFA repository is not configured'); },
   async activateEnrollmentWithRecoveryCodes() { throw new Error('MFA repository is not configured'); },
+  async replaceRecoveryCodeHashesWithNextGeneration() { throw new Error('MFA repository is not configured'); },
+  async prepareSelfServiceEnrollment() { throw new Error('MFA repository is not configured'); },
   async recordVerification() { return null; },
   async consumeRecoveryCodeHash() { return null; },
   async createTrustedDevice() { throw new Error('MFA repository is not configured'); },
   async findActiveTrustedDeviceByTokenHash() { return null; },
-  async touchTrustedDevice() { return null; }
+  async touchTrustedDevice() { return null; },
+  async revokeTrustedDevice() { return null; },
+  async revokeAllTrustedDevices() { return []; }
 };
 
 const emptyNotificationRepository = {
@@ -797,7 +802,20 @@ export function createApp(options = {}) {
       now: authenticatorMfaNow
     }
   }));
-  app.use(accountRoutes({ userRepository, loginSecurityRepository }));
+  app.use(accountRoutes({
+    userRepository,
+    loginSecurityRepository,
+    authenticatorMfa: {
+      enabled: authenticatorMfaEnabled,
+      repository: mfaRepository,
+      totpService,
+      secretEncryptionService: mfaSecretEncryptionService,
+      recoveryCodeService: mfaRecoveryCodeService,
+      resolveTrustedDevice: options.mfaTrustedDeviceResolver || trustedDeviceIntegration.resolve,
+      clearTrustedDevice: options.mfaTrustedDeviceClearer || trustedDeviceIntegration.clear,
+      now: authenticatorMfaNow
+    }
+  }));
   app.use(workbenchRoutes({ workbenchRepository }));
   app.use(notificationRoutes({
     notificationRepository,

@@ -119,6 +119,7 @@ test('successful password change signs out the user and accepts only the new pas
 
   assert.equal(changed.status, 302);
   assert.equal(changed.headers.location, '/login?passwordChanged=1');
+  assert.match(changed.headers['set-cookie'].join('\n'), /__Host-bestcrm\.mfa_trust=/);
   assert.equal(passwordChanges.length, 1);
   assert.equal(passwordChanges[0].auditEvent.reason, 'password_changed');
   assert.equal(await verifyPassword('New123', user.passwordHash), true);

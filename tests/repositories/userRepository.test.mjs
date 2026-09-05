@@ -224,8 +224,8 @@ test('updateUser updates password hash when provided', async () => {
   ]);
 });
 
-test('changePassword updates the hash, audits the change, and deletes all user sessions atomically', async () => {
-  const pool = createFakePoolSequence([[{ id: 12, username: 'sales01' }], [], []]);
+test('changePassword updates the hash, audits the change, and revokes trusted devices and sessions atomically', async () => {
+  const pool = createFakePoolSequence([[{ id: 12, username: 'sales01' }], [], [], []]);
   const repository = createUserRepository(pool);
 
   const user = await repository.changePassword(12, 'new-hashed-password', {
@@ -250,10 +250,13 @@ test('changePassword updates the hash, audits the change, and deletes all user s
     'success',
     'password_changed'
   ]);
-  assert.match(pool.queries[3].sql, /DELETE FROM "session"/);
-  assert.match(pool.queries[3].sql, /sess ->> 'userId' = \$1/);
-  assert.deepEqual(pool.queries[3].params, ['12']);
-  assert.match(pool.queries[4].sql, /COMMIT/);
+  assert.match(pool.queries[3].sql, /UPDATE user_trusted_devices/);
+  assert.match(pool.queries[3].sql, /revoked_at = COALESCE/);
+  assert.deepEqual(pool.queries[3].params, [12]);
+  assert.match(pool.queries[4].sql, /DELETE FROM "session"/);
+  assert.match(pool.queries[4].sql, /sess ->> 'userId' = \$1/);
+  assert.deepEqual(pool.queries[4].params, ['12']);
+  assert.match(pool.queries[5].sql, /COMMIT/);
 });
 
 test('deactivateUser soft deletes by setting inactive', async () => {

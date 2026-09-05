@@ -57,6 +57,18 @@ export function createTrustedDeviceIntegration({
   now = () => new Date()
 } = {}) {
   return {
+    clear(res) {
+      if (!res || typeof res.clearCookie !== 'function') {
+        throw new Error('HTTP response is required to clear a trusted-device cookie');
+      }
+      res.clearCookie(TRUSTED_DEVICE_COOKIE_NAME, {
+        httpOnly: true,
+        secure: true,
+        sameSite: 'lax',
+        path: '/'
+      });
+    },
+
     async issue({ res, userId, userAgent, ipAddress } = {}) {
       if (!repository || typeof repository.createTrustedDevice !== 'function') {
         throw new Error('MFA repository is required to issue a trusted device');

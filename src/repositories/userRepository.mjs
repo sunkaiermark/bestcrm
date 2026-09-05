@@ -183,6 +183,12 @@ export function createUserRepository(pool) {
           auditEvent?.reason || 'password_changed'
         ]);
         await pool.query(`
+          UPDATE user_trusted_devices
+          SET revoked_at = COALESCE(revoked_at, now())
+          WHERE user_id = $1
+            AND revoked_at IS NULL
+        `, [userId]);
+        await pool.query(`
           DELETE FROM "session"
           WHERE sess ->> 'userId' = $1
         `, [String(userId)]);

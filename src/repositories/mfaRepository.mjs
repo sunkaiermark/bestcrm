@@ -257,6 +257,7 @@ export function createMfaRepository(pool) {
         SET last_verified_at = $2, updated_at = now()
         WHERE user_id = $1
           AND status = 'active'
+          AND (last_verified_at IS NULL OR last_verified_at < $2)
         RETURNING ${safeSettingColumns}
       `, [userId, verifiedAt]);
       return mapSettingRow(result.rows[0]);
@@ -291,6 +292,92 @@ export function createMfaRepository(pool) {
           )
           SELECT $1, $2, $3, unnest($4::text[])
         `, [userId, settingId, generation, codeHashes]);
+      });
+    },
+
+    async replaceRecoveryCodeHashesWithNextGeneration({ userId, codeHashes }) {
+      return withTransaction(pool, async (queryTarget) => {
+        const settingResult = await queryTarget.query(`
+          SELECT id
+          FROM user_mfa_settings
+          WHERE user_id = $1
+            AND status = 'active'
+          FOR UPDATE
+        `, [userId]);
+        if (!settingResult.rows[0]) {
+          throw new Error('Active MFA enrollment not found');
+        }
+        const settingId = Number(settingResult.rows[0].id);
+        const generationResult = await queryTarget.query(`
+          SELECT COALESCE(MAX(generation), 0) + 1 AS generation
+          FROM user_mfa_recovery_codes
+          WHERE mfa_setting_id = $1
+        `, [settingId]);
+        const generation = Number(generationResult.rows[0]?.generation);
+        if (!Number.isInteger(generation) || generation <= 0) {
+          throw new Error('Recovery-code generation could not be allocated');
+        }
+        await queryTarget.query(`
+          UPDATE user_mfa_recovery_codes
+          SET invalidated_at = now()
+          WHERE user_id = $1
+            AND used_at IS NULL
+            AND invalidated_at IS NULL
+        `, [userId]);
+        await queryTarget.query(`
+          INSERT INTO user_mfa_recovery_codes (
+            user_id,
+            mfa_setting_id,
+            generation,
+            code_hash
+          )
+          SELECT $1, $2, $3, unnest($4::text[])
+        `, [userId, settingId, generation, codeHashes]);
+        return generation;
+      });
+    },
+
+    async prepareSelfServiceEnrollment(userId) {
+      return withTransaction(pool, async (queryTarget) => {
+        const settingResult = await queryTarget.query(`
+          INSERT INTO user_mfa_settings (user_id, status, is_required)
+          VALUES ($1, 'disabled', true)
+          ON CONFLICT (user_id) DO UPDATE
+          SET
+            status = 'disabled',
+            is_required = true,
+            secret_ciphertext = NULL,
+            secret_nonce = NULL,
+            secret_auth_tag = NULL,
+            secret_key_version = NULL,
+            enrollment_started_at = NULL,
+            enrolled_at = NULL,
+            last_verified_at = NULL,
+            updated_at = now()
+          RETURNING ${safeSettingColumns}
+        `, [userId]);
+        const setting = mapSettingRow(settingResult.rows[0]);
+        if (!setting) {
+          throw new Error('MFA enrollment could not be prepared');
+        }
+        await queryTarget.query(`
+          UPDATE user_mfa_recovery_codes
+          SET invalidated_at = now()
+          WHERE user_id = $1
+            AND used_at IS NULL
+            AND invalidated_at IS NULL
+        `, [userId]);
+        await queryTarget.query(`
+          UPDATE user_trusted_devices
+          SET revoked_at = COALESCE(revoked_at, now())
+          WHERE user_id = $1
+            AND revoked_at IS NULL
+        `, [userId]);
+        await queryTarget.query(`
+          DELETE FROM "session"
+          WHERE sess ->> 'userId' = $1
+        `, [String(userId)]);
+        return setting;
       });
     },
 

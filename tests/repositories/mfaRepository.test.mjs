@@ -94,6 +94,17 @@ test('required enforcement can be recorded before the user enrolls', async () =>
   assert.deepEqual(pool.queries[0].params, [7, true]);
 });
 
+test('verification recording atomically rejects a replayed or older TOTP time step', async () => {
+  const pool = createFakePool([[settingRow]]);
+  const repository = createMfaRepository(pool);
+  const verifiedAt = new Date('2026-09-05T03:00:00.000Z');
+
+  await repository.recordVerification(7, verifiedAt);
+
+  assert.match(pool.queries[0].sql, /last_verified_at IS NULL OR last_verified_at < \$2/);
+  assert.deepEqual(pool.queries[0].params, [7, verifiedAt]);
+});
+
 test('pending enrollment stores only encrypted fields and preserves enforcement', async () => {
   const pool = createFakePool([[{ ...settingRow, status: 'pending', enrolled_at: null }]]);
   const repository = createMfaRepository(pool);
@@ -265,6 +276,39 @@ test('recovery-code replacement binds its transaction to one connected PostgreSQ
   assert.equal(client.released, true);
   assert.match(client.queries[0].sql, /BEGIN/);
   assert.match(client.queries.at(-1).sql, /COMMIT/);
+});
+
+test('self-service recovery-code replacement allocates the next generation under the MFA row lock', async () => {
+  const pool = createFakePool([[{ id: '12' }], [{ generation: '5' }], [], []]);
+  const repository = createMfaRepository(pool);
+
+  const generation = await repository.replaceRecoveryCodeHashesWithNextGeneration({
+    userId: 7,
+    codeHashes: ['e'.repeat(64)]
+  });
+
+  assert.equal(generation, 5);
+  assert.match(pool.queries[1].sql, /FOR UPDATE/);
+  assert.match(pool.queries[2].sql, /MAX\(generation\)/);
+  assert.match(pool.queries[3].sql, /invalidated_at = now\(\)/);
+  assert.deepEqual(pool.queries[4].params, [7, 12, 5, ['e'.repeat(64)]]);
+  assert.match(pool.queries[5].sql, /COMMIT/);
+});
+
+test('preparing self-service enrollment clears credentials and revokes recovery codes devices and sessions atomically', async () => {
+  const pool = createFakePool([[{ ...settingRow, status: 'disabled', enrolled_at: null }], [], [], []]);
+  const repository = createMfaRepository(pool);
+
+  const setting = await repository.prepareSelfServiceEnrollment(7);
+
+  assert.equal(setting.status, 'disabled');
+  assert.match(pool.queries[1].sql, /status = 'disabled'/);
+  assert.match(pool.queries[1].sql, /secret_ciphertext = NULL/);
+  assert.match(pool.queries[2].sql, /UPDATE user_mfa_recovery_codes/);
+  assert.match(pool.queries[3].sql, /UPDATE user_trusted_devices/);
+  assert.match(pool.queries[4].sql, /DELETE FROM "session"/);
+  assert.deepEqual(pool.queries[4].params, ['7']);
+  assert.match(pool.queries[5].sql, /COMMIT/);
 });
 
 test('first enrollment activation and recovery-code insertion share one transaction', async () => {

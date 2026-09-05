@@ -135,3 +135,23 @@ test('trusted-device integration ignores missing malformed duplicate and mismatc
   assert.equal(lookupCalls, 1);
   assert.equal(touchCalls, 0);
 });
+
+test('trusted-device integration clears the frozen cookie with matching secure scope', () => {
+  const cleared = [];
+  const integration = createTrustedDeviceIntegration();
+  integration.clear({
+    clearCookie(name, options) {
+      cleared.push({ name, options });
+    }
+  });
+
+  assert.deepEqual(cleared, [{
+    name: TRUSTED_DEVICE_COOKIE_NAME,
+    options: {
+      httpOnly: true,
+      secure: true,
+      sameSite: 'lax',
+      path: '/'
+    }
+  }]);
+});
