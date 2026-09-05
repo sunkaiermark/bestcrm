@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
+  assertAuthenticatorMfaReleaseDefaults,
   assertEmailFlagsDisabled,
   assertPortableShellScripts,
   assertSafeReleaseTree,
@@ -54,6 +55,28 @@ test('release candidate requires every email feature flag to remain disabled', (
   ].join('\n')), /must keep email flags false/);
 });
 
+test('release candidate keeps Authenticator off and excludes production credentials', () => {
+  const safe = [
+    'LOGIN_TOTP_2FA_ENABLED=false',
+    'LOGIN_TOTP_TRUST_DAYS=10',
+    'TOTP_ENCRYPTION_KEY=',
+    'TOTP_RECOVERY_CODE_PEPPER='
+  ].join('\n');
+  assert.doesNotThrow(() => assertAuthenticatorMfaReleaseDefaults(safe));
+  assert.throws(
+    () => assertAuthenticatorMfaReleaseDefaults(safe.replace('ENABLED=false', 'ENABLED=true')),
+    /LOGIN_TOTP_2FA_ENABLED=false/
+  );
+  assert.throws(
+    () => assertAuthenticatorMfaReleaseDefaults(safe.replace('TRUST_DAYS=10', 'TRUST_DAYS=30')),
+    /LOGIN_TOTP_TRUST_DAYS=10/
+  );
+  assert.throws(
+    () => assertAuthenticatorMfaReleaseDefaults(safe.replace('TOTP_ENCRYPTION_KEY=', 'TOTP_ENCRYPTION_KEY=production-key')),
+    /must not contain Authenticator credentials/
+  );
+});
+
 test('release builder creates a reproducible commit-only archive and checksum manifest', async () => {
   const outputDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-release-test-'));
   try {
@@ -69,6 +92,11 @@ test('release builder creates a reproducible commit-only archive and checksum ma
     assert.equal(manifest.commit, result.commit);
     assert.equal(manifest.sha256, result.sha256);
     assert.equal(manifest.reproducibleArchiveVerified, true);
+    assert.deepEqual(manifest.authenticatorMfa, {
+      enabled: false,
+      trustDays: 10,
+      productionCredentialsIncluded: false
+    });
     assert.match(checksum, new RegExp(`^${result.sha256}  bestcrm-v2099\\.01\\.01-01-rc\\.1\\.zip`));
     assert.match(manifest.latestMigration, /041_authenticator_mfa\.sql$/);
   } finally {

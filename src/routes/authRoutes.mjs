@@ -184,12 +184,18 @@ export function authRoutes(userRepository, {
     throw new Error('MFA enrollment is not pending');
   }
 
-  router.get('/language', (req, res) => {
-    req.session.language = normalizeLanguage(req.query.lang);
-    res.redirect(safeReturnTo(req.query.returnTo));
+  router.get('/language', async (req, res, next) => {
+    try {
+      req.session.language = normalizeLanguage(req.query.lang);
+      await saveSession(req);
+      res.redirect(safeReturnTo(req.query.returnTo));
+    } catch (error) {
+      next(error);
+    }
   });
 
   router.get('/login', (req, res) => {
+    res.set('Cache-Control', 'no-store');
     res.render('auth/login', {
       error: null,
       notice: req.query.passwordChanged === '1'

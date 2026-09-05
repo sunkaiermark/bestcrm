@@ -14,6 +14,15 @@ const disabledEmailFlags = [
   'CRM_EMAIL_SENDING_ENABLED'
 ];
 
+function parseEnvExample(envExample) {
+  const values = new Map();
+  for (const line of String(envExample || '').split(/\r?\n/)) {
+    const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
+    if (match) values.set(match[1], match[2].trim());
+  }
+  return values;
+}
+
 function normalizedPath(value) {
   return String(value || '').replaceAll('\\', '/').replace(/^\.\//, '');
 }
@@ -48,14 +57,25 @@ export function assertSafeReleaseTree(paths) {
 }
 
 export function assertEmailFlagsDisabled(envExample) {
-  const values = new Map();
-  for (const line of String(envExample || '').split(/\r?\n/)) {
-    const match = line.match(/^([A-Z0-9_]+)=(.*)$/);
-    if (match) values.set(match[1], match[2].trim());
-  }
+  const values = parseEnvExample(envExample);
   const enabled = disabledEmailFlags.filter((key) => values.get(key) !== 'false');
   if (enabled.length) {
     throw new Error(`Release candidate must keep email flags false: ${enabled.join(', ')}`);
+  }
+}
+
+export function assertAuthenticatorMfaReleaseDefaults(envExample) {
+  const values = parseEnvExample(envExample);
+  if (values.get('LOGIN_TOTP_2FA_ENABLED') !== 'false') {
+    throw new Error('Release candidate must keep LOGIN_TOTP_2FA_ENABLED=false');
+  }
+  if (values.get('LOGIN_TOTP_TRUST_DAYS') !== '10') {
+    throw new Error('Release candidate must keep LOGIN_TOTP_TRUST_DAYS=10');
+  }
+  const credentialKeys = ['TOTP_ENCRYPTION_KEY', 'TOTP_RECOVERY_CODE_PEPPER'];
+  const populated = credentialKeys.filter((key) => values.get(key) !== '');
+  if (populated.length) {
+    throw new Error(`Release candidate must not contain Authenticator credentials: ${populated.join(', ')}`);
   }
 }
 
@@ -110,6 +130,10 @@ export async function buildReleaseCandidate({
   const paths = treeText ? treeText.split(/\r?\n/).map(normalizedPath) : [];
   assertSafeReleaseTree(paths);
   assertEmailFlagsDisabled(await git(cwd, ['show', `${commit}:.env.example`]));
+  assertAuthenticatorMfaReleaseDefaults(await git(cwd, [
+    'show',
+    `${commit}:docs/deployment/templates/bestcrm.env.example`
+  ]));
 
   const absoluteOutputDir = path.resolve(cwd, outputDir);
   await mkdir(absoluteOutputDir, { recursive: true });
@@ -148,6 +172,11 @@ export async function buildReleaseCandidate({
       firstMigration: migrations[0] || null,
       latestMigration: migrations.at(-1) || null,
       emailFeatureFlags: Object.fromEntries(disabledEmailFlags.map((key) => [key, false])),
+      authenticatorMfa: {
+        enabled: false,
+        trustDays: 10,
+        productionCredentialsIncluded: false
+      },
       generatedAt: new Date().toISOString()
     };
     const manifestPath = path.join(absoluteOutputDir, `${archiveName}.manifest.json`);

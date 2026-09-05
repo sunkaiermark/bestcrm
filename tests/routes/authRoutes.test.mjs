@@ -280,6 +280,7 @@ test('login page renders username and password form', async () => {
   const response = await request(app).get('/login');
 
   assert.equal(response.status, 200);
+  assert.match(response.headers['cache-control'], /no-store/);
   assert.match(response.text, /class="login-shell"/);
   assert.match(response.text, /class="login-card"/);
   assert.match(response.text, /font:\s*20px\/1\.5 system-ui, "Microsoft YaHei", sans-serif;/);
