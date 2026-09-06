@@ -39,6 +39,7 @@ const inquiryRow = {
   matched_customer_id: '20',
   matched_customer_name: 'Acme Co',
   matched_contact_id: '30',
+  matched_contact_code: 'CT000030',
   matched_contact_name: 'Alice',
   converted_opportunity_id: null,
   converted_opportunity_no: null,
@@ -86,6 +87,7 @@ test('inquiry repository lists mapped inquiries with visibility filter', async (
     matchedCustomerId: 20,
     matchedCustomerName: 'Acme Co',
     matchedContactId: 30,
+    matchedContactCode: 'CT000030',
     matchedContactName: 'Alice',
     convertedOpportunityId: null,
     convertedOpportunityNo: '',
@@ -102,6 +104,7 @@ test('inquiry repository lists mapped inquiries with visibility filter', async (
   }]);
   assert.match(queryTarget.queries[0].sql, /FROM inquiries i/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN users assigned/);
+  assert.match(queryTarget.queries[0].sql, /matched_contact\.contact_code AS matched_contact_code/);
   assert.match(queryTarget.queries[0].sql, /i\.status = \$1/);
   assert.match(queryTarget.queries[0].sql, /i\.source = \$2/);
   assert.match(queryTarget.queries[0].sql, /i\.assigned_user_id = \$3 OR i\.created_by = \$3/);

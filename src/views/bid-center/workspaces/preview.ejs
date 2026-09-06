@@ -1,6 +1,6 @@
 <%- include('../../partials/app-start', { title: `${t('reviewBidWorkspacePrefill')} - BESTCRM`, activeNav: 'bid-center-workspaces' }) %>
         <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a> / <%= t('reviewBidWorkspacePrefill') %></p>
-        <header class="page-header"><div class="bid-library-title"><h1><%= t('reviewBidWorkspacePrefill') %></h1><div class="muted"><%= t('bidWorkspaceSnapshotWarning') %></div></div></header>
+        <header class="page-header"><div class="bid-library-title"><h1><%= t('reviewBidWorkspacePrefill') %></h1><div class="muted"><%= t('bidWorkspaceSnapshotWarning') %></div><div class="muted"><%= [opportunity.customerName, opportunity.primaryContactId ? `${opportunity.primaryContactCode ? `${opportunity.primaryContactCode} · ` : ''}${opportunity.primaryContactName || ''}` : ''].filter(Boolean).join(' · ') %></div></div></header>
         <form method="post" action="/opportunities/<%= opportunity.id %>/bid-workspace">
           <%- csrfField() %>
           <input type="hidden" name="language" value="<%= preview.input.language %>">

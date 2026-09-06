@@ -114,10 +114,10 @@ async function createLoggedInAgent(extraOptions = {}) {
     },
     contactRepository: {
       async listContacts() {
-        return [{ id: 20, customerId: 10, customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' }];
+        return [{ id: 20, contactCode: 'CT000020', customerId: 10, customerCode: 'C000010', customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' }];
       },
       async getContactDetail() {
-        return { id: 20, customerId: 10, customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' };
+        return { id: 20, contactCode: 'CT000020', customerId: 10, customerCode: 'C000010', customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' };
       },
       async createContact(input) {
         createdContacts.push(input);
@@ -134,6 +134,7 @@ async function createLoggedInAgent(extraOptions = {}) {
           customerCode: 'C000010',
           customerName: 'Acme Co',
           primaryContactId: 20,
+          primaryContactCode: 'CT000020',
           primaryContactName: 'Alice',
           requirement: 'Upgrade production line',
           estimatedAmount: 120000.50,
@@ -155,6 +156,7 @@ async function createLoggedInAgent(extraOptions = {}) {
           customerCode: 'C000010',
           customerName: 'Acme Co',
           primaryContactId: 20,
+          primaryContactCode: 'CT000020',
           primaryContactName: 'Alice',
           requirement: 'Upgrade production line',
           estimatedAmount: 120000.50,
@@ -353,6 +355,7 @@ function opportunityDetail(overrides = {}) {
     customerId: 10,
     customerName: 'Acme Co',
     primaryContactId: 20,
+    primaryContactCode: 'CT000020',
     primaryContactName: 'Alice',
     requirement: 'Upgrade production line',
     estimatedAmount: 120000.50,
@@ -433,10 +436,10 @@ async function createWorkflowAgent({
     },
     contactRepository: {
       async listContacts() {
-        return [{ id: 20, customerId: 10, customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' }];
+        return [{ id: 20, contactCode: 'CT000020', customerId: 10, customerCode: 'C000010', customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' }];
       },
       async getContactDetail() {
-        return { id: 20, customerId: 10, customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' };
+        return { id: 20, contactCode: 'CT000020', customerId: 10, customerCode: 'C000010', customerName: 'Acme Co', customerOwnerUserId: 7, name: 'Alice' };
       }
     },
     opportunityRepository: {
@@ -595,6 +598,7 @@ test('logged in salesperson can view opportunity list and is redirected to lead 
   assert.doesNotMatch(list.text, /<th>Title<\/th>/);
   assert.match(list.text, /<th>Owner<\/th>/);
   assert.match(list.text, /Sales One/);
+  assert.match(list.text, /CT000020 · Alice/);
   assert.match(list.text, /<table class="list-table opportunity-list-table">/);
   assert.match(list.text, /\.opportunity-list-table\s*\{[\s\S]*table-layout:\s*auto;/);
   assert.match(list.text, /\.opportunity-list-table thead th\s*\{[\s\S]*background:\s*#1e3a5f;/);
@@ -611,7 +615,7 @@ test('logged in salesperson can view opportunity list and is redirected to lead 
   assert.match(detail.text, /Factory upgrade/);
   assert.match(detail.text, /C000010 · Acme Co/);
   assert.match(detail.text, /Upgrade production line/);
-  assert.match(detail.text, /Alice/);
+  assert.match(detail.text, /CT000020 · Alice/);
   const basicInfoHtml = detail.text.match(/<section class="content-section business-section business-section-basic">[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(basicInfoHtml, /class="basic-info-grid"/);
   assert.equal((basicInfoHtml.match(/<table class="detail-table">/g) || []).length, 2);
@@ -670,8 +674,8 @@ test('opportunity list and API combine sales owner customer contact and keyword 
             { id: 11, customerCode: 'C000011', name: 'Beta Co' }
           ],
           contacts: [
-            { id: 20, name: 'Alice', customerId: 10, customerCode: 'C000010', customerName: 'Acme Co' },
-            { id: 21, name: 'Bob', customerId: 11, customerCode: 'C000011', customerName: 'Beta Co' }
+            { id: 20, contactCode: 'CT000020', name: 'Alice', customerId: 10, customerCode: 'C000010', customerName: 'Acme Co' },
+            { id: 21, contactCode: 'CT000021', name: 'Bob', customerId: 11, customerCode: 'C000011', customerName: 'Beta Co' }
           ]
         };
       }
@@ -698,7 +702,7 @@ test('opportunity list and API combine sales owner customer contact and keyword 
   assert.match(list.text, /Customer\s*<select name="customerId">/);
   assert.match(list.text, /<option value="11" selected>C000011 · Beta Co<\/option>/);
   assert.match(list.text, /Contact\s*<select name="contactId">/);
-  assert.match(list.text, /<option value="21" selected>Bob \(C000011 · Beta Co\)<\/option>/);
+  assert.match(list.text, /<option value="21" selected>CT000021 · Bob \(C000011 · Beta Co\)<\/option>/);
   assert.match(list.text, /name="query" type="search" value="upgrade"/);
   assert.match(list.text, />Search<\/button>/);
   assert.match(list.text, /href="\/opportunities\?archiveScope=all">Clear filters<\/a>/);

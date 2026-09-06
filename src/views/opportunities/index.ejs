@@ -41,7 +41,7 @@
               <select name="contactId">
                 <option value=""><%= t('allContacts') %></option>
                 <% for (const contact of contacts) { %>
-                  <option value="<%= contact.id %>"<%= String(filters.contactId || '') === String(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` (${contact.customerCode ? `${contact.customerCode} · ` : ''}${contact.customerName})` : '' %></option>
+                  <option value="<%= contact.id %>"<%= String(filters.contactId || '') === String(contact.id) ? ' selected' : '' %>><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %><%= contact.customerName ? ` (${contact.customerCode ? `${contact.customerCode} · ` : ''}${contact.customerName})` : '' %></option>
                 <% } %>
               </select>
             </label>
@@ -74,7 +74,7 @@
                     <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %></a></td>
                     <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.salespersonDisplayName || opportunity.salespersonUsername || '' %></a></td>
                     <td class="clickable-cell">
-                      <a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.primaryContactName || '' %></a>
+                      <a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.primaryContactCode ? `${opportunity.primaryContactCode} · ` : '' %><%= opportunity.primaryContactName || '' %></a>
                     </td>
                     <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><span class="status"><%= statusLabel(opportunity.status) %></span></a></td>
                     <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.estimatedAmount ?? '' %></a></td>

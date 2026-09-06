@@ -56,7 +56,7 @@
                     <td><%= t(`inquiryPriority.${inquiry.priority}`) %></td>
                     <td class="clickable-cell"><a class="cell-link" href="/inquiries/<%= inquiry.id %>"><%= inquiry.subject || `#${inquiry.id}` %></a></td>
                     <td><%= inquiry.companyName || '' %></td>
-                    <td><%= inquiry.contactName || inquiry.contactEmail || '' %></td>
+                    <td><% if (inquiry.matchedContactId) { %><%= inquiry.matchedContactCode ? `${inquiry.matchedContactCode} · ` : '' %><%= inquiry.matchedContactName || inquiry.contactName || inquiry.contactEmail || '' %><% } else { %><%= inquiry.contactName || inquiry.contactEmail || '' %><% } %></td>
                     <td><%= inquiry.productInterest || '' %></td>
                     <td><%= inquiry.opportunityType || '' %></td>
                     <td><%= inquiry.assignedDisplayName || '' %></td>

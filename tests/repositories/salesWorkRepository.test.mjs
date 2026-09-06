@@ -21,6 +21,7 @@ const planRow = {
   customer_id: '20',
   customer_name: 'Acme',
   contact_id: '30',
+  contact_code: 'CT000030',
   contact_name: 'Buyer One',
   opportunity_id: '40',
   opportunity_no: '800010',
@@ -44,6 +45,7 @@ const logRow = {
   customer_id: '20',
   customer_name: 'Acme',
   contact_id: '30',
+  contact_code: 'CT000030',
   contact_name: 'Buyer One',
   opportunity_id: '40',
   opportunity_no: '800010',
@@ -113,6 +115,7 @@ test('sales work repository lists plan records with linked CRM names', async () 
     customerId: 20,
     customerName: 'Acme',
     contactId: 30,
+    contactCode: 'CT000030',
     contactName: 'Buyer One',
     opportunityId: 40,
     opportunityNo: '800010',
@@ -130,6 +133,7 @@ test('sales work repository lists plan records with linked CRM names', async () 
   assert.match(queryTarget.queries[0].sql, /FROM sales_work_plans swp/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN customers c/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN contacts ct/);
+  assert.match(queryTarget.queries[0].sql, /ct\.contact_code/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN opportunities o/);
   assert.match(queryTarget.queries[0].sql, /ORDER BY swp\.plan_date DESC/);
   assert.deepEqual(queryTarget.queries[0].params, [7, '2026-06-01', '2026-06-30', 'planned']);
@@ -143,6 +147,7 @@ test('sales work repository finds one plan by id with linked CRM names', async (
 
   assert.equal(plan.id, 11);
   assert.equal(plan.customerName, 'Acme');
+  assert.equal(plan.contactCode, 'CT000030');
   assert.match(queryTarget.queries[0].sql, /FROM sales_work_plans swp/);
   assert.match(queryTarget.queries[0].sql, /WHERE swp\.id = \$1/);
   assert.deepEqual(queryTarget.queries[0].params, [11]);
@@ -232,10 +237,12 @@ test('sales work repository creates and lists log records', async () => {
   const logs = await repository.listLogs({ salespersonUserId: 7, opportunityId: 40 });
 
   assert.equal(logs[0].id, 21);
+  assert.equal(logs[0].contactCode, 'CT000030');
   assert.equal(logs[0].content, 'Discussed COD and salt concentration.');
   assert.equal(logs[0].customerFeedback, 'Customer wants reference cases.');
   assert.equal(logs[0].nextPlanDate, '2026-06-25');
   assert.match(queryTarget.queries[1].sql, /FROM sales_work_logs swl/);
+  assert.match(queryTarget.queries[1].sql, /ct\.contact_code/);
   assert.match(queryTarget.queries[1].sql, /WHERE swl\.salesperson_user_id = \$1/);
   assert.match(queryTarget.queries[1].sql, /swl\.opportunity_id = \$2/);
   assert.deepEqual(queryTarget.queries[1].params, [7, 40]);

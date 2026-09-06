@@ -21,6 +21,7 @@ function mapSalesWorkPlanRow(row) {
     customerId: numberOrNull(row.customer_id),
     customerName: textOrEmpty(row.customer_name),
     contactId: numberOrNull(row.contact_id),
+    contactCode: textOrEmpty(row.contact_code),
     contactName: textOrEmpty(row.contact_name),
     opportunityId: numberOrNull(row.opportunity_id),
     opportunityNo: textOrEmpty(row.opportunity_no),
@@ -49,6 +50,7 @@ function mapSalesWorkLogRow(row) {
     customerId: numberOrNull(row.customer_id),
     customerName: textOrEmpty(row.customer_name),
     contactId: numberOrNull(row.contact_id),
+    contactCode: textOrEmpty(row.contact_code),
     contactName: textOrEmpty(row.contact_name),
     opportunityId: numberOrNull(row.opportunity_id),
     opportunityNo: textOrEmpty(row.opportunity_no),
@@ -198,6 +200,7 @@ export function createSalesWorkRepository(queryTarget) {
           swp.*,
           salesperson.display_name AS salesperson_display_name,
           c.name AS customer_name,
+          ct.contact_code,
           ct.name AS contact_name,
           o.opportunity_no,
           o.title AS opportunity_title
@@ -218,6 +221,7 @@ export function createSalesWorkRepository(queryTarget) {
           swp.*,
           salesperson.display_name AS salesperson_display_name,
           c.name AS customer_name,
+          ct.contact_code,
           ct.name AS contact_name,
           o.opportunity_no,
           o.title AS opportunity_title
@@ -338,6 +342,7 @@ export function createSalesWorkRepository(queryTarget) {
           swl.*,
           salesperson.display_name AS salesperson_display_name,
           c.name AS customer_name,
+          ct.contact_code,
           ct.name AS contact_name,
           o.opportunity_no,
           o.title AS opportunity_title

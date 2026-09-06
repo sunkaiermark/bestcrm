@@ -30,7 +30,7 @@
                     <td><%= plan.planDate || '' %></td>
                     <td><%= plan.salespersonDisplayName || '' %></td>
                     <td><%= plan.customerName || '' %></td>
-                    <td><%= plan.contactName || '' %></td>
+                    <td><%= plan.contactCode ? `${plan.contactCode} · ` : '' %><%= plan.contactName || '' %></td>
                     <td><%= plan.opportunityNo ? `${plan.opportunityNo} - ${plan.opportunityTitle || ''}` : '' %></td>
                     <td><%= t(`salesActivity.${plan.activityType}`) %></td>
                     <td><%= plan.subject %></td>

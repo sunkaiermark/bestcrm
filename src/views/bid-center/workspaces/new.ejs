@@ -2,7 +2,7 @@
         <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a> / <%= t('createBidWorkspace') %></p>
         <header class="page-header"><div class="bid-library-title"><h1><%= t('createBidWorkspace') %></h1><div class="muted"><%= t('bidWorkspaceCreationNotice') %></div></div></header>
         <section class="form-panel">
-          <h2><%= opportunity.title %></h2><p><%= opportunity.customerName %> · <%= opportunity.requirement %></p>
+          <h2><%= opportunity.title %></h2><p><%= [opportunity.customerName, opportunity.primaryContactId ? `${opportunity.primaryContactCode ? `${opportunity.primaryContactCode} · ` : ''}${opportunity.primaryContactName || ''}` : '', opportunity.requirement].filter(Boolean).join(' · ') %></p>
           <% if (!technicalTemplates.length || !commercialTemplates.length || !outputProfiles.length) { %><div class="inline-error"><%= t('bidWorkspaceSourcesUnavailable') %></div><% } %>
           <form method="post" action="/opportunities/<%= opportunity.id %>/bid-workspace/preview">
             <%- csrfField() %>

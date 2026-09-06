@@ -7,7 +7,7 @@ function workspaceRow(overrides = {}) {
     id: '40', opportunity_id: '20', status: 'in_progress', language: 'bilingual',
     technical_template_revision_id: '9', commercial_template_revision_id: '10', output_profile_id: '30',
     source_metadata: '{"schemaVersion":1}', opportunity_no: 'OPP-20', opportunity_title: 'Mixer Project',
-    customer_id: '8', customer_name: 'Acme', primary_contact_id: '9', primary_contact_name: 'Lee',
+    customer_id: '8', customer_name: 'Acme', primary_contact_id: '9', primary_contact_code: 'CT000009', primary_contact_name: 'Lee',
     requirement: '10 t/h', estimated_amount: '120000', product_interest: 'Mixer', project_type: 'Bid',
     delivery_cycle: '12 weeks', expected_bid_date: '2026-10-01', salesperson_id: '7', sales_manager_id: '2',
     quotation_engineer_id: '3', technical_manager_id: '6', commercial_manager_id: '5',
@@ -31,10 +31,12 @@ test('workspace list applies opportunity access predicates in SQL before returni
     async query(sql, params) { calls.push({ sql, params }); return { rows: [workspaceRow()] }; }
   });
   const workspaces = await repository.listWorkspaces({ visibleToUserId: 7 });
+  assert.equal(workspaces[0].opportunity.primaryContactCode, 'CT000009');
   assert.equal(workspaces[0].technicalDraft.draftLabel, 'TS-D1');
   assert.equal(workspaces[0].commercialDraft.draftLabel, 'CP-D1');
   assert.match(calls[0].sql, /opportunity\.salesperson_id = \$1/);
   assert.match(calls[0].sql, /opportunity_members/);
+  assert.match(calls[0].sql, /contact\.contact_code AS primary_contact_code/);
   assert.match(calls[0].sql, /contract_approval_steps/);
   assert.deepEqual(calls[0].params, [7]);
 });

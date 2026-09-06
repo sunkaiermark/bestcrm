@@ -12,6 +12,7 @@ function thread(overrides = {}) {
   return {
     id: 1, mailboxKey: 'sales@sunkaier.com', subject: '<script>alert(1)</script> RFQ', inquiryId: 8,
     opportunityId: null, opportunityNo: '', opportunityTitle: '', customerId: null, customerCode: '', customerName: '', contactId: null,
+    contactCode: '', contactName: '',
     lastMessageAt: '2026-09-03T01:00:00Z', messageCount: 1, lastFromAddress: 'buyer@example.com',
     lastTextPreview: '<img src=x onerror=alert(1)> Need quote', messages: [{
       id: 11, threadId: 1, direction: 'inbound', messageId: 'rfq@example.com', inReplyTo: '',
@@ -43,7 +44,10 @@ async function createAgent({ userId, roles, language = 'en', uploadDir = './var/
     opportunityTitle: 'Mixer Project',
     customerId: 10,
     customerCode: 'C000010',
-    customerName: 'Acme Co'
+    customerName: 'Acme Co',
+    contactId: 20,
+    contactCode: 'CT000020',
+    contactName: 'Alice'
   });
   linked.messages = linked.messages.map((message) => ({ ...message, threadId: 2 }));
   const repository = {
@@ -117,11 +121,13 @@ test('salesperson sees assigned opportunity mail but direct unlinked mail access
   assert.equal(list.status, 200);
   assert.match(list.text, /Mixer Project/);
   assert.match(list.text, /C000010 · Acme Co/);
+  assert.match(list.text, /CT000020 · Alice/);
   assert.doesNotMatch(list.text, /Protected unlinked email/);
   assert.equal((await agent.get('/email-center/threads/1')).status, 403);
   const detail = await agent.get('/email-center/threads/2');
   assert.equal(detail.status, 200);
   assert.match(detail.text, /C000010 · Acme Co/);
+  assert.match(detail.text, /CT000020 · Alice/);
 });
 
 test('email attachment download enforces the same thread permission', async () => {

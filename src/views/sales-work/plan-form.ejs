@@ -24,7 +24,7 @@
             <select name="contactId">
               <option value=""><%= t('selectContact') %></option>
               <% for (const contact of contacts) { %>
-                <option value="<%= contact.id %>"<%= Number(plan.contactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` - ${contact.customerName}` : '' %></option>
+                <option value="<%= contact.id %>"<%= Number(plan.contactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %><%= contact.customerName ? ` (${contact.customerCode ? `${contact.customerCode} · ` : ''}${contact.customerName})` : '' %></option>
               <% } %>
             </select>
           </label>

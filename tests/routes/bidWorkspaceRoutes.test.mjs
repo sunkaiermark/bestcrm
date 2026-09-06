@@ -19,7 +19,7 @@ async function createWorkspaceAgent({ enabled = true, role = ROLES.QUOTATION_ENG
   };
   const opportunity = {
     id: 20, opportunityNo: 'OPP-20', title: 'Bilingual Mixer Project', customerId: 8, customerName: 'Acme',
-    primaryContactId: 9, requirement: '10 t/h', salespersonId: 7, salesManagerId: 2,
+    primaryContactId: 9, primaryContactCode: 'CT000009', primaryContactName: 'Lee', requirement: '10 t/h', salespersonId: 7, salesManagerId: 2,
     quotationEngineerId: 3, technicalManagerId: 6, commercialManagerId: 5,
     status: 'technical_solution_in_progress'
   };
@@ -61,7 +61,7 @@ async function createWorkspaceAgent({ enabled = true, role = ROLES.QUOTATION_ENG
   };
   const workspace = {
     id: 40, opportunityId: 20, status: 'in_progress', language: 'en',
-    opportunity: { id: 20, opportunityNo: 'OPP-20', title: opportunity.title, customerName: 'Acme' },
+    opportunity: { id: 20, opportunityNo: 'OPP-20', title: opportunity.title, customerName: 'Acme', primaryContactId: 9, primaryContactCode: 'CT000009', primaryContactName: 'Lee' },
     technicalTemplate: { id: 4, templateCode: 'MX-100', name: 'Mixer Agreement', revisionNo: 2 },
     commercialTemplate: { id: 5, templateCode: 'COMM-GLOBAL', nameEn: 'Global Commercial', nameZh: '全球商务包', revisionNo: 1 },
     outputProfile: { ...outputProfile },
@@ -164,6 +164,7 @@ test('Project Lead Engineer selects published sources, reviews CRM prefill, and 
   assert.match(selection.text, /MX-100/);
   assert.match(selection.text, /COMM-GLOBAL/);
   assert.match(selection.text, /GLOBAL-R1/);
+  assert.match(selection.text, /CT000009 · Lee/);
 
   const preview = await agent.post('/opportunities/20/bid-workspace/preview').type('form').send({
     language: 'en', technicalTemplateRevisionId: 9, commercialTemplateRevisionId: 10, outputProfileId: 30
@@ -172,6 +173,7 @@ test('Project Lead Engineer selects published sources, reviews CRM prefill, and 
   assert.match(preview.text, /name="technical__customer_name" value="Acme"/);
   assert.match(preview.text, /name="commercial__total_price" value="120000"/);
   assert.match(preview.text, /CRM/);
+  assert.match(preview.text, /CT000009 · Lee/);
 
   const created = await agent.post('/opportunities/20/bid-workspace').type('form').send({
     language: 'en', technicalTemplateRevisionId: 9, commercialTemplateRevisionId: 10, outputProfileId: 30,
@@ -210,6 +212,7 @@ test('workspace index and detail expose frozen package identifiers without mutab
   const list = await agent.get('/bid-center/workspaces');
   assert.equal(list.status, 200);
   assert.match(list.text, /OPP-20/);
+  assert.match(list.text, /CT000009 · Lee/);
   assert.match(list.text, /TS-D1/);
   assert.match(list.text, /CP-D1/);
   const detail = await agent.get('/bid-center/workspaces/40');
@@ -217,6 +220,7 @@ test('workspace index and detail expose frozen package identifiers without mutab
   assert.match(detail.text, /TPL-R2/);
   assert.match(detail.text, /CTPL-R1/);
   assert.match(detail.text, /GLOBAL-R1/);
+  assert.match(detail.text, /CT000009 · Lee/);
   assert.match(detail.text, /\.bid-output-scroll\s*\{[\s\S]*max-width:\s*100%;[\s\S]*overflow-x:\s*auto;/);
 });
 

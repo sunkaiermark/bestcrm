@@ -34,6 +34,7 @@ const inquiry = {
   matchedCustomerId: 20,
   matchedCustomerName: 'Acme Co',
   matchedContactId: 30,
+  matchedContactCode: 'CT000030',
   matchedContactName: 'Alice',
   convertedOpportunityId: null,
   convertedOpportunityNo: '',
@@ -159,11 +160,11 @@ async function createLoggedInAgent(options = {}) {
     contactRepository: {
       async listContacts(filter) {
         calls.push(['listContacts', filter]);
-        return [{ id: 30, customerId: 20, customerName: 'Acme Co', customerOwnerUserId: 8, name: 'Alice' }];
+        return [{ id: 30, contactCode: 'CT000030', customerId: 20, customerCode: 'C000020', customerName: 'Acme Co', customerOwnerUserId: 8, name: 'Alice' }];
       },
       async getContactDetail(id) {
         calls.push(['getContact', Number(id)]);
-        return { id: Number(id), customerId: 20, customerName: 'Acme Co', customerOwnerUserId: 8, name: 'Alice' };
+        return { id: Number(id), contactCode: 'CT000030', customerId: 20, customerCode: 'C000020', customerName: 'Acme Co', customerOwnerUserId: 8, name: 'Alice' };
       },
       async createContact(input) {
         calls.push(['createContact', input]);
@@ -274,6 +275,7 @@ test('sales manager can view inquiry list from navigation', async () => {
   assert.match(response.text, /href="\/inquiries"/);
   assert.match(response.text, /Inquiries/);
   assert.match(response.text, /Need evaporator quote/);
+  assert.match(response.text, /CT000030 · Alice/);
   assert.match(response.text, /Acme Co/);
   assert.match(response.text, /Evaporator/);
   assert.deepEqual(calls.filter((call) => call[0] === 'listInquiries'), [
@@ -415,11 +417,44 @@ test('inquiry detail supports review and conversion forms', async () => {
   assert.match(response.text, /class="inquiry-workflow-form" method="post" action="\/inquiries\/11\/convert"/);
   assert.match(response.text, /formaction="\/inquiries\/11\/review"/);
   assert.match(response.text, /name="customerId"/);
+  assert.match(response.text, /<option value="30" data-customer-id="20" selected>CT000030 · Alice \(C000020 · Acme Co\)<\/option>/);
   assert.match(response.text, /formaction="\/inquiries\/11\/save-records"/);
   assert.match(response.text, /formaction="\/inquiries\/11\/spam"/);
   assert.doesNotMatch(response.text, /action="\/inquiries\/11\/save-customer"/);
   assert.doesNotMatch(response.text, /action="\/inquiries\/11\/save-contact"/);
   assert.match(response.text, /name="opportunityType" value="Expansion"/);
+});
+
+test('inquiry summary shows a real matched contact code and never assigns one to raw contact text', async () => {
+  const matched = await createLoggedInAgent({
+    inquiryRepository: {
+      async findById() {
+        return { ...inquiry, status: 'converted' };
+      }
+    }
+  });
+  const matchedResponse = await matched.agent.get('/inquiries/11');
+  assert.equal(matchedResponse.status, 200);
+  assert.match(matchedResponse.text, /CT000030 · Alice/);
+
+  const raw = await createLoggedInAgent({
+    inquiryRepository: {
+      async findById() {
+        return {
+          ...inquiry,
+          status: 'customer_saved',
+          matchedContactId: null,
+          matchedContactCode: '',
+          matchedContactName: '',
+          contactName: 'Unmatched Buyer'
+        };
+      }
+    }
+  });
+  const rawResponse = await raw.agent.get('/inquiries/11');
+  assert.equal(rawResponse.status, 200);
+  assert.match(rawResponse.text, /Unmatched Buyer/);
+  assert.doesNotMatch(rawResponse.text, /CT000030 · Unmatched Buyer/);
 });
 
 test('inquiry detail shows imported email attachments with preview and download links', async () => {

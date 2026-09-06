@@ -22,6 +22,7 @@ const opportunityRow = {
   customer_code: 'C000010',
   customer_name: 'Acme Co',
   primary_contact_id: '20',
+  primary_contact_code: 'CT000020',
   primary_contact_name: 'Alice',
   requirement: 'Upgrade production line',
   estimated_amount: '120000.50',
@@ -60,6 +61,7 @@ test('opportunity repository lists opportunities with customer and contact names
     customerCode: 'C000010',
     customerName: 'Acme Co',
     primaryContactId: 20,
+    primaryContactCode: 'CT000020',
     primaryContactName: 'Alice',
     requirement: 'Upgrade production line',
     estimatedAmount: 120000.50,
@@ -86,6 +88,7 @@ test('opportunity repository lists opportunities with customer and contact names
   assert.match(queryTarget.queries[0].sql, /FROM opportunities o/);
   assert.match(queryTarget.queries[0].sql, /JOIN customers c/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN contacts pc/);
+  assert.match(queryTarget.queries[0].sql, /pc\.contact_code AS primary_contact_code/);
   assert.match(queryTarget.queries[0].sql, /JOIN users salesperson/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN users quotation_engineer/);
   assert.match(queryTarget.queries[0].sql, /WHERE o\.salesperson_id = \$1/);
@@ -113,6 +116,7 @@ test('opportunity repository combines sales owner customer contact and keyword f
   assert.match(sql, /c\.customer_code ILIKE \$4/);
   assert.match(sql, /c\.name ILIKE \$4/);
   assert.match(sql, /salesperson\.display_name ILIKE \$4/);
+  assert.match(sql, /pc\.contact_code ILIKE \$4/);
   assert.match(sql, /pc\.name ILIKE \$4/);
   assert.match(sql, /o\.status NOT IN \(\$5, \$6\)/);
   assert.deepEqual(params, [
@@ -134,7 +138,7 @@ test('opportunity repository lists permission-scoped sales owner customer and co
   assert.deepEqual(options, {
     salespeople: [{ id: 7, username: 'sales01', displayName: 'Sales One' }],
     customers: [{ id: 10, customerCode: 'C000010', name: 'Acme Co' }],
-    contacts: [{ id: 20, name: 'Alice', customerId: 10, customerCode: 'C000010', customerName: 'Acme Co' }]
+    contacts: [{ id: 20, contactCode: 'CT000020', name: 'Alice', customerId: 10, customerCode: 'C000010', customerName: 'Acme Co' }]
   });
   assert.match(queryTarget.queries[0].sql, /SELECT DISTINCT/);
   assert.match(queryTarget.queries[0].sql, /o\.salesperson_id = \$1/);
@@ -206,6 +210,7 @@ test('opportunity repository gets detail with customer and contact names', async
   assert.equal(opportunity.id, 30);
   assert.equal(opportunity.customerCode, 'C000010');
   assert.equal(opportunity.customerName, 'Acme Co');
+  assert.equal(opportunity.primaryContactCode, 'CT000020');
   assert.equal(opportunity.primaryContactName, 'Alice');
   assert.equal(opportunity.salespersonDisplayName, 'Sales One');
   assert.match(queryTarget.queries[0].sql, /WHERE o\.id = \$1/);

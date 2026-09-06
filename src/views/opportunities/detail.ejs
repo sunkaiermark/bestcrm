@@ -220,7 +220,7 @@
                       <th scope="row"><%= t('primaryContact') %></th>
                       <td>
                         <% if (opportunity.primaryContactId) { %>
-                          <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactName %></a>
+                          <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactCode ? `${opportunity.primaryContactCode} · ` : '' %><%= opportunity.primaryContactName %></a>
                         <% } %>
                       </td>
                     </tr>

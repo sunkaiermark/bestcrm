@@ -14,6 +14,7 @@
           <% } else if (thread.inquiryId) { %><p><a class="secondary-action" href="/inquiries/<%= thread.inquiryId %>"><%= t('inquiry') %> #<%= thread.inquiryId %></a></p>
           <% } else if (!thread.customerId) { %><p class="muted"><%= t('unlinkedEmail') %></p><% } %>
           <% if (thread.customerId) { %><p><a class="secondary-action" href="/customers/<%= thread.customerId %>"><%= t('customer') %> <%= thread.customerCode ? `${thread.customerCode} · ` : '' %><%= thread.customerName %></a></p><% } %>
+          <% if (thread.contactId) { %><p><a class="secondary-action" href="/contacts/<%= thread.contactId %>"><%= t('contact') %> <%= thread.contactCode ? `${thread.contactCode} · ` : '' %><%= thread.contactName %></a></p><% } %>
         </section>
 
         <section class="detail-card">

@@ -36,6 +36,7 @@ async function createLoggedInAgent(options = {}) {
         calls.push(['listCustomers', filter]);
         return [{
           id: 10,
+          customerCode: 'C000010',
           name: 'Acme Co',
           ownerUserId: 7
         }];
@@ -44,6 +45,7 @@ async function createLoggedInAgent(options = {}) {
         calls.push(['getCustomer', Number(id)]);
         return {
           id: Number(id),
+          customerCode: 'C000010',
           name: 'Acme Co',
           ownerUserId: 7
         };
@@ -54,7 +56,9 @@ async function createLoggedInAgent(options = {}) {
         calls.push(['listContacts', filter]);
         return [{
           id: 20,
+          contactCode: 'CT000020',
           customerId: 10,
+          customerCode: 'C000010',
           customerName: 'Acme Co',
           customerOwnerUserId: 7,
           name: 'Alice'
@@ -64,7 +68,9 @@ async function createLoggedInAgent(options = {}) {
         calls.push(['getContact', Number(id)]);
         return {
           id: Number(id),
+          contactCode: 'CT000020',
           customerId: 10,
+          customerCode: 'C000010',
           customerName: 'Acme Co',
           customerOwnerUserId: 7,
           name: 'Alice'
@@ -103,6 +109,7 @@ async function createLoggedInAgent(options = {}) {
           customerId: 10,
           customerName: 'Acme Co',
           contactId: 20,
+          contactCode: 'CT000020',
           contactName: 'Alice',
           opportunityId: 30,
           opportunityNo: '800010',
@@ -187,6 +194,7 @@ test('salesperson can view sales work plan list and navigation entry', async () 
   assert.match(response.text, /New Plan/);
   assert.match(response.text, /Customer visit/);
   assert.match(response.text, /Acme Co/);
+  assert.match(response.text, /CT000020 · Alice/);
   assert.match(response.text, /WAO System/);
   assert.match(response.text, /Complete/);
   assert.match(response.text, /Cancel/);
@@ -232,6 +240,7 @@ test('salesperson can open new and edit plan forms', async () => {
   assert.match(newForm.text, /name="planDate"/);
   assert.match(newForm.text, /<select name="customerId">/);
   assert.match(newForm.text, /<select name="contactId">/);
+  assert.match(newForm.text, /<option value="20">CT000020 · Alice \(C000010 · Acme Co\)<\/option>/);
   assert.match(newForm.text, /<select name="opportunityId">/);
   assert.match(newForm.text, /<select name="activityType"/);
 
@@ -239,6 +248,7 @@ test('salesperson can open new and edit plan forms', async () => {
   assert.equal(editForm.status, 200);
   assert.match(editForm.text, /Edit Plan/);
   assert.match(editForm.text, /value="Customer visit"/);
+  assert.match(editForm.text, /<option value="20" selected>CT000020 · Alice \(C000010 · Acme Co\)<\/option>/);
   assert.match(editForm.text, /Visit plant/);
 });
 

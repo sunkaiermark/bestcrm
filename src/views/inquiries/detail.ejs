@@ -103,7 +103,7 @@
                   <select name="primaryContactId" id="inquiry-contact-select">
                     <option value=""><%= t('createNewContactFromInquiry') %></option>
                     <% for (const contact of contacts) { %>
-                      <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>"<%= Number(inquiry.matchedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.name %><%= contact.customerName ? ` - ${contact.customerName}` : '' %></option>
+                      <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>"<%= Number(inquiry.matchedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %><%= contact.customerName ? ` (${contact.customerCode ? `${contact.customerCode} · ` : ''}${contact.customerName})` : '' %></option>
                     <% } %>
                   </select>
                 </label>
@@ -221,7 +221,7 @@
             <h2><%= t('inquiryCustomerAndContact') %></h2>
             <div class="inquiry-summary-grid">
               <span><strong><%= t('customerName') %>:</strong> <%= inquiry.matchedCustomerName || inquiry.companyName || '-' %></span>
-              <span><strong><%= t('contactName') %>:</strong> <%= inquiry.matchedContactName || inquiry.contactName || '-' %></span>
+              <span><strong><%= t('contactName') %>:</strong> <% if (inquiry.matchedContactId) { %><%= inquiry.matchedContactCode ? `${inquiry.matchedContactCode} · ` : '' %><%= inquiry.matchedContactName || inquiry.contactName || '-' %><% } else { %><%= inquiry.contactName || '-' %><% } %></span>
               <span><strong><%= t('email') %>:</strong> <%= inquiry.contactEmail || '-' %></span>
               <span><strong><%= t('phone') %>:</strong> <%= inquiry.contactPhone || '-' %></span>
             </div>

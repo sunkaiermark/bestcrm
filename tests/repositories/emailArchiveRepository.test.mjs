@@ -7,7 +7,7 @@ function threadRow(overrides = {}) {
     id: 1, mailbox_key: 'sales@sunkaier.com', subject: 'RFQ', normalized_subject: 'rfq',
     inquiry_id: 8, inquiry_status: 'new', opportunity_id: null, opportunity_no: null,
     opportunity_title: null, customer_id: null, customer_code: null, customer_name: null, contact_id: null,
-    contact_name: null, last_message_at: '2026-09-03T01:00:00Z', created_at: '2026-09-03T01:00:00Z',
+    contact_code: null, contact_name: null, last_message_at: '2026-09-03T01:00:00Z', created_at: '2026-09-03T01:00:00Z',
     updated_at: '2026-09-03T01:00:00Z', message_count: 1, last_direction: 'inbound',
     last_from_address: 'buyer@example.com', last_text_preview: 'Need quote', ...overrides
   };
@@ -41,6 +41,7 @@ test('email archive repository lists threaded summaries without exposing bodies 
   assert.match(calls[0].sql, /LEFT JOIN LATERAL/);
   assert.match(calls[0].sql, /ORDER BY thread\.last_message_at DESC/);
   assert.match(calls[0].sql, /customer\.customer_code/);
+  assert.match(calls[0].sql, /contact\.contact_code/);
 });
 
 test('email archive repository maps the linked customer code', async () => {
@@ -52,6 +53,17 @@ test('email archive repository maps the linked customer code', async () => {
 
   const [thread] = await repository.listThreads();
   assert.equal(thread.customerCode, 'C000010');
+});
+
+test('email archive repository maps the linked contact code', async () => {
+  const repository = createEmailArchiveRepository({
+    async query() {
+      return { rows: [threadRow({ contact_id: '20', contact_code: 'CT000020', contact_name: 'Alice' })] };
+    }
+  });
+
+  const [thread] = await repository.listThreads();
+  assert.equal(thread.contactCode, 'CT000020');
 });
 
 test('email archive repository builds message detail with immutable attachment checksums', async () => {

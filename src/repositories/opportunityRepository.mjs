@@ -20,6 +20,7 @@ function mapOpportunityRow(row) {
     customerCode: row.customer_code || '',
     customerName: row.customer_name || '',
     primaryContactId: numberOrNull(row.primary_contact_id),
+    primaryContactCode: row.primary_contact_code || '',
     primaryContactName: row.primary_contact_name || '',
     requirement: row.requirement,
     estimatedAmount: numberOrNull(row.estimated_amount),
@@ -55,6 +56,7 @@ const opportunitySelect = `
     c.customer_code,
     c.name AS customer_name,
     o.primary_contact_id,
+    pc.contact_code AS primary_contact_code,
     pc.name AS primary_contact_name,
     o.requirement,
     o.estimated_amount,
@@ -173,6 +175,7 @@ function opportunityListConditions(filter = {}) {
       OR c.name ILIKE ${searchParam} ESCAPE '\\'
       OR salesperson.username ILIKE ${searchParam} ESCAPE '\\'
       OR salesperson.display_name ILIKE ${searchParam} ESCAPE '\\'
+      OR pc.contact_code ILIKE ${searchParam} ESCAPE '\\'
       OR pc.name ILIKE ${searchParam} ESCAPE '\\'
     )`);
   }
@@ -206,6 +209,7 @@ function mapOpportunityFilterOptions(rows) {
       if (!contactsById.has(contactId)) {
         contactsById.set(contactId, {
           id: contactId,
+          contactCode: row.primary_contact_code || '',
           name: row.primary_contact_name || '',
           customerId,
           customerCode: row.customer_code || '',
@@ -249,6 +253,7 @@ export function createOpportunityRepository(queryTarget) {
           c.customer_code,
           c.name AS customer_name,
           o.primary_contact_id,
+          pc.contact_code AS primary_contact_code,
           pc.name AS primary_contact_name
         FROM opportunities o
         JOIN customers c ON c.id = o.customer_id
