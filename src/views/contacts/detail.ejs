@@ -3,6 +3,7 @@
         <header class="page-header">
           <h1><%= [contact.contactCode, contact.name].filter(Boolean).join(' · ') %></h1>
           <div class="page-actions">
+            <a class="secondary-action" href="/contacts"><%= t('backToList') %></a>
             <a class="quick-action" href="/contacts/<%= contact.id %>/edit"><%= t('editContact') %></a>
             <% if (typeof canDeleteContact !== 'undefined' && canDeleteContact) { %>
               <form method="post" action="/contacts/<%= contact.id %>/delete" onsubmit="return confirm('<%= t('deleteContactConfirm') %>')">

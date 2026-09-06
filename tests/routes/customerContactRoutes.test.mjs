@@ -318,6 +318,9 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.match(detail.text, /Alice/);
   assert.match(detail.text, /<h1>CT000020 · Alice<\/h1>/);
   assert.match(detail.text, /C000010 · Acme Co/);
+  const contactHeaderHtml = detail.text.match(/<header class="page-header">[\s\S]*?<\/header>/)?.[0] || '';
+  assert.match(contactHeaderHtml, /<a class="secondary-action" href="\/contacts">Back to list<\/a>/);
+  assert.ok(contactHeaderHtml.indexOf('Back to list') < contactHeaderHtml.indexOf('Edit contact'));
   const contactDetailHtml = detail.text.match(/<h2>Contact detail<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(contactDetailHtml, /class="basic-info-grid"/);
   assert.match(contactDetailHtml, /<th scope="row">Contact Code<\/th>\s*<td>CT000020<\/td>/);
