@@ -158,6 +158,23 @@ curl http://127.0.0.1:3000/health
 sudo systemctl status bestcrm --no-pager
 ```
 
+### Install the email intake worker
+
+Install the managed worker only after the application release contains
+`scripts/poll-email-inquiries.mjs`. The installer follows the main BESTCRM
+service user and deliberately does not enable or start the worker:
+
+```bash
+sudo -n /opt/bestcrm/app/scripts/install-email-intake-service.sh
+```
+
+Before activation, keep `EMAIL_INTAKE_ENABLED=false`, validate the NetEase
+client authorization code with the read-only classification preview, and set
+`EMAIL_INTAKE_MAX_MESSAGES` to no more than `50`. Enable and start
+`bestcrm-email-intake.service` only after those checks pass. Historical mail is
+imported separately with `npm run email:backfill`; ordinary incremental intake
+must not be treated as a history migration.
+
 浏览器访问：
 
 ```text
