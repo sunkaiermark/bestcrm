@@ -13,6 +13,7 @@
               <table class="duplicate-table">
                 <thead>
                   <tr>
+                    <th><%= t('customerCode') %></th>
                     <th><%= t('customerName') %></th>
                     <th><%= t('responsiblePerson') %></th>
                     <th><%= t('contacts') %></th>
@@ -21,6 +22,7 @@
                 <tbody>
                   <% for (const duplicate of duplicateCustomers) { %>
                     <tr>
+                      <td><%= duplicate.customerCode %></td>
                       <td><%= duplicate.name %></td>
                       <td><%= duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></td>
                       <td><%= duplicate.contactCount %></td>

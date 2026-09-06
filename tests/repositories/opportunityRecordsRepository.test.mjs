@@ -19,6 +19,7 @@ const opportunityRow = {
   opportunity_no: 'OPP-20260605-abcdef12',
   title: 'Factory upgrade',
   customer_id: '10',
+  customer_code: 'C000010',
   customer_name: 'Acme Co',
   primary_contact_id: '20',
   primary_contact_name: 'Alice',
@@ -56,6 +57,7 @@ test('opportunity repository lists opportunities with customer and contact names
     opportunityNo: 'OPP-20260605-abcdef12',
     title: 'Factory upgrade',
     customerId: 10,
+    customerCode: 'C000010',
     customerName: 'Acme Co',
     primaryContactId: 20,
     primaryContactName: 'Alice',
@@ -108,6 +110,7 @@ test('opportunity repository combines sales owner customer contact and keyword f
   assert.match(sql, /o\.primary_contact_id = \$3/);
   assert.match(sql, /o\.opportunity_no ILIKE \$4/);
   assert.match(sql, /o\.title ILIKE \$4/);
+  assert.match(sql, /c\.customer_code ILIKE \$4/);
   assert.match(sql, /c\.name ILIKE \$4/);
   assert.match(sql, /salesperson\.display_name ILIKE \$4/);
   assert.match(sql, /pc\.name ILIKE \$4/);
@@ -130,8 +133,8 @@ test('opportunity repository lists permission-scoped sales owner customer and co
 
   assert.deepEqual(options, {
     salespeople: [{ id: 7, username: 'sales01', displayName: 'Sales One' }],
-    customers: [{ id: 10, name: 'Acme Co' }],
-    contacts: [{ id: 20, name: 'Alice', customerId: 10, customerName: 'Acme Co' }]
+    customers: [{ id: 10, customerCode: 'C000010', name: 'Acme Co' }],
+    contacts: [{ id: 20, name: 'Alice', customerId: 10, customerCode: 'C000010', customerName: 'Acme Co' }]
   });
   assert.match(queryTarget.queries[0].sql, /SELECT DISTINCT/);
   assert.match(queryTarget.queries[0].sql, /o\.salesperson_id = \$1/);
@@ -201,6 +204,7 @@ test('opportunity repository gets detail with customer and contact names', async
   const opportunity = await repository.getOpportunityDetail(30);
 
   assert.equal(opportunity.id, 30);
+  assert.equal(opportunity.customerCode, 'C000010');
   assert.equal(opportunity.customerName, 'Acme Co');
   assert.equal(opportunity.primaryContactName, 'Alice');
   assert.equal(opportunity.salespersonDisplayName, 'Sales One');

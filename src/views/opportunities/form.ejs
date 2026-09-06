@@ -12,7 +12,7 @@
             <%= t('customer') %>
             <select name="customerId" form="opportunity-form" required>
               <% for (const customer of customers) { %>
-                <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
+                <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
               <% } %>
             </select>
           </label>
@@ -29,7 +29,8 @@
                     <table class="duplicate-table">
                       <thead>
                         <tr>
-                          <th><%= t('customerName') %></th>
+                            <th><%= t('customerCode') %></th>
+                            <th><%= t('customerName') %></th>
                           <th><%= t('responsiblePerson') %></th>
                           <th><%= t('contacts') %></th>
                         </tr>
@@ -37,6 +38,7 @@
                       <tbody>
                         <% for (const duplicate of duplicateCustomers) { %>
                           <tr>
+                            <td><%= duplicate.customerCode %></td>
                             <td><%= duplicate.name %></td>
                             <td><%= duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></td>
                             <td><%= duplicate.contactCount %></td>

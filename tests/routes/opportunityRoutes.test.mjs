@@ -131,6 +131,7 @@ async function createLoggedInAgent(extraOptions = {}) {
           opportunityNo: 'OPP-20260605-abcdef12',
           title: 'Factory upgrade',
           customerId: 10,
+          customerCode: 'C000010',
           customerName: 'Acme Co',
           primaryContactId: 20,
           primaryContactName: 'Alice',
@@ -151,6 +152,7 @@ async function createLoggedInAgent(extraOptions = {}) {
           opportunityNo: 'OPP-20260605-abcdef12',
           title: 'Factory upgrade',
           customerId: 10,
+          customerCode: 'C000010',
           customerName: 'Acme Co',
           primaryContactId: 20,
           primaryContactName: 'Alice',
@@ -587,6 +589,7 @@ test('logged in salesperson can view opportunity list and is redirected to lead 
   assertAppSidebar(list.text, '/opportunities');
   assert.match(list.text, /Opportunities/);
   assert.match(list.text, /Factory upgrade/);
+  assert.match(list.text, /C000010 · Acme Co/);
   assert.match(list.text, /Acme Co/);
   assert.match(list.text, /<th>Opportunity Name<\/th>/);
   assert.doesNotMatch(list.text, /<th>Title<\/th>/);
@@ -606,6 +609,7 @@ test('logged in salesperson can view opportunity list and is redirected to lead 
   assert.equal(detail.status, 200);
   assertAppSidebar(detail.text, '/opportunities');
   assert.match(detail.text, /Factory upgrade/);
+  assert.match(detail.text, /C000010 · Acme Co/);
   assert.match(detail.text, /Upgrade production line/);
   assert.match(detail.text, /Alice/);
   const basicInfoHtml = detail.text.match(/<section class="content-section business-section business-section-basic">[\s\S]*?<\/section>/)?.[0] || '';
@@ -662,12 +666,12 @@ test('opportunity list and API combine sales owner customer contact and keyword 
             { id: 99, username: 'engineer01', displayName: 'Quotation Engineer' }
           ],
           customers: [
-            { id: 10, name: 'Acme Co' },
-            { id: 11, name: 'Beta Co' }
+            { id: 10, customerCode: 'C000010', name: 'Acme Co' },
+            { id: 11, customerCode: 'C000011', name: 'Beta Co' }
           ],
           contacts: [
-            { id: 20, name: 'Alice', customerId: 10, customerName: 'Acme Co' },
-            { id: 21, name: 'Bob', customerId: 11, customerName: 'Beta Co' }
+            { id: 20, name: 'Alice', customerId: 10, customerCode: 'C000010', customerName: 'Acme Co' },
+            { id: 21, name: 'Bob', customerId: 11, customerCode: 'C000011', customerName: 'Beta Co' }
           ]
         };
       }
@@ -692,9 +696,9 @@ test('opportunity list and API combine sales owner customer contact and keyword 
   assert.match(list.text, /<option value="8" selected>Team Member<\/option>/);
   assert.doesNotMatch(list.text, /Quotation Engineer/);
   assert.match(list.text, /Customer\s*<select name="customerId">/);
-  assert.match(list.text, /<option value="11" selected>Beta Co<\/option>/);
+  assert.match(list.text, /<option value="11" selected>C000011 · Beta Co<\/option>/);
   assert.match(list.text, /Contact\s*<select name="contactId">/);
-  assert.match(list.text, /<option value="21" selected>Bob \(Beta Co\)<\/option>/);
+  assert.match(list.text, /<option value="21" selected>Bob \(C000011 · Beta Co\)<\/option>/);
   assert.match(list.text, /name="query" type="search" value="upgrade"/);
   assert.match(list.text, />Search<\/button>/);
   assert.match(list.text, /href="\/opportunities\?archiveScope=all">Clear filters<\/a>/);
@@ -1115,7 +1119,7 @@ test('direct opportunity customer creation never reaches duplicate handling', as
   const { agent } = await createLoggedInAgent({
     customerRepository: {
       async listCustomers() {
-        return [{ id: 10, name: 'Acme Co', ownerUserId: 7 }];
+        return [{ id: 10, customerCode: 'C000010', name: 'Acme Co', ownerUserId: 7 }];
       },
       async findDuplicatesByName() {
         return [{

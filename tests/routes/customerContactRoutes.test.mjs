@@ -38,6 +38,7 @@ async function createLoggedInAgent(options = {}) {
       async listCustomers() {
         return [{
           id: 10,
+          customerCode: 'C000010',
           name: 'Acme Co',
           website: 'https://www.acme.example',
           industry: 'Manufacturing',
@@ -53,6 +54,7 @@ async function createLoggedInAgent(options = {}) {
       async getCustomerDetail(id) {
         return {
           id: Number(id),
+          customerCode: 'C000010',
           name: 'Acme Co',
           website: 'https://www.acme.example',
           industry: 'Manufacturing',
@@ -169,6 +171,8 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.equal(list.status, 200);
   assertAppSidebar(list.text, '/customers');
   assert.match(list.text, /Customers/);
+  assert.match(list.text, /Customer Code/);
+  assert.match(list.text, /C000010/);
   assert.match(list.text, /Acme Co/);
   assert.match(list.text, /Country/);
   assert.match(list.text, /China/);
@@ -219,6 +223,7 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.doesNotMatch(customerHeaderHtml, /href="\/opportunities\/new\?customerId=10"/);
   const customerDetailHtml = detail.text.match(/<h2>Customer detail<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(customerDetailHtml, /class="basic-info-grid"/);
+  assert.match(customerDetailHtml, /<th scope="row">Customer Code<\/th>\s*<td>C000010<\/td>/);
   assert.equal((customerDetailHtml.match(/<table class="detail-table">/g) || []).length, 2);
   assert.equal((customerDetailHtml.match(/<table class="detail-table detail-table-wide">/g) || []).length, 3);
   assert.match(detail.text, /\.detail-table-wide\s*\{[\s\S]*grid-column:\s*1 \/ -1;/);
@@ -248,6 +253,25 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.doesNotMatch(customerContactsHtml, /href="\/opportunities\/new\?customerId=10&contactId=20"/);
   assert.doesNotMatch(customerContactsHtml, /<ul class="inline-list">/);
   assert.doesNotMatch(detail.text, /Delete customer/);
+});
+
+test('customer list search preserves owner scope and displays the retained query', async () => {
+  const filters = [];
+  const { agent } = await createLoggedInAgent({
+    customerRepository: {
+      async listCustomers(filter) {
+        filters.push(filter);
+        return [];
+      }
+    }
+  });
+
+  const response = await agent.get('/customers').query({ q: '  C000010  ' });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(filters, [{ ownerUserId: 7, searchTerm: 'C000010' }]);
+  assert.match(response.text, /name="q"[^>]*value="C000010"/);
+  assert.match(response.text, /Search by customer code, name, or website/);
 });
 
 test('logged in salesperson can view contact list and detail', async () => {

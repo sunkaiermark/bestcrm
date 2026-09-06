@@ -11,6 +11,7 @@ function mapCustomerRow(row) {
   }
   return {
     id: Number(row.id),
+    customerCode: row.customer_code || '',
     name: row.name,
     website: row.website || '',
     industry: row.industry || '',
@@ -32,6 +33,7 @@ function mapDuplicateCustomerRow(row) {
   }
   return {
     id: Number(row.id),
+    customerCode: row.customer_code || '',
     name: row.name,
     ownerUserId: Number(row.owner_user_id),
     ownerDisplayName: row.owner_display_name || '',
@@ -56,6 +58,7 @@ function mapContactRow(row) {
 const customerSelect = `
   SELECT
     c.id,
+    c.customer_code,
     c.name,
     c.website,
     c.industry,
@@ -80,6 +83,15 @@ export function createCustomerRepository(queryTarget) {
       if (filter.ownerUserId) {
         params.push(filter.ownerUserId);
         where.push(`c.owner_user_id = $${params.length}`);
+      }
+      if (filter.searchTerm) {
+        params.push(`%${String(filter.searchTerm).replace(/[\\%_]/g, '\\$&')}%`);
+        const searchParam = `$${params.length}`;
+        where.push(`(
+          c.customer_code ILIKE ${searchParam} ESCAPE '\\'
+          OR c.name ILIKE ${searchParam} ESCAPE '\\'
+          OR c.website ILIKE ${searchParam} ESCAPE '\\'
+        )`);
       }
       const result = await queryTarget.query(`
         ${customerSelect}
@@ -119,6 +131,7 @@ export function createCustomerRepository(queryTarget) {
       const result = await queryTarget.query(`
         SELECT
           c.id,
+          c.customer_code,
           c.name,
           c.owner_user_id,
           u.display_name AS owner_display_name,

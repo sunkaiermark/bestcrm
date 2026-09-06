@@ -11,7 +11,7 @@ import { createApp } from '../../src/server.mjs';
 function thread(overrides = {}) {
   return {
     id: 1, mailboxKey: 'sales@sunkaier.com', subject: '<script>alert(1)</script> RFQ', inquiryId: 8,
-    opportunityId: null, opportunityNo: '', opportunityTitle: '', customerId: null, contactId: null,
+    opportunityId: null, opportunityNo: '', opportunityTitle: '', customerId: null, customerCode: '', customerName: '', contactId: null,
     lastMessageAt: '2026-09-03T01:00:00Z', messageCount: 1, lastFromAddress: 'buyer@example.com',
     lastTextPreview: '<img src=x onerror=alert(1)> Need quote', messages: [{
       id: 11, threadId: 1, direction: 'inbound', messageId: 'rfq@example.com', inReplyTo: '',
@@ -35,7 +35,16 @@ async function createAgent({ userId, roles, language = 'en', uploadDir = './var/
     email: `user${userId}@sunkaier.com`, passwordHash, isActive: true, roles
   };
   const unlinked = thread();
-  const linked = thread({ id: 2, inquiryId: 9, opportunityId: 20, opportunityNo: '800020', opportunityTitle: 'Mixer Project' });
+  const linked = thread({
+    id: 2,
+    inquiryId: 9,
+    opportunityId: 20,
+    opportunityNo: '800020',
+    opportunityTitle: 'Mixer Project',
+    customerId: 10,
+    customerCode: 'C000010',
+    customerName: 'Acme Co'
+  });
   linked.messages = linked.messages.map((message) => ({ ...message, threadId: 2 }));
   const repository = {
     async listThreads() { return [unlinked, linked]; },
@@ -107,9 +116,12 @@ test('salesperson sees assigned opportunity mail but direct unlinked mail access
   const list = await agent.get('/email-center');
   assert.equal(list.status, 200);
   assert.match(list.text, /Mixer Project/);
+  assert.match(list.text, /C000010 · Acme Co/);
   assert.doesNotMatch(list.text, /Protected unlinked email/);
   assert.equal((await agent.get('/email-center/threads/1')).status, 403);
-  assert.equal((await agent.get('/email-center/threads/2')).status, 200);
+  const detail = await agent.get('/email-center/threads/2');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /C000010 · Acme Co/);
 });
 
 test('email attachment download enforces the same thread permission', async () => {

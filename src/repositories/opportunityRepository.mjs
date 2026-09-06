@@ -17,6 +17,7 @@ function mapOpportunityRow(row) {
     opportunityNo: row.opportunity_no,
     title: row.title,
     customerId: Number(row.customer_id),
+    customerCode: row.customer_code || '',
     customerName: row.customer_name || '',
     primaryContactId: numberOrNull(row.primary_contact_id),
     primaryContactName: row.primary_contact_name || '',
@@ -51,6 +52,7 @@ const opportunitySelect = `
     o.opportunity_no,
     o.title,
     o.customer_id,
+    c.customer_code,
     c.name AS customer_name,
     o.primary_contact_id,
     pc.name AS primary_contact_name,
@@ -167,6 +169,7 @@ function opportunityListConditions(filter = {}) {
     where.push(`(
       o.opportunity_no ILIKE ${searchParam} ESCAPE '\\'
       OR o.title ILIKE ${searchParam} ESCAPE '\\'
+      OR c.customer_code ILIKE ${searchParam} ESCAPE '\\'
       OR c.name ILIKE ${searchParam} ESCAPE '\\'
       OR salesperson.username ILIKE ${searchParam} ESCAPE '\\'
       OR salesperson.display_name ILIKE ${searchParam} ESCAPE '\\'
@@ -194,6 +197,7 @@ function mapOpportunityFilterOptions(rows) {
     if (!customersById.has(customerId)) {
       customersById.set(customerId, {
         id: customerId,
+        customerCode: row.customer_code || '',
         name: row.customer_name || ''
       });
     }
@@ -204,6 +208,7 @@ function mapOpportunityFilterOptions(rows) {
           id: contactId,
           name: row.primary_contact_name || '',
           customerId,
+          customerCode: row.customer_code || '',
           customerName: row.customer_name || ''
         });
       }
@@ -241,6 +246,7 @@ export function createOpportunityRepository(queryTarget) {
           salesperson.username AS salesperson_username,
           salesperson.display_name AS salesperson_display_name,
           o.customer_id,
+          c.customer_code,
           c.name AS customer_name,
           o.primary_contact_id,
           pc.name AS primary_contact_name

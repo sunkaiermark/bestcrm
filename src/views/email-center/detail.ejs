@@ -12,7 +12,8 @@
           <h2><%= t('linkedRecord') %></h2>
           <% if (thread.opportunityId) { %><p><a class="secondary-action" href="/opportunities/<%= thread.opportunityId %>"><%= t('opportunity') %> <%= thread.opportunityNo || `#${thread.opportunityId}` %> · <%= thread.opportunityTitle %></a></p>
           <% } else if (thread.inquiryId) { %><p><a class="secondary-action" href="/inquiries/<%= thread.inquiryId %>"><%= t('inquiry') %> #<%= thread.inquiryId %></a></p>
-          <% } else { %><p class="muted"><%= t('unlinkedEmail') %></p><% } %>
+          <% } else if (!thread.customerId) { %><p class="muted"><%= t('unlinkedEmail') %></p><% } %>
+          <% if (thread.customerId) { %><p><a class="secondary-action" href="/customers/<%= thread.customerId %>"><%= t('customer') %> <%= thread.customerCode ? `${thread.customerCode} · ` : '' %><%= thread.customerName %></a></p><% } %>
         </section>
 
         <section class="detail-card">

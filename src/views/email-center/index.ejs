@@ -19,7 +19,8 @@
                     <td>
                       <% if (thread.opportunityId) { %><span class="status"><%= t('opportunity') %> <%= thread.opportunityNo || `#${thread.opportunityId}` %> · <%= thread.opportunityTitle %></span>
                       <% } else if (thread.inquiryId) { %><span class="status"><%= t('inquiry') %> #<%= thread.inquiryId %></span>
-                      <% } else { %><span class="muted"><%= t('unlinkedEmail') %></span><% } %>
+                      <% } else if (!thread.customerId) { %><span class="muted"><%= t('unlinkedEmail') %></span><% } %>
+                      <% if (thread.customerId) { %><br><a href="/customers/<%= thread.customerId %>"><%= thread.customerCode ? `${thread.customerCode} · ` : '' %><%= thread.customerName %></a><% } %>
                     </td>
                     <td><%= thread.messageCount %></td>
                     <td><%= thread.lastFromAddress %></td>

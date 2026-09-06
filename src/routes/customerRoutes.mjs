@@ -30,8 +30,12 @@ export function customerRoutes({ customerRepository }) {
 
   router.get('/customers', async (req, res, next) => {
     try {
-      const customers = await customerRepository.listCustomers(customerFilter(req.currentUser));
-      res.render('customers/index', { customers });
+      const searchTerm = String(req.query.q || '').trim();
+      const customers = await customerRepository.listCustomers({
+        ...customerFilter(req.currentUser),
+        searchTerm
+      });
+      res.render('customers/index', { customers, filters: { searchTerm } });
     } catch (error) {
       next(error);
     }

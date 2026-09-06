@@ -41,6 +41,7 @@ const bidPackageApprovalsMigrationPath = new URL('../../src/db/migrations/039_bi
 const bidPackageOutputIdentityMigrationPath = new URL('../../src/db/migrations/040_bid_package_output_identity.sql', import.meta.url);
 const authenticatorMfaMigrationPath = new URL('../../src/db/migrations/041_authenticator_mfa.sql', import.meta.url);
 const googleWorkspaceCustomerCenterMigrationPath = new URL('../../src/db/migrations/042_google_workspace_customer_center.sql', import.meta.url);
+const customerCodeMigrationPath = new URL('../../src/db/migrations/043_customer_code.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -719,4 +720,20 @@ test('Google Workspace customer center migration creates an append-only assignme
   assert.match(sql, /action NOT IN \('transfer', 'release'\) OR btrim\(reason\) <> ''/);
   assert.match(sql, /BEFORE UPDATE OR DELETE ON email_thread_assignment_events/);
   assert.match(sql, /Email thread assignment events are append-only/);
+});
+
+test('customer code migration backfills stable immutable C000001-style codes', async () => {
+  const sql = await readFile(customerCodeMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE SEQUENCE IF NOT EXISTS customer_code_seq/);
+  assert.match(sql, /MAXVALUE 999999/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS customer_code text/);
+  assert.match(sql, /row_number\(\) OVER \(ORDER BY id\)/);
+  assert.match(sql, /nextval\('customer_code_seq'\)/);
+  assert.match(sql, /'C' \|\| lpad/);
+  assert.match(sql, /customers_customer_code_unique_idx/);
+  assert.match(sql, /customer_code ~ '\^C\[0-9\]\{6\}\$'/);
+  assert.match(sql, /ALTER COLUMN customer_code SET NOT NULL/);
+  assert.match(sql, /bestcrm_protect_customer_code/);
+  assert.match(sql, /customer_code is immutable/);
 });

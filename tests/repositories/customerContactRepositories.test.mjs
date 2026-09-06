@@ -16,6 +16,7 @@ function createFakeQueryTarget(rows = []) {
 test('customer repository lists and maps customers', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '10',
+    customer_code: 'C000010',
     name: 'Acme Co',
     website: 'https://www.acme.example',
     industry: 'Manufacturing',
@@ -35,6 +36,7 @@ test('customer repository lists and maps customers', async () => {
 
   assert.deepEqual(customers, [{
     id: 10,
+    customerCode: 'C000010',
     name: 'Acme Co',
     website: 'https://www.acme.example',
     industry: 'Manufacturing',
@@ -53,9 +55,24 @@ test('customer repository lists and maps customers', async () => {
   assert.deepEqual(queryTarget.queries[0].params, [7]);
 });
 
+test('customer repository searches code name and website inside the owner scope', async () => {
+  const queryTarget = createFakeQueryTarget([]);
+  const repository = createCustomerRepository(queryTarget);
+
+  await repository.listCustomers({ ownerUserId: 7, searchTerm: 'C000_10%' });
+
+  const { sql, params } = queryTarget.queries[0];
+  assert.match(sql, /c\.owner_user_id = \$1/);
+  assert.match(sql, /c\.customer_code ILIKE \$2/);
+  assert.match(sql, /c\.name ILIKE \$2/);
+  assert.match(sql, /c\.website ILIKE \$2/);
+  assert.deepEqual(params, [7, '%C000\\_10\\%%']);
+});
+
 test('customer repository creates and updates customer rows', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '10',
+    customer_code: 'C000010',
     name: 'Acme Co',
     website: 'https://www.acme.example',
     industry: 'Manufacturing',
@@ -133,6 +150,7 @@ test('customer repository creates and updates customer rows', async () => {
 test('customer repository finds duplicate customers by normalized name', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '10',
+    customer_code: 'C000010',
     name: 'Acme Co',
     owner_user_id: '7',
     owner_display_name: 'Sales One',
@@ -145,6 +163,7 @@ test('customer repository finds duplicate customers by normalized name', async (
 
   assert.deepEqual(duplicates, [{
     id: 10,
+    customerCode: 'C000010',
     name: 'Acme Co',
     ownerUserId: 7,
     ownerDisplayName: 'Sales One',
