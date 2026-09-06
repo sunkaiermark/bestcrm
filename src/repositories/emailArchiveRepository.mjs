@@ -209,6 +209,15 @@ export function createEmailArchiveRepository(queryTarget) {
       return result.rows.map(mapThreadRow);
     },
 
+    async listThreadsByOpportunity(opportunityId) {
+      const result = await queryTarget.query(`
+        ${threadSelect}
+        WHERE thread.opportunity_id = $1
+        ORDER BY thread.last_message_at DESC, thread.id DESC
+      `, [opportunityId]);
+      return result.rows.map(mapThreadRow);
+    },
+
     async findThreadById(id) {
       const result = await queryTarget.query(`
         ${threadSelect}

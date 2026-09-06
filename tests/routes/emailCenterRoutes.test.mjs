@@ -52,6 +52,7 @@ async function createAgent({ userId, roles, language = 'en', uploadDir = './var/
   linked.messages = linked.messages.map((message) => ({ ...message, threadId: 2 }));
   const repository = {
     async listThreads() { return [unlinked, linked]; },
+    async listThreadsByOpportunity(id) { return Number(id) === 20 ? [linked] : []; },
     async findThreadById(id) { return Number(id) === 2 ? linked : Number(id) === 1 ? unlinked : null; },
     async findLatestThreadByOpportunity() { return linked; },
     async findLatestThreadByInquiry() { return unlinked; },
@@ -161,6 +162,11 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.equal(salesCompose.status, 200);
   assert.match(salesCompose.text, /Compose customer email/);
   assert.match(salesCompose.text, /value="send"/);
+  assert.match(salesCompose.text, /opportunity-email-workspace/);
+  assert.match(salesCompose.text, /opportunity-email-conversation/);
+  assert.match(salesCompose.text, /opportunity-email-compose/);
+  assert.match(salesCompose.text, /value="buyer@example\.com"/);
+  assert.match(salesCompose.text, /Need quote/);
 
   const supporting = await createAgent({
     userId: 15,

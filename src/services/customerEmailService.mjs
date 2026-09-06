@@ -189,15 +189,26 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
     ? (await dependencies.quotationPackageRepository.listByOpportunity(context.opportunity.id))
       .filter((item) => item.status === 'approved' && item.versionNo)
     : [];
-  const latestMessage = context.thread
-    ? (await dependencies.emailArchiveRepository.getThreadDetail(context.thread.id))?.messages
-      ?.filter((message) => ['received', 'sent'].includes(message.deliveryStatus)).at(-1)
+  const conversation = context.thread
+    ? await dependencies.emailArchiveRepository.getThreadDetail(context.thread.id)
     : null;
+  const latestMessage = conversation?.messages
+    ?.filter((message) => ['received', 'sent'].includes(message.deliveryStatus)).at(-1) || null;
+  const opportunityThreads = context.opportunity
+    ? (typeof dependencies.emailArchiveRepository.listThreadsByOpportunity === 'function'
+        ? await dependencies.emailArchiveRepository.listThreadsByOpportunity(context.opportunity.id)
+        : (context.thread ? [context.thread] : []))
+    : [];
+  const replyAddress = latestMessage?.direction === 'inbound'
+    ? latestMessage.fromAddress
+    : latestMessage?.toRecipients?.[0]?.address;
   return {
     ...context,
+    conversation,
+    opportunityThreads,
     packages,
     defaults: {
-      to: context.inquiry?.contactEmail || '',
+      to: context.inquiry?.contactEmail || replyAddress || '',
       subject: context.thread?.subject || context.inquiry?.subject || context.opportunity?.title || '',
       replyToMessageId: positiveId(input.replyToMessageId) || latestMessage?.id || null,
       quotationPackageVersionId: positiveId(input.quotationPackageVersionId)

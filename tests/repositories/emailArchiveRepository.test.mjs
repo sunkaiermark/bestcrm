@@ -63,6 +63,20 @@ test('email archive repository supports explicit archived, spam, and all-mail vi
   assert.deepEqual(calls[1].params, []);
 });
 
+test('email archive repository lists one opportunity using its indexed relationship', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) { calls.push({ sql: String(sql), params }); return { rows: [threadRow({ opportunity_id: 20 })] }; }
+  });
+
+  const threads = await repository.listThreadsByOpportunity(20);
+
+  assert.equal(threads[0].opportunityId, 20);
+  assert.match(calls[0].sql, /WHERE thread\.opportunity_id = \$1/);
+  assert.match(calls[0].sql, /ORDER BY thread\.last_message_at DESC/);
+  assert.deepEqual(calls[0].params, [20]);
+});
+
 test('email archive repository maps the linked customer code', async () => {
   const repository = createEmailArchiveRepository({
     async query() {

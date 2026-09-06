@@ -20,6 +20,7 @@
         --rail-ink: #ffffff;
         --rail-muted: #c7d2fe;
         --rail-active: #1e40af;
+        --page-inline-gutter: clamp(16px, 2vw, 40px);
       }
 
       * {
@@ -623,7 +624,17 @@
 
       .app-main {
         min-width: 0;
-        padding: 18px 22px 28px;
+        padding: 18px var(--page-inline-gutter) 28px;
+      }
+
+      .app-main.opportunity-email-page {
+        padding-left: 0;
+        padding-right: 0;
+      }
+
+      .opportunity-email-heading {
+        padding-left: var(--page-inline-gutter);
+        padding-right: var(--page-inline-gutter);
       }
 
       .page-header,
@@ -1852,6 +1863,89 @@
         overflow-wrap: anywhere;
       }
 
+      .opportunity-email-workspace {
+        background: var(--panel);
+        border-bottom: 1px solid var(--line);
+        border-top: 1px solid var(--line);
+        display: grid;
+        grid-template-columns: minmax(360px, 38%) minmax(560px, 62%);
+        min-height: calc(100vh - 150px);
+        width: 100%;
+      }
+
+      .opportunity-email-conversation,
+      .opportunity-email-compose {
+        min-width: 0;
+        padding: 16px;
+      }
+
+      .opportunity-email-conversation {
+        border-right: 1px solid var(--line);
+        max-height: calc(100vh - 150px);
+        overflow-y: auto;
+      }
+
+      .opportunity-email-compose .form-panel {
+        max-width: none;
+      }
+
+      .opportunity-email-compose > .form-panel + .form-panel {
+        margin-top: 12px;
+      }
+
+      .opportunity-email-thread-list {
+        display: grid;
+        gap: 8px;
+        margin-bottom: 16px;
+      }
+
+      .opportunity-email-thread {
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 7px;
+        display: grid;
+        gap: 3px;
+        padding: 10px 12px;
+      }
+
+      .opportunity-email-thread[aria-current="true"] {
+        background: var(--accent-soft);
+        border-color: var(--accent);
+      }
+
+      .opportunity-email-thread-meta,
+      .opportunity-email-message-meta {
+        color: var(--muted);
+        font-size: 16px;
+      }
+
+      .opportunity-email-message {
+        border-top: 1px solid var(--line);
+        padding: 12px 0;
+      }
+
+      .opportunity-email-message:first-child {
+        border-top: 0;
+      }
+
+      .opportunity-email-message .email-plain-body {
+        margin-bottom: 0;
+        max-height: 320px;
+        overflow: auto;
+      }
+
+      @media (max-width: 1180px) {
+        .opportunity-email-workspace {
+          grid-template-columns: 1fr;
+        }
+
+        .opportunity-email-conversation {
+          border-bottom: 1px solid var(--line);
+          border-right: 0;
+          max-height: 520px;
+        }
+      }
+
       @media (max-width: 860px) {
         .app-shell {
           grid-template-columns: 1fr;
@@ -1930,6 +2024,21 @@
 
         .app-main {
           padding: 16px;
+        }
+
+        .app-main.opportunity-email-page {
+          padding: 16px;
+        }
+
+        .opportunity-email-heading {
+          padding-left: 0;
+          padding-right: 0;
+        }
+
+        .opportunity-email-workspace {
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          min-height: auto;
         }
 
         .page-header,
@@ -2033,4 +2142,4 @@
         </div>
       </aside>
 
-      <main class="app-main">
+      <main class="app-main<%= typeof mainClass !== 'undefined' && mainClass ? ` ${mainClass}` : '' %>">
