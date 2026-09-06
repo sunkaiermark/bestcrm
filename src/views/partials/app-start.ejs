@@ -1995,6 +1995,34 @@
         min-width: 0;
       }
 
+      .customer-email-signature-field {
+        align-items: start;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: clamp(220px, 18vw, 260px) minmax(0, 1fr);
+        margin-bottom: 12px;
+      }
+
+      .customer-email-signature-preview {
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--text);
+        font: inherit;
+        line-height: 1.5;
+        margin: 0;
+        min-height: 132px;
+        overflow-wrap: anywhere;
+        padding: 12px 14px;
+        white-space: pre-wrap;
+      }
+
+      .customer-email-signature-preview.is-empty {
+        color: var(--muted);
+        font-style: italic;
+        min-height: auto;
+      }
+
       .customer-email-attachment-field {
         align-items: center;
         display: grid;
@@ -2138,6 +2166,7 @@
         }
 
         .customer-email-header-field,
+        .customer-email-signature-field,
         .customer-email-attachment-field {
           align-items: stretch;
           gap: 5px;

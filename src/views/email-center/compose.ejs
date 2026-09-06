@@ -82,6 +82,10 @@
             </label>
           <% } %>
           <label><%= t('emailBody') %><textarea name="body" rows="12" required></textarea></label>
+          <div class="customer-email-signature-field">
+            <span class="customer-email-field-label" id="customer-email-signature-label"><%= t('emailSignaturePreview') %></span>
+            <pre class="customer-email-signature-preview<%= context.signaturePreview ? '' : ' is-empty' %>" role="textbox" aria-readonly="true" aria-labelledby="customer-email-signature-label" tabindex="0"><%= context.signaturePreview || t('emailSignaturePreviewUnavailable') %></pre>
+          </div>
           <div class="customer-email-attachment-field">
             <span class="customer-email-field-label" id="customer-email-attachments-label"><%= t('emailAttachments') %></span>
             <div class="customer-email-file-picker" data-customer-email-file-picker data-empty-label="<%= t('noFilesSelected') %>">

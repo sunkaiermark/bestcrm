@@ -6,7 +6,9 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
+  buildPersonalEmailIdentity,
   createCustomerEmailDraft,
+  personalEmailSignaturePreview,
   sendCustomerEmail
 } from '../../src/services/customerEmailService.mjs';
 
@@ -22,6 +24,15 @@ function actor(overrides = {}) {
     ...overrides
   };
 }
+
+test('signature preview uses the exact identity signature and stays unavailable for incomplete profiles', () => {
+  const completeActor = actor();
+  assert.equal(
+    personalEmailSignaturePreview(completeActor),
+    buildPersonalEmailIdentity(completeActor).signature
+  );
+  assert.equal(personalEmailSignaturePreview(actor({ emailSignatureTitle: '' })), '');
+});
 
 function createDependencies(uploadDir, options = {}) {
   const messages = [];

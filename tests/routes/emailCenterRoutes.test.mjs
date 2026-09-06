@@ -191,6 +191,10 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(salesCompose.text, /inline-actions customer-email-actions/);
   assert.match(salesCompose.text, /\.customer-email-actions\s*\{\s*gap: 14px/);
   assert.match(salesCompose.text, />Formal quotation package</);
+  assert.match(salesCompose.text, />Email signature preview</);
+  assert.match(salesCompose.text, /customer-email-signature-preview/);
+  assert.match(salesCompose.text, /aria-readonly="true"/);
+  assert.match(salesCompose.text, /Best regards,[\s\S]*User 7[\s\S]*Project Engineer[\s\S]*SUNKAIER[\s\S]*E: user7@sunkaier\.com/);
   assert.match(salesCompose.text, /data-customer-email-file-picker/);
   assert.match(salesCompose.text, />Attachments</);
   assert.doesNotMatch(salesCompose.text, />Additional attachments</);
@@ -212,6 +216,7 @@ test('compose page shows send only to an authorized opportunity member and remai
   const supportingCompose = await supporting.get('/email-center/compose?opportunityId=20');
   assert.equal(supportingCompose.status, 200);
   assert.match(supportingCompose.text, /编写客户邮件/);
+  assert.match(supportingCompose.text, />邮件签名预览</);
   assert.doesNotMatch(supportingCompose.text, /所有客户邮件统一通过 sales@sunkaier\.com 发出/);
   assert.match(supportingCompose.text, />附件</);
   assert.match(supportingCompose.text, />选择文件</);

@@ -48,12 +48,10 @@ export class CustomerEmailError extends Error {
   }
 }
 
-export function buildPersonalEmailIdentity(actor, sharedAddress = 'sales@sunkaier.com') {
+function personalEmailIdentity(actor, sharedAddress = 'sales@sunkaier.com') {
   const name = text(actor.emailSignatureName);
   const title = text(actor.emailSignatureTitle);
-  if (!name || !title) {
-    throw new CustomerEmailError('Complete the employee English email name and title before sending', 409);
-  }
+  if (!name || !title) return null;
   const contactEmail = text(actor.email) || sharedAddress;
   const lines = ['Best regards,', '', name, title, 'SUNKAIER', `E: ${contactEmail}`];
   if (text(actor.phone)) lines.push(`T: ${text(actor.phone)}`);
@@ -62,6 +60,18 @@ export function buildPersonalEmailIdentity(actor, sharedAddress = 'sales@sunkaie
     fromName: `${name} | SUNKAIER`,
     signature: lines.join('\n')
   };
+}
+
+export function buildPersonalEmailIdentity(actor, sharedAddress = 'sales@sunkaier.com') {
+  const identity = personalEmailIdentity(actor, sharedAddress);
+  if (!identity) {
+    throw new CustomerEmailError('Complete the employee English email name and title before sending', 409);
+  }
+  return identity;
+}
+
+export function personalEmailSignaturePreview(actor, sharedAddress = 'sales@sunkaier.com') {
+  return personalEmailIdentity(actor, sharedAddress)?.signature || '';
 }
 
 function appendSignature(body, signature) {
@@ -207,6 +217,7 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
     conversation,
     opportunityThreads,
     packages,
+    signaturePreview: personalEmailSignaturePreview(actor, dependencies.sharedAddress),
     defaults: {
       to: context.inquiry?.contactEmail || replyAddress || '',
       subject: context.thread?.subject || context.inquiry?.subject || context.opportunity?.title || '',
