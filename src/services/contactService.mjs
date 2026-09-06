@@ -5,6 +5,14 @@ function forbidden() {
   throw new Error('Forbidden');
 }
 
+export class DuplicateContactError extends Error {
+  constructor(duplicates) {
+    super('Duplicate contact');
+    this.name = 'DuplicateContactError';
+    this.duplicates = duplicates;
+  }
+}
+
 function text(value) {
   return String(value || '').trim();
 }
@@ -28,6 +36,37 @@ export function canDeleteContact(user) {
   return hasRole(user, ROLES.ADMINISTRATOR);
 }
 
+async function findDuplicateContacts(contactRepository, input, { excludeId } = {}) {
+  if (!input.customerId || !input.name || !input.phone
+    || typeof contactRepository.findDuplicatesByIdentity !== 'function') {
+    return [];
+  }
+  return contactRepository.findDuplicatesByIdentity({
+    customerId: input.customerId,
+    name: input.name,
+    phone: input.phone
+  }, { excludeId });
+}
+
+async function assertNoDuplicateContact(contactRepository, input, options) {
+  const duplicates = await findDuplicateContacts(contactRepository, input, options);
+  if (duplicates.length > 0) {
+    throw new DuplicateContactError(duplicates);
+  }
+}
+
+async function persistWithoutDuplicateContact(contactRepository, input, operation, options) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error?.code !== '23505' || error?.constraint !== 'contacts_customer_name_phone_unique_idx') {
+      throw error;
+    }
+    const duplicates = await findDuplicateContacts(contactRepository, input, options);
+    throw new DuplicateContactError(duplicates);
+  }
+}
+
 export async function createContact({ customerRepository, contactRepository }, actor, input, options = {}) {
   const normalized = normalizeContactInput(input);
   const customer = await customerRepository.getCustomerDetail(normalized.customerId);
@@ -39,7 +78,12 @@ export async function createContact({ customerRepository, contactRepository }, a
   if (!canMaintainCustomer(actor, customer) && !managedInquiry) {
     forbidden();
   }
-  return contactRepository.createContact(normalized);
+  await assertNoDuplicateContact(contactRepository, normalized);
+  return persistWithoutDuplicateContact(
+    contactRepository,
+    normalized,
+    () => contactRepository.createContact(normalized)
+  );
 }
 
 export async function updateContact(contactRepository, actor, contactId, input) {
@@ -50,10 +94,18 @@ export async function updateContact(contactRepository, actor, contactId, input) 
   if (!canMaintainContact(actor, existing)) {
     forbidden();
   }
-  return contactRepository.updateContact(contactId, {
+  const normalized = {
     ...normalizeContactInput({ ...existing, ...input }),
     customerId: existing.customerId
-  });
+  };
+  const options = { excludeId: Number(contactId) };
+  await assertNoDuplicateContact(contactRepository, normalized, options);
+  return persistWithoutDuplicateContact(
+    contactRepository,
+    normalized,
+    () => contactRepository.updateContact(contactId, normalized),
+    options
+  );
 }
 
 export async function deleteContact(contactRepository, actor, contactId) {

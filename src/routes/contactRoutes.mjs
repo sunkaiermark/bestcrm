@@ -2,7 +2,7 @@ import { Router } from 'express';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { canMaintainContact } from '../services/customerService.mjs';
-import { canDeleteContact, createContact, deleteContact, updateContact } from '../services/contactService.mjs';
+import { DuplicateContactError, canDeleteContact, createContact, deleteContact, updateContact } from '../services/contactService.mjs';
 
 function contactFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
@@ -21,6 +21,16 @@ function contactCreateRedirect(contact, returnTo) {
     return `/opportunities/new?${params.toString()}`;
   }
   return `/contacts/${contact.id}`;
+}
+
+function contactFormLocals({
+  contact = {},
+  customers = [],
+  action = '/contacts',
+  returnTo = '',
+  duplicateContacts = []
+} = {}) {
+  return { contact, customers, action, returnTo, duplicateContacts };
 }
 
 export function contactRoutes({ customerRepository, contactRepository }) {
@@ -44,14 +54,14 @@ export function contactRoutes({ customerRepository, contactRepository }) {
   router.get('/contacts/new', async (req, res, next) => {
     try {
       const customers = await customerRepository.listCustomers(contactFilter(req.currentUser));
-      res.render('contacts/form', {
+      res.render('contacts/form', contactFormLocals({
         contact: {
           customerId: req.query.customerId || customers[0]?.id || ''
         },
         customers,
         returnTo: normalizedReturnTo(req.query.returnTo),
         action: '/contacts'
-      });
+      }));
     } catch (error) {
       next(error);
     }
@@ -62,6 +72,16 @@ export function contactRoutes({ customerRepository, contactRepository }) {
       const contact = await createContact({ customerRepository, contactRepository }, req.currentUser, req.body);
       res.redirect(contactCreateRedirect(contact, normalizedReturnTo(req.body.returnTo)));
     } catch (error) {
+      if (error instanceof DuplicateContactError) {
+        const customers = await customerRepository.listCustomers(contactFilter(req.currentUser));
+        res.status(409).render('contacts/form', contactFormLocals({
+          contact: req.body,
+          customers,
+          returnTo: normalizedReturnTo(req.body.returnTo),
+          duplicateContacts: error.duplicates
+        }));
+        return;
+      }
       next(error);
     }
   });
@@ -95,7 +115,7 @@ export function contactRoutes({ customerRepository, contactRepository }) {
         return;
       }
       const customers = await customerRepository.listCustomers(contactFilter(req.currentUser));
-      res.render('contacts/form', { contact, customers, action: `/contacts/${contact.id}` });
+      res.render('contacts/form', contactFormLocals({ contact, customers, action: `/contacts/${contact.id}` }));
     } catch (error) {
       next(error);
     }
@@ -106,6 +126,24 @@ export function contactRoutes({ customerRepository, contactRepository }) {
       const contact = await updateContact(contactRepository, req.currentUser, req.params.id, req.body);
       res.redirect(`/contacts/${contact.id}`);
     } catch (error) {
+      if (error instanceof DuplicateContactError) {
+        const [existing, customers] = await Promise.all([
+          contactRepository.getContactDetail(req.params.id),
+          customerRepository.listCustomers(contactFilter(req.currentUser))
+        ]);
+        res.status(409).render('contacts/form', contactFormLocals({
+          contact: {
+            ...existing,
+            ...req.body,
+            id: Number(req.params.id),
+            customerId: existing?.customerId || req.body.customerId
+          },
+          customers,
+          action: `/contacts/${req.params.id}`,
+          duplicateContacts: error.duplicates
+        }));
+        return;
+      }
       if (error.message === 'Forbidden') {
         res.status(403).send('Forbidden');
         return;

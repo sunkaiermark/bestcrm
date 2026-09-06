@@ -9,7 +9,7 @@ import {
   normalizeCustomerWebsite,
   updateCustomer
 } from '../../src/services/customerService.mjs';
-import { createContact, deleteContact, updateContact } from '../../src/services/contactService.mjs';
+import { DuplicateContactError, createContact, deleteContact, updateContact } from '../../src/services/contactService.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
 
 test('salesperson maintains only owned customer records', () => {
@@ -94,6 +94,28 @@ test('createCustomer rejects duplicate customer names before insert', async () =
     name: ' Acme Co '
   }), DuplicateCustomerError);
   assert.equal(createCalled, false);
+});
+
+test('createCustomer maps a concurrent database uniqueness conflict to the domain error', async () => {
+  let lookupCount = 0;
+  const customerRepository = {
+    async findDuplicatesByName() {
+      lookupCount += 1;
+      return lookupCount === 1 ? [] : [{ id: 10, name: 'Acme Co' }];
+    },
+    async createCustomer() {
+      const error = new Error('duplicate key');
+      error.code = '23505';
+      error.constraint = 'customers_normalized_name_unique_idx';
+      throw error;
+    }
+  };
+
+  await assert.rejects(() => createCustomer(customerRepository, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, { name: 'Acme Co' }), DuplicateCustomerError);
+  assert.equal(lookupCount, 2);
 });
 
 test('updateCustomer rejects non-owner salesperson', async () => {
@@ -203,6 +225,66 @@ test('createContact checks customer ownership before insert', async () => {
   }]);
 });
 
+test('createContact rejects the same name customer and phone identity', async () => {
+  let createCalled = false;
+  const customerRepository = {
+    async getCustomerDetail() {
+      return { id: 10, ownerUserId: 7 };
+    }
+  };
+  const contactRepository = {
+    async findDuplicatesByIdentity(identity, options) {
+      assert.deepEqual(identity, { customerId: 10, name: 'Alice', phone: '+86 159-6158-1489' });
+      assert.deepEqual(options, { excludeId: undefined });
+      return [{ id: 20, contactCode: 'CT000020', customerId: 10, name: 'Alice', phone: '15961581489' }];
+    },
+    async createContact() {
+      createCalled = true;
+    }
+  };
+
+  await assert.rejects(() => createContact({ customerRepository, contactRepository }, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, {
+    customerId: 10,
+    name: ' Alice ',
+    phone: '+86 159-6158-1489'
+  }), DuplicateContactError);
+  assert.equal(createCalled, false);
+});
+
+test('createContact maps a concurrent database uniqueness conflict to the domain error', async () => {
+  let lookupCount = 0;
+  const customerRepository = {
+    async getCustomerDetail() {
+      return { id: 10, ownerUserId: 7 };
+    }
+  };
+  const contactRepository = {
+    async findDuplicatesByIdentity() {
+      lookupCount += 1;
+      return lookupCount === 1 ? [] : [{ id: 20, contactCode: 'CT000020' }];
+    },
+    async createContact() {
+      const error = new Error('duplicate key');
+      error.code = '23505';
+      error.constraint = 'contacts_customer_name_phone_unique_idx';
+      throw error;
+    }
+  };
+
+  await assert.rejects(() => createContact({ customerRepository, contactRepository }, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, {
+    customerId: 10,
+    name: 'Alice',
+    phone: '15961581489'
+  }), DuplicateContactError);
+  assert.equal(lookupCount, 2);
+});
+
 test('updateContact rejects non-owner salesperson', async () => {
   const contactRepository = {
     async getContactDetail() {
@@ -219,6 +301,32 @@ test('updateContact rejects non-owner salesperson', async () => {
   }, 20, {
     name: 'Alice Updated'
   }), /Forbidden/);
+});
+
+test('updateContact excludes itself and rejects another matching contact', async () => {
+  let updateCalled = false;
+  const contactRepository = {
+    async getContactDetail() {
+      return { id: 20, customerId: 10, customerOwnerUserId: 7, name: 'Alice', phone: '123' };
+    },
+    async findDuplicatesByIdentity(identity, options) {
+      assert.deepEqual(identity, { customerId: 10, name: 'Alice', phone: '15961581489' });
+      assert.deepEqual(options, { excludeId: 20 });
+      return [{ id: 21, contactCode: 'CT000021', customerId: 10, name: 'Alice', phone: '15961581489' }];
+    },
+    async updateContact() {
+      updateCalled = true;
+    }
+  };
+
+  await assert.rejects(() => updateContact(contactRepository, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, 20, {
+    name: 'Alice',
+    phone: '15961581489'
+  }), DuplicateContactError);
+  assert.equal(updateCalled, false);
 });
 
 test('deleteContact allows administrators only', async () => {

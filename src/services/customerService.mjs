@@ -62,6 +62,20 @@ async function assertNoDuplicateCustomer(customerRepository, input, { excludeId 
   }
 }
 
+async function persistWithoutDuplicateCustomer(customerRepository, input, operation, options) {
+  try {
+    return await operation();
+  } catch (error) {
+    if (error?.code !== '23505' || error?.constraint !== 'customers_normalized_name_unique_idx') {
+      throw error;
+    }
+    const duplicates = typeof customerRepository.findDuplicatesByName === 'function'
+      ? await customerRepository.findDuplicatesByName(input.name, options)
+      : [];
+    throw new DuplicateCustomerError(duplicates);
+  }
+}
+
 export async function createCustomer(customerRepository, actor, input, options = {}) {
   const managedInquiry = options.managedInquiry === true
     && (hasRole(actor, ROLES.ADMINISTRATOR) || hasRole(actor, ROLES.SALES_MANAGER));
@@ -70,7 +84,11 @@ export async function createCustomer(customerRepository, actor, input, options =
     : actor.id;
   const normalized = normalizeCustomerInput(input, ownerUserId);
   await assertNoDuplicateCustomer(customerRepository, normalized);
-  return customerRepository.createCustomer(normalized);
+  return persistWithoutDuplicateCustomer(
+    customerRepository,
+    normalized,
+    () => customerRepository.createCustomer(normalized)
+  );
 }
 
 export async function updateCustomer(customerRepository, actor, customerId, input) {
@@ -82,8 +100,14 @@ export async function updateCustomer(customerRepository, actor, customerId, inpu
     forbidden();
   }
   const normalized = normalizeCustomerInput(input, existing.ownerUserId);
-  await assertNoDuplicateCustomer(customerRepository, normalized, { excludeId: Number(customerId) });
-  return customerRepository.updateCustomer(customerId, normalized);
+  const options = { excludeId: Number(customerId) };
+  await assertNoDuplicateCustomer(customerRepository, normalized, options);
+  return persistWithoutDuplicateCustomer(
+    customerRepository,
+    normalized,
+    () => customerRepository.updateCustomer(customerId, normalized),
+    options
+  );
 }
 
 export async function deleteCustomer(customerRepository, actor, customerId) {

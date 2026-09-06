@@ -44,6 +44,7 @@ const googleWorkspaceCustomerCenterMigrationPath = new URL('../../src/db/migrati
 const customerCodeMigrationPath = new URL('../../src/db/migrations/043_customer_code.sql', import.meta.url);
 const contactCodeMigrationPath = new URL('../../src/db/migrations/044_contact_code.sql', import.meta.url);
 const imapSyncAndEmailTriageMigrationPath = new URL('../../src/db/migrations/045_imap_sync_and_email_triage.sql', import.meta.url);
+const customerContactUniquenessMigrationPath = new URL('../../src/db/migrations/046_customer_contact_uniqueness.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -775,4 +776,18 @@ test('IMAP sync migration separates realtime and historical cursors and preserve
   assert.ok(triggerDrop >= 0 && triggerDrop < legacyBackfill);
   assert.ok(triggerRestore > legacyBackfill);
   assert.doesNotMatch(sql, /password|authorization_code|refresh_token/i);
+});
+
+test('customer and contact uniqueness migration enforces the approved business identities', async () => {
+  const sql = await readFile(customerContactUniquenessMigrationPath, 'utf8');
+
+  assert.match(sql, /bestcrm_normalize_identity_text/);
+  assert.match(sql, /bestcrm_normalize_phone/);
+  assert.match(sql, /\^0086\[1-9\]\[0-9\]\{10\}\$/);
+  assert.match(sql, /\^86\[1-9\]\[0-9\]\{10\}\$/);
+  assert.match(sql, /Duplicate customer unit names exist/);
+  assert.match(sql, /Duplicate contact identities exist/);
+  assert.match(sql, /customers_normalized_name_unique_idx/);
+  assert.match(sql, /contacts_customer_name_phone_unique_idx/);
+  assert.match(sql, /WHERE bestcrm_normalize_phone\(phone\) <> ''/);
 });

@@ -6,6 +6,32 @@
 
         <form class="form-panel" method="post" action="<%= action %>">
           <%- csrfField() %>
+          <% if (typeof duplicateContacts !== 'undefined' && duplicateContacts.length) { %>
+            <section class="duplicate-warning" role="alert">
+              <strong><%= t('duplicateContactFound') %></strong>
+              <p><%= t('duplicateContactCoordinationHint') %></p>
+              <table class="duplicate-table">
+                <thead>
+                  <tr>
+                    <th><%= t('contactCode') %></th>
+                    <th><%= t('customer') %></th>
+                    <th><%= t('name') %></th>
+                    <th><%= t('phone') %></th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% for (const duplicate of duplicateContacts) { %>
+                    <tr>
+                      <td><%= duplicate.contactCode %></td>
+                      <td><%= [duplicate.customerCode, duplicate.customerName].filter(Boolean).join(' · ') %></td>
+                      <td><%= duplicate.name %></td>
+                      <td><%= duplicate.phone %></td>
+                    </tr>
+                  <% } %>
+                </tbody>
+              </table>
+            </section>
+          <% } %>
           <% if (typeof returnTo !== 'undefined' && returnTo) { %>
             <input type="hidden" name="returnTo" value="<%= returnTo %>">
           <% } %>

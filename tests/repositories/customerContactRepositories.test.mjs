@@ -216,7 +216,8 @@ test('customer repository finds duplicate customers by normalized name', async (
     ownerUsername: 'sales01',
     contactCount: 2
   }]);
-  assert.match(queryTarget.queries[0].sql, /lower\(btrim\(c\.name\)\) = lower\(\$1\)/);
+  assert.match(queryTarget.queries[0].sql, /lower\(regexp_replace\(btrim\(c\.name\)/);
+  assert.match(queryTarget.queries[0].sql, /= lower\(regexp_replace\(btrim\(\$1\)/);
   assert.match(queryTarget.queries[0].sql, /c\.id <> \$2/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN users u/);
   assert.deepEqual(queryTarget.queries[0].params, ['Acme Co', 99]);
@@ -311,6 +312,27 @@ test('contact repository only auto-matches one exact normalized email address', 
 
   const ambiguousRepository = createContactRepository(createFakeQueryTarget([row, { ...row, id: '21' }]));
   assert.equal(await ambiguousRepository.findUniqueByEmail('alice@example.com'), null);
+});
+
+test('contact repository finds duplicates by customer normalized name and normalized phone', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    id: '20', contact_code: 'CT000020', customer_id: '10', customer_code: 'C000010',
+    customer_name: 'Acme Co', customer_owner_user_id: '7', name: 'Alice', phone: '159 6158 1489'
+  }]);
+  const repository = createContactRepository(queryTarget);
+
+  const duplicates = await repository.findDuplicatesByIdentity({
+    customerId: 10,
+    name: ' Alice ',
+    phone: '+86 159-6158-1489'
+  }, { excludeId: 99 });
+
+  assert.equal(duplicates[0].contactCode, 'CT000020');
+  assert.match(queryTarget.queries[0].sql, /ct\.customer_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /bestcrm_normalize_identity_text\(ct\.name\)/);
+  assert.match(queryTarget.queries[0].sql, /bestcrm_normalize_phone\(ct\.phone\)/);
+  assert.match(queryTarget.queries[0].sql, /ct\.id <> \$4/);
+  assert.deepEqual(queryTarget.queries[0].params, [10, 'Alice', '+86 159-6158-1489', 99]);
 });
 
 test('contact repository creates and updates contact rows', async () => {

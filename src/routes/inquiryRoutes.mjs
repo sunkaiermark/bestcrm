@@ -4,6 +4,7 @@ import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
+import { DuplicateContactError } from '../services/contactService.mjs';
 import { DuplicateCustomerError } from '../services/customerService.mjs';
 import {
   CustomerApprovalRequiredError,
@@ -137,6 +138,12 @@ function handleInquiryError(error, res, next) {
 }
 
 async function handleInquiryActionError(error, dependencies, req, res, next, inquiry) {
+  if (error instanceof DuplicateContactError) {
+    await renderInquiryDetailPage(dependencies, req, res, inquiry, {
+      actionError: `${res.locals.t('duplicateContactFound')}: ${res.locals.t('duplicateContactCoordinationHint')}`
+    }, 409);
+    return;
+  }
   if (error instanceof DuplicateCustomerError) {
     await renderInquiryDetailPage(dependencies, req, res, inquiry, {
       duplicateCustomers: error.duplicates

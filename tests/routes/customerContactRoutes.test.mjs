@@ -492,6 +492,93 @@ test('customer update shows duplicate warning and preserves the edited values', 
   assert.equal(updateCalled, false);
 });
 
+test('contact creation shows the approved duplicate identity warning', async () => {
+  let createCalled = false;
+  const { agent } = await createLoggedInAgent({
+    contactRepository: {
+      async findDuplicatesByIdentity(identity) {
+        assert.deepEqual(identity, {
+          customerId: 10,
+          name: 'Alice',
+          phone: '+86 159-6158-1489'
+        });
+        return [{
+          id: 20,
+          contactCode: 'CT000020',
+          customerId: 10,
+          customerCode: 'C000010',
+          customerName: 'Acme Co',
+          name: 'Alice',
+          phone: '15961581489'
+        }];
+      },
+      async createContact() {
+        createCalled = true;
+      }
+    }
+  });
+
+  const response = await agent
+    .post('/contacts')
+    .type('form')
+    .send({
+      customerId: '10',
+      name: 'Alice',
+      phone: '+86 159-6158-1489',
+      email: 'alice.new@example.com'
+    });
+
+  assert.equal(response.status, 409);
+  assert.match(response.text, /Duplicate contact found/);
+  assert.match(response.text, /same name, customer, and phone number/);
+  assert.match(response.text, /CT000020/);
+  assert.match(response.text, /C000010 · Acme Co/);
+  assert.match(response.text, /value="Alice"/);
+  assert.match(response.text, /value="\+86 159-6158-1489"/);
+  assert.equal(createCalled, false);
+});
+
+test('contact update shows duplicate warning and preserves edited values', async () => {
+  let updateCalled = false;
+  const { agent } = await createLoggedInAgent({
+    contactRepository: {
+      async findDuplicatesByIdentity(identity, options) {
+        assert.deepEqual(identity, { customerId: 10, name: 'Alice', phone: '15961581489' });
+        assert.deepEqual(options, { excludeId: 20 });
+        return [{
+          id: 21,
+          contactCode: 'CT000021',
+          customerId: 10,
+          customerCode: 'C000010',
+          customerName: 'Acme Co',
+          name: 'Alice',
+          phone: '+86 159 6158 1489'
+        }];
+      },
+      async updateContact() {
+        updateCalled = true;
+      }
+    }
+  });
+
+  const response = await agent
+    .post('/contacts/20')
+    .type('form')
+    .send({
+      customerId: '10',
+      name: 'Alice',
+      phone: '15961581489',
+      notes: 'Edited duplicate values'
+    });
+
+  assert.equal(response.status, 409);
+  assert.match(response.text, /Duplicate contact found/);
+  assert.match(response.text, /action="\/contacts\/20"/);
+  assert.match(response.text, /value="15961581489"/);
+  assert.match(response.text, /Edited duplicate values/);
+  assert.equal(updateCalled, false);
+});
+
 test('contact creation can return to opportunity initiation with the new contact selected', async () => {
   const { agent, createdContacts } = await createLoggedInAgent();
 

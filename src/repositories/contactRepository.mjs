@@ -56,6 +56,21 @@ export function createContactRepository(queryTarget) {
       return result.rows.length === 1 ? mapContactRow(result.rows[0]) : null;
     },
 
+    async findDuplicatesByIdentity({ customerId, name, phone }, { excludeId } = {}) {
+      const params = [Number(customerId), String(name || '').trim(), String(phone || '').trim()];
+      const excludeClause = excludeId ? `AND ct.id <> $${params.push(Number(excludeId))}` : '';
+      const result = await queryTarget.query(`
+        ${contactSelect}
+        WHERE ct.customer_id = $1
+          AND bestcrm_normalize_identity_text(ct.name) = bestcrm_normalize_identity_text($2)
+          AND bestcrm_normalize_phone(ct.phone) = bestcrm_normalize_phone($3)
+          AND bestcrm_normalize_phone(ct.phone) <> ''
+          ${excludeClause}
+        ORDER BY ct.created_at DESC, ct.id DESC
+      `, params);
+      return result.rows.map(mapContactRow);
+    },
+
     async listContacts(filter = {}) {
       const where = [];
       const params = [];

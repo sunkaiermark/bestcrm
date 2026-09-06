@@ -141,7 +141,8 @@ export function createCustomerRepository(queryTarget) {
         FROM customers c
         LEFT JOIN users u ON u.id = c.owner_user_id
         LEFT JOIN contacts ct ON ct.customer_id = c.id
-        WHERE lower(btrim(c.name)) = lower($1)
+        WHERE lower(regexp_replace(btrim(c.name), '[[:space:]]+', ' ', 'g'))
+          = lower(regexp_replace(btrim($1), '[[:space:]]+', ' ', 'g'))
           ${excludeClause}
         GROUP BY c.id, u.display_name, u.username
         ORDER BY c.created_at DESC, c.id DESC
