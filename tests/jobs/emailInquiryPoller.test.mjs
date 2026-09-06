@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   pollEmailInquiries,
+  previewEmailClassifications,
   validateEmailIntakeConfig
 } from '../../src/jobs/emailInquiryPoller.mjs';
 
@@ -207,7 +208,10 @@ test('pollEmailInquiries imports unseen messages and marks them seen', async () 
     imported: [
       { uid: 101, inquiryId: 11, duplicate: false, attachments: 0, skippedAttachments: 0 },
       { uid: 102, inquiryId: 12, duplicate: false, attachments: 0, skippedAttachments: 0 }
-    ]
+    ],
+    skipped: [],
+    mode: 'legacy-unseen',
+    backfillComplete: false
   });
   assert.deepEqual(calls.filter((call) => call[0] === 'messageFlagsAdd'), [
     ['messageFlagsAdd', '101', ['\\Seen'], { uid: true }],
@@ -448,4 +452,170 @@ test('attachment archive failure leaves mail unseen and a retry completes the sa
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
+});
+
+test('checkpointed incremental sync uses UID ranges without changing mailbox read state', async () => {
+  const archive = createMemoryArchive();
+  const inquiries = [];
+  const searches = [];
+  const checkpoints = [];
+  const state = {
+    mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '77',
+    incrementalLastUid: 100, backfillBeforeUid: 105, backfillComplete: false
+  };
+  Object.assign(archive.repository, {
+    async initializeImapSyncState() { return { ...state }; },
+    async updateImapIncrementalCheckpoint(input) {
+      checkpoints.push(input.uid);
+      state.incrementalLastUid = Math.max(state.incrementalLastUid, Number(input.uid));
+      return { ...state };
+    },
+    async updateImapBackfillCheckpoint() { return { ...state }; }
+  });
+  const client = {
+    mailbox: { uidValidity: 77n, uidNext: 105n },
+    async connect() {}, async mailboxOpen() {},
+    async search(query, options) { searches.push({ query, options }); return [104, 101, 103, 102]; },
+    async fetchOne(uid) { return { uid: Number(uid), source: rawEmail(`uid-${uid}`) }; },
+    async messageFlagsAdd() { assert.fail('checkpointed sync must not change read state'); },
+    async logout() {}
+  };
+
+  const result = await pollEmailInquiries({
+    config: config({ maxMessages: 3, markSeen: false }),
+    inquiryRepository: {
+      async createInquiry(input) { const inquiry = { id: inquiries.length + 1, ...input }; inquiries.push(inquiry); return inquiry; }
+    },
+    emailArchiveRepository: archive.repository,
+    imapClientFactory: () => client
+  });
+
+  assert.deepEqual(searches, [{ query: { uid: '101:*' }, options: { uid: true } }]);
+  assert.deepEqual(result.imported.map((item) => item.uid), [101, 102, 103]);
+  assert.deepEqual(checkpoints, [101, 102, 103]);
+  assert.equal(result.mode, 'incremental');
+});
+
+test('fresh checkpointed incremental sync starts at mailbox head while backfill remains available', async () => {
+  const archive = createMemoryArchive();
+  const checkpoints = [];
+  const state = {
+    mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '88',
+    incrementalLastUid: 204, backfillBeforeUid: 205, backfillComplete: false
+  };
+  Object.assign(archive.repository, {
+    async initializeImapSyncState(input) {
+      assert.equal(input.incrementalLastUid, 204);
+      assert.equal(input.backfillBeforeUid, 205);
+      return { ...state };
+    },
+    async updateImapIncrementalCheckpoint(input) {
+      checkpoints.push(input.uid);
+      return { ...state };
+    },
+    async updateImapBackfillCheckpoint() { return { ...state }; }
+  });
+  const client = {
+    mailbox: { uidValidity: 88n, uidNext: 205n },
+    async connect() {}, async mailboxOpen() {},
+    async search() { assert.fail('fresh incremental sync should not search historical mail'); },
+    async logout() {}
+  };
+
+  const result = await pollEmailInquiries({
+    config: config({ markSeen: false }),
+    inquiryRepository: { async createInquiry() { assert.fail('no message should be imported'); } },
+    emailArchiveRepository: archive.repository,
+    imapClientFactory: () => client
+  });
+
+  assert.equal(result.scanned, 0);
+  assert.deepEqual(checkpoints, [204]);
+  assert.equal(result.backfillComplete, false);
+});
+
+test('historical backfill walks UIDs newest-first and marks the cursor complete', async () => {
+  const archive = createMemoryArchive();
+  const checkpoints = [];
+  const state = {
+    mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '99',
+    incrementalLastUid: 120, backfillBeforeUid: 101, backfillComplete: false
+  };
+  Object.assign(archive.repository, {
+    async initializeImapSyncState() { return { ...state }; },
+    async updateImapIncrementalCheckpoint() { return { ...state }; },
+    async updateImapBackfillCheckpoint(input) {
+      checkpoints.push({ beforeUid: input.beforeUid, complete: input.complete });
+      if (input.beforeUid) state.backfillBeforeUid = Number(input.beforeUid);
+      state.backfillComplete = Boolean(input.complete);
+      return { ...state };
+    }
+  });
+  const client = {
+    mailbox: { uidValidity: 99n, uidNext: 121n },
+    async connect() {}, async mailboxOpen() {},
+    async search(query, options) {
+      assert.deepEqual({ query, options }, { query: { uid: '1:100' }, options: { uid: true } });
+      return [50, 100, 75];
+    },
+    async fetchOne(uid) { return { uid: Number(uid), source: rawEmail(`history-${uid}`) }; },
+    async logout() {}
+  };
+
+  const result = await pollEmailInquiries({
+    config: config({ maxMessages: 5, markSeen: false }),
+    inquiryRepository: { async createInquiry(input) { return { id: Number(input.rawPayload.uid), ...input }; } },
+    emailArchiveRepository: archive.repository,
+    imapClientFactory: () => client,
+    syncMode: 'backfill'
+  });
+
+  assert.deepEqual(result.imported.map((item) => item.uid), [100, 75, 50]);
+  assert.deepEqual(checkpoints, [
+    { beforeUid: 100, complete: false },
+    { beforeUid: 75, complete: false },
+    { beforeUid: 50, complete: false },
+    { beforeUid: 50, complete: true }
+  ]);
+  assert.equal(result.backfillComplete, true);
+});
+
+test('classification preview is read-only and prioritizes exact CRM contacts', async () => {
+  const calls = [];
+  const client = {
+    mailbox: { uidValidity: 123n, uidNext: 4n },
+    async connect() {}, async mailboxOpen() {},
+    async search(query, options) { calls.push(['search', query, options]); return [1, 2, 3]; },
+    async fetchOne(uid) {
+      calls.push(['fetchOne', uid]);
+      return {
+        uid: Number(uid),
+        source: Number(uid) === 3
+          ? rawGoogleAdsEmailWithAttachment('ads-preview')
+          : rawEmail(`preview-${uid}`, Number(uid) === 2 ? 'SEO opportunities and backlinks' : 'RFQ')
+      };
+    },
+    async messageFlagsAdd() { assert.fail('preview must not change mailbox flags'); },
+    async logout() {}
+  };
+  const result = await previewEmailClassifications({
+    config: config({ maxMessages: 2, markSeen: false }),
+    contactRepository: {
+      async findUniqueByEmail(email) {
+        return email === 'alice@example.com'
+          ? { id: 20, contactCode: 'CT000020', customerId: 10 }
+          : null;
+      }
+    },
+    emailArchiveRepository: { async findThreadByReferences() { return null; } },
+    imapClientFactory: () => client,
+    maxMessages: 2
+  });
+
+  assert.deepEqual(calls[0], ['search', { uid: '1:*' }, { uid: true }]);
+  assert.equal(result.scanned, 2);
+  assert.deepEqual(result.counts, { active: 1, archived: 1, spam: 0 });
+  assert.equal(result.items[0].classificationReason, 'google_ads_notification');
+  assert.equal(result.items[1].classificationReason, 'known_contact_email');
+  assert.equal(result.items[1].matchedContactId, 20);
 });

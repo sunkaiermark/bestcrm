@@ -42,6 +42,58 @@ function assertInboundIdentity(message) {
   }
 }
 
+function inboundClassification(inquiry = {}) {
+  const filter = inquiry.rawPayload?.emailFilter || {};
+  const archiveDisposition = inquiry.status === 'spam'
+    ? 'spam'
+    : inquiry.status === 'archived' ? 'archived' : 'active';
+  return {
+    archiveDisposition,
+    classificationCategory: text(filter.category) || 'inquiry',
+    classificationReason: text(filter.reason) || 'manual_review'
+  };
+}
+
+function knownContactInquiry(inquiry, contact) {
+  if (!contact) return inquiry;
+  return {
+    ...inquiry,
+    status: 'new',
+    matchedCustomerId: contact.customerId,
+    matchedContactId: contact.id,
+    rawPayload: {
+      ...(inquiry.rawPayload || {}),
+      emailFilter: {
+        status: 'new',
+        category: 'known_contact',
+        reason: 'known_contact_email',
+        matchedRules: [String(contact.contactCode || contact.id)]
+      }
+    },
+    reviewNote: inquiry.reviewNote || ''
+  };
+}
+
+export async function resolveInboundEmailClassification(repositories, parsed) {
+  const { message, inquiry } = parsed;
+  const thread = typeof repositories.emailArchiveRepository?.findThreadByReferences === 'function'
+    ? await repositories.emailArchiveRepository.findThreadByReferences(message.replyReferenceIds)
+    : null;
+  let effectiveInquiry = inquiry;
+  if (!thread && typeof repositories.contactRepository?.findUniqueByEmail === 'function') {
+    const contact = await repositories.contactRepository.findUniqueByEmail(message.fromAddress);
+    effectiveInquiry = knownContactInquiry(inquiry, contact);
+  }
+  const classification = thread
+    ? {
+        archiveDisposition: thread.archiveDisposition || 'active',
+        classificationCategory: thread.classificationCategory || 'conversation',
+        classificationReason: thread.classificationReason || 'known_thread_reply'
+      }
+    : inboundClassification(effectiveInquiry);
+  return { thread, inquiry: effectiveInquiry, classification };
+}
+
 export async function archiveInboundEmailRecord(repositories, parsed) {
   const { emailArchiveRepository, inquiryRepository } = repositories;
   const { message, inquiry } = parsed;
@@ -53,10 +105,13 @@ export async function archiveInboundEmailRecord(repositories, parsed) {
     return { duplicate: true, message: existing, thread, inquiry: null };
   }
 
-  let thread = await emailArchiveRepository.findThreadByReferences(message.replyReferenceIds);
+  const resolved = await resolveInboundEmailClassification(repositories, parsed);
+  let thread = resolved.thread;
+  const effectiveInquiry = resolved.inquiry;
+  const classification = resolved.classification;
   let inquiryRecord = null;
   if (!thread) {
-    inquiryRecord = await inquiryRepository.createInquiry(inquiry);
+    inquiryRecord = await inquiryRepository.createInquiry(effectiveInquiry);
     thread = await emailArchiveRepository.createThread({
       mailboxKey: message.mailboxKey,
       subject: message.subject,
@@ -64,12 +119,14 @@ export async function archiveInboundEmailRecord(repositories, parsed) {
       inquiryId: inquiryRecord.id,
       customerId: inquiryRecord.matchedCustomerId,
       contactId: inquiryRecord.matchedContactId,
+      ...classification,
       lastMessageAt: message.receivedAt
     });
   }
 
   const archivedMessage = await emailArchiveRepository.createInboundMessage({
     ...message,
+    ...classification,
     threadId: thread.id
   });
   if (!archivedMessage) {
@@ -166,8 +223,8 @@ export async function canViewEmailThread(dependencies, actor, thread) {
   return Boolean(opportunity && canViewOpportunity(actor, opportunity));
 }
 
-export async function listVisibleEmailThreads(dependencies, actor) {
-  const threads = await dependencies.emailArchiveRepository.listThreads();
+export async function listVisibleEmailThreads(dependencies, actor, filter = {}) {
+  const threads = await dependencies.emailArchiveRepository.listThreads(filter);
   const visible = [];
   for (const thread of threads) {
     if (await canViewEmailThread(dependencies, actor, thread)) {

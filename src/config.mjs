@@ -216,7 +216,7 @@ export function loadConfig(env = process.env) {
       mailboxKey: env.EMAIL_INTAKE_MAILBOX_KEY || env.EMAIL_INTAKE_USER || 'sales',
       pollIntervalMs: numberEnv(env.EMAIL_INTAKE_POLL_INTERVAL_MS, 5 * 60 * 1000),
       maxMessages: numberEnv(env.EMAIL_INTAKE_MAX_MESSAGES, 20),
-      markSeen: booleanEnv(env.EMAIL_INTAKE_MARK_SEEN, true)
+      markSeen: booleanEnv(env.EMAIL_INTAKE_MARK_SEEN, false)
     },
     notificationDelivery: {
       enabled: booleanEnv(env.NOTIFICATION_DELIVERY_ENABLED, false),

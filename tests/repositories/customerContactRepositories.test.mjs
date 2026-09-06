@@ -295,6 +295,24 @@ test('contact repository searches contact and customer identity fields inside th
   assert.deepEqual(params, [7, 10, '%CT000\\_20\\%%']);
 });
 
+test('contact repository only auto-matches one exact normalized email address', async () => {
+  const row = {
+    id: '20', contact_code: 'CT000020', customer_id: '10', customer_code: 'C000010',
+    customer_name: 'Acme Co', customer_owner_user_id: '7', name: 'Alice', email: 'alice@example.com'
+  };
+  const uniqueTarget = createFakeQueryTarget([row]);
+  const uniqueRepository = createContactRepository(uniqueTarget);
+  const contact = await uniqueRepository.findUniqueByEmail(' Alice@Example.com ');
+
+  assert.equal(contact.contactCode, 'CT000020');
+  assert.match(uniqueTarget.queries[0].sql, /lower\(btrim\(ct\.email\)\) = \$1/);
+  assert.match(uniqueTarget.queries[0].sql, /LIMIT 2/);
+  assert.deepEqual(uniqueTarget.queries[0].params, ['alice@example.com']);
+
+  const ambiguousRepository = createContactRepository(createFakeQueryTarget([row, { ...row, id: '21' }]));
+  assert.equal(await ambiguousRepository.findUniqueByEmail('alice@example.com'), null);
+});
+
 test('contact repository creates and updates contact rows', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '20',

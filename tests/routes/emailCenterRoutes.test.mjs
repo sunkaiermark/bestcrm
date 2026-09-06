@@ -105,6 +105,7 @@ test('sales manager sees bilingual protected threads and plain-text escaped mess
   assert.equal(list.status, 200);
   assert.match(list.text, /邮件中心/);
   assert.match(list.text, /业务邮件和附件永久保存在 CRM 归档中/);
+  assert.match(list.text, /垃圾邮件隔离区/);
   assert.match(list.text, /&lt;script&gt;alert\(1\)&lt;\/script&gt; RFQ/);
   assert.doesNotMatch(list.text, /<script>alert\(1\)<\/script>/);
 

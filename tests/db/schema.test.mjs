@@ -43,6 +43,7 @@ const authenticatorMfaMigrationPath = new URL('../../src/db/migrations/041_authe
 const googleWorkspaceCustomerCenterMigrationPath = new URL('../../src/db/migrations/042_google_workspace_customer_center.sql', import.meta.url);
 const customerCodeMigrationPath = new URL('../../src/db/migrations/043_customer_code.sql', import.meta.url);
 const contactCodeMigrationPath = new URL('../../src/db/migrations/044_contact_code.sql', import.meta.url);
+const imapSyncAndEmailTriageMigrationPath = new URL('../../src/db/migrations/045_imap_sync_and_email_triage.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -754,4 +755,24 @@ test('contact code migration backfills stable immutable CT000001-style codes', a
   assert.match(sql, /ALTER COLUMN contact_code SET NOT NULL/);
   assert.match(sql, /bestcrm_protect_contact_code/);
   assert.match(sql, /contact_code is immutable/);
+});
+
+test('IMAP sync migration separates realtime and historical cursors and preserves triage evidence', async () => {
+  const sql = await readFile(imapSyncAndEmailTriageMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_imap_sync_states/);
+  assert.match(sql, /UNIQUE \(mailbox_key, mailbox_name\)/);
+  assert.match(sql, /incremental_last_uid bigint NOT NULL DEFAULT 0/);
+  assert.match(sql, /backfill_before_uid bigint/);
+  assert.match(sql, /backfill_complete boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /archive_disposition IN \('active', 'archived', 'spam'\)/);
+  assert.match(sql, /classification_category text NOT NULL/);
+  assert.match(sql, /classification_reason text NOT NULL/);
+  assert.match(sql, /NEW\.archive_disposition IS DISTINCT FROM OLD\.archive_disposition/);
+  const triggerDrop = sql.indexOf('DROP TRIGGER IF EXISTS email_messages_protect_content');
+  const legacyBackfill = sql.indexOf('UPDATE email_messages message');
+  const triggerRestore = sql.lastIndexOf('CREATE TRIGGER email_messages_protect_content');
+  assert.ok(triggerDrop >= 0 && triggerDrop < legacyBackfill);
+  assert.ok(triggerRestore > legacyBackfill);
+  assert.doesNotMatch(sql, /password|authorization_code|refresh_token/i);
 });

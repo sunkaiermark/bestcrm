@@ -30,6 +30,9 @@ function mapThreadRow(row) {
     contactId: numberOrNull(row.contact_id),
     contactCode: text(row.contact_code),
     contactName: text(row.contact_name),
+    archiveDisposition: text(row.archive_disposition) || 'active',
+    classificationCategory: text(row.classification_category) || 'inquiry',
+    classificationReason: text(row.classification_reason) || 'manual_review',
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -63,6 +66,9 @@ function mapMessageRow(row) {
     textBody: text(row.text_body),
     htmlBody: text(row.html_body),
     safeHeaders: row.safe_headers || {},
+    archiveDisposition: text(row.archive_disposition) || 'active',
+    classificationCategory: text(row.classification_category) || 'inquiry',
+    classificationReason: text(row.classification_reason) || 'manual_review',
     deliveryStatus: row.delivery_status,
     providerMessageId: text(row.provider_message_id),
     failureCode: text(row.failure_code),
@@ -74,6 +80,25 @@ function mapMessageRow(row) {
     createdAt: row.created_at,
     attachments: [],
     deliveryAttempts: []
+  };
+}
+
+function mapImapSyncStateRow(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    mailboxKey: text(row.mailbox_key),
+    mailboxName: text(row.mailbox_name),
+    uidValidity: text(row.uid_validity),
+    incrementalLastUid: Number(row.incremental_last_uid || 0),
+    backfillBeforeUid: numberOrNull(row.backfill_before_uid),
+    backfillComplete: Boolean(row.backfill_complete),
+    lastIncrementalSyncAt: row.last_incremental_sync_at,
+    lastBackfillSyncAt: row.last_backfill_sync_at,
+    lastErrorCode: text(row.last_error_code),
+    lastErrorAt: row.last_error_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 
@@ -125,6 +150,9 @@ const threadSelect = `
     thread.contact_id,
     contact.contact_code,
     contact.name AS contact_name,
+    thread.archive_disposition,
+    thread.classification_category,
+    thread.classification_reason,
     thread.last_message_at,
     thread.created_at,
     thread.updated_at,
@@ -169,11 +197,15 @@ export function createEmailArchiveRepository(queryTarget) {
   return {
     supportsEmailArchive: true,
 
-    async listThreads() {
+    async listThreads({ archiveDisposition = 'active' } = {}) {
+      const normalizedDisposition = ['active', 'archived', 'spam'].includes(archiveDisposition)
+        ? archiveDisposition
+        : '';
       const result = await queryTarget.query(`
         ${threadSelect}
+        ${normalizedDisposition ? 'WHERE thread.archive_disposition = $1' : ''}
         ORDER BY thread.last_message_at DESC, thread.id DESC
-      `);
+      `, normalizedDisposition ? [normalizedDisposition] : []);
       return result.rows.map(mapThreadRow);
     },
 
@@ -291,9 +323,12 @@ export function createEmailArchiveRepository(queryTarget) {
           opportunity_id,
           customer_id,
           contact_id,
+          archive_disposition,
+          classification_category,
+          classification_reason,
           last_message_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         RETURNING *
       `, [
         input.mailboxKey,
@@ -303,6 +338,9 @@ export function createEmailArchiveRepository(queryTarget) {
         input.opportunityId || null,
         input.customerId || null,
         input.contactId || null,
+        input.archiveDisposition || 'active',
+        input.classificationCategory || 'inquiry',
+        input.classificationReason || 'manual_review',
         input.lastMessageAt
       ]);
       return mapThreadRow(result.rows[0]);
@@ -327,10 +365,13 @@ export function createEmailArchiveRepository(queryTarget) {
           text_body,
           html_body,
           safe_headers,
+          archive_disposition,
+          classification_category,
+          classification_reason,
           delivery_status,
           received_at
         )
-        VALUES ($1, 'inbound', $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13, $14, $15::jsonb, 'received', $16)
+        VALUES ($1, 'inbound', $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13, $14, $15::jsonb, $16, $17, $18, 'received', $19)
         ON CONFLICT DO NOTHING
         RETURNING *
       `, [
@@ -349,6 +390,9 @@ export function createEmailArchiveRepository(queryTarget) {
         input.textBody || '',
         input.htmlBody || '',
         JSON.stringify(input.safeHeaders || {}),
+        input.archiveDisposition || 'active',
+        input.classificationCategory || 'inquiry',
+        input.classificationReason || 'manual_review',
         input.receivedAt
       ]);
       return mapMessageRow(result.rows[0]);
@@ -517,6 +561,113 @@ export function createEmailArchiveRepository(queryTarget) {
         input.safeError || ''
       ]);
       return mapDeliveryAttemptRow(result.rows[0]);
+    },
+
+    async initializeImapSyncState(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO email_imap_sync_states (
+          mailbox_key,
+          mailbox_name,
+          uid_validity,
+          incremental_last_uid,
+          backfill_before_uid
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (mailbox_key, mailbox_name)
+        DO UPDATE SET
+          uid_validity = EXCLUDED.uid_validity,
+          incremental_last_uid = CASE
+            WHEN email_imap_sync_states.uid_validity IS DISTINCT FROM EXCLUDED.uid_validity
+              THEN EXCLUDED.incremental_last_uid
+            ELSE email_imap_sync_states.incremental_last_uid
+          END,
+          backfill_before_uid = CASE
+            WHEN email_imap_sync_states.uid_validity IS DISTINCT FROM EXCLUDED.uid_validity
+              THEN EXCLUDED.backfill_before_uid
+            ELSE email_imap_sync_states.backfill_before_uid
+          END,
+          backfill_complete = CASE
+            WHEN email_imap_sync_states.uid_validity IS DISTINCT FROM EXCLUDED.uid_validity
+              THEN false
+            ELSE email_imap_sync_states.backfill_complete
+          END,
+          last_error_code = CASE
+            WHEN email_imap_sync_states.uid_validity IS DISTINCT FROM EXCLUDED.uid_validity
+              THEN 'uid_validity_changed'
+            ELSE email_imap_sync_states.last_error_code
+          END,
+          last_error_at = CASE
+            WHEN email_imap_sync_states.uid_validity IS DISTINCT FROM EXCLUDED.uid_validity
+              THEN now()
+            ELSE email_imap_sync_states.last_error_at
+          END,
+          updated_at = now()
+        RETURNING *
+      `, [
+        input.mailboxKey,
+        input.mailboxName,
+        input.uidValidity,
+        input.incrementalLastUid || 0,
+        input.backfillBeforeUid || null
+      ]);
+      return mapImapSyncStateRow(result.rows[0]);
+    },
+
+    async updateImapIncrementalCheckpoint(input) {
+      const result = await queryTarget.query(`
+        UPDATE email_imap_sync_states
+        SET
+          incremental_last_uid = GREATEST(incremental_last_uid, $4),
+          last_incremental_sync_at = now(),
+          last_error_code = '',
+          last_error_at = NULL,
+          updated_at = now()
+        WHERE mailbox_key = $1
+          AND mailbox_name = $2
+          AND uid_validity = $3
+        RETURNING *
+      `, [input.mailboxKey, input.mailboxName, input.uidValidity, input.uid]);
+      return mapImapSyncStateRow(result.rows[0]);
+    },
+
+    async updateImapBackfillCheckpoint(input) {
+      const result = await queryTarget.query(`
+        UPDATE email_imap_sync_states
+        SET
+          backfill_before_uid = CASE
+            WHEN $4::bigint IS NULL THEN backfill_before_uid
+            WHEN backfill_before_uid IS NULL THEN $4
+            ELSE LEAST(backfill_before_uid, $4)
+          END,
+          backfill_complete = $5,
+          last_backfill_sync_at = now(),
+          last_error_code = '',
+          last_error_at = NULL,
+          updated_at = now()
+        WHERE mailbox_key = $1
+          AND mailbox_name = $2
+          AND uid_validity = $3
+        RETURNING *
+      `, [
+        input.mailboxKey,
+        input.mailboxName,
+        input.uidValidity,
+        input.beforeUid || null,
+        Boolean(input.complete)
+      ]);
+      return mapImapSyncStateRow(result.rows[0]);
+    },
+
+    async recordImapSyncError(input) {
+      const result = await queryTarget.query(`
+        UPDATE email_imap_sync_states
+        SET last_error_code = $4, last_error_at = now(), updated_at = now()
+        WHERE mailbox_key = $1
+          AND mailbox_name = $2
+          AND uid_validity = $3
+        RETURNING *
+      `, [input.mailboxKey, input.mailboxName, input.uidValidity, input.errorCode || 'sync_failed']);
+      return mapImapSyncStateRow(result.rows[0]);
     }
   };
 }

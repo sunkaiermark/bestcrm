@@ -44,6 +44,18 @@ const contactSelect = `
 
 export function createContactRepository(queryTarget) {
   return {
+    async findUniqueByEmail(email) {
+      const normalized = String(email || '').trim().toLowerCase();
+      if (!normalized) return null;
+      const result = await queryTarget.query(`
+        ${contactSelect}
+        WHERE lower(btrim(ct.email)) = $1
+        ORDER BY ct.id
+        LIMIT 2
+      `, [normalized]);
+      return result.rows.length === 1 ? mapContactRow(result.rows[0]) : null;
+    },
+
     async listContacts(filter = {}) {
       const where = [];
       const params = [];

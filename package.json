@@ -17,6 +17,8 @@
     "db:seed": "node src/db/seed.mjs",
     "email:poll": "node scripts/poll-email-inquiries.mjs",
     "email:poll:once": "node scripts/poll-email-inquiries.mjs --once",
+    "email:backfill": "node scripts/poll-email-inquiries.mjs --backfill",
+    "email:preview": "node scripts/preview-email-classification.mjs",
     "email:classify": "node scripts/classify-email-inquiries.mjs",
     "email:cleanup-attachments": "node scripts/cleanup-email-inquiry-attachments.mjs",
     "notifications:deliver": "node scripts/deliver-notifications.mjs",

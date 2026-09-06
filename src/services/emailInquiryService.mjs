@@ -98,7 +98,15 @@ function attachmentMetadata(attachments) {
 
 function safeHeaders(parsed) {
   const safe = {};
-  for (const name of ['auto-submitted', 'content-language', 'importance', 'x-mailer']) {
+  for (const name of [
+    'auto-submitted',
+    'content-language',
+    'importance',
+    'list-id',
+    'list-unsubscribe',
+    'precedence',
+    'x-mailer'
+  ]) {
     const value = parsed.headers?.get?.(name);
     if (value !== undefined && value !== null && text(value)) {
       safe[name] = text(value).slice(0, 500);
@@ -146,6 +154,7 @@ export function normalizeEmailInquiryPayload(parsed = {}, meta = {}) {
       from,
       to: addressList(parsed.to),
       cc: addressList(parsed.cc),
+      headers: safeHeaders(parsed),
       text: body,
       attachments: attachmentMetadata(parsed.attachments)
     },

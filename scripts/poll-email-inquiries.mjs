@@ -3,11 +3,13 @@ import { loadConfig } from '../src/config.mjs';
 import { createPool } from '../src/db/pool.mjs';
 import { createEmailArchiveTransaction } from '../src/db/emailArchiveTransaction.mjs';
 import { createEmailArchiveRepository } from '../src/repositories/emailArchiveRepository.mjs';
+import { createContactRepository } from '../src/repositories/contactRepository.mjs';
 import { createInquiryAttachmentRepository } from '../src/repositories/inquiryAttachmentRepository.mjs';
 import { createInquiryRepository } from '../src/repositories/inquiryRepository.mjs';
 import { pollEmailInquiries } from '../src/jobs/emailInquiryPoller.mjs';
 
 const once = process.argv.includes('--once');
+const backfill = process.argv.includes('--backfill');
 const config = loadConfig();
 
 if (!config.emailIntake.enabled) {
@@ -19,6 +21,7 @@ const pool = createPool(config);
 const inquiryRepository = createInquiryRepository(pool);
 const inquiryAttachmentRepository = createInquiryAttachmentRepository(pool);
 const emailArchiveRepository = createEmailArchiveRepository(pool);
+const contactRepository = createContactRepository(pool);
 const emailArchiveTransaction = createEmailArchiveTransaction(pool);
 let stopping = false;
 
@@ -34,17 +37,22 @@ async function runOnce() {
     inquiryRepository,
     inquiryAttachmentRepository,
     emailArchiveRepository,
-    emailArchiveTransaction
+    contactRepository,
+    emailArchiveTransaction,
+    syncMode: backfill ? 'backfill' : 'incremental'
   });
   console.log(JSON.stringify({
     event: 'email_inquiry_poll_complete',
+    mode: result.mode,
     scanned: result.scanned,
-    imported: result.imported
+    imported: result.imported.length,
+    skipped: result.skipped.length,
+    backfillComplete: result.backfillComplete
   }));
 }
 
 try {
-  if (once) {
+  if (once || backfill) {
     await runOnce();
   } else {
     while (!stopping) {

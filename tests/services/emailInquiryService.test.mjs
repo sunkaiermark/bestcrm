@@ -50,6 +50,7 @@ test('normalizeEmailInquiryPayload maps sender body fields and attachments into 
       from: { name: 'Alice Buyer', address: 'alice@example.com' },
       to: [{ name: 'Sales', address: 'sales@sunkaier.com' }],
       cc: [],
+      headers: {},
       text: parsed.text,
       attachments: [{ filename: 'process.pdf', contentType: 'application/pdf', size: 1234, cid: 'cid-1' }],
       emailFilter: {

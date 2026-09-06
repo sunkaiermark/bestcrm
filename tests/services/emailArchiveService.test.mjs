@@ -65,6 +65,66 @@ test('reply headers join an existing opportunity thread without creating another
   assert.equal(result.inquiry, null);
 });
 
+test('automatic email classification is preserved on both thread and message archive records', async () => {
+  const created = {};
+  const spam = parsed();
+  spam.inquiry = {
+    ...spam.inquiry,
+    status: 'spam',
+    rawPayload: { emailFilter: { category: 'marketing_spam', reason: 'seo_outreach' } }
+  };
+  await archiveInboundEmailRecord({
+    inquiryRepository: { async createInquiry(input) { return { id: 8, ...input }; } },
+    emailArchiveRepository: {
+      async findMessageIdentity() { return null; },
+      async findThreadByReferences() { return null; },
+      async createThread(input) { created.thread = input; return { id: 3, ...input }; },
+      async createInboundMessage(input) { created.message = input; return { id: 9, ...input }; },
+      async touchThread() {}
+    }
+  }, spam);
+
+  for (const record of [created.thread, created.message]) {
+    assert.equal(record.archiveDisposition, 'spam');
+    assert.equal(record.classificationCategory, 'marketing_spam');
+    assert.equal(record.classificationReason, 'seo_outreach');
+  }
+});
+
+test('one exact existing contact overrides spam heuristics and links the archived thread', async () => {
+  const created = {};
+  const candidate = parsed();
+  candidate.inquiry = {
+    ...candidate.inquiry,
+    status: 'spam',
+    rawPayload: { emailFilter: { category: 'marketing_spam', reason: 'seo_marketing_pitch' } }
+  };
+  await archiveInboundEmailRecord({
+    contactRepository: {
+      async findUniqueByEmail(email) {
+        assert.equal(email, 'buyer@example.com');
+        return { id: 20, contactCode: 'CT000020', customerId: 10 };
+      }
+    },
+    inquiryRepository: {
+      async createInquiry(input) { created.inquiry = input; return { id: 8, ...input }; }
+    },
+    emailArchiveRepository: {
+      async findMessageIdentity() { return null; },
+      async findThreadByReferences() { return null; },
+      async createThread(input) { created.thread = input; return { id: 3, ...input }; },
+      async createInboundMessage(input) { created.message = input; return { id: 9, ...input }; },
+      async touchThread() {}
+    }
+  }, candidate);
+
+  assert.equal(created.inquiry.status, 'new');
+  assert.equal(created.inquiry.matchedCustomerId, 10);
+  assert.equal(created.inquiry.matchedContactId, 20);
+  assert.equal(created.thread.archiveDisposition, 'active');
+  assert.equal(created.message.classificationReason, 'known_contact_email');
+});
+
 test('duplicate Message-ID returns the existing archive without creating records', async () => {
   const existing = { id: 10, threadId: 4 };
   const result = await archiveInboundEmailRecord({
@@ -124,4 +184,18 @@ test('thread visibility keeps unlinked mail manager-only and uses opportunity me
   assert.deepEqual((await listVisibleEmailThreads(dependencies, manager)).map((item) => item.id), [1, 2]);
   await assert.rejects(() => getVisibleEmailThread(dependencies, salesperson, 1), /Forbidden/);
   assert.equal((await getVisibleEmailThread(dependencies, salesperson, 2)).id, 2);
+});
+
+test('thread visibility forwards the requested archive folder without changing RBAC checks', async () => {
+  let receivedFilter;
+  const dependencies = {
+    emailArchiveRepository: {
+      async listThreads(filter) { receivedFilter = filter; return [{ id: 1, inquiryId: 8, opportunityId: null }]; }
+    }
+  };
+
+  const manager = { id: 2, roles: [ROLES.SALES_MANAGER] };
+  const threads = await listVisibleEmailThreads(dependencies, manager, { archiveDisposition: 'spam' });
+  assert.equal(threads.length, 1);
+  assert.deepEqual(receivedFilter, { archiveDisposition: 'spam' });
 });

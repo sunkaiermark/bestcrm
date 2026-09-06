@@ -70,6 +70,25 @@ test('email filter archives finance and supplier messages without inquiry intent
   }).status, 'archived');
 });
 
+test('email filter archives high-confidence automated and mailing-list headers', () => {
+  assert.deepEqual(classifyEmailInquiryPayload({
+    subject: 'Weekly industry digest',
+    contactEmail: 'digest@example.com',
+    rawPayload: { headers: { 'list-id': 'industry.example.com', 'list-unsubscribe': '<mailto:leave@example.com>' } }
+  }), {
+    status: 'archived',
+    category: 'newsletter',
+    reason: 'mailing_list_headers',
+    matchedRules: ['list-id', 'list-unsubscribe']
+  });
+
+  assert.equal(classifyEmailInquiryPayload({
+    subject: 'Automatic delivery status update',
+    contactEmail: 'mailer-daemon@example.com',
+    rawPayload: { headers: { 'auto-submitted': 'auto-generated' } }
+  }).reason, 'automated_message');
+});
+
 test('applyEmailInquiryFilter stores the decision in raw payload', () => {
   const inquiry = applyEmailInquiryFilter({
     subject: 'Google Ads account notice',

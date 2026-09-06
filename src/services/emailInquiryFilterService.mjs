@@ -136,6 +136,36 @@ function combinedText(input = {}) {
   ].map(text).filter(Boolean).join('\n');
 }
 
+function automatedMailDecision(input = {}) {
+  const headers = input.rawPayload?.headers || {};
+  const autoSubmitted = lower(headers['auto-submitted']);
+  const precedence = lower(headers.precedence);
+  const listId = text(headers['list-id']);
+  const listUnsubscribe = text(headers['list-unsubscribe']);
+
+  if (autoSubmitted && autoSubmitted !== 'no') {
+    return {
+      status: 'archived',
+      category: 'system_notification',
+      reason: 'automated_message',
+      matchedRules: [`auto-submitted:${autoSubmitted}`]
+    };
+  }
+  if (listId || listUnsubscribe || ['bulk', 'list', 'junk'].includes(precedence)) {
+    return {
+      status: 'archived',
+      category: 'newsletter',
+      reason: 'mailing_list_headers',
+      matchedRules: [
+        listId ? 'list-id' : '',
+        listUnsubscribe ? 'list-unsubscribe' : '',
+        precedence ? `precedence:${precedence}` : ''
+      ].filter(Boolean)
+    };
+  }
+  return null;
+}
+
 function matchTextRule(rule, value) {
   const matchedPatterns = rule.patterns
     .filter((pattern) => pattern.test(value))
@@ -185,6 +215,11 @@ export function classifyEmailInquiryPayload(input = {}) {
     if (matched) {
       return matched;
     }
+  }
+
+  const automated = automatedMailDecision(input);
+  if (automated) {
+    return automated;
   }
 
   if (hasInquiryIntent(value)) {

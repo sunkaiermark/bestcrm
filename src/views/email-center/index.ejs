@@ -7,6 +7,11 @@
         </header>
 
         <section class="form-panel"><strong><%= t('emailArchivePermanentNotice') %></strong><p class="muted"><%= t('emailReceiveOnlyNotice') %></p></section>
+        <nav class="form-actions" aria-label="<%= t('emailArchiveFolders') %>">
+          <% for (const item of ['active', 'archived', 'spam', 'all']) { %>
+            <a class="<%= folder === item ? 'primary-action' : 'secondary-action' %>" href="/email-center?folder=<%= item %>"><%= t(`emailArchiveFolder.${item}`) %></a>
+          <% } %>
+        </nav>
         <section class="list-section">
           <div class="list-body">
             <table class="list-table content-fit-table">
@@ -15,7 +20,7 @@
                 <% for (const thread of threads) { %>
                   <tr>
                     <td><%= thread.lastMessageAt || '' %></td>
-                    <td><strong><%= thread.subject || t('noSubject') %></strong></td>
+                    <td><strong><%= thread.subject || t('noSubject') %></strong><br><span class="muted"><%= t(`emailArchiveFolder.${thread.archiveDisposition || 'active'}`) %></span></td>
                     <td>
                       <% if (thread.opportunityId) { %><span class="status"><%= t('opportunity') %> <%= thread.opportunityNo || `#${thread.opportunityId}` %> · <%= thread.opportunityTitle %></span>
                       <% } else if (thread.inquiryId) { %><span class="status"><%= t('inquiry') %> #<%= thread.inquiryId %></span>

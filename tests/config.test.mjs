@@ -177,6 +177,7 @@ test('config reads optional inquiry intake secret', () => {
 test('email center interface stays disabled unless explicitly enabled', () => {
   assert.equal(loadConfig({ NODE_ENV: 'development' }).emailCenter.enabled, false);
   assert.equal(loadConfig({ NODE_ENV: 'development', CRM_EMAIL_CENTER_ENABLED: 'true' }).emailCenter.enabled, true);
+  assert.equal(loadConfig({ NODE_ENV: 'development' }).emailIntake.markSeen, false);
 });
 
 test('Google mail stays fully disabled with the frozen single mailbox defaults', () => {

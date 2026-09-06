@@ -2,6 +2,7 @@ import { ImapFlow } from 'imapflow';
 import {
   EmailArchiveDuplicateRaceError,
   archiveInboundEmailRecord,
+  resolveInboundEmailClassification,
   storeEmailArchiveAttachments
 } from '../services/emailArchiveService.mjs';
 import { storeEmailInquiryAttachments } from '../services/emailInquiryAttachmentService.mjs';
@@ -18,7 +19,7 @@ function shouldStoreAttachmentsForInquiry(inquiry) {
   return !['archived', 'spam'].includes(inquiry?.status);
 }
 
-export function validateEmailIntakeConfig(config) {
+function missingEmailConnectionFields(config) {
   const emailIntake = config.emailIntake || {};
   const missing = [];
   for (const field of ['host', 'user', 'password']) {
@@ -26,6 +27,19 @@ export function validateEmailIntakeConfig(config) {
       missing.push(`EMAIL_INTAKE_${field.toUpperCase()}`);
     }
   }
+  return { emailIntake, missing };
+}
+
+export function validateEmailConnectionConfig(config) {
+  const { emailIntake, missing } = missingEmailConnectionFields(config);
+  if (missing.length) {
+    throw new Error(`Missing email intake configuration: ${missing.join(', ')}`);
+  }
+  return emailIntake;
+}
+
+export function validateEmailIntakeConfig(config) {
+  const { emailIntake, missing } = missingEmailConnectionFields(config);
   if (!config.databaseUrl) {
     missing.push('DATABASE_URL');
   }
@@ -57,35 +71,234 @@ async function fetchMessage(client, uid) {
   }, { uid: true });
 }
 
+function uidNumber(value, fallback = 0) {
+  const parsed = Number(value);
+  return Number.isSafeInteger(parsed) && parsed >= 0 ? parsed : fallback;
+}
+
+function supportsUidCheckpointing(repository) {
+  return Boolean(
+    repository
+    && typeof repository.initializeImapSyncState === 'function'
+    && typeof repository.updateImapIncrementalCheckpoint === 'function'
+    && typeof repository.updateImapBackfillCheckpoint === 'function'
+  );
+}
+
+function normalizeSyncMode(value) {
+  return value === 'backfill' ? 'backfill' : 'incremental';
+}
+
+function classificationSummary(items) {
+  return items.reduce((summary, item) => {
+    summary[item.archiveDisposition] = (summary[item.archiveDisposition] || 0) + 1;
+    return summary;
+  }, { active: 0, archived: 0, spam: 0 });
+}
+
+export async function previewEmailClassifications({
+  config,
+  contactRepository,
+  emailArchiveRepository,
+  imapClientFactory = createEmailImapClient,
+  maxMessages
+}) {
+  const emailIntake = validateEmailConnectionConfig(config);
+  const client = imapClientFactory(emailIntake);
+  const mailbox = requiredText(emailIntake.mailbox) || 'INBOX';
+  const limit = uidNumber(maxMessages, uidNumber(emailIntake.maxMessages, 20)) || 20;
+  const items = [];
+
+  await client.connect();
+  try {
+    const openedMailbox = await client.mailboxOpen(mailbox);
+    const mailboxState = client.mailbox || openedMailbox || {};
+    const uidValidity = requiredText(mailboxState.uidValidity);
+    const uids = await client.search({ uid: '1:*' }, { uid: true }) || [];
+    const selectedUids = uids
+      .map((uid) => uidNumber(uid))
+      .filter((uid) => uid > 0)
+      .sort((left, right) => right - left)
+      .slice(0, limit);
+
+    for (const uid of selectedUids) {
+      const fetched = await fetchMessage(client, uid);
+      if (!fetched?.source) continue;
+      const parsed = await parseEmailArchiveSourceWithAttachments(fetched.source, {
+        uid: fetched.uid || uid,
+        mailbox,
+        mailboxKey: emailIntake.mailboxKey || emailIntake.user || mailbox,
+        uidValidity,
+        internalDate: fetched.internalDate
+      });
+      const resolved = await resolveInboundEmailClassification({
+        contactRepository,
+        emailArchiveRepository
+      }, parsed);
+      items.push({
+        uid,
+        receivedAt: parsed.message.receivedAt,
+        fromAddress: parsed.message.fromAddress,
+        subject: parsed.message.subject,
+        archiveDisposition: resolved.classification.archiveDisposition,
+        classificationCategory: resolved.classification.classificationCategory,
+        classificationReason: resolved.classification.classificationReason,
+        matchedCustomerId: resolved.inquiry.matchedCustomerId || null,
+        matchedContactId: resolved.inquiry.matchedContactId || null
+      });
+    }
+  } finally {
+    await client.logout().catch(() => {});
+  }
+
+  return { scanned: items.length, counts: classificationSummary(items), items };
+}
+
+async function selectMessagesForSync({
+  client,
+  repository,
+  emailIntake,
+  mailbox,
+  uidValidity,
+  uidNext,
+  maxMessages,
+  syncMode
+}) {
+  if (!supportsUidCheckpointing(repository)) {
+    const uids = await client.search({ seen: false }, { uid: true }) || [];
+    return {
+      mode: 'legacy-unseen',
+      state: null,
+      selectedUids: uids.slice(0, maxMessages),
+      batchComplete: false
+    };
+  }
+
+  if (!uidValidity) {
+    throw new Error('IMAP mailbox UIDVALIDITY is required for checkpointed sync');
+  }
+  if (!uidNext) {
+    throw new Error('IMAP mailbox UIDNEXT is required for checkpointed sync');
+  }
+
+  const mailboxKey = requiredText(emailIntake.mailboxKey || emailIntake.user || mailbox);
+  const state = await repository.initializeImapSyncState({
+    mailboxKey,
+    mailboxName: mailbox,
+    uidValidity,
+    incrementalLastUid: uidNext - 1,
+    backfillBeforeUid: uidNext
+  });
+
+  if (syncMode === 'backfill') {
+    if (state.backfillComplete) {
+      return { mode: syncMode, state, selectedUids: [], batchComplete: true };
+    }
+    const beforeUid = uidNumber(state.backfillBeforeUid, uidNext);
+    const endUid = beforeUid - 1;
+    if (endUid < 1) {
+      return { mode: syncMode, state, selectedUids: [], batchComplete: true };
+    }
+    const uids = await client.search({ uid: `1:${endUid}` }, { uid: true }) || [];
+    const selectedUids = uids
+      .map((uid) => uidNumber(uid))
+      .filter((uid) => uid > 0 && uid < beforeUid)
+      .sort((left, right) => right - left)
+      .slice(0, maxMessages);
+    return {
+      mode: syncMode,
+      state,
+      selectedUids,
+      batchComplete: selectedUids.length < maxMessages
+    };
+  }
+
+  const firstUid = uidNumber(state.incrementalLastUid) + 1;
+  const uids = firstUid >= uidNext
+    ? []
+    : await client.search({ uid: `${firstUid}:*` }, { uid: true }) || [];
+  return {
+    mode: syncMode,
+    state,
+    selectedUids: uids
+      .map((uid) => uidNumber(uid))
+      .filter((uid) => uid >= firstUid)
+      .sort((left, right) => left - right)
+      .slice(0, maxMessages),
+    batchComplete: false
+  };
+}
+
 export async function pollEmailInquiries({
   config,
   inquiryRepository,
   inquiryAttachmentRepository,
   emailArchiveRepository,
+  contactRepository,
   emailArchiveTransaction,
   imapClientFactory = createEmailImapClient,
-  logger = console
+  logger = console,
+  syncMode = 'incremental'
 }) {
   const emailIntake = validateEmailIntakeConfig(config);
   const client = imapClientFactory(emailIntake);
   const mailbox = requiredText(emailIntake.mailbox) || 'INBOX';
   const maxMessages = Number(emailIntake.maxMessages || 20);
   const markSeen = emailIntake.markSeen !== false;
+  const requestedMode = normalizeSyncMode(syncMode);
   const imported = [];
+  const skipped = [];
   let scanned = 0;
+  let selection = null;
+  let uidValidity = '';
+  let mailboxKey = '';
 
   await client.connect();
   try {
-    await client.mailboxOpen(mailbox);
-    const uidValidity = requiredText(client.mailbox?.uidValidity);
-    const uids = await client.search({ seen: false }, { uid: true }) || [];
-    const selectedUids = uids.slice(0, maxMessages);
+    const openedMailbox = await client.mailboxOpen(mailbox);
+    const mailboxState = client.mailbox || openedMailbox || {};
+    uidValidity = requiredText(mailboxState.uidValidity);
+    const uidNext = uidNumber(mailboxState.uidNext);
+    mailboxKey = requiredText(emailIntake.mailboxKey || emailIntake.user || mailbox);
+    selection = await selectMessagesForSync({
+      client,
+      repository: emailArchiveRepository,
+      emailIntake,
+      mailbox,
+      uidValidity,
+      uidNext,
+      maxMessages,
+      syncMode: requestedMode
+    });
+    const selectedUids = selection.selectedUids;
     scanned = selectedUids.length;
+
+    const checkpoint = async (uid, complete = false) => {
+      if (!selection.state) return;
+      if (selection.mode === 'backfill') {
+        selection.state = await emailArchiveRepository.updateImapBackfillCheckpoint({
+          mailboxKey,
+          mailboxName: mailbox,
+          uidValidity,
+          beforeUid: uid,
+          complete
+        });
+      } else {
+        selection.state = await emailArchiveRepository.updateImapIncrementalCheckpoint({
+          mailboxKey,
+          mailboxName: mailbox,
+          uidValidity,
+          uid
+        });
+      }
+    };
 
     for (const uid of selectedUids) {
       const message = await fetchMessage(client, uid);
       if (!message?.source) {
         logger.warn?.(`Skipping email UID ${uid}: missing source`);
+        skipped.push({ uid, reason: 'missing_source' });
+        await checkpoint(uid);
         continue;
       }
       const parseMeta = {
@@ -101,6 +314,8 @@ export async function pollEmailInquiries({
       const normalized = parsedEmail.inquiry;
       if (!normalized.sourceReference || !normalized.requirementText) {
         logger.warn?.(`Skipping email UID ${uid}: missing required inquiry fields`);
+        skipped.push({ uid, reason: 'missing_required_fields' });
+        await checkpoint(uid);
         continue;
       }
       let inquiry;
@@ -112,7 +327,7 @@ export async function pollEmailInquiries({
         try {
           archiveResult = emailArchiveTransaction
             ? await emailArchiveTransaction(archiveCallback)
-            : await archiveCallback({ emailArchiveRepository, inquiryRepository });
+            : await archiveCallback({ emailArchiveRepository, inquiryRepository, contactRepository });
         } catch (error) {
           if (!(error instanceof EmailArchiveDuplicateRaceError)) throw error;
           const existing = await emailArchiveRepository.findMessageIdentity(parsedEmail.message);
@@ -179,13 +394,47 @@ export async function pollEmailInquiries({
         attachments: attachments.stored.length,
         skippedAttachments: attachments.skipped.length
       });
+      await checkpoint(uid);
     }
+
+    if (selection.state && selection.mode === 'backfill' && selection.batchComplete) {
+      const beforeUid = selectedUids.length
+        ? selectedUids[selectedUids.length - 1]
+        : selection.state.backfillBeforeUid;
+      selection.state = await emailArchiveRepository.updateImapBackfillCheckpoint({
+        mailboxKey,
+        mailboxName: mailbox,
+        uidValidity,
+        beforeUid,
+        complete: true
+      });
+    } else if (selection.state && selection.mode === 'incremental' && selectedUids.length === 0) {
+      selection.state = await emailArchiveRepository.updateImapIncrementalCheckpoint({
+        mailboxKey,
+        mailboxName: mailbox,
+        uidValidity,
+        uid: selection.state.incrementalLastUid
+      });
+    }
+  } catch (error) {
+    if (selection?.state && typeof emailArchiveRepository?.recordImapSyncError === 'function') {
+      await emailArchiveRepository.recordImapSyncError({
+        mailboxKey,
+        mailboxName: mailbox,
+        uidValidity,
+        errorCode: 'sync_failed'
+      }).catch(() => {});
+    }
+    throw error;
   } finally {
     await client.logout().catch(() => {});
   }
 
   return {
     scanned,
-    imported
+    imported,
+    skipped,
+    mode: selection?.mode || requestedMode,
+    backfillComplete: Boolean(selection?.state?.backfillComplete)
   };
 }

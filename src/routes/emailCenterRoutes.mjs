@@ -25,6 +25,10 @@ function handleError(error, res, next) {
   next(error);
 }
 
+function archiveFolder(value) {
+  return ['active', 'archived', 'spam', 'all'].includes(value) ? value : 'active';
+}
+
 export function emailCenterRoutes({
   enabled = false,
   emailArchiveRepository,
@@ -72,8 +76,13 @@ export function emailCenterRoutes({
 
   router.get('/email-center', async (req, res, next) => {
     try {
-      const threads = await listVisibleEmailThreads(dependencies, req.currentUser);
-      res.render('email-center/index', { threads });
+      const folder = archiveFolder(String(req.query.folder || 'active'));
+      const threads = await listVisibleEmailThreads(
+        dependencies,
+        req.currentUser,
+        folder === 'all' ? {} : { archiveDisposition: folder }
+      );
+      res.render('email-center/index', { threads, folder });
     } catch (error) {
       handleError(error, res, next);
     }
