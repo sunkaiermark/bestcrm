@@ -190,7 +190,9 @@ test('customer repository deletes customer rows by id', async () => {
 test('contact repository lists and maps contacts with customer owner', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '20',
+    contact_code: 'CT000020',
     customer_id: '10',
+    customer_code: 'C000010',
     customer_name: 'Acme Co',
     customer_owner_user_id: '7',
     name: 'Alice',
@@ -209,7 +211,9 @@ test('contact repository lists and maps contacts with customer owner', async () 
 
   assert.deepEqual(contacts, [{
     id: 20,
+    contactCode: 'CT000020',
     customerId: 10,
+    customerCode: 'C000010',
     customerName: 'Acme Co',
     customerOwnerUserId: 7,
     name: 'Alice',
@@ -226,10 +230,31 @@ test('contact repository lists and maps contacts with customer owner', async () 
   assert.match(queryTarget.queries[0].sql, /WHERE c\.owner_user_id = \$1/);
 });
 
+test('contact repository searches contact and customer identity fields inside the owner scope', async () => {
+  const queryTarget = createFakeQueryTarget([]);
+  const repository = createContactRepository(queryTarget);
+
+  await repository.listContacts({ ownerUserId: 7, customerId: 10, searchTerm: 'CT000_20%' });
+
+  const { sql, params } = queryTarget.queries[0];
+  assert.match(sql, /c\.owner_user_id = \$1/);
+  assert.match(sql, /ct\.customer_id = \$2/);
+  assert.match(sql, /ct\.contact_code ILIKE \$3/);
+  assert.match(sql, /ct\.name ILIKE \$3/);
+  assert.match(sql, /c\.customer_code ILIKE \$3/);
+  assert.match(sql, /c\.name ILIKE \$3/);
+  assert.match(sql, /ct\.email ILIKE \$3/);
+  assert.match(sql, /ct\.phone ILIKE \$3/);
+  assert.match(sql, /ct\.wechat ILIKE \$3/);
+  assert.deepEqual(params, [7, 10, '%CT000\\_20\\%%']);
+});
+
 test('contact repository creates and updates contact rows', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '20',
+    contact_code: 'CT000020',
     customer_id: '10',
+    customer_code: 'C000010',
     customer_name: 'Acme Co',
     customer_owner_user_id: '7',
     name: 'Alice',
@@ -259,6 +284,7 @@ test('contact repository creates and updates contact rows', async () => {
 
   assert.match(queryTarget.queries[0].sql, /INSERT INTO contacts/);
   assert.match(queryTarget.queries[0].sql, /JOIN customers c/);
+  assert.doesNotMatch(queryTarget.queries[0].sql, /INSERT INTO contacts\s*\([^)]*contact_code/s);
   assert.deepEqual(queryTarget.queries[0].params, [
     10,
     'Alice',
@@ -287,6 +313,7 @@ test('contact repository creates and updates contact rows', async () => {
   assert.match(queryTarget.queries[1].sql, /UPDATE contacts/);
   assert.match(queryTarget.queries[1].sql, /JOIN customers c/);
   assert.match(queryTarget.queries[1].sql, /updated_at = now\(\)/);
+  assert.doesNotMatch(queryTarget.queries[1].sql, /contact_code\s*=/);
   assert.deepEqual(queryTarget.queries[1].params, [
     'Alice Updated',
     'Director',

@@ -4,7 +4,9 @@ function mapContactRow(row) {
   }
   return {
     id: Number(row.id),
+    contactCode: row.contact_code || '',
     customerId: Number(row.customer_id),
+    customerCode: row.customer_code || '',
     customerName: row.customer_name || '',
     customerOwnerUserId: Number(row.customer_owner_user_id),
     name: row.name,
@@ -22,7 +24,9 @@ function mapContactRow(row) {
 const contactSelect = `
   SELECT
     ct.id,
+    ct.contact_code,
     ct.customer_id,
+    c.customer_code,
     c.name AS customer_name,
     c.owner_user_id AS customer_owner_user_id,
     ct.name,
@@ -50,6 +54,19 @@ export function createContactRepository(queryTarget) {
       if (filter.customerId) {
         params.push(filter.customerId);
         where.push(`ct.customer_id = $${params.length}`);
+      }
+      if (filter.searchTerm) {
+        params.push(`%${String(filter.searchTerm).replace(/[\\%_]/g, '\\$&')}%`);
+        const searchParam = `$${params.length}`;
+        where.push(`(
+          ct.contact_code ILIKE ${searchParam} ESCAPE '\\'
+          OR ct.name ILIKE ${searchParam} ESCAPE '\\'
+          OR c.customer_code ILIKE ${searchParam} ESCAPE '\\'
+          OR c.name ILIKE ${searchParam} ESCAPE '\\'
+          OR ct.email ILIKE ${searchParam} ESCAPE '\\'
+          OR ct.phone ILIKE ${searchParam} ESCAPE '\\'
+          OR ct.wechat ILIKE ${searchParam} ESCAPE '\\'
+        )`);
       }
       const result = await queryTarget.query(`
         ${contactSelect}
@@ -88,7 +105,9 @@ export function createContactRepository(queryTarget) {
         )
         SELECT
           inserted.id,
+          inserted.contact_code,
           inserted.customer_id,
+          c.customer_code,
           c.name AS customer_name,
           c.owner_user_id AS customer_owner_user_id,
           inserted.name,
@@ -137,7 +156,9 @@ export function createContactRepository(queryTarget) {
         )
         SELECT
           updated.id,
+          updated.contact_code,
           updated.customer_id,
+          c.customer_code,
           c.name AS customer_name,
           c.owner_user_id AS customer_owner_user_id,
           updated.name,

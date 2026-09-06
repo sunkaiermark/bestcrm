@@ -42,6 +42,7 @@ const bidPackageOutputIdentityMigrationPath = new URL('../../src/db/migrations/0
 const authenticatorMfaMigrationPath = new URL('../../src/db/migrations/041_authenticator_mfa.sql', import.meta.url);
 const googleWorkspaceCustomerCenterMigrationPath = new URL('../../src/db/migrations/042_google_workspace_customer_center.sql', import.meta.url);
 const customerCodeMigrationPath = new URL('../../src/db/migrations/043_customer_code.sql', import.meta.url);
+const contactCodeMigrationPath = new URL('../../src/db/migrations/044_contact_code.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -736,4 +737,21 @@ test('customer code migration backfills stable immutable C000001-style codes', a
   assert.match(sql, /ALTER COLUMN customer_code SET NOT NULL/);
   assert.match(sql, /bestcrm_protect_customer_code/);
   assert.match(sql, /customer_code is immutable/);
+});
+
+test('contact code migration backfills stable immutable CT000001-style codes', async () => {
+  const sql = await readFile(contactCodeMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE SEQUENCE IF NOT EXISTS contact_code_seq/);
+  assert.match(sql, /MAXVALUE 999999/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS contact_code text/);
+  assert.match(sql, /row_number\(\) OVER \(ORDER BY id\)/);
+  assert.match(sql, /substring\(contact_code FROM 3\)/);
+  assert.match(sql, /nextval\('contact_code_seq'\)/);
+  assert.match(sql, /'CT' \|\| lpad/);
+  assert.match(sql, /contacts_contact_code_unique_idx/);
+  assert.match(sql, /contact_code ~ '\^CT\[0-9\]\{6\}\$'/);
+  assert.match(sql, /ALTER COLUMN contact_code SET NOT NULL/);
+  assert.match(sql, /bestcrm_protect_contact_code/);
+  assert.match(sql, /contact_code is immutable/);
 });
