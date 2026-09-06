@@ -50,6 +50,20 @@ async function createAgent({ userId, roles, language = 'en', uploadDir = './var/
     contactName: 'Alice'
   });
   linked.messages = linked.messages.map((message) => ({ ...message, threadId: 2 }));
+  linked.messages.push({
+    ...linked.messages[0],
+    id: 12,
+    direction: 'outbound',
+    fromAddress: 'sales@sunkaier.com',
+    fromName: 'Sales',
+    toRecipients: [{ address: 'buyer@example.com' }],
+    textBody: 'Quotation sent',
+    deliveryStatus: 'sent',
+    receivedAt: null,
+    sentAt: '2026-09-03T02:00:00Z',
+    attachments: []
+  });
+  linked.messageCount = 2;
   const repository = {
     async listThreads() { return [unlinked, linked]; },
     async listThreadsByOpportunity(id) { return Number(id) === 20 ? [linked] : []; },
@@ -165,8 +179,13 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(salesCompose.text, /opportunity-email-workspace/);
   assert.match(salesCompose.text, /opportunity-email-conversation/);
   assert.match(salesCompose.text, /opportunity-email-compose/);
+  assert.match(salesCompose.text, /opportunity-email-timeline/);
+  assert.match(salesCompose.text, /opportunity-email-message-inbound/);
+  assert.match(salesCompose.text, /opportunity-email-message-outbound/);
   assert.match(salesCompose.text, /value="buyer@example\.com"/);
   assert.match(salesCompose.text, /Need quote/);
+  assert.match(salesCompose.text, /Quotation sent/);
+  assert.doesNotMatch(salesCompose.text, /placeholder="buyer@example\.com"/);
 
   const supporting = await createAgent({
     userId: 15,

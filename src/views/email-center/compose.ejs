@@ -11,9 +11,10 @@
 
         <div class="<%= context.opportunity ? 'opportunity-email-workspace' : '' %>">
         <% if (context.opportunity) { %>
-          <section class="opportunity-email-conversation" aria-label="<%= t('emailConversation') %>">
+          <section class="opportunity-email-conversation<%= context.opportunityThreads.length ? '' : ' is-empty' %>" aria-label="<%= t('emailConversation') %>">
             <h2><%= t('emailConversation') %></h2>
-            <nav class="opportunity-email-thread-list">
+            <% if (context.opportunityThreads.length) { %>
+              <nav class="opportunity-email-thread-list">
               <% for (const thread of context.opportunityThreads) { %>
                 <a class="opportunity-email-thread" href="/email-center/compose?threadId=<%= thread.id %>" aria-current="<%= Number(context.thread?.id) === Number(thread.id) ? 'true' : 'false' %>">
                   <strong><%= thread.subject || t('noSubject') %></strong>
@@ -22,16 +23,28 @@
                   <span class="muted"><%= thread.lastTextPreview || '' %></span>
                 </a>
               <% } %>
-              <% if (!context.opportunityThreads.length) { %><p class="empty"><%= t('noEmailThreads') %></p><% } %>
-            </nav>
+              </nav>
+            <% } else { %>
+              <p class="empty opportunity-email-empty-state"><%= t('noEmailThreads') %></p>
+            <% } %>
             <% if (context.conversation?.messages?.length) { %>
-              <div>
+              <div class="opportunity-email-timeline">
                 <% for (const message of context.conversation.messages) { %>
-                  <article class="opportunity-email-message">
-                    <strong><%= t(`emailDirection.${message.direction}`) %> · <%= message.fromName || message.fromAddress %></strong>
-                    <div class="opportunity-email-message-meta"><%= message.receivedAt || message.sentAt || message.createdAt %></div>
+                  <article class="opportunity-email-message opportunity-email-message-<%= message.direction %>">
+                    <header class="opportunity-email-message-header">
+                      <strong><%= t(`emailDirection.${message.direction}`) %> · <%= message.fromName || message.fromAddress %></strong>
+                      <span class="opportunity-email-message-meta"><%= message.receivedAt || message.sentAt || message.createdAt %></span>
+                    </header>
                     <h3><%= message.subject || t('noSubject') %></h3>
                     <pre class="email-plain-body"><%= message.textBody %></pre>
+                    <% if (message.attachments?.length) { %>
+                      <div class="email-attachment-list">
+                        <strong><%= t('attachments') %></strong>
+                        <% for (const attachment of message.attachments) { %>
+                          <p><a href="/email-center/attachments/<%= attachment.id %>/download"><%= attachment.originalName %></a> · <%= attachment.fileSize %> B</p>
+                        <% } %>
+                      </div>
+                    <% } %>
                   </article>
                 <% } %>
               </div>
@@ -46,8 +59,8 @@
           <% if (context.inquiry) { %><input type="hidden" name="inquiryId" value="<%= context.inquiry.id %>"><% } %>
           <% if (context.opportunity) { %><input type="hidden" name="opportunityId" value="<%= context.opportunity.id %>"><% } %>
           <% if (context.defaults.replyToMessageId) { %><input type="hidden" name="replyToMessageId" value="<%= context.defaults.replyToMessageId %>"><% } %>
-          <label><%= t('emailTo') %><input type="text" name="to" value="<%= context.defaults.to %>" placeholder="buyer@example.com" required></label>
-          <label><%= t('emailCc') %><input type="text" name="cc" placeholder="colleague@example.com"></label>
+          <label><%= t('emailTo') %><input type="text" name="to" value="<%= context.defaults.to %>" required></label>
+          <label><%= t('emailCc') %><input type="text" name="cc"></label>
           <label><%= t('subject') %><input type="text" name="subject" value="<%= context.defaults.subject %>" maxlength="300" required></label>
           <% if (context.opportunity) { %>
             <label><%= t('quotationPackageEmail') %>
