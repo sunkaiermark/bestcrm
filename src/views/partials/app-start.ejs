@@ -1894,6 +1894,10 @@
         margin-top: 12px;
       }
 
+      .customer-email-actions {
+        gap: 14px;
+      }
+
       .opportunity-email-thread-list {
         display: grid;
         grid-template-columns: repeat(auto-fit, minmax(260px, 1fr));
@@ -1931,55 +1935,23 @@
         display: grid;
         gap: 14px;
         padding: 6px 8px;
-        position: relative;
-      }
-
-      .opportunity-email-timeline::before {
-        background: var(--line);
-        bottom: 6px;
-        content: '';
-        left: 50%;
-        position: absolute;
-        top: 6px;
-        width: 2px;
       }
 
       .opportunity-email-message {
         background: #f8fafc;
         border: 1px solid var(--line);
+        border-left: 5px solid #2563eb;
         border-radius: 8px;
+        justify-self: stretch;
         padding: 12px 14px;
         position: relative;
-        width: calc(50% - 26px);
-      }
-
-      .opportunity-email-message::after {
-        background: var(--panel);
-        border: 3px solid var(--accent);
-        border-radius: 50%;
-        content: '';
-        height: 12px;
-        position: absolute;
-        top: 17px;
-        width: 12px;
-      }
-
-      .opportunity-email-message-inbound {
-        justify-self: start;
-      }
-
-      .opportunity-email-message-inbound::after {
-        right: -35px;
+        width: 100%;
       }
 
       .opportunity-email-message-outbound {
         background: #ecfdf5;
         border-color: #99d5ca;
-        justify-self: end;
-      }
-
-      .opportunity-email-message-outbound::after {
-        left: -33px;
+        border-left-color: var(--accent);
       }
 
       .opportunity-email-message-header {
@@ -1999,6 +1971,71 @@
         margin-bottom: 0;
         max-height: 320px;
         overflow: auto;
+      }
+
+      .customer-email-header-fields {
+        display: grid;
+        gap: 10px;
+        margin-bottom: 10px;
+      }
+
+      .customer-email-header-field {
+        align-items: center;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: clamp(220px, 18vw, 260px) minmax(0, 1fr);
+        margin-bottom: 0;
+      }
+
+      .customer-email-field-label {
+        font-weight: 700;
+      }
+
+      .customer-email-header-field input {
+        min-width: 0;
+      }
+
+      .customer-email-attachment-field {
+        align-items: center;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: clamp(220px, 18vw, 260px) minmax(0, 1fr);
+        margin-bottom: 12px;
+      }
+
+      .customer-email-file-picker {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px 12px;
+        min-width: 0;
+      }
+
+      .customer-email-file-input {
+        clip: rect(0 0 0 0);
+        clip-path: inset(50%);
+        height: 1px;
+        overflow: hidden;
+        position: absolute;
+        white-space: nowrap;
+        width: 1px;
+      }
+
+      .customer-email-file-button {
+        cursor: pointer;
+        display: inline-block;
+        margin: 0;
+        white-space: nowrap;
+      }
+
+      .customer-email-file-status {
+        flex: 1 1 220px;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .customer-email-file-limit {
+        white-space: nowrap;
       }
 
       @media (max-width: 860px) {
@@ -2100,23 +2137,11 @@
           max-height: 520px;
         }
 
-        .opportunity-email-timeline {
-          padding-left: 34px;
-        }
-
-        .opportunity-email-timeline::before {
-          left: 13px;
-        }
-
-        .opportunity-email-message {
-          justify-self: stretch;
-          width: auto;
-        }
-
-        .opportunity-email-message-inbound::after,
-        .opportunity-email-message-outbound::after {
-          left: -29px;
-          right: auto;
+        .customer-email-header-field,
+        .customer-email-attachment-field {
+          align-items: stretch;
+          gap: 5px;
+          grid-template-columns: 1fr;
         }
 
         .page-header,

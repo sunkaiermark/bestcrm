@@ -52,18 +52,29 @@
           </section>
         <% } %>
         <div class="<%= context.opportunity ? 'opportunity-email-compose' : '' %>">
-        <section class="form-panel"><strong><%= t('customerEmailSendingNotice') %></strong></section>
         <form class="form-panel" method="post" action="/email-center/messages" enctype="multipart/form-data">
           <%- csrfField() %>
           <% if (context.thread) { %><input type="hidden" name="threadId" value="<%= context.thread.id %>"><% } %>
           <% if (context.inquiry) { %><input type="hidden" name="inquiryId" value="<%= context.inquiry.id %>"><% } %>
           <% if (context.opportunity) { %><input type="hidden" name="opportunityId" value="<%= context.opportunity.id %>"><% } %>
           <% if (context.defaults.replyToMessageId) { %><input type="hidden" name="replyToMessageId" value="<%= context.defaults.replyToMessageId %>"><% } %>
-          <label><%= t('emailTo') %><input type="text" name="to" value="<%= context.defaults.to %>" required></label>
-          <label><%= t('emailCc') %><input type="text" name="cc"></label>
-          <label><%= t('subject') %><input type="text" name="subject" value="<%= context.defaults.subject %>" maxlength="300" required></label>
+          <div class="customer-email-header-fields">
+            <label class="customer-email-header-field">
+              <span class="customer-email-field-label"><%= t('emailTo') %></span>
+              <input type="text" name="to" value="<%= context.defaults.to %>" required>
+            </label>
+            <label class="customer-email-header-field">
+              <span class="customer-email-field-label"><%= t('emailCc') %></span>
+              <input type="text" name="cc">
+            </label>
+            <label class="customer-email-header-field">
+              <span class="customer-email-field-label"><%= t('subject') %></span>
+              <input type="text" name="subject" value="<%= context.defaults.subject %>" maxlength="300" required>
+            </label>
+          </div>
           <% if (context.opportunity) { %>
-            <label><%= t('quotationPackageEmail') %>
+            <label class="customer-email-header-field customer-email-quotation-field">
+              <span class="customer-email-field-label"><%= t('quotationPackageEmail') %></span>
               <select name="quotationPackageVersionId">
                 <option value=""><%= t('noQuotationPackage') %></option>
                 <% for (const item of context.packages) { %><option value="<%= item.id %>" <%= Number(context.defaults.quotationPackageVersionId) === Number(item.id) ? 'selected' : '' %>><%= item.label %> · <%= item.currency %> <%= item.totalPrice %></option><% } %>
@@ -71,12 +82,21 @@
             </label>
           <% } %>
           <label><%= t('emailBody') %><textarea name="body" rows="12" required></textarea></label>
-          <label><%= t('emailAttachments') %><input type="file" name="attachments" multiple><span class="muted"><%= maxUploadMb %> MB / file</span></label>
-          <div class="inline-actions">
+          <div class="customer-email-attachment-field">
+            <span class="customer-email-field-label" id="customer-email-attachments-label"><%= t('emailAttachments') %></span>
+            <div class="customer-email-file-picker" data-customer-email-file-picker data-empty-label="<%= t('noFilesSelected') %>">
+              <input class="customer-email-file-input" id="customer-email-attachments" type="file" name="attachments" multiple aria-labelledby="customer-email-attachments-label" aria-describedby="customer-email-attachments-status customer-email-attachments-limit">
+              <label class="secondary-action customer-email-file-button" for="customer-email-attachments"><%= t('chooseFiles') %></label>
+              <span class="customer-email-file-status" id="customer-email-attachments-status" data-customer-email-file-status><%= t('noFilesSelected') %></span>
+              <span class="muted customer-email-file-limit" id="customer-email-attachments-limit"><%= maxUploadMb %> MB / file</span>
+            </div>
+          </div>
+          <div class="inline-actions customer-email-actions">
             <button type="submit" name="action" value="draft" class="secondary-action"><%= t('saveEmailDraft') %></button>
             <% if (context.canSend) { %><button type="submit" name="action" value="send"><%= t('sendCustomerEmail') %></button><% } %>
           </div>
         </form>
         </div>
         </div>
+        <script src="/assets/email-compose.js" defer></script>
 <%- include('../partials/app-end') %>
