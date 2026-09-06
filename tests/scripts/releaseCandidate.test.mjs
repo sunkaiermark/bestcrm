@@ -46,13 +46,30 @@ test('release candidate requires every email feature flag to remain disabled', (
   assert.doesNotThrow(() => assertEmailFlagsDisabled([
     'CRM_EMAIL_CENTER_ENABLED=false',
     'EMAIL_INTAKE_ENABLED=false',
-    'CRM_EMAIL_SENDING_ENABLED=false'
+    'CRM_EMAIL_SENDING_ENABLED=false',
+    'GOOGLE_MAIL_ENABLED=false',
+    'GOOGLE_MAIL_INBOUND_ENABLED=false',
+    'GOOGLE_MAIL_OUTBOUND_ENABLED=false',
+    'GOOGLE_MAIL_PUSH_ENABLED=false'
   ].join('\n')));
   assert.throws(() => assertEmailFlagsDisabled([
     'CRM_EMAIL_CENTER_ENABLED=true',
     'EMAIL_INTAKE_ENABLED=false',
-    'CRM_EMAIL_SENDING_ENABLED=false'
+    'CRM_EMAIL_SENDING_ENABLED=false',
+    'GOOGLE_MAIL_ENABLED=false',
+    'GOOGLE_MAIL_INBOUND_ENABLED=false',
+    'GOOGLE_MAIL_OUTBOUND_ENABLED=false',
+    'GOOGLE_MAIL_PUSH_ENABLED=false'
   ].join('\n')), /must keep email flags false/);
+  assert.throws(() => assertEmailFlagsDisabled([
+    'CRM_EMAIL_CENTER_ENABLED=false',
+    'EMAIL_INTAKE_ENABLED=false',
+    'CRM_EMAIL_SENDING_ENABLED=false',
+    'GOOGLE_MAIL_ENABLED=true',
+    'GOOGLE_MAIL_INBOUND_ENABLED=false',
+    'GOOGLE_MAIL_OUTBOUND_ENABLED=false',
+    'GOOGLE_MAIL_PUSH_ENABLED=false'
+  ].join('\n')), /GOOGLE_MAIL_ENABLED/);
 });
 
 test('release candidate keeps Authenticator off and excludes production credentials', () => {

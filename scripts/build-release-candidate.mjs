@@ -11,7 +11,11 @@ const versionPattern = /^v\d{4}\.\d{2}\.\d{2}-\d{2}-rc\.\d+$/;
 const disabledEmailFlags = [
   'CRM_EMAIL_CENTER_ENABLED',
   'EMAIL_INTAKE_ENABLED',
-  'CRM_EMAIL_SENDING_ENABLED'
+  'CRM_EMAIL_SENDING_ENABLED',
+  'GOOGLE_MAIL_ENABLED',
+  'GOOGLE_MAIL_INBOUND_ENABLED',
+  'GOOGLE_MAIL_OUTBOUND_ENABLED',
+  'GOOGLE_MAIL_PUSH_ENABLED'
 ];
 
 function parseEnvExample(envExample) {
