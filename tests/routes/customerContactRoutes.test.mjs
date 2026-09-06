@@ -68,6 +68,7 @@ async function createLoggedInAgent(options = {}) {
           notes: 'Important',
           contacts: [{
             id: 20,
+            contactCode: 'CT000020',
             name: 'Alice',
           title: 'Buyer',
           phone: '123',
@@ -88,7 +89,9 @@ async function createLoggedInAgent(options = {}) {
       async listContacts() {
         return [{
           id: 20,
+          contactCode: 'CT000020',
           customerId: 10,
+          customerCode: 'C000010',
           customerName: 'Acme Co',
           customerOwnerUserId: 7,
           name: 'Alice',
@@ -104,7 +107,9 @@ async function createLoggedInAgent(options = {}) {
       async getContactDetail(id) {
         return {
           id: Number(id),
+          contactCode: 'CT000020',
           customerId: 10,
+          customerCode: 'C000010',
           customerName: 'Acme Co',
           customerOwnerUserId: 7,
           name: 'Alice',
@@ -243,6 +248,8 @@ test('logged in salesperson can view customer list and detail', async () => {
   const customerContactsHtml = detail.text.match(/<h2>Contacts<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(customerContactsHtml, /href="\/contacts\/new\?customerId=10"/);
   assert.match(customerContactsHtml, /<table class="list-table content-fit-table">/);
+  assert.match(customerContactsHtml, /<th>Contact Code<\/th>/);
+  assert.match(customerContactsHtml, /href="\/contacts\/20">CT000020<\/a>/);
   assert.match(customerContactsHtml, /<th>Name<\/th>/);
   assert.match(customerContactsHtml, /<th>Title<\/th>/);
   assert.match(customerContactsHtml, /<th>Phone<\/th>/);
@@ -281,20 +288,25 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.equal(list.status, 200);
   assertAppSidebar(list.text, '/contacts');
   assert.match(list.text, /Contacts/);
+  assert.match(list.text, /Contact Code/);
+  assert.match(list.text, /CT000020/);
   assert.match(list.text, /Alice/);
+  assert.match(list.text, /C000010 · Acme Co/);
   assert.match(list.text, /<table class="list-table content-fit-table">/);
 
   const form = await agent.get('/contacts/new');
   assert.equal(form.status, 200);
   assertAppSidebar(form.text, '/contacts');
   assert.match(form.text, /name="customerId"/);
+  assert.match(form.text, /The contact code will be generated automatically after saving\./);
+  assert.match(form.text, /<option value="10" selected>C000010 · Acme Co<\/option>/);
   assert.match(form.text, /name="educationBackground"/);
   assert.match(form.text, /name="workExperience"/);
   assert.match(form.text, /name="keyAchievements"/);
 
   const opportunityContactForm = await agent.get('/contacts/new?customerId=10&returnTo=opportunity-initiation');
   assert.equal(opportunityContactForm.status, 200);
-  assert.match(opportunityContactForm.text, /<option value="10" selected>Acme Co<\/option>/);
+  assert.match(opportunityContactForm.text, /<option value="10" selected>C000010 · Acme Co<\/option>/);
   assert.match(opportunityContactForm.text, /<input type="hidden" name="returnTo" value="opportunity-initiation">/);
   assert.match(opportunityContactForm.text, /Create contact/);
 
@@ -302,9 +314,11 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.equal(detail.status, 200);
   assertAppSidebar(detail.text, '/contacts');
   assert.match(detail.text, /Alice/);
-  assert.match(detail.text, /Acme Co/);
+  assert.match(detail.text, /<h1>CT000020 · Alice<\/h1>/);
+  assert.match(detail.text, /C000010 · Acme Co/);
   const contactDetailHtml = detail.text.match(/<h2>Contact detail<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(contactDetailHtml, /class="basic-info-grid"/);
+  assert.match(contactDetailHtml, /<th scope="row">Contact Code<\/th>\s*<td>CT000020<\/td>/);
   assert.equal((contactDetailHtml.match(/<table class="detail-table">/g) || []).length, 2);
   assert.match(contactDetailHtml, /<th scope="row">Education Background<\/th>/);
   assert.match(contactDetailHtml, /MBA/);
@@ -314,6 +328,30 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.match(contactDetailHtml, /Led supplier consolidation/);
   assert.doesNotMatch(detail.text, /New opportunity/);
   assert.doesNotMatch(detail.text, /Delete contact/);
+
+  const editForm = await agent.get('/contacts/20/edit');
+  assert.equal(editForm.status, 200);
+  assert.match(editForm.text, /<input value="CT000020" readonly>/);
+  assert.doesNotMatch(editForm.text, /name="contactCode"/);
+});
+
+test('contact list search preserves owner scope and displays the retained query', async () => {
+  const filters = [];
+  const { agent } = await createLoggedInAgent({
+    contactRepository: {
+      async listContacts(filter) {
+        filters.push(filter);
+        return [];
+      }
+    }
+  });
+
+  const response = await agent.get('/contacts').query({ q: '  CT000020  ' });
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(filters, [{ ownerUserId: 7, searchTerm: 'CT000020' }]);
+  assert.match(response.text, /name="q"[^>]*value="CT000020"/);
+  assert.match(response.text, /Search by contact code, name, customer, email, phone, or WeChat/);
 });
 
 test('customer and contact framework text uses selected Chinese language', async () => {
@@ -338,17 +376,21 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.match(customerDetail.text, />\u5730\u5740<\/th>/);
   assert.match(customerDetail.text, />\u5ba2\u6237\u6982\u8981<\/th>/);
   assert.match(customerDetail.text, />\u8054\u7cfb\u4eba<\/h2>/);
+  assert.match(customerDetail.text, /<th>\u8054\u7cfb\u4eba\u4ee3\u7801<\/th>/);
 
   const contacts = await agent.get('/contacts');
   assert.equal(contacts.status, 200);
   assert.match(contacts.text, /<h1>\u8054\u7cfb\u4eba<\/h1>/);
   assert.match(contacts.text, /\u65b0\u5efa\u8054\u7cfb\u4eba/);
+  assert.match(contacts.text, /<th>\u8054\u7cfb\u4eba\u4ee3\u7801<\/th>/);
+  assert.match(contacts.text, /\u6309\u8054\u7cfb\u4eba\u4ee3\u7801\u3001\u59d3\u540d\u3001\u5ba2\u6237\u3001\u90ae\u7bb1\u3001\u7535\u8bdd\u6216\u5fae\u4fe1\u67e5\u8be2/);
   assert.match(contacts.text, /<th>\u804c\u52a1<\/th>/);
 
   const contactDetail = await agent.get('/contacts/20');
   assert.equal(contactDetail.status, 200);
   assert.match(contactDetail.text, /\u7f16\u8f91\u8054\u7cfb\u4eba/);
   assert.match(contactDetail.text, /\u8054\u7cfb\u4eba\u8be6\u60c5/);
+  assert.match(contactDetail.text, />\u8054\u7cfb\u4eba\u4ee3\u7801<\/th>/);
   assert.match(contactDetail.text, />\u804c\u52a1<\/th>/);
   assert.match(contactDetail.text, />\u5fae\u4fe1<\/th>/);
   assert.match(contactDetail.text, />\u6559\u80b2\u80cc\u666f<\/th>/);
@@ -452,6 +494,7 @@ test('contact creation can return to opportunity initiation with the new contact
     .post('/contacts')
     .type('form')
     .send({
+      contactCode: 'CT999999',
       customerId: '10',
       name: 'Bob Buyer',
       title: 'Purchasing Manager',

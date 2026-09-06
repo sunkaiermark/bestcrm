@@ -45,6 +45,7 @@ function mapDuplicateCustomerRow(row) {
 function mapContactRow(row) {
   return {
     id: Number(row.id),
+    contactCode: row.contact_code || '',
     customerId: Number(row.customer_id),
     name: row.name,
     title: row.title || '',
@@ -114,7 +115,7 @@ export function createCustomerRepository(queryTarget) {
         return null;
       }
       const contacts = await queryTarget.query(`
-        SELECT id, customer_id, name, title, phone, email, wechat, notes
+        SELECT id, contact_code, customer_id, name, title, phone, email, wechat, notes
         FROM contacts
         WHERE customer_id = $1
         ORDER BY created_at DESC, id DESC

@@ -5,10 +5,19 @@
         </header>
 
         <section class="list-section">
+          <form class="form-panel opportunity-filter-panel" method="get" action="/contacts">
+            <label class="opportunity-search-field">
+              <%= t('keyword') %>
+              <input name="q" type="search" value="<%= filters.searchTerm %>" placeholder="<%= t('contactSearchPlaceholder') %>">
+            </label>
+            <button type="submit"><%= t('search') %></button>
+            <a class="secondary-action" href="/contacts"><%= t('clearFilters') %></a>
+          </form>
           <div class="list-body">
             <table class="list-table content-fit-table">
               <thead>
                 <tr>
+                  <th><%= t('contactCode') %></th>
                   <th><%= t('name') %></th>
                   <th><%= t('customer') %></th>
                   <th><%= t('title') %></th>
@@ -19,8 +28,9 @@
               <tbody>
                 <% for (const contact of contacts) { %>
                   <tr>
+                    <td><a href="/contacts/<%= contact.id %>"><%= contact.contactCode %></a></td>
                     <td><a href="/contacts/<%= contact.id %>"><%= contact.name %></a></td>
-                    <td><a href="/customers/<%= contact.customerId %>"><%= contact.customerName %></a></td>
+                    <td><a href="/customers/<%= contact.customerId %>"><%= [contact.customerCode, contact.customerName].filter(Boolean).join(' · ') %></a></td>
                     <td><%= contact.title %></td>
                     <td><%= contact.phone %></td>
                     <td><%= contact.email %></td>

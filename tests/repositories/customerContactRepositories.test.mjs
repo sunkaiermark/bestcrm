@@ -69,6 +69,52 @@ test('customer repository searches code name and website inside the owner scope'
   assert.deepEqual(params, [7, '%C000\\_10\\%%']);
 });
 
+test('customer repository includes immutable contact codes in customer detail contacts', async () => {
+  const responses = [[{
+    id: '10',
+    customer_code: 'C000010',
+    name: 'Acme Co',
+    owner_user_id: '7',
+    contact_count: '1'
+  }], [{
+    id: '20',
+    contact_code: 'CT000020',
+    customer_id: '10',
+    name: 'Alice',
+    title: 'Buyer',
+    phone: '123',
+    email: 'alice@example.com',
+    wechat: 'alicewx',
+    notes: 'Key contact'
+  }]];
+  const queryTarget = {
+    queries: [],
+    async query(sql, params) {
+      this.queries.push({ sql, params });
+      const rows = responses.shift() || [];
+      return { rows, rowCount: rows.length };
+    }
+  };
+  const repository = createCustomerRepository(queryTarget);
+
+  const customer = await repository.getCustomerDetail(10);
+
+  assert.equal(customer.customerCode, 'C000010');
+  assert.deepEqual(customer.contacts, [{
+    id: 20,
+    contactCode: 'CT000020',
+    customerId: 10,
+    name: 'Alice',
+    title: 'Buyer',
+    phone: '123',
+    email: 'alice@example.com',
+    wechat: 'alicewx',
+    notes: 'Key contact'
+  }]);
+  assert.match(queryTarget.queries[1].sql, /SELECT id, contact_code, customer_id/);
+  assert.deepEqual(queryTarget.queries[1].params, [10]);
+});
+
 test('customer repository creates and updates customer rows', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '10',

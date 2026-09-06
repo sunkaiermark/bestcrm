@@ -9,11 +9,19 @@
           <% if (typeof returnTo !== 'undefined' && returnTo) { %>
             <input type="hidden" name="returnTo" value="<%= returnTo %>">
           <% } %>
+          <% if (contact.id) { %>
+            <label>
+              <%= t('contactCode') %>
+              <input value="<%= contact.contactCode || '' %>" readonly>
+            </label>
+          <% } else { %>
+            <p class="muted"><%= t('contactCodeGeneratedAfterSave') %></p>
+          <% } %>
           <label>
             <%= t('customer') %>
             <select name="customerId" required>
               <% for (const customer of customers) { %>
-                <option value="<%= customer.id %>" <%= String(contact.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.name %></option>
+                <option value="<%= customer.id %>" <%= String(contact.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= [customer.customerCode, customer.name].filter(Boolean).join(' · ') %></option>
               <% } %>
             </select>
           </label>

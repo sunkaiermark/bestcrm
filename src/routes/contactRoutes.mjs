@@ -30,8 +30,12 @@ export function contactRoutes({ customerRepository, contactRepository }) {
 
   router.get('/contacts', async (req, res, next) => {
     try {
-      const contacts = await contactRepository.listContacts(contactFilter(req.currentUser));
-      res.render('contacts/index', { contacts });
+      const searchTerm = String(req.query.q || '').trim();
+      const contacts = await contactRepository.listContacts({
+        ...contactFilter(req.currentUser),
+        searchTerm
+      });
+      res.render('contacts/index', { contacts, filters: { searchTerm } });
     } catch (error) {
       next(error);
     }

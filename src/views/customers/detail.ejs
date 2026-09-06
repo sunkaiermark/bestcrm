@@ -93,6 +93,7 @@
               <table class="list-table content-fit-table">
                 <thead>
                   <tr>
+                    <th><%= t('contactCode') %></th>
                     <th><%= t('name') %></th>
                     <th><%= t('title') %></th>
                     <th><%= t('phone') %></th>
@@ -102,6 +103,7 @@
                 <tbody>
                   <% for (const contact of customer.contacts || []) { %>
                     <tr>
+                      <td><a href="/contacts/<%= contact.id %>"><%= contact.contactCode %></a></td>
                       <td><a href="/contacts/<%= contact.id %>"><%= contact.name %></a></td>
                       <td><%= contact.title %></td>
                       <td><%= contact.phone %></td>
