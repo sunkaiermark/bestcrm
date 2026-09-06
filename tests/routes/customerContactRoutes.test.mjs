@@ -224,6 +224,8 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(detail.text, /Acme Co/);
   assert.match(detail.text, /Alice/);
   const customerHeaderHtml = detail.text.match(/<header class="page-header">[\s\S]*?<\/header>/)?.[0] || '';
+  assert.match(customerHeaderHtml, /<a class="secondary-action" href="\/customers">Back to list<\/a>/);
+  assert.ok(customerHeaderHtml.indexOf('Back to list') < customerHeaderHtml.indexOf('Edit customer'));
   assert.doesNotMatch(customerHeaderHtml, /New opportunity/);
   assert.doesNotMatch(customerHeaderHtml, /href="\/opportunities\/new\?customerId=10"/);
   const customerDetailHtml = detail.text.match(/<h2>Customer detail<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
