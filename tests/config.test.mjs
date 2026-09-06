@@ -180,6 +180,15 @@ test('email center interface stays disabled unless explicitly enabled', () => {
   assert.equal(loadConfig({ NODE_ENV: 'development' }).emailIntake.markSeen, false);
 });
 
+test('email intake hard-caps every batch at 50 messages', () => {
+  const config = loadConfig({
+    NODE_ENV: 'development',
+    EMAIL_INTAKE_MAX_MESSAGES: '500'
+  });
+
+  assert.equal(config.emailIntake.maxMessages, 50);
+});
+
 test('Google mail stays fully disabled with the frozen single mailbox defaults', () => {
   const config = loadConfig({ NODE_ENV: 'development' });
 

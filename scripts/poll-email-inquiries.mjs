@@ -6,10 +6,12 @@ import { createEmailArchiveRepository } from '../src/repositories/emailArchiveRe
 import { createContactRepository } from '../src/repositories/contactRepository.mjs';
 import { createInquiryAttachmentRepository } from '../src/repositories/inquiryAttachmentRepository.mjs';
 import { createInquiryRepository } from '../src/repositories/inquiryRepository.mjs';
+import { runEmailBackfillLoop } from '../src/jobs/emailBackfillLoop.mjs';
 import { pollEmailInquiries } from '../src/jobs/emailInquiryPoller.mjs';
 
 const once = process.argv.includes('--once');
-const backfill = process.argv.includes('--backfill');
+const continuousBackfill = process.argv.includes('--backfill-continuous');
+const backfill = process.argv.includes('--backfill') || continuousBackfill;
 const config = loadConfig();
 
 if (!config.emailIntake.enabled) {
@@ -49,10 +51,22 @@ async function runOnce() {
     skipped: result.skipped.length,
     backfillComplete: result.backfillComplete
   }));
+  return result;
 }
 
 try {
-  if (once || backfill) {
+  if (continuousBackfill) {
+    const summary = await runEmailBackfillLoop({
+      runBatch: runOnce,
+      wait: delay,
+      intervalMs: config.emailIntake.pollIntervalMs,
+      isStopping: () => stopping
+    });
+    console.log(JSON.stringify({
+      event: 'email_inquiry_backfill_stopped',
+      ...summary
+    }));
+  } else if (once || backfill) {
     await runOnce();
   } else {
     while (!stopping) {

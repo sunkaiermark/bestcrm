@@ -175,6 +175,18 @@ client authorization code with the read-only classification preview, and set
 imported separately with `npm run email:backfill`; ordinary incremental intake
 must not be treated as a history migration.
 
+For a resumable historical import, install the separate backfill unit:
+
+```bash
+sudo -n /opt/bestcrm/app/scripts/install-email-backfill-service.sh
+sudo -n systemctl enable --now bestcrm-email-backfill.service
+```
+
+The backfill unit uses a persisted IMAP history cursor, imports at most 50
+messages per batch, waits for `EMAIL_INTAKE_POLL_INTERVAL_MS` between batches,
+and resumes after a failure. It exits successfully when history is complete.
+The incremental intake worker continues from its independent cursor.
+
 浏览器访问：
 
 ```text

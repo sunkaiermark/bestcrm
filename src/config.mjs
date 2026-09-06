@@ -215,7 +215,7 @@ export function loadConfig(env = process.env) {
       mailbox: env.EMAIL_INTAKE_MAILBOX || 'INBOX',
       mailboxKey: env.EMAIL_INTAKE_MAILBOX_KEY || env.EMAIL_INTAKE_USER || 'sales',
       pollIntervalMs: numberEnv(env.EMAIL_INTAKE_POLL_INTERVAL_MS, 5 * 60 * 1000),
-      maxMessages: numberEnv(env.EMAIL_INTAKE_MAX_MESSAGES, 20),
+      maxMessages: Math.min(positiveIntegerEnv(env.EMAIL_INTAKE_MAX_MESSAGES, 20), 50),
       markSeen: booleanEnv(env.EMAIL_INTAKE_MARK_SEEN, false)
     },
     notificationDelivery: {
