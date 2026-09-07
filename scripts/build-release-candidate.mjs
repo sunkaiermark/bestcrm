@@ -111,6 +111,57 @@ async function git(cwd, args) {
   return stdout.trim();
 }
 
+async function writePortableTextArtifact(filePath, content) {
+  if (process.platform !== 'win32') {
+    await writeFile(filePath, content, 'utf8');
+    return;
+  }
+  const encoded = Buffer.from(content, 'utf8').toString('base64');
+  const encodedPath = Buffer.from(filePath, 'utf8').toString('base64');
+  const command = [
+    `$bytes=[Convert]::FromBase64String('${encoded}')`,
+    `$path=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedPath}'))`,
+    '[IO.File]::WriteAllBytes($path,$bytes)'
+  ].join('; ');
+  await execFileAsync('pwsh.exe', [
+    '-NoProfile',
+    '-NonInteractive',
+    '-EncodedCommand',
+    Buffer.from(command, 'utf16le').toString('base64')
+  ], { windowsHide: true, maxBuffer: 1024 * 1024 });
+}
+
+async function createPortableBundle({ bundlePath, archivePath, manifestPath, checksumPath }) {
+  await rm(bundlePath, { force: true });
+  if (process.platform === 'win32') {
+    const pathVariables = Object.entries({ archivePath, manifestPath, checksumPath, bundlePath })
+      .map(([name, value]) => {
+        const encoded = Buffer.from(value, 'utf8').toString('base64');
+        return `$${name}=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encoded}'))`;
+      });
+    const command = [
+      ...pathVariables,
+      'Compress-Archive -LiteralPath $archivePath,$manifestPath,$checksumPath -DestinationPath $bundlePath -CompressionLevel NoCompression -Force'
+    ].join('; ');
+    await execFileAsync('pwsh.exe', [
+      '-NoProfile',
+      '-NonInteractive',
+      '-EncodedCommand',
+      Buffer.from(command, 'utf16le').toString('base64')
+    ], { windowsHide: true, maxBuffer: 2 * 1024 * 1024 });
+    return;
+  }
+  const bundle = new JSZip();
+  bundle.file(path.basename(archivePath), await readFile(archivePath));
+  bundle.file(path.basename(manifestPath), await readFile(manifestPath));
+  bundle.file(path.basename(checksumPath), await readFile(checksumPath));
+  await writeFile(bundlePath, await bundle.generateAsync({
+    type: 'nodebuffer',
+    compression: 'STORE',
+    platform: 'UNIX'
+  }));
+}
+
 function parseArguments(argv) {
   const options = {};
   for (let index = 0; index < argv.length; index += 1) {
@@ -191,24 +242,15 @@ export async function buildReleaseCandidate({
     const checksumPath = path.join(absoluteOutputDir, `${archiveName}.sha256`);
     const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
     const checksumText = `${sha256}  ${archiveName}\n`;
-    await writeFile(manifestPath, manifestText, 'utf8');
-    await writeFile(checksumPath, checksumText, 'utf8');
+    await writePortableTextArtifact(manifestPath, manifestText);
+    await writePortableTextArtifact(checksumPath, checksumText);
 
     // The bundle is the portable handoff artifact: binary ZIP reads are stable
     // even on Windows hosts where security/storage filters expose inconsistent
     // views of newly generated standalone text sidecars to different processes.
     const bundleName = `bestcrm-${releaseVersion}-bundle.zip`;
     const bundlePath = path.join(absoluteOutputDir, bundleName);
-    const bundle = new JSZip();
-    bundle.file(archiveName, await readFile(archivePath));
-    bundle.file(`${archiveName}.manifest.json`, manifestText);
-    bundle.file(`${archiveName}.sha256`, checksumText);
-    await rm(bundlePath, { force: true });
-    await writeFile(bundlePath, await bundle.generateAsync({
-      type: 'nodebuffer',
-      compression: 'STORE',
-      platform: 'UNIX'
-    }));
+    await createPortableBundle({ bundlePath, archivePath, manifestPath, checksumPath });
     const bundleSha256 = await sha256File(bundlePath);
     return {
       archivePath,
