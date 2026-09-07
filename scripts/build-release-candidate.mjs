@@ -4,6 +4,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import JSZip from 'jszip';
 import { isMainModule } from '../src/utils/moduleEntry.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -188,9 +189,35 @@ export async function buildReleaseCandidate({
     };
     const manifestPath = path.join(absoluteOutputDir, `${archiveName}.manifest.json`);
     const checksumPath = path.join(absoluteOutputDir, `${archiveName}.sha256`);
-    await writeFile(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`, 'utf8');
-    await writeFile(checksumPath, `${sha256}  ${archiveName}\n`, 'utf8');
-    return { archivePath, manifestPath, checksumPath, ...manifest };
+    const manifestText = `${JSON.stringify(manifest, null, 2)}\n`;
+    const checksumText = `${sha256}  ${archiveName}\n`;
+    await writeFile(manifestPath, manifestText, 'utf8');
+    await writeFile(checksumPath, checksumText, 'utf8');
+
+    // The bundle is the portable handoff artifact: binary ZIP reads are stable
+    // even on Windows hosts where security/storage filters expose inconsistent
+    // views of newly generated standalone text sidecars to different processes.
+    const bundleName = `bestcrm-${releaseVersion}-bundle.zip`;
+    const bundlePath = path.join(absoluteOutputDir, bundleName);
+    const bundle = new JSZip();
+    bundle.file(archiveName, await readFile(archivePath));
+    bundle.file(`${archiveName}.manifest.json`, manifestText);
+    bundle.file(`${archiveName}.sha256`, checksumText);
+    await rm(bundlePath, { force: true });
+    await writeFile(bundlePath, await bundle.generateAsync({
+      type: 'nodebuffer',
+      compression: 'STORE',
+      platform: 'UNIX'
+    }));
+    const bundleSha256 = await sha256File(bundlePath);
+    return {
+      archivePath,
+      manifestPath,
+      checksumPath,
+      bundlePath,
+      bundleSha256,
+      ...manifest
+    };
   } finally {
     await rm(rehearsalDir, { recursive: true, force: true });
   }

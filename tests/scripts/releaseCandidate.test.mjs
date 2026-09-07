@@ -1,8 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import JSZip from 'jszip';
 import {
   assertAuthenticatorMfaReleaseDefaults,
   assertEmailFlagsDisabled,
@@ -137,6 +139,14 @@ test('release builder creates a reproducible commit-only archive and checksum ma
       GOOGLE_MAIL_OUTBOUND_ENABLED: false,
       GOOGLE_MAIL_PUSH_ENABLED: false
     });
+    const bundleBytes = await readFile(result.bundlePath);
+    const bundle = await JSZip.loadAsync(bundleBytes);
+    const embeddedArchive = await bundle.file('bestcrm-v2099.01.01-01-rc.1.zip').async('nodebuffer');
+    const embeddedManifest = JSON.parse(await bundle.file('bestcrm-v2099.01.01-01-rc.1.zip.manifest.json').async('string'));
+    const embeddedChecksum = await bundle.file('bestcrm-v2099.01.01-01-rc.1.zip.sha256').async('string');
+    assert.equal(createHash('sha256').update(embeddedArchive).digest('hex'), result.sha256);
+    assert.equal(embeddedManifest.commit, result.commit);
+    assert.match(embeddedChecksum, new RegExp(`^${result.sha256}  bestcrm-v2099\\.01\\.01-01-rc\\.1\\.zip`));
   } finally {
     await rm(outputDir, { recursive: true, force: true });
   }
