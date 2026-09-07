@@ -188,3 +188,44 @@ true:
 - any unreviewed file enters the release archive;
 - email or MFA feature flags would change;
 - the previous release or verified backup cannot be used for rollback.
+
+## 2026-09-08 list-layout and intake-worker follow-up
+
+Production was advanced from `v2026.09.07-03-rc.3` to
+`v2026.09.08-01-rc.2` after the following independent commits were reviewed:
+
+- `92b2a5c` — left-align the Inquiries Subject, Company, and Contact columns;
+- `edd4629` — abort the email-intake polling wait during graceful shutdown;
+- `6130a10` — apply the approved desktop and mobile list layout to
+  Opportunities, Customers, and Contacts.
+
+The release archive was built only from commit
+`6130a10bb9838806a3958772e1858302622d10b3`. Its SHA-256 was
+`bc240a197c0b29c0c10f68cef15b1be651f64691e835d69b9a2077e3aedfec72`,
+and the reproducible-archive check passed. The exact extracted archive passed
+all `879/879` tests. There were no schema, database-data, upload, feature-flag,
+or credential changes; migration remained at `048_opportunity_activity_spine.sql`.
+
+The first deployment commands stopped before cutover because the script was
+not executable directly and the root-protected environment file was not
+readable by the unprivileged account. A subsequent attempt reached migration
+setup, received an empty `DATABASE_URL` because the safe reader was invoked
+through the active symlink, executed no SQL, and automatically restored
+`v2026.09.07-03-rc.3`. The successful retry ran the same deployment script as
+root and pointed `BESTCRM_ENV_READER` at the real rc.3 release path.
+
+Post-deployment evidence:
+
+- active symlink and release ledger: `v2026.09.08-01-rc.2`;
+- `bestcrm` and `bestcrm-email-intake`: active;
+- `bestcrm-email-backfill`: inactive;
+- local and public `/health`: HTTP 200 with `{"ok":true,"app":"BESTCRM"}`;
+- public login: HTTP 200 with both English and Chinese choices;
+- deployed CSS and intake-worker source markers: present.
+
+For a code-only rollback, restore the application symlink to
+`/opt/bestcrm/releases/v2026.09.07-03-rc.3`, restore the release ledger, and
+restart both `bestcrm` and `bestcrm-email-intake`. The verified Phase A+B
+cutover backup `20260908-002351` remains the full recovery point; do not use a
+full data rollback for this CSS/worker-only release unless a separate data
+integrity incident requires it.
