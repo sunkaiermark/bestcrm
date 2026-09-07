@@ -4,6 +4,7 @@ import { migrate } from '../src/db/migrate.mjs';
 import { createCustomerRepository } from '../src/repositories/customerRepository.mjs';
 import { createContactRepository } from '../src/repositories/contactRepository.mjs';
 import { createOpportunityRepository } from '../src/repositories/opportunityRepository.mjs';
+import { inspectCoreRecordForeignKeys } from '../src/domain/opportunityRecordGuardrails.mjs';
 
 const databaseUrl = process.env.OPPORTUNITY_RECORD_GUARDRAILS_DB_TEST_URL;
 if (!databaseUrl) {
@@ -226,15 +227,16 @@ async function verify() {
         AND parent_table.relname IN ('customers', 'contacts', 'opportunities')
       ORDER BY con.conname
     `);
-    assert.equal(foreignKeys.rowCount, 34);
-    assert.ok(foreignKeys.rows.every((foreignKey) => foreignKey.confdeltype === 'r'));
+    const foreignKeyInspection = inspectCoreRecordForeignKeys(foreignKeys.rows);
+    assert.deepEqual(foreignKeyInspection.missingRequired, []);
+    assert.deepEqual(foreignKeyInspection.unsafeDeleteActions, []);
 
     console.log(JSON.stringify({
       database: databaseName,
       coreRecords: 3,
       stableRecordUids: 3,
       lifecycleEvents: 6,
-      protectedCoreForeignKeys: foreignKeys.rowCount,
+      protectedCoreForeignKeys: foreignKeyInspection.total,
       preservedLinkedRecords: Object.values(afterCounts).reduce((total, count) => total + count, 0),
       directDeletesBlocked: 3,
       uidChangesBlocked: 3,

@@ -1,6 +1,6 @@
 # BESTCRM Phase A+B Opportunity Foundation Release
 
-- Candidate: `v2026.09.07-03-rc.2`
+- Candidate: `v2026.09.07-03-rc.3`
 - Production target: `crm.sunkaier.com` / Singapore `43.134.52.251`
 - Application root: `/opt/bestcrm`
 - Previous production release: `v2026.09.07-02-rc.1`
@@ -57,7 +57,7 @@ the final backup.
 Build only from the release-preparation commit:
 
 ```powershell
-npm.cmd run release:build -- --version v2026.09.07-03-rc.2 --ref <commit>
+npm.cmd run release:build -- --version v2026.09.07-03-rc.3 --ref <commit>
 ```
 
 The generated manifest is authoritative for the full commit and SHA-256. Before

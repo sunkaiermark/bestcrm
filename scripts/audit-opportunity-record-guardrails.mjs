@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import pg from 'pg';
 import { loadConfig } from '../src/config.mjs';
+import { inspectCoreRecordForeignKeys } from '../src/domain/opportunityRecordGuardrails.mjs';
 
 const databaseUrl = process.env.OPPORTUNITY_RECORD_GUARDRAILS_AUDIT_URL || loadConfig().databaseUrl;
 if (!databaseUrl) {
@@ -50,8 +51,9 @@ async function audit() {
       AND parent_table.relname IN ('customers', 'contacts', 'opportunities')
     ORDER BY con.conname
   `);
-  assert.equal(foreignKeys.rowCount, 34, 'Unexpected core-record foreign-key inventory');
-  assert.ok(foreignKeys.rows.every((foreignKey) => foreignKey.confdeltype === 'r'));
+  const foreignKeyInspection = inspectCoreRecordForeignKeys(foreignKeys.rows);
+  assert.deepEqual(foreignKeyInspection.missingRequired, [], 'Required core-record foreign keys are missing');
+  assert.deepEqual(foreignKeyInspection.unsafeDeleteActions, [], 'Core-record foreign keys must use ON DELETE RESTRICT');
 
   const requiredTriggers = [
     'contacts_prevent_delete',
@@ -79,7 +81,7 @@ async function audit() {
     host: parsedUrl.hostname,
     migrationApplied: true,
     coreTables: integrity.rows,
-    protectedCoreForeignKeys: foreignKeys.rowCount,
+    protectedCoreForeignKeys: foreignKeyInspection.total,
     requiredTriggers: triggers.rowCount,
     result: 'passed'
   }, null, 2));
