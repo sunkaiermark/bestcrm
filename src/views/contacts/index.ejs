@@ -10,6 +10,14 @@
               <%= t('keyword') %>
               <input name="q" type="search" value="<%= filters.searchTerm %>" placeholder="<%= t('contactSearchPlaceholder') %>">
             </label>
+            <label>
+              <%= t('archive') %>
+              <select name="archiveScope">
+                <option value="active"<%= filters.archiveScope === 'active' ? ' selected' : '' %>><%= t('activeRecords') %></option>
+                <option value="archived"<%= filters.archiveScope === 'archived' ? ' selected' : '' %>><%= t('archivedRecords') %></option>
+                <option value="all"<%= filters.archiveScope === 'all' ? ' selected' : '' %>><%= t('allRecords') %></option>
+              </select>
+            </label>
             <button type="submit"><%= t('search') %></button>
             <a class="secondary-action" href="/contacts"><%= t('clearFilters') %></a>
           </form>

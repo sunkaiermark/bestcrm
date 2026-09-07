@@ -1513,6 +1513,25 @@ test('applyWorkflowAction refuses missing opportunities before side effects', as
   assert.deepEqual(repositories.calls, [['findOpportunity', 404]]);
 });
 
+test('applyWorkflowAction keeps manually archived opportunities read-only', async () => {
+  const repositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.DRAFT,
+    archivedAt: new Date('2026-09-07T00:00:00Z'),
+    salespersonId: 1
+  });
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 1, roles: [ROLES.SALESPERSON] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_INITIATION,
+    payload: {},
+    repositories
+  }), (error) => error?.message === 'Archived opportunity is read-only' && error?.statusCode === 409);
+
+  assert.deepEqual(repositories.calls, [['findOpportunity', 10]]);
+});
+
 test('quotation package enabled workflow blocks win when no package was accepted', async () => {
   const repositories = createRecordingRepositories({
     id: 10,

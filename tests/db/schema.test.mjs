@@ -45,6 +45,7 @@ const customerCodeMigrationPath = new URL('../../src/db/migrations/043_customer_
 const contactCodeMigrationPath = new URL('../../src/db/migrations/044_contact_code.sql', import.meta.url);
 const imapSyncAndEmailTriageMigrationPath = new URL('../../src/db/migrations/045_imap_sync_and_email_triage.sql', import.meta.url);
 const customerContactUniquenessMigrationPath = new URL('../../src/db/migrations/046_customer_contact_uniqueness.sql', import.meta.url);
+const opportunityRecordGuardrailsMigrationPath = new URL('../../src/db/migrations/047_opportunity_record_guardrails.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -790,4 +791,23 @@ test('customer and contact uniqueness migration enforces the approved business i
   assert.match(sql, /customers_normalized_name_unique_idx/);
   assert.match(sql, /contacts_customer_name_phone_unique_idx/);
   assert.match(sql, /WHERE bestcrm_normalize_phone\(phone\) <> ''/);
+});
+
+test('opportunity record guardrails migration makes core records stable, archivable, and non-deletable', async () => {
+  const sql = await readFile(opportunityRecordGuardrailsMigrationPath, 'utf8');
+
+  for (const table of ['customers', 'contacts', 'opportunities']) {
+    assert.match(sql, new RegExp(`ALTER TABLE ${table}\\s+[\\s\\S]*ADD COLUMN IF NOT EXISTS record_uid uuid`));
+    assert.match(sql, new RegExp(`${table}_record_uid_unique_idx`));
+    assert.match(sql, new RegExp(`CREATE TRIGGER ${table}_prevent_delete`));
+    assert.match(sql, new RegExp(`CREATE TRIGGER ${table}_protect_record_uid`));
+  }
+  assert.match(sql, /CREATE TABLE record_lifecycle_events/);
+  assert.match(sql, /event_type IN \('archive', 'reopen', 'merge'\)/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON record_lifecycle_events/);
+  assert.match(sql, /Core CRM records cannot be deleted/);
+  assert.match(sql, /Stable record UID cannot be changed/);
+  assert.match(sql, /ON DELETE RESTRICT/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+  assert.doesNotMatch(sql, /ON DELETE SET NULL/);
 });

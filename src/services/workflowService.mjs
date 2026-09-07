@@ -2,10 +2,10 @@ import { ACTIONS, transition } from '../domain/workflow.mjs';
 import { technicalDraftSubmissionSummary } from './opportunityTechnicalDraftService.mjs';
 
 export class WorkflowValidationError extends Error {
-  constructor(message) {
+  constructor(message, statusCode = 400) {
     super(message);
     this.name = 'WorkflowValidationError';
-    this.statusCode = 400;
+    this.statusCode = statusCode;
   }
 }
 
@@ -729,6 +729,9 @@ export async function applyWorkflowAction({
   const before = await repositories.opportunityRepository.findById(opportunityId);
   if (!before) {
     throw new Error('Opportunity not found');
+  }
+  if (before.archivedAt) {
+    throw new WorkflowValidationError('Archived opportunity is read-only', 409);
   }
   const contractApproval = await loadContractApprovalContext(action, opportunityId, repositories);
   const transitionOpportunity = opportunityWithContractApproval(before, contractApproval);

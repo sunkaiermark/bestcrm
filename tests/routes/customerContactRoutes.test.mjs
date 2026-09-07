@@ -21,8 +21,10 @@ async function createLoggedInAgent(options = {}) {
     ...userOverrides,
     roles: userOverrides.roles || [ROLES.SALESPERSON]
   };
-  const deletedCustomers = [];
-  const deletedContacts = [];
+  const archivedCustomers = [];
+  const archivedContacts = [];
+  const reopenedCustomers = [];
+  const reopenedContacts = [];
   const createdContacts = [];
   const app = createApp({
     sessionSecret: 'test-secret',
@@ -79,8 +81,12 @@ async function createLoggedInAgent(options = {}) {
         }]
         };
       },
-      async deleteById(id) {
-        deletedCustomers.push(Number(id));
+      async archiveById(id, input) {
+        archivedCustomers.push({ id: Number(id), ...input });
+        return true;
+      },
+      async reopenById(id, input) {
+        reopenedCustomers.push({ id: Number(id), ...input });
         return true;
       },
       ...customerRepositoryOverrides
@@ -123,8 +129,12 @@ async function createLoggedInAgent(options = {}) {
           notes: 'Key contact'
         };
       },
-      async deleteById(id) {
-        deletedContacts.push(Number(id));
+      async archiveById(id, input) {
+        archivedContacts.push({ id: Number(id), ...input });
+        return true;
+      },
+      async reopenById(id, input) {
+        reopenedContacts.push({ id: Number(id), ...input });
         return true;
       },
       async createContact(input) {
@@ -144,7 +154,7 @@ async function createLoggedInAgent(options = {}) {
     await agent.get(`/language?lang=${language}&returnTo=/login`);
   }
   await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
-  return { agent, deletedCustomers, deletedContacts, createdContacts };
+  return { agent, archivedCustomers, archivedContacts, reopenedCustomers, reopenedContacts, createdContacts };
 }
 
 function assertAppSidebar(html, activeHref) {
@@ -278,7 +288,7 @@ test('customer list search preserves owner scope and displays the retained query
   const response = await agent.get('/customers').query({ q: '  C000010  ' });
 
   assert.equal(response.status, 200);
-  assert.deepEqual(filters, [{ ownerUserId: 7, searchTerm: 'C000010' }]);
+  assert.deepEqual(filters, [{ ownerUserId: 7, searchTerm: 'C000010', archiveScope: 'active' }]);
   assert.match(response.text, /name="q"[^>]*value="C000010"/);
   assert.match(response.text, /Search by customer code, name, or website/);
 });
@@ -354,7 +364,7 @@ test('contact list search preserves owner scope and displays the retained query'
   const response = await agent.get('/contacts').query({ q: '  CT000020  ' });
 
   assert.equal(response.status, 200);
-  assert.deepEqual(filters, [{ ownerUserId: 7, searchTerm: 'CT000020' }]);
+  assert.deepEqual(filters, [{ ownerUserId: 7, searchTerm: 'CT000020', archiveScope: 'active' }]);
   assert.match(response.text, /name="q"[^>]*value="CT000020"/);
   assert.match(response.text, /Search by contact code, name, customer, email, phone, or WeChat/);
 });
@@ -616,8 +626,8 @@ test('contact creation can return to opportunity initiation with the new contact
   }]);
 });
 
-test('administrator deletes customers and contacts from detail pages with confirmation prompts', async () => {
-  const { agent, deletedCustomers, deletedContacts } = await createLoggedInAgent({
+test('administrator archives customers and contacts with a required reason', async () => {
+  const { agent, archivedCustomers, archivedContacts } = await createLoggedInAgent({
     user: {
       id: 99,
       username: 'admin01',
@@ -628,37 +638,93 @@ test('administrator deletes customers and contacts from detail pages with confir
 
   const customerDetail = await agent.get('/customers/10');
   assert.equal(customerDetail.status, 200);
-  assert.match(customerDetail.text, /Delete customer/);
-  assert.match(customerDetail.text, /action="\/customers\/10\/delete"/);
-  assert.match(customerDetail.text, /onsubmit="return confirm\('Delete this customer and its contacts\?'\)"/);
+  assert.match(customerDetail.text, /Archive customer/);
+  assert.match(customerDetail.text, /action="\/customers\/10\/archive"/);
+  assert.match(customerDetail.text, /name="reason"/);
 
-  const customerDelete = await agent.post('/customers/10/delete');
-  assert.equal(customerDelete.status, 302);
-  assert.equal(customerDelete.headers.location, '/customers');
-  assert.deepEqual(deletedCustomers, [10]);
+  const customerArchive = await agent.post('/customers/10/archive').type('form').send({ reason: 'Duplicate imported record' });
+  assert.equal(customerArchive.status, 302);
+  assert.equal(customerArchive.headers.location, '/customers');
+  assert.deepEqual(archivedCustomers, [{ id: 10, actorUserId: 99, reason: 'Duplicate imported record' }]);
 
   const contactDetail = await agent.get('/contacts/20');
   assert.equal(contactDetail.status, 200);
-  assert.match(contactDetail.text, /Delete contact/);
-  assert.match(contactDetail.text, /action="\/contacts\/20\/delete"/);
-  assert.match(contactDetail.text, /onsubmit="return confirm\('Delete this contact\?'\)"/);
+  assert.match(contactDetail.text, /Archive contact/);
+  assert.match(contactDetail.text, /action="\/contacts\/20\/archive"/);
+  assert.match(contactDetail.text, /name="reason"/);
 
-  const contactDelete = await agent.post('/contacts/20/delete');
-  assert.equal(contactDelete.status, 302);
-  assert.equal(contactDelete.headers.location, '/contacts');
-  assert.deepEqual(deletedContacts, [20]);
+  const contactArchive = await agent.post('/contacts/20/archive').type('form').send({ reason: 'Former contact' });
+  assert.equal(contactArchive.status, 302);
+  assert.equal(contactArchive.headers.location, '/contacts');
+  assert.deepEqual(archivedContacts, [{ id: 20, actorUserId: 99, reason: 'Former contact' }]);
 });
 
-test('non administrators cannot delete customers or contacts directly', async () => {
-  const { agent, deletedCustomers, deletedContacts } = await createLoggedInAgent();
+test('administrator reopens archived customers and contacts with a required reason', async () => {
+  const archivedAt = new Date('2026-09-07T00:00:00Z');
+  const { agent, reopenedCustomers, reopenedContacts } = await createLoggedInAgent({
+    user: {
+      id: 99,
+      username: 'admin01',
+      displayName: 'System Administrator',
+      roles: [ROLES.ADMINISTRATOR]
+    },
+    customerRepository: {
+      async getCustomerDetail(id) {
+        return { id: Number(id), name: 'Archived Customer', ownerUserId: 7, contacts: [], archivedAt, archiveReason: 'Duplicate' };
+      }
+    },
+    contactRepository: {
+      async getContactDetail(id) {
+        return { id: Number(id), customerId: 10, customerName: 'Archived Customer', customerOwnerUserId: 7, name: 'Archived Contact', archivedAt, archiveReason: 'Former contact' };
+      }
+    }
+  });
 
-  const customerDelete = await agent.post('/customers/10/delete');
-  assert.equal(customerDelete.status, 403);
-  assert.deepEqual(deletedCustomers, []);
+  const customerDetail = await agent.get('/customers/10');
+  assert.equal(customerDetail.status, 200);
+  assert.match(customerDetail.text, /action="\/customers\/10\/reopen"/);
+  assert.doesNotMatch(customerDetail.text, /action="\/customers\/10\/archive"/);
+  const customerReopen = await agent.post('/customers/10/reopen').type('form').send({ reason: 'Verified as active' });
+  assert.equal(customerReopen.status, 302);
+  assert.deepEqual(reopenedCustomers, [{ id: 10, actorUserId: 99, reason: 'Verified as active' }]);
 
-  const contactDelete = await agent.post('/contacts/20/delete');
-  assert.equal(contactDelete.status, 403);
-  assert.deepEqual(deletedContacts, []);
+  const contactDetail = await agent.get('/contacts/20');
+  assert.equal(contactDetail.status, 200);
+  assert.match(contactDetail.text, /action="\/contacts\/20\/reopen"/);
+  assert.doesNotMatch(contactDetail.text, /action="\/contacts\/20\/archive"/);
+  const contactReopen = await agent.post('/contacts/20/reopen').type('form').send({ reason: 'Contact returned' });
+  assert.equal(contactReopen.status, 302);
+  assert.deepEqual(reopenedContacts, [{ id: 20, actorUserId: 99, reason: 'Contact returned' }]);
+});
+
+test('archive routes reject empty reasons before repository changes', async () => {
+  const { agent, archivedCustomers, archivedContacts } = await createLoggedInAgent({
+    user: {
+      id: 99,
+      username: 'admin01',
+      displayName: 'System Administrator',
+      roles: [ROLES.ADMINISTRATOR]
+    }
+  });
+
+  const customerArchive = await agent.post('/customers/10/archive').type('form').send({ reason: '   ' });
+  const contactArchive = await agent.post('/contacts/20/archive').type('form').send({ reason: '' });
+  assert.equal(customerArchive.status, 400);
+  assert.equal(contactArchive.status, 400);
+  assert.deepEqual(archivedCustomers, []);
+  assert.deepEqual(archivedContacts, []);
+});
+
+test('non administrators cannot archive customers or contacts directly', async () => {
+  const { agent, archivedCustomers, archivedContacts } = await createLoggedInAgent();
+
+  const customerArchive = await agent.post('/customers/10/archive').type('form').send({ reason: 'No authority' });
+  assert.equal(customerArchive.status, 403);
+  assert.deepEqual(archivedCustomers, []);
+
+  const contactArchive = await agent.post('/contacts/20/archive').type('form').send({ reason: 'No authority' });
+  assert.equal(contactArchive.status, 403);
+  assert.deepEqual(archivedContacts, []);
 });
 
 test('non owners receive forbidden when directly updating customers or contacts', async () => {

@@ -3,13 +3,20 @@ import assert from 'node:assert/strict';
 import {
   canMaintainContact,
   canMaintainCustomer,
+  archiveCustomer,
   createCustomer,
   DuplicateCustomerError,
-  deleteCustomer,
   normalizeCustomerWebsite,
+  reopenCustomer,
   updateCustomer
 } from '../../src/services/customerService.mjs';
-import { DuplicateContactError, createContact, deleteContact, updateContact } from '../../src/services/contactService.mjs';
+import {
+  archiveContact,
+  createContact,
+  DuplicateContactError,
+  reopenContact,
+  updateContact
+} from '../../src/services/contactService.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
 
 test('salesperson maintains only owned customer records', () => {
@@ -168,20 +175,33 @@ test('updateCustomer rejects duplicate customer names excluding the current cust
   assert.equal(updateCalled, false);
 });
 
-test('deleteCustomer allows administrators only', async () => {
+test('archive and reopen customer require an administrator, actor identity, and reason', async () => {
   const calls = [];
   const customerRepository = {
-    async deleteById(id) {
-      calls.push(id);
+    async archiveById(id, input) {
+      calls.push(['archive', id, input]);
+      return true;
+    },
+    async reopenById(id, input) {
+      calls.push(['reopen', id, input]);
       return true;
     }
   };
+  const admin = { id: 99, roles: [ROLES.ADMINISTRATOR] };
 
-  await deleteCustomer(customerRepository, { id: 99, roles: [ROLES.ADMINISTRATOR] }, 10);
-  assert.deepEqual(calls, [10]);
+  await archiveCustomer(customerRepository, admin, 10, 'Duplicate imported record');
+  await reopenCustomer(customerRepository, admin, 10, 'Archive was entered in error');
+  assert.deepEqual(calls, [
+    ['archive', 10, { actorUserId: 99, reason: 'Duplicate imported record' }],
+    ['reopen', 10, { actorUserId: 99, reason: 'Archive was entered in error' }]
+  ]);
 
-  await assert.rejects(() => deleteCustomer(customerRepository, { id: 7, roles: [ROLES.SALESPERSON] }, 10), /Forbidden/);
-  assert.deepEqual(calls, [10]);
+  await assert.rejects(
+    () => archiveCustomer(customerRepository, { id: 7, roles: [ROLES.SALESPERSON] }, 10, 'No'),
+    /Forbidden/
+  );
+  await assert.rejects(() => archiveCustomer(customerRepository, admin, 10, '  '), /Archive reason is required/);
+  assert.equal(calls.length, 2);
 });
 
 test('createContact checks customer ownership before insert', async () => {
@@ -329,18 +349,31 @@ test('updateContact excludes itself and rejects another matching contact', async
   assert.equal(updateCalled, false);
 });
 
-test('deleteContact allows administrators only', async () => {
+test('archive and reopen contact require an administrator, actor identity, and reason', async () => {
   const calls = [];
   const contactRepository = {
-    async deleteById(id) {
-      calls.push(id);
+    async archiveById(id, input) {
+      calls.push(['archive', id, input]);
+      return true;
+    },
+    async reopenById(id, input) {
+      calls.push(['reopen', id, input]);
       return true;
     }
   };
+  const admin = { id: 99, roles: [ROLES.ADMINISTRATOR] };
 
-  await deleteContact(contactRepository, { id: 99, roles: [ROLES.ADMINISTRATOR] }, 20);
-  assert.deepEqual(calls, [20]);
+  await archiveContact(contactRepository, admin, 20, 'Former contact');
+  await reopenContact(contactRepository, admin, 20, 'Contact returned');
+  assert.deepEqual(calls, [
+    ['archive', 20, { actorUserId: 99, reason: 'Former contact' }],
+    ['reopen', 20, { actorUserId: 99, reason: 'Contact returned' }]
+  ]);
 
-  await assert.rejects(() => deleteContact(contactRepository, { id: 7, roles: [ROLES.SALESPERSON] }, 20), /Forbidden/);
-  assert.deepEqual(calls, [20]);
+  await assert.rejects(
+    () => archiveContact(contactRepository, { id: 7, roles: [ROLES.SALESPERSON] }, 20, 'No'),
+    /Forbidden/
+  );
+  await assert.rejects(() => reopenContact(contactRepository, admin, 20, ''), /Reopen reason is required/);
+  assert.equal(calls.length, 2);
 });

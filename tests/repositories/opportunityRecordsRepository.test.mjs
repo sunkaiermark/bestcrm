@@ -172,7 +172,8 @@ test('opportunity repository excludes archived opportunities by default', async 
 
   await repository.listOpportunities();
 
-  assert.match(queryTarget.queries[0].sql, /WHERE o\.status NOT IN \(\$1, \$2\)/);
+  assert.match(queryTarget.queries[0].sql, /o\.archived_at IS NULL/);
+  assert.match(queryTarget.queries[0].sql, /o\.status NOT IN \(\$1, \$2\)/);
   assert.deepEqual(queryTarget.queries[0].params, [STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
 });
 
@@ -187,7 +188,7 @@ test('opportunity repository can list only archived opportunities', async () => 
   const opportunities = await repository.listOpportunities({ archiveScope: 'archived' });
 
   assert.equal(opportunities[0].status, STATUSES.CONTRACT_ARCHIVED);
-  assert.match(queryTarget.queries[0].sql, /WHERE o\.status IN \(\$1, \$2\)/);
+  assert.match(queryTarget.queries[0].sql, /o\.archived_at IS NOT NULL OR o\.status IN \(\$1, \$2\)/);
   assert.deepEqual(queryTarget.queries[0].params, [STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
 });
 
@@ -291,14 +292,21 @@ test('opportunity repository updates editable opportunity fields', async () => {
   ]);
 });
 
-test('opportunity repository deletes opportunity rows by id', async () => {
-  const queryTarget = createFakeQueryTarget([]);
+test('opportunity repository archives and reopens without deleting the row', async () => {
+  const queryTarget = createFakeQueryTarget([{ id: '30', record_uid: '33333333-3333-4333-8333-333333333333' }]);
   const repository = createOpportunityRepository(queryTarget);
 
-  await repository.deleteById(30);
+  const archived = await repository.archiveById(30, { actorUserId: 99, reason: 'Cancelled duplicate' });
+  const reopened = await repository.reopenById(30, { actorUserId: 99, reason: 'Cancellation reversed' });
 
-  assert.match(queryTarget.queries[0].sql, /DELETE FROM opportunities WHERE id = \$1/);
-  assert.deepEqual(queryTarget.queries[0].params, [30]);
+  assert.equal(archived, true);
+  assert.equal(reopened, true);
+  assert.match(queryTarget.queries[0].sql, /UPDATE opportunities/);
+  assert.match(queryTarget.queries[0].sql, /INSERT INTO record_lifecycle_events/);
+  assert.doesNotMatch(queryTarget.queries[0].sql, /DELETE FROM opportunities/);
+  assert.deepEqual(queryTarget.queries[0].params, [30, 99, 'Cancelled duplicate']);
+  assert.match(queryTarget.queries[1].sql, /archived_at = NULL/);
+  assert.deepEqual(queryTarget.queries[1].params, [30, 99, 'Cancellation reversed']);
 });
 
 test('opportunity repository generates six digit opportunity numbers from sequence', async () => {

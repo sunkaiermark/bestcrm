@@ -181,7 +181,10 @@ async function createLoggedInAgent(extraOptions = {}) {
       async updateOpportunity() {
         throw new Error('not used');
       },
-      async deleteById() {
+      async archiveById() {
+        throw new Error('not used');
+      },
+      async reopenById() {
         throw new Error('not used');
       },
       async updateWorkflowState(id, changes) {
@@ -956,7 +959,7 @@ test('removed Supporting Engineer loses direct opportunity access', async () => 
   assert.equal(detail.status, 403);
 });
 
-test('administrator sees opportunity delete action on detail page', async () => {
+test('administrator sees opportunity archive action with a required reason on detail page', async () => {
   const { agent } = await createLoggedInAgent({
     user: {
       id: 99,
@@ -969,9 +972,9 @@ test('administrator sees opportunity delete action on detail page', async () => 
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /action="\/opportunities\/30\/delete"/);
-  assert.match(detail.text, /onsubmit="return confirm\('Delete this opportunity and all uploaded files\?'\)"/);
-  assert.match(detail.text, />Delete</);
+  assert.match(detail.text, /action="\/opportunities\/30\/archive"/);
+  assert.match(detail.text, /name="reason"/);
+  assert.match(detail.text, />Archive</);
 });
 
 test('salesperson edits opportunity fields from the detail action', async () => {
@@ -1026,29 +1029,29 @@ test('salesperson edits opportunity fields from the detail action', async () => 
   }]);
 });
 
-test('non administrators cannot delete opportunities directly', async () => {
-  let deleteCalled = false;
+test('non administrators cannot archive opportunities directly', async () => {
+  let archiveCalled = false;
   const { agent } = await createLoggedInAgent({
     opportunityRepository: {
-      async deleteById() {
-        deleteCalled = true;
+      async archiveById() {
+        archiveCalled = true;
       }
     }
   });
 
-  const response = await agent.post('/opportunities/30/delete').type('form').send();
+  const response = await agent.post('/opportunities/30/archive').type('form').send({ reason: 'No authority' });
 
   assert.equal(response.status, 403);
-  assert.equal(deleteCalled, false);
+  assert.equal(archiveCalled, false);
 });
 
-test('administrator deletes opportunity and removes stored attachment files', async () => {
+test('administrator archives opportunity and preserves stored attachment files', async () => {
   const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-delete-opportunity-'));
   const storedPath = '2026/06/delete-me.txt';
   const absolutePath = path.join(uploadDir, storedPath);
   await mkdir(path.dirname(absolutePath), { recursive: true });
   await writeFile(absolutePath, 'delete this file');
-  const deletedIds = [];
+  const archived = [];
   try {
     const { agent } = await createLoggedInAgent({
       uploadDir,
@@ -1084,22 +1087,91 @@ test('administrator deletes opportunity and removes stored attachment files', as
         }
       },
       opportunityRepository: {
-        async deleteById(id) {
-          deletedIds.push(Number(id));
-          return { rowCount: 1 };
+        async archiveById(id, input) {
+          archived.push({ id: Number(id), ...input });
+          return true;
         }
       }
     });
 
-    const response = await agent.post('/opportunities/30/delete').type('form').send();
+    const response = await agent.post('/opportunities/30/archive').type('form').send({ reason: 'Cancelled duplicate' });
 
     assert.equal(response.status, 302);
     assert.equal(response.headers.location, '/opportunities');
-    assert.deepEqual(deletedIds, [30]);
-    assert.equal(existsSync(absolutePath), false);
+    assert.deepEqual(archived, [{ id: 30, actorUserId: 99, reason: 'Cancelled duplicate' }]);
+    assert.equal(existsSync(absolutePath), true);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
+});
+
+test('administrator reopens an archived opportunity and archived detail is read-only', async () => {
+  const reopened = [];
+  const archivedOpportunity = opportunityDetail({
+    archivedAt: new Date('2026-09-07T00:00:00Z'),
+    archiveReason: 'Duplicate opportunity'
+  });
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 99,
+      username: 'admin01',
+      displayName: 'Admin User',
+      roles: [ROLES.ADMINISTRATOR]
+    },
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return archivedOpportunity;
+      },
+      async reopenById(id, input) {
+        reopened.push({ id: Number(id), ...input });
+        return true;
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /action="\/opportunities\/30\/reopen"/);
+  assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/archive"/);
+  assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/team-members"/);
+  assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/owner-transfer"/);
+  assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/attachments"/);
+  assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/workflow"/);
+
+  const teamMutation = await agent.post('/opportunities/30/team-members').type('form').send({
+    userId: 3,
+    assignmentScope: 'technical_solution',
+    taskDescription: 'Should not be added',
+    dueDate: '2026-09-30'
+  });
+  assert.equal(teamMutation.status, 403);
+
+  const reopen = await agent.post('/opportunities/30/reopen').type('form').send({ reason: 'Verified as active' });
+  assert.equal(reopen.status, 302);
+  assert.equal(reopen.headers.location, '/opportunities/30');
+  assert.deepEqual(reopened, [{ id: 30, actorUserId: 99, reason: 'Verified as active' }]);
+});
+
+test('opportunity archive route rejects an empty reason before repository changes', async () => {
+  let archiveCalled = false;
+  const { agent } = await createLoggedInAgent({
+    user: {
+      id: 99,
+      username: 'admin01',
+      displayName: 'Admin User',
+      roles: [ROLES.ADMINISTRATOR]
+    },
+    opportunityRepository: {
+      async archiveById() {
+        archiveCalled = true;
+        return true;
+      }
+    }
+  });
+
+  const response = await agent.post('/opportunities/30/archive').type('form').send({ reason: '   ' });
+  assert.equal(response.status, 400);
+  assert.equal(archiveCalled, false);
 });
 
 test('direct opportunity customer creation is blocked', async () => {

@@ -157,7 +157,10 @@ const emptyCustomerRepository = {
   async updateCustomer() {
     throw new Error('Customer repository is not configured');
   },
-  async deleteById() {
+  async archiveById() {
+    throw new Error('Customer repository is not configured');
+  },
+  async reopenById() {
     throw new Error('Customer repository is not configured');
   }
 };
@@ -175,7 +178,10 @@ const emptyContactRepository = {
   async updateContact() {
     throw new Error('Contact repository is not configured');
   },
-  async deleteById() {
+  async archiveById() {
+    throw new Error('Contact repository is not configured');
+  },
+  async reopenById() {
     throw new Error('Contact repository is not configured');
   }
 };
@@ -312,7 +318,10 @@ const emptyOpportunityRepository = {
   async updateOpportunity() {
     throw new Error('Opportunity repository is not configured');
   },
-  async deleteById() {
+  async archiveById() {
+    throw new Error('Opportunity repository is not configured');
+  },
+  async reopenById() {
     throw new Error('Opportunity repository is not configured');
   },
   async findById() {

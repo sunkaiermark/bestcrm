@@ -17,7 +17,12 @@ function mapContactRow(row) {
     educationBackground: row.education_background || '',
     workExperience: row.work_experience || '',
     keyAchievements: row.key_achievements || '',
-    notes: row.notes || ''
+    notes: row.notes || '',
+    ...(Object.hasOwn(row, 'record_uid') ? { recordUid: row.record_uid } : {}),
+    ...(Object.hasOwn(row, 'archived_at') ? { archivedAt: row.archived_at } : {}),
+    ...(Object.hasOwn(row, 'archived_by') ? { archivedBy: row.archived_by === null ? null : Number(row.archived_by) } : {}),
+    ...(Object.hasOwn(row, 'archive_reason') ? { archiveReason: row.archive_reason || '' } : {}),
+    ...(Object.hasOwn(row, 'merged_into_id') ? { mergedIntoId: row.merged_into_id === null ? null : Number(row.merged_into_id) } : {})
   };
 }
 
@@ -37,7 +42,12 @@ const contactSelect = `
     ct.education_background,
     ct.work_experience,
     ct.key_achievements,
-    ct.notes
+    ct.notes,
+    ct.record_uid,
+    ct.archived_at,
+    ct.archived_by,
+    ct.archive_reason,
+    ct.merged_into_id
   FROM contacts ct
   JOIN customers c ON c.id = ct.customer_id
 `;
@@ -50,6 +60,8 @@ export function createContactRepository(queryTarget) {
       const result = await queryTarget.query(`
         ${contactSelect}
         WHERE lower(btrim(ct.email)) = $1
+          AND ct.archived_at IS NULL
+          AND c.archived_at IS NULL
         ORDER BY ct.id
         LIMIT 2
       `, [normalized]);
@@ -74,6 +86,14 @@ export function createContactRepository(queryTarget) {
     async listContacts(filter = {}) {
       const where = [];
       const params = [];
+      if (filter.archiveScope === 'all') {
+        // Include active and archived contact records.
+      } else if (filter.archiveScope === 'archived') {
+        where.push('ct.archived_at IS NOT NULL');
+      } else {
+        where.push('ct.archived_at IS NULL');
+        where.push('c.archived_at IS NULL');
+      }
       if (filter.ownerUserId) {
         params.push(filter.ownerUserId);
         where.push(`c.owner_user_id = $${params.length}`);
@@ -214,11 +234,59 @@ export function createContactRepository(queryTarget) {
       return mapContactRow(result.rows[0]);
     },
 
-    async deleteById(id) {
+    async archiveById(id, input) {
       const result = await queryTarget.query(`
-        DELETE FROM contacts
-        WHERE id = $1
-      `, [id]);
+        WITH archived AS (
+          UPDATE contacts
+          SET archived_at = now(), archived_by = $2, archive_reason = $3, updated_at = now()
+          WHERE id = $1 AND archived_at IS NULL
+          RETURNING id, record_uid, archived_at
+        ), lifecycle_event AS (
+          INSERT INTO record_lifecycle_events (
+            record_type, record_id, record_uid, event_type, actor_user_id, reason, event_data
+          )
+          SELECT 'contact', id, record_uid, 'archive', $2, $3,
+            jsonb_build_object('archivedAt', archived_at)
+          FROM archived
+          RETURNING id
+        )
+        SELECT archived.id, archived.record_uid
+        FROM archived
+        JOIN lifecycle_event ON true
+      `, [id, input.actorUserId, input.reason]);
+      return result.rowCount > 0;
+    },
+
+    async reopenById(id, input) {
+      const result = await queryTarget.query(`
+        WITH previous AS (
+          SELECT id, record_uid, archived_at, archived_by, archive_reason
+          FROM contacts
+          WHERE id = $1 AND archived_at IS NOT NULL AND merged_into_id IS NULL
+          FOR UPDATE
+        ), reopened AS (
+          UPDATE contacts contact
+          SET archived_at = NULL, archived_by = NULL, archive_reason = NULL, updated_at = now()
+          FROM previous
+          WHERE contact.id = previous.id
+          RETURNING contact.id, contact.record_uid
+        ), lifecycle_event AS (
+          INSERT INTO record_lifecycle_events (
+            record_type, record_id, record_uid, event_type, actor_user_id, reason, event_data
+          )
+          SELECT 'contact', id, record_uid, 'reopen', $2, $3,
+            jsonb_build_object(
+              'previousArchivedAt', archived_at,
+              'previousArchivedBy', archived_by,
+              'previousArchiveReason', archive_reason
+            )
+          FROM previous
+          RETURNING id
+        )
+        SELECT reopened.id, reopened.record_uid
+        FROM reopened
+        JOIN lifecycle_event ON true
+      `, [id, input.actorUserId, input.reason]);
       return result.rowCount > 0;
     }
   };

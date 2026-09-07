@@ -188,14 +188,23 @@
             <% if (typeof canEditOpportunity !== 'undefined' && canEditOpportunity) { %>
               <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit"><%= t('edit') %></a>
             <% } %>
-            <% if (typeof canDeleteOpportunity !== 'undefined' && canDeleteOpportunity) { %>
-              <form method="post" action="/opportunities/<%= opportunity.id %>/delete" onsubmit="return confirm('<%= t('deleteOpportunityConfirm') %>')">
+            <% if (typeof canArchiveOpportunity !== 'undefined' && canArchiveOpportunity) { %>
+              <form method="post" action="/opportunities/<%= opportunity.id %>/archive">
                 <%- csrfField() %>
-                <button class="danger-action" type="submit"><%= t('delete') %></button>
+                <input name="reason" required maxlength="500" placeholder="<%= t('archiveReason') %>" aria-label="<%= t('archiveReason') %>">
+                <button class="danger-action" type="submit"><%= t('archive') %></button>
+              </form>
+            <% } %>
+            <% if (typeof canReopenOpportunity !== 'undefined' && canReopenOpportunity) { %>
+              <form method="post" action="/opportunities/<%= opportunity.id %>/reopen">
+                <%- csrfField() %>
+                <input name="reason" required maxlength="500" placeholder="<%= t('reopenReason') %>" aria-label="<%= t('reopenReason') %>">
+                <button class="quick-action" type="submit"><%= t('reopen') %></button>
               </form>
             <% } %>
           </div>
         </header>
+        <% if (opportunity.archivedAt) { %><p class="user-line"><%= t('archivedRecord') %><% if (opportunity.archiveReason) { %>: <%= opportunity.archiveReason %><% } %></p><% } %>
 
         <div class="section-stack">
           <section class="content-section business-section business-section-basic">

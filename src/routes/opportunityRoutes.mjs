@@ -11,12 +11,16 @@ import { STATUSES } from '../domain/statuses.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import {
+  archiveOpportunity,
+  canArchiveOpportunity,
   canContributeOpportunityEngineering,
   canManageOpportunityResponsibility,
   canManageOpportunityEngineeringTeam,
   canEditOpportunity,
+  canReopenOpportunity,
   canViewOpportunity,
   isSupportingEngineer,
+  reopenOpportunity,
   updateOpportunity
 } from '../services/opportunityService.mjs';
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
@@ -418,6 +422,9 @@ function opportunityWithActiveContractReviewer(opportunity, contractApprovals) {
 }
 
 function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = [], language = 'en', quotationPackages = [], quotationPackagesEnabled = false) {
+  if (opportunity.archivedAt) {
+    return [];
+  }
   const workflowOpportunity = opportunityWithActiveContractReviewer(opportunity, contractApprovals);
   const workflowButtonLabel = createWorkflowButtonLabeler(language);
   const workflowTitleLabel = createWorkflowTitleLabeler(language);
@@ -599,6 +606,9 @@ function canDeleteAttachment(user, opportunity, attachment) {
 }
 
 function canCreateRequirementUpdate(user, opportunity) {
+  if (opportunity.archivedAt) {
+    return false;
+  }
   const canAdd = hasRole(user, ROLES.ADMINISTRATOR) || Number(opportunity.salespersonId) === Number(user.id);
   if (!canAdd) {
     return false;
@@ -610,6 +620,9 @@ function canCreateRequirementUpdate(user, opportunity) {
 }
 
 function canUploadAttachment(user, opportunity, category) {
+  if (opportunity.archivedAt) {
+    return false;
+  }
   if (hasRole(user, ROLES.ADMINISTRATOR)) {
     return true;
   }
@@ -639,10 +652,6 @@ function uploadPermissionsFor(user, opportunity) {
     category,
     canUploadAttachment(user, opportunity, category)
   ]));
-}
-
-function canDeleteOpportunity(user) {
-  return hasRole(user, ROLES.ADMINISTRATOR);
 }
 
 function requiredText(value) {
@@ -830,7 +839,7 @@ export function opportunityRoutes({
     }
   });
 
-  router.post('/opportunities/:id/delete', async (req, res, next) => {
+  router.post('/opportunities/:id/archive', async (req, res, next) => {
     try {
       const opportunity = await loadOpportunityOrSend({
         req,
@@ -842,22 +851,52 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      if (!canDeleteOpportunity(req.currentUser)) {
+      await archiveOpportunity(opportunityRepository, req.currentUser, opportunity, req.body.reason);
+      res.redirect('/opportunities');
+    } catch (error) {
+      if (error.message === 'Forbidden') {
         res.status(403).send('Forbidden');
         return;
       }
-      const attachments = typeof attachmentRepository?.listByOpportunity === 'function'
-        ? await attachmentRepository.listByOpportunity(opportunity.id)
-        : [];
-      await opportunityRepository.deleteById(opportunity.id);
-      await Promise.all(attachments.map(async (attachment) => {
-        const filePath = resolveStoredPath(uploadDir, attachment.storedPath);
-        if (filePath) {
-          await rm(filePath, { force: true });
-        }
-      }));
-      res.redirect('/opportunities');
+      if (error.message === 'Opportunity not found or already archived') {
+        res.status(404).send('Opportunity not found');
+        return;
+      }
+      if (error.message === 'Archive reason is required') {
+        res.status(400).send(error.message);
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/reopen', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      await reopenOpportunity(opportunityRepository, req.currentUser, opportunity, req.body.reason);
+      res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Opportunity not found or not archived') {
+        res.status(404).send('Opportunity not found');
+        return;
+      }
+      if (error.message === 'Reopen reason is required') {
+        res.status(400).send(error.message);
+        return;
+      }
       next(error);
     }
   });
@@ -874,7 +913,7 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      const canManageResponsibility = canManageOpportunityResponsibility(req.currentUser);
+      const canManageResponsibility = canManageOpportunityResponsibility(req.currentUser, opportunity);
       const canManageEngineeringTeam = canManageOpportunityEngineeringTeam(req.currentUser, opportunity);
       const [
         usersByRole,
@@ -977,7 +1016,8 @@ export function opportunityRoutes({
         canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity),
         canUploadAttachments: uploadPermissionsFor(req.currentUser, opportunity),
         canEditOpportunity: canEditOpportunity(req.currentUser, opportunity),
-        canDeleteOpportunity: canDeleteOpportunity(req.currentUser)
+        canArchiveOpportunity: canArchiveOpportunity(req.currentUser, opportunity),
+        canReopenOpportunity: canReopenOpportunity(req.currentUser, opportunity)
       });
     } catch (error) {
       next(error);
@@ -1123,7 +1163,7 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      if (!canManageOpportunityResponsibility(req.currentUser)) {
+      if (!canManageOpportunityResponsibility(req.currentUser, opportunity)) {
         res.status(403).send('Forbidden');
         return;
       }

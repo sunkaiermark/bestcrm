@@ -23,7 +23,12 @@ function mapCustomerRow(row) {
     address: row.address || '',
     ownerUserId: Number(row.owner_user_id),
     notes: row.notes || '',
-    contactCount: numberOrNull(row.contact_count) || 0
+    contactCount: numberOrNull(row.contact_count) || 0,
+    ...(Object.hasOwn(row, 'record_uid') ? { recordUid: row.record_uid } : {}),
+    ...(Object.hasOwn(row, 'archived_at') ? { archivedAt: row.archived_at } : {}),
+    ...(Object.hasOwn(row, 'archived_by') ? { archivedBy: numberOrNull(row.archived_by) } : {}),
+    ...(Object.hasOwn(row, 'archive_reason') ? { archiveReason: row.archive_reason || '' } : {}),
+    ...(Object.hasOwn(row, 'merged_into_id') ? { mergedIntoId: numberOrNull(row.merged_into_id) } : {})
   };
 }
 
@@ -71,9 +76,14 @@ const customerSelect = `
     c.address,
     c.owner_user_id,
     c.notes,
+    c.record_uid,
+    c.archived_at,
+    c.archived_by,
+    c.archive_reason,
+    c.merged_into_id,
     COALESCE(count(ct.id), 0)::int AS contact_count
   FROM customers c
-  LEFT JOIN contacts ct ON ct.customer_id = c.id
+  LEFT JOIN contacts ct ON ct.customer_id = c.id AND ct.archived_at IS NULL
 `;
 
 export function createCustomerRepository(queryTarget) {
@@ -81,6 +91,13 @@ export function createCustomerRepository(queryTarget) {
     async listCustomers(filter = {}) {
       const where = [];
       const params = [];
+      if (filter.archiveScope === 'all') {
+        // Include active and archived customer records.
+      } else if (filter.archiveScope === 'archived') {
+        where.push('c.archived_at IS NOT NULL');
+      } else {
+        where.push('c.archived_at IS NULL');
+      }
       if (filter.ownerUserId) {
         params.push(filter.ownerUserId);
         where.push(`c.owner_user_id = $${params.length}`);
@@ -115,7 +132,8 @@ export function createCustomerRepository(queryTarget) {
         return null;
       }
       const contacts = await queryTarget.query(`
-        SELECT id, contact_code, customer_id, name, title, phone, email, wechat, notes
+        SELECT id, contact_code, customer_id, name, title, phone, email, wechat, notes,
+          record_uid, archived_at, archived_by, archive_reason, merged_into_id
         FROM contacts
         WHERE customer_id = $1
         ORDER BY created_at DESC, id DESC
@@ -216,11 +234,59 @@ export function createCustomerRepository(queryTarget) {
       return mapCustomerRow(result.rows[0]);
     },
 
-    async deleteById(id) {
+    async archiveById(id, input) {
       const result = await queryTarget.query(`
-        DELETE FROM customers
-        WHERE id = $1
-      `, [id]);
+        WITH archived AS (
+          UPDATE customers
+          SET archived_at = now(), archived_by = $2, archive_reason = $3, updated_at = now()
+          WHERE id = $1 AND archived_at IS NULL
+          RETURNING id, record_uid, archived_at
+        ), lifecycle_event AS (
+          INSERT INTO record_lifecycle_events (
+            record_type, record_id, record_uid, event_type, actor_user_id, reason, event_data
+          )
+          SELECT 'customer', id, record_uid, 'archive', $2, $3,
+            jsonb_build_object('archivedAt', archived_at)
+          FROM archived
+          RETURNING id
+        )
+        SELECT archived.id, archived.record_uid
+        FROM archived
+        JOIN lifecycle_event ON true
+      `, [id, input.actorUserId, input.reason]);
+      return result.rowCount > 0;
+    },
+
+    async reopenById(id, input) {
+      const result = await queryTarget.query(`
+        WITH previous AS (
+          SELECT id, record_uid, archived_at, archived_by, archive_reason
+          FROM customers
+          WHERE id = $1 AND archived_at IS NOT NULL AND merged_into_id IS NULL
+          FOR UPDATE
+        ), reopened AS (
+          UPDATE customers customer
+          SET archived_at = NULL, archived_by = NULL, archive_reason = NULL, updated_at = now()
+          FROM previous
+          WHERE customer.id = previous.id
+          RETURNING customer.id, customer.record_uid
+        ), lifecycle_event AS (
+          INSERT INTO record_lifecycle_events (
+            record_type, record_id, record_uid, event_type, actor_user_id, reason, event_data
+          )
+          SELECT 'customer', id, record_uid, 'reopen', $2, $3,
+            jsonb_build_object(
+              'previousArchivedAt', archived_at,
+              'previousArchivedBy', archived_by,
+              'previousArchiveReason', archive_reason
+            )
+          FROM previous
+          RETURNING id
+        )
+        SELECT reopened.id, reopened.record_uid
+        FROM reopened
+        JOIN lifecycle_event ON true
+      `, [id, input.actorUserId, input.reason]);
       return result.rowCount > 0;
     }
   };

@@ -42,7 +42,10 @@ function mapOpportunityRow(row) {
     finalDealAmount: numberOrNull(row.final_deal_amount),
     lostReason: row.lost_reason,
     wonDescription: row.won_description,
-    archivedAt: row.archived_at
+    archivedAt: row.archived_at,
+    ...(Object.hasOwn(row, 'record_uid') ? { recordUid: row.record_uid } : {}),
+    ...(Object.hasOwn(row, 'archived_by') ? { archivedBy: numberOrNull(row.archived_by) } : {}),
+    ...(Object.hasOwn(row, 'archive_reason') ? { archiveReason: row.archive_reason || '' } : {})
   };
 }
 
@@ -78,7 +81,10 @@ const opportunitySelect = `
     o.final_deal_amount,
     o.lost_reason,
     o.won_description,
-    o.archived_at
+    o.archived_at,
+    o.record_uid,
+    o.archived_by,
+    o.archive_reason
   FROM opportunities o
   JOIN customers c ON c.id = o.customer_id
   LEFT JOIN contacts pc ON pc.id = o.primary_contact_id
@@ -134,10 +140,11 @@ function addArchiveScopeFilter(where, params, filter) {
     return;
   }
   if (filter.archiveScope === 'archived') {
-    where.push(`o.status IN (${statusPlaceholders(params, ARCHIVED_STATUSES)})`);
+    where.push(`(o.archived_at IS NOT NULL OR o.status IN (${statusPlaceholders(params, ARCHIVED_STATUSES)}))`);
     return;
   }
   if (!filter.status) {
+    where.push('o.archived_at IS NULL');
     where.push(`o.status NOT IN (${statusPlaceholders(params, ARCHIVED_STATUSES)})`);
   }
 }
@@ -341,8 +348,60 @@ export function createOpportunityRepository(queryTarget) {
       return mapOpportunityRow(result.rows[0]);
     },
 
-    async deleteById(id) {
-      return queryTarget.query('DELETE FROM opportunities WHERE id = $1', [id]);
+    async archiveById(id, input) {
+      const result = await queryTarget.query(`
+        WITH archived AS (
+          UPDATE opportunities
+          SET archived_at = now(), archived_by = $2, archive_reason = $3, updated_at = now()
+          WHERE id = $1 AND archived_at IS NULL
+          RETURNING id, record_uid, archived_at
+        ), lifecycle_event AS (
+          INSERT INTO record_lifecycle_events (
+            record_type, record_id, record_uid, event_type, actor_user_id, reason, event_data
+          )
+          SELECT 'opportunity', id, record_uid, 'archive', $2, $3,
+            jsonb_build_object('archivedAt', archived_at)
+          FROM archived
+          RETURNING id
+        )
+        SELECT archived.id, archived.record_uid
+        FROM archived
+        JOIN lifecycle_event ON true
+      `, [id, input.actorUserId, input.reason]);
+      return result.rowCount > 0;
+    },
+
+    async reopenById(id, input) {
+      const result = await queryTarget.query(`
+        WITH previous AS (
+          SELECT id, record_uid, archived_at, archived_by, archive_reason
+          FROM opportunities
+          WHERE id = $1 AND archived_at IS NOT NULL
+          FOR UPDATE
+        ), reopened AS (
+          UPDATE opportunities opportunity
+          SET archived_at = NULL, archived_by = NULL, archive_reason = NULL, updated_at = now()
+          FROM previous
+          WHERE opportunity.id = previous.id
+          RETURNING opportunity.id, opportunity.record_uid
+        ), lifecycle_event AS (
+          INSERT INTO record_lifecycle_events (
+            record_type, record_id, record_uid, event_type, actor_user_id, reason, event_data
+          )
+          SELECT 'opportunity', id, record_uid, 'reopen', $2, $3,
+            jsonb_build_object(
+              'previousArchivedAt', archived_at,
+              'previousArchivedBy', archived_by,
+              'previousArchiveReason', archive_reason
+            )
+          FROM previous
+          RETURNING id
+        )
+        SELECT reopened.id, reopened.record_uid
+        FROM reopened
+        JOIN lifecycle_event ON true
+      `, [id, input.actorUserId, input.reason]);
+      return result.rowCount > 0;
     },
 
     async findById(id) {
@@ -371,7 +430,10 @@ export function createOpportunityRepository(queryTarget) {
           final_deal_amount,
           lost_reason,
           won_description,
-          archived_at
+          archived_at,
+          record_uid,
+          archived_by,
+          archive_reason
         FROM opportunities
         WHERE id = $1
         LIMIT 1

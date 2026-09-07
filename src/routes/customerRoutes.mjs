@@ -5,7 +5,21 @@ import { CUSTOMER_REGIONS } from '../domain/customerRegions.mjs';
 import { ENTERPRISE_NATURES } from '../domain/enterpriseNatures.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
-import { DuplicateCustomerError, canDeleteCustomer, canMaintainCustomer, createCustomer, deleteCustomer, updateCustomer } from '../services/customerService.mjs';
+import {
+  archiveCustomer,
+  canArchiveCustomer,
+  canMaintainCustomer,
+  createCustomer,
+  DuplicateCustomerError,
+  reopenCustomer,
+  updateCustomer
+} from '../services/customerService.mjs';
+
+const archiveScopes = new Set(['active', 'archived', 'all']);
+
+function archiveScope(value) {
+  return archiveScopes.has(value) ? value : 'active';
+}
 
 function customerFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
@@ -31,11 +45,13 @@ export function customerRoutes({ customerRepository }) {
   router.get('/customers', async (req, res, next) => {
     try {
       const searchTerm = String(req.query.q || '').trim();
+      const selectedArchiveScope = archiveScope(req.query.archiveScope);
       const customers = await customerRepository.listCustomers({
         ...customerFilter(req.currentUser),
-        searchTerm
+        searchTerm,
+        archiveScope: selectedArchiveScope
       });
-      res.render('customers/index', { customers, filters: { searchTerm } });
+      res.render('customers/index', { customers, filters: { searchTerm, archiveScope: selectedArchiveScope } });
     } catch (error) {
       next(error);
     }
@@ -72,7 +88,11 @@ export function customerRoutes({ customerRepository }) {
         res.status(403).send('Forbidden');
         return;
       }
-      res.render('customers/detail', { customer, canDeleteCustomer: canDeleteCustomer(req.currentUser) });
+      res.render('customers/detail', {
+        customer,
+        canArchiveCustomer: canArchiveCustomer(req.currentUser) && !customer.archivedAt,
+        canReopenCustomer: canArchiveCustomer(req.currentUser) && Boolean(customer.archivedAt) && !customer.mergedIntoId
+      });
     } catch (error) {
       next(error);
     }
@@ -87,6 +107,10 @@ export function customerRoutes({ customerRepository }) {
       }
       if (!canMaintainCustomer(req.currentUser, customer)) {
         res.status(403).send('Forbidden');
+        return;
+      }
+      if (customer.archivedAt) {
+        res.status(409).send('Customer is archived');
         return;
       }
       res.render('customers/form', customerFormLocals({ customer, action: `/customers/${customer.id}` }));
@@ -120,21 +144,42 @@ export function customerRoutes({ customerRepository }) {
     }
   });
 
-  router.post('/customers/:id/delete', async (req, res, next) => {
+  router.post('/customers/:id/archive', async (req, res, next) => {
     try {
-      await deleteCustomer(customerRepository, req.currentUser, req.params.id);
+      await archiveCustomer(customerRepository, req.currentUser, req.params.id, req.body.reason);
       res.redirect('/customers');
     } catch (error) {
       if (error.message === 'Forbidden') {
         res.status(403).send('Forbidden');
         return;
       }
-      if (error.message === 'Customer not found') {
+      if (error.message === 'Customer not found or already archived') {
         res.status(404).send('Customer not found');
         return;
       }
-      if (error.code === '23503') {
-        res.status(409).send('Cannot delete customer because it is linked to existing opportunities.');
+      if (error.message === 'Archive reason is required') {
+        res.status(400).send(error.message);
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.post('/customers/:id/reopen', async (req, res, next) => {
+    try {
+      await reopenCustomer(customerRepository, req.currentUser, req.params.id, req.body.reason);
+      res.redirect(`/customers/${req.params.id}`);
+    } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Customer not found or not archived') {
+        res.status(404).send('Customer not found');
+        return;
+      }
+      if (error.message === 'Reopen reason is required') {
+        res.status(400).send(error.message);
         return;
       }
       next(error);

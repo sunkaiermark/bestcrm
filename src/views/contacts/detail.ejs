@@ -4,15 +4,24 @@
           <h1><%= [contact.contactCode, contact.name].filter(Boolean).join(' · ') %></h1>
           <div class="page-actions">
             <a class="secondary-action" href="/contacts"><%= t('backToList') %></a>
-            <a class="quick-action" href="/contacts/<%= contact.id %>/edit"><%= t('editContact') %></a>
-            <% if (typeof canDeleteContact !== 'undefined' && canDeleteContact) { %>
-              <form method="post" action="/contacts/<%= contact.id %>/delete" onsubmit="return confirm('<%= t('deleteContactConfirm') %>')">
+            <% if (!contact.archivedAt) { %><a class="quick-action" href="/contacts/<%= contact.id %>/edit"><%= t('editContact') %></a><% } %>
+            <% if (typeof canArchiveContact !== 'undefined' && canArchiveContact) { %>
+              <form method="post" action="/contacts/<%= contact.id %>/archive">
                 <%- csrfField() %>
-                <button class="danger-action" type="submit"><%= t('deleteContact') %></button>
+                <input name="reason" required maxlength="500" placeholder="<%= t('archiveReason') %>" aria-label="<%= t('archiveReason') %>">
+                <button class="danger-action" type="submit"><%= t('archiveContact') %></button>
+              </form>
+            <% } %>
+            <% if (typeof canReopenContact !== 'undefined' && canReopenContact) { %>
+              <form method="post" action="/contacts/<%= contact.id %>/reopen">
+                <%- csrfField() %>
+                <input name="reason" required maxlength="500" placeholder="<%= t('reopenReason') %>" aria-label="<%= t('reopenReason') %>">
+                <button class="quick-action" type="submit"><%= t('reopen') %></button>
               </form>
             <% } %>
           </div>
         </header>
+        <% if (contact.archivedAt) { %><p class="user-line"><%= t('archivedRecord') %><% if (contact.archiveReason) { %>: <%= contact.archiveReason %><% } %></p><% } %>
 
         <section class="content-section">
           <h2><%= t('contactDetail') %></h2>

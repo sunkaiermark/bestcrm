@@ -13,6 +13,8 @@
     "test:bid-package-editors-db": "node scripts/verify-bid-package-editors.mjs",
     "test:bid-package-approvals-db": "node scripts/verify-bid-package-approvals.mjs",
     "test:bid-package-documents-db": "node scripts/verify-bid-package-documents.mjs",
+    "test:opportunity-record-guardrails-db": "node scripts/verify-opportunity-record-guardrails.mjs",
+    "audit:opportunity-record-guardrails-db": "node scripts/audit-opportunity-record-guardrails.mjs",
     "db:migrate": "node src/db/migrate.mjs",
     "db:seed": "node src/db/seed.mjs",
     "email:poll": "node scripts/poll-email-inquiries.mjs",

@@ -4,15 +4,24 @@
           <h1><%= customer.name %></h1>
           <div class="page-actions">
             <a class="secondary-action" href="/customers"><%= t('backToList') %></a>
-            <a class="quick-action" href="/customers/<%= customer.id %>/edit"><%= t('editCustomer') %></a>
-            <% if (typeof canDeleteCustomer !== 'undefined' && canDeleteCustomer) { %>
-              <form method="post" action="/customers/<%= customer.id %>/delete" onsubmit="return confirm('<%= t('deleteCustomerConfirm') %>')">
+            <% if (!customer.archivedAt) { %><a class="quick-action" href="/customers/<%= customer.id %>/edit"><%= t('editCustomer') %></a><% } %>
+            <% if (typeof canArchiveCustomer !== 'undefined' && canArchiveCustomer) { %>
+              <form method="post" action="/customers/<%= customer.id %>/archive">
                 <%- csrfField() %>
-                <button class="danger-action" type="submit"><%= t('deleteCustomer') %></button>
+                <input name="reason" required maxlength="500" placeholder="<%= t('archiveReason') %>" aria-label="<%= t('archiveReason') %>">
+                <button class="danger-action" type="submit"><%= t('archiveCustomer') %></button>
+              </form>
+            <% } %>
+            <% if (typeof canReopenCustomer !== 'undefined' && canReopenCustomer) { %>
+              <form method="post" action="/customers/<%= customer.id %>/reopen">
+                <%- csrfField() %>
+                <input name="reason" required maxlength="500" placeholder="<%= t('reopenReason') %>" aria-label="<%= t('reopenReason') %>">
+                <button class="quick-action" type="submit"><%= t('reopen') %></button>
               </form>
             <% } %>
           </div>
         </header>
+        <% if (customer.archivedAt) { %><p class="user-line"><%= t('archivedRecord') %><% if (customer.archiveReason) { %>: <%= customer.archiveReason %><% } %></p><% } %>
 
         <section class="content-section">
           <h2><%= t('customerDetail') %></h2>

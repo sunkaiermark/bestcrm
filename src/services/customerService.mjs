@@ -32,8 +32,16 @@ export function canMaintainContact(user, contact) {
   return hasRole(user, ROLES.ADMINISTRATOR) || contact.customerOwnerUserId === user.id;
 }
 
-export function canDeleteCustomer(user) {
+export function canArchiveCustomer(user) {
   return hasRole(user, ROLES.ADMINISTRATOR);
+}
+
+function lifecycleReason(value, action) {
+  const reason = text(value);
+  if (!reason) {
+    throw new Error(`${action} reason is required`);
+  }
+  return reason;
 }
 
 export function normalizeCustomerInput(input, ownerUserId) {
@@ -99,6 +107,9 @@ export async function updateCustomer(customerRepository, actor, customerId, inpu
   if (!canMaintainCustomer(actor, existing)) {
     forbidden();
   }
+  if (existing.archivedAt) {
+    throw new Error('Customer is archived');
+  }
   const normalized = normalizeCustomerInput(input, existing.ownerUserId);
   const options = { excludeId: Number(customerId) };
   await assertNoDuplicateCustomer(customerRepository, normalized, options);
@@ -110,12 +121,28 @@ export async function updateCustomer(customerRepository, actor, customerId, inpu
   );
 }
 
-export async function deleteCustomer(customerRepository, actor, customerId) {
-  if (!canDeleteCustomer(actor)) {
+export async function archiveCustomer(customerRepository, actor, customerId, reason) {
+  if (!canArchiveCustomer(actor)) {
     forbidden();
   }
-  const deleted = await customerRepository.deleteById(Number(customerId));
-  if (!deleted) {
-    throw new Error('Customer not found');
+  const archived = await customerRepository.archiveById(Number(customerId), {
+    actorUserId: Number(actor.id),
+    reason: lifecycleReason(reason, 'Archive')
+  });
+  if (!archived) {
+    throw new Error('Customer not found or already archived');
+  }
+}
+
+export async function reopenCustomer(customerRepository, actor, customerId, reason) {
+  if (!canArchiveCustomer(actor)) {
+    forbidden();
+  }
+  const reopened = await customerRepository.reopenById(Number(customerId), {
+    actorUserId: Number(actor.id),
+    reason: lifecycleReason(reason, 'Reopen')
+  });
+  if (!reopened) {
+    throw new Error('Customer not found or not archived');
   }
 }

@@ -4,11 +4,15 @@ import {
   canContributeOpportunityEngineering,
   canManageOpportunityEngineeringTeam,
   canManageOpportunityResponsibility,
+  canArchiveOpportunity,
   canEditOpportunity,
+  canReopenOpportunity,
   canViewOpportunity,
+  archiveOpportunity,
   createOpportunityDraft,
   isProjectLeadEngineer,
   isSupportingEngineer,
+  reopenOpportunity,
   updateOpportunity
 } from '../../src/services/opportunityService.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
@@ -257,6 +261,74 @@ test('canEditOpportunity only allows administrator or owner salesperson', () => 
   assert.equal(canEditOpportunity({ id: 7, roles: [ROLES.SALESPERSON] }, opportunity), true);
   assert.equal(canEditOpportunity({ id: 99, roles: [ROLES.ADMINISTRATOR] }, opportunity), true);
   assert.equal(canEditOpportunity({ id: 8, roles: [ROLES.SALESPERSON] }, opportunity), false);
+  assert.equal(canEditOpportunity({ id: 99, roles: [ROLES.ADMINISTRATOR] }, { ...opportunity, archivedAt: new Date() }), false);
+});
+
+test('administrator archives and reopens an opportunity with audited reasons', async () => {
+  const calls = [];
+  const repository = {
+    async archiveById(id, input) {
+      calls.push(['archive', id, input]);
+      return { id, archivedAt: new Date() };
+    },
+    async reopenById(id, input) {
+      calls.push(['reopen', id, input]);
+      return { id, archivedAt: null };
+    }
+  };
+  const actor = { id: 99, roles: [ROLES.ADMINISTRATOR] };
+  const active = { id: 30, status: STATUSES.DRAFT, archivedAt: null };
+  const archived = { ...active, archivedAt: new Date('2026-09-07T00:00:00Z') };
+
+  assert.equal(canArchiveOpportunity(actor, active), true);
+  assert.equal(canReopenOpportunity(actor, archived), true);
+  await archiveOpportunity(repository, actor, active, 'Duplicate opportunity');
+  await reopenOpportunity(repository, actor, archived, 'Restored after review');
+
+  assert.deepEqual(calls, [
+    ['archive', 30, { actorUserId: 99, reason: 'Duplicate opportunity' }],
+    ['reopen', 30, { actorUserId: 99, reason: 'Restored after review' }]
+  ]);
+});
+
+test('opportunity archival requires reasons and archived records are read-only', async () => {
+  const actor = { id: 99, roles: [ROLES.ADMINISTRATOR] };
+  const active = { id: 30, status: STATUSES.DRAFT, archivedAt: null };
+  const archived = { ...active, archivedAt: new Date('2026-09-07T00:00:00Z') };
+  const repository = {
+    async archiveById() { throw new Error('must not be called'); },
+    async reopenById() { throw new Error('must not be called'); }
+  };
+
+  await assert.rejects(() => archiveOpportunity(repository, actor, active, ''), /Archive reason is required/);
+  await assert.rejects(() => reopenOpportunity(repository, actor, archived, ''), /Reopen reason is required/);
+  assert.equal(canManageOpportunityResponsibility(actor, archived), false);
+  assert.equal(canManageOpportunityEngineeringTeam(actor, archived), false);
+  assert.equal(canContributeOpportunityEngineering(actor, archived), false);
+});
+
+test('opportunity cannot link archived customers or contacts', async () => {
+  const actor = { id: 2, roles: [ROLES.SALES_MANAGER] };
+  const archivedCustomerRepositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7, archivedAt: new Date() },
+    contact: null
+  });
+  await assert.rejects(() => createOpportunityDraft(archivedCustomerRepositories, actor, {
+    title: 'Factory upgrade',
+    customerId: 10,
+    requirement: 'Upgrade line'
+  }, { inquiryConversion: true, originInquiryId: 11, salespersonId: 7 }), /Archived customer/);
+
+  const archivedContactRepositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7, archivedAt: null },
+    contact: { id: 20, customerId: 10, customerOwnerUserId: 7, archivedAt: new Date() }
+  });
+  await assert.rejects(() => createOpportunityDraft(archivedContactRepositories, actor, {
+    title: 'Factory upgrade',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Upgrade line'
+  }, { inquiryConversion: true, originInquiryId: 11, salespersonId: 7 }), /Archived contact/);
 });
 
 test('canManageOpportunityResponsibility allows administrators and Sales Managers only', () => {

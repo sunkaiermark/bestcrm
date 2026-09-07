@@ -1,5 +1,5 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
-import { STATUSES } from '../domain/statuses.mjs';
+import { ARCHIVED_STATUSES, STATUSES } from '../domain/statuses.mjs';
 import { canMaintainCustomer } from './customerService.mjs';
 
 function forbidden() {
@@ -43,11 +43,24 @@ export function canViewOpportunity(user, opportunity) {
 }
 
 export function canEditOpportunity(user, opportunity) {
-  return hasRole(user, ROLES.ADMINISTRATOR)
-    || Number(opportunity.salespersonId) === Number(user.id);
+  return !opportunity.archivedAt && (hasRole(user, ROLES.ADMINISTRATOR)
+    || Number(opportunity.salespersonId) === Number(user.id));
 }
 
-export function canManageOpportunityResponsibility(user) {
+export function canArchiveOpportunity(user, opportunity) {
+  return hasRole(user, ROLES.ADMINISTRATOR) && !opportunity.archivedAt;
+}
+
+export function canReopenOpportunity(user, opportunity) {
+  return hasRole(user, ROLES.ADMINISTRATOR)
+    && Boolean(opportunity.archivedAt)
+    && !ARCHIVED_STATUSES.includes(opportunity.status);
+}
+
+export function canManageOpportunityResponsibility(user, opportunity = null) {
+  if (opportunity?.archivedAt) {
+    return false;
+  }
   return hasRole(user, ROLES.ADMINISTRATOR) || hasRole(user, ROLES.SALES_MANAGER);
 }
 
@@ -68,14 +81,17 @@ export function isSupportingEngineer(user, opportunity) {
 }
 
 export function canManageOpportunityEngineeringTeam(user, opportunity) {
-  return canManageOpportunityResponsibility(user)
+  if (opportunity.archivedAt) {
+    return false;
+  }
+  return canManageOpportunityResponsibility(user, opportunity)
     || isProjectLeadEngineer(user, opportunity);
 }
 
 export function canContributeOpportunityEngineering(user, opportunity) {
-  return hasRole(user, ROLES.ADMINISTRATOR)
+  return !opportunity.archivedAt && (hasRole(user, ROLES.ADMINISTRATOR)
     || isProjectLeadEngineer(user, opportunity)
-    || isSupportingEngineer(user, opportunity);
+    || isSupportingEngineer(user, opportunity));
 }
 
 export function normalizeOpportunityInput(input, actor, options = {}) {
@@ -137,6 +153,9 @@ async function validateOpportunityReferences(repositories, actor, normalized, op
   if (Number(customer.id) !== Number(normalized.customerId)) {
     throw new Error('Customer not found');
   }
+  if (customer.archivedAt) {
+    throw new Error('Archived customer cannot be linked to an opportunity');
+  }
   const managedInquiry = options.inquiryConversion === true;
   if (managedInquiry && Number(customer.ownerUserId) !== Number(normalized.salespersonId)) {
     forbidden();
@@ -149,6 +168,9 @@ async function validateOpportunityReferences(repositories, actor, normalized, op
     const contact = await repositories.contactRepository.getContactDetail(normalized.primaryContactId);
     if (!contact) {
       throw new Error('Contact not found');
+    }
+    if (contact.archivedAt) {
+      throw new Error('Archived contact cannot be linked to an opportunity');
     }
     if (contact.customerId !== normalized.customerId) {
       throw new Error('Contact does not belong to customer');
@@ -184,4 +206,38 @@ export async function updateOpportunity(repositories, actor, opportunity, input)
   await validateOpportunityReferences(repositories, actor, normalized);
 
   return repositories.opportunityRepository.updateOpportunity(opportunity.id, normalized);
+}
+
+function lifecycleReason(value, action) {
+  const reason = text(value);
+  if (!reason) {
+    throw new Error(`${action} reason is required`);
+  }
+  return reason;
+}
+
+export async function archiveOpportunity(opportunityRepository, actor, opportunity, reason) {
+  if (!canArchiveOpportunity(actor, opportunity)) {
+    forbidden();
+  }
+  const archived = await opportunityRepository.archiveById(Number(opportunity.id), {
+    actorUserId: Number(actor.id),
+    reason: lifecycleReason(reason, 'Archive')
+  });
+  if (!archived) {
+    throw new Error('Opportunity not found or already archived');
+  }
+}
+
+export async function reopenOpportunity(opportunityRepository, actor, opportunity, reason) {
+  if (!canReopenOpportunity(actor, opportunity)) {
+    forbidden();
+  }
+  const reopened = await opportunityRepository.reopenById(Number(opportunity.id), {
+    actorUserId: Number(actor.id),
+    reason: lifecycleReason(reason, 'Reopen')
+  });
+  if (!reopened) {
+    throw new Error('Opportunity not found or not archived');
+  }
 }

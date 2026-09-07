@@ -32,8 +32,16 @@ export function normalizeContactInput(input) {
   };
 }
 
-export function canDeleteContact(user) {
+export function canArchiveContact(user) {
   return hasRole(user, ROLES.ADMINISTRATOR);
+}
+
+function lifecycleReason(value, action) {
+  const reason = text(value);
+  if (!reason) {
+    throw new Error(`${action} reason is required`);
+  }
+  return reason;
 }
 
 async function findDuplicateContacts(contactRepository, input, { excludeId } = {}) {
@@ -73,6 +81,9 @@ export async function createContact({ customerRepository, contactRepository }, a
   if (!customer) {
     throw new Error('Customer not found');
   }
+  if (customer.archivedAt) {
+    throw new Error('Customer is archived');
+  }
   const managedInquiry = options.managedInquiry === true
     && (hasRole(actor, ROLES.ADMINISTRATOR) || hasRole(actor, ROLES.SALES_MANAGER));
   if (!canMaintainCustomer(actor, customer) && !managedInquiry) {
@@ -94,6 +105,9 @@ export async function updateContact(contactRepository, actor, contactId, input) 
   if (!canMaintainContact(actor, existing)) {
     forbidden();
   }
+  if (existing.archivedAt) {
+    throw new Error('Contact is archived');
+  }
   const normalized = {
     ...normalizeContactInput({ ...existing, ...input }),
     customerId: existing.customerId
@@ -108,12 +122,28 @@ export async function updateContact(contactRepository, actor, contactId, input) 
   );
 }
 
-export async function deleteContact(contactRepository, actor, contactId) {
-  if (!canDeleteContact(actor)) {
+export async function archiveContact(contactRepository, actor, contactId, reason) {
+  if (!canArchiveContact(actor)) {
     forbidden();
   }
-  const deleted = await contactRepository.deleteById(Number(contactId));
-  if (!deleted) {
-    throw new Error('Contact not found');
+  const archived = await contactRepository.archiveById(Number(contactId), {
+    actorUserId: Number(actor.id),
+    reason: lifecycleReason(reason, 'Archive')
+  });
+  if (!archived) {
+    throw new Error('Contact not found or already archived');
+  }
+}
+
+export async function reopenContact(contactRepository, actor, contactId, reason) {
+  if (!canArchiveContact(actor)) {
+    forbidden();
+  }
+  const reopened = await contactRepository.reopenById(Number(contactId), {
+    actorUserId: Number(actor.id),
+    reason: lifecycleReason(reason, 'Reopen')
+  });
+  if (!reopened) {
+    throw new Error('Contact not found or not archived');
   }
 }
