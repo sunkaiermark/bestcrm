@@ -142,9 +142,74 @@ test('email archive repository writes RFC and provider identities with conflict 
   assert.equal(calls[0].params[4], 'INBOX');
   assert.equal(calls[0].params[5], '44');
   assert.equal(calls[0].params[6], 7);
-  assert.equal(calls[0].params[15], 'spam');
-  assert.equal(calls[0].params[16], 'marketing_spam');
-  assert.equal(calls[0].params[17], 'seo_outreach');
+  assert.equal(calls[0].params[20], 'spam');
+  assert.equal(calls[0].params[21], 'marketing_spam');
+  assert.equal(calls[0].params[22], 'seo_outreach');
+});
+
+test('email archive repository creates immutable raw evidence and reuses provider identity', async () => {
+  const calls = [];
+  const rawRow = {
+    id: '81', mailbox_key: 'sales@sunkaier.com', provider_name: 'imap', provider_mailbox: 'INBOX',
+    provider_uid_validity: '44', provider_uid: '7', rfc_message_id_hint: 'rfq@example.com',
+    source_received_at: '2026-09-08T00:00:00Z', first_observed_at: '2026-09-08T00:00:01Z',
+    stored_path: `email-raw/${'a'.repeat(64)}/44/7-${'b'.repeat(16)}.eml`, file_size: '123',
+    sha256: 'b'.repeat(64), created_at: '2026-09-08T00:00:01Z'
+  };
+  const rows = [[rawRow], [], [rawRow]];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: rows.shift() };
+    }
+  });
+  const input = {
+    mailboxKey: 'sales@sunkaier.com', providerName: 'imap', providerMailbox: 'INBOX',
+    providerUidValidity: '44', providerUid: 7, rfcMessageIdHint: 'rfq@example.com',
+    sourceReceivedAt: '2026-09-08T00:00:00Z', storedPath: rawRow.stored_path,
+    fileSize: 123, sha256: 'b'.repeat(64)
+  };
+
+  const created = await repository.createRawMessage(input);
+  const reused = await repository.createRawMessage(input);
+
+  assert.equal(created.created, true);
+  assert.equal(created.rawMessage.id, 81);
+  assert.equal(reused.created, false);
+  assert.equal(reused.rawMessage.sha256, 'b'.repeat(64));
+  assert.match(calls[0].sql, /INSERT INTO email_raw_messages/);
+  assert.match(calls[0].sql, /ON CONFLICT \(mailbox_key, provider_mailbox, provider_uid_validity, provider_uid\)/);
+  assert.match(calls[2].sql, /FROM email_raw_messages/);
+});
+
+test('email archive repository records append-only raw, attachment, processing, and classification evidence', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [{ id: '1', raw_message_id: '81', attachment_id: '91', attempt_no: '1' }] };
+    }
+  });
+  const scan = {
+    engine: 'clamav', engineVersion: '1', signatureVersion: '2', verdict: 'clean',
+    findingCode: '', safeDetail: '', startedAt: '2026-09-08T00:00:00Z', completedAt: '2026-09-08T00:00:01Z'
+  };
+
+  await repository.createRawScanAttempt({ rawMessageId: 81, ...scan });
+  await repository.createAttachmentScanAttempt({ attachmentId: 91, ...scan });
+  await repository.createRawProcessingAttempt({
+    rawMessageId: 81, stage: 'parse', outcome: 'succeeded', processorVersion: 'v1',
+    startedAt: scan.startedAt, completedAt: scan.completedAt
+  });
+  await repository.createClassificationEvent({
+    messageId: 11, threadId: 1, actorType: 'rule', actorVersion: 'v1',
+    category: 'inquiry', confidence: 0.9, reasonCodes: ['rfq'], isFinal: false
+  });
+
+  assert.match(calls[0].sql, /email_raw_scan_attempts/);
+  assert.match(calls[1].sql, /email_attachment_scan_attempts/);
+  assert.match(calls[2].sql, /email_raw_processing_attempts/);
+  assert.match(calls[3].sql, /email_classification_events/);
 });
 
 test('email archive repository persists independent incremental and backfill IMAP checkpoints', async () => {

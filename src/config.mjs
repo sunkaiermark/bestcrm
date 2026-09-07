@@ -68,6 +68,9 @@ export function loadConfig(env = process.env) {
   const mailOauthEncryptionKeyVersion = positiveIntegerEnv(env.MAIL_OAUTH_ENCRYPTION_KEY_VERSION, 1);
   const googleMailPubsubTopic = String(env.GOOGLE_MAIL_PUBSUB_TOPIC || '').trim();
   const googleMailPubsubAudience = String(env.GOOGLE_MAIL_PUBSUB_AUDIENCE || '').trim();
+  const emailRawArchiveEnabled = booleanEnv(env.EMAIL_RAW_ARCHIVE_ENABLED, false);
+  const emailRawMalwareScanEnabled = booleanEnv(env.EMAIL_RAW_MALWARE_SCAN_ENABLED, false);
+  const emailRawBackfillEnabled = booleanEnv(env.EMAIL_RAW_BACKFILL_ENABLED, false);
 
   if (nodeEnv === 'production' && authenticatorMfaEnabled) {
     if (authenticatorMfaTrustDays !== 10) {
@@ -95,6 +98,13 @@ export function loadConfig(env = process.env) {
 
   if ((googleMailInboundEnabled || googleMailOutboundEnabled || googleMailPushEnabled) && !googleMailEnabled) {
     throw new Error('GOOGLE_MAIL_ENABLED must be true before enabling Google mail sub-features');
+  }
+
+  if (emailRawArchiveEnabled && !emailRawMalwareScanEnabled) {
+    throw new Error('EMAIL_RAW_MALWARE_SCAN_ENABLED must be true before enabling raw email archiving');
+  }
+  if (emailRawBackfillEnabled && !emailRawArchiveEnabled) {
+    throw new Error('EMAIL_RAW_ARCHIVE_ENABLED must be true before enabling raw email backfill');
   }
   if (googleMailPushEnabled && !googleMailInboundEnabled) {
     throw new Error('GOOGLE_MAIL_INBOUND_ENABLED must be true before enabling Google mail push');
@@ -217,6 +227,16 @@ export function loadConfig(env = process.env) {
       pollIntervalMs: numberEnv(env.EMAIL_INTAKE_POLL_INTERVAL_MS, 5 * 60 * 1000),
       maxMessages: Math.min(positiveIntegerEnv(env.EMAIL_INTAKE_MAX_MESSAGES, 20), 50),
       markSeen: booleanEnv(env.EMAIL_INTAKE_MARK_SEEN, false)
+    },
+    emailRawArchive: {
+      enabled: emailRawArchiveEnabled,
+      backfillEnabled: emailRawBackfillEnabled,
+      maxBytes: positiveIntegerEnv(env.EMAIL_RAW_MAX_MB, 50) * 1024 * 1024,
+      scanner: {
+        enabled: emailRawMalwareScanEnabled,
+        command: String(env.EMAIL_RAW_SCANNER_COMMAND || 'clamdscan').trim() || 'clamdscan',
+        timeoutMs: positiveIntegerEnv(env.EMAIL_RAW_SCAN_TIMEOUT_MS, 120000)
+      }
     },
     notificationDelivery: {
       enabled: booleanEnv(env.NOTIFICATION_DELIVERY_ENABLED, false),

@@ -58,6 +58,10 @@ function mapMessageRow(row) {
     providerMailbox: text(row.provider_mailbox),
     providerUidValidity: text(row.provider_uid_validity),
     providerUid: numberOrNull(row.provider_uid),
+    rawMessageId: numberOrNull(row.raw_message_id),
+    rawEmlStoredPath: text(row.raw_eml_stored_path),
+    rawEmlFileSize: numberOrNull(row.raw_eml_file_size),
+    rawEmlSha256: text(row.raw_eml_sha256),
     fromAddress: text(row.from_address),
     fromName: text(row.from_name),
     toRecipients: jsonArray(row.to_recipients),
@@ -99,6 +103,48 @@ function mapImapSyncStateRow(row) {
     lastErrorAt: row.last_error_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+
+function mapRawMessageRow(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    mailboxKey: text(row.mailbox_key),
+    providerName: text(row.provider_name),
+    providerMailbox: text(row.provider_mailbox),
+    providerUidValidity: text(row.provider_uid_validity),
+    providerUid: Number(row.provider_uid),
+    rfcMessageIdHint: text(row.rfc_message_id_hint),
+    sourceReceivedAt: row.source_received_at,
+    firstObservedAt: row.first_observed_at,
+    storedPath: text(row.stored_path),
+    fileSize: Number(row.file_size),
+    sha256: text(row.sha256),
+    createdAt: row.created_at
+  };
+}
+
+function mapEvidenceAttemptRow(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    rawMessageId: numberOrNull(row.raw_message_id),
+    attachmentId: numberOrNull(row.attachment_id),
+    attemptNo: Number(row.attempt_no),
+    engine: text(row.engine),
+    engineVersion: text(row.engine_version),
+    signatureVersion: text(row.signature_version),
+    verdict: text(row.verdict),
+    findingCode: text(row.finding_code),
+    safeDetail: text(row.safe_detail),
+    stage: text(row.stage),
+    outcome: text(row.outcome),
+    processorVersion: text(row.processor_version),
+    safeErrorCode: text(row.safe_error_code),
+    startedAt: row.started_at,
+    completedAt: row.completed_at,
+    createdAt: row.created_at
   };
 }
 
@@ -196,6 +242,197 @@ const messageSelect = `
 export function createEmailArchiveRepository(queryTarget) {
   return {
     supportsEmailArchive: true,
+
+    async findRawMessageIdentity(input) {
+      const result = await queryTarget.query(`
+        SELECT *
+        FROM email_raw_messages
+        WHERE mailbox_key = $1
+          AND provider_mailbox = $2
+          AND provider_uid_validity = $3
+          AND provider_uid = $4
+        LIMIT 1
+      `, [
+        input.mailboxKey,
+        input.providerMailbox,
+        input.providerUidValidity,
+        input.providerUid
+      ]);
+      return mapRawMessageRow(result.rows[0]);
+    },
+
+    async createRawMessage(input) {
+      const insertResult = await queryTarget.query(`
+        INSERT INTO email_raw_messages (
+          mailbox_key,
+          provider_name,
+          provider_mailbox,
+          provider_uid_validity,
+          provider_uid,
+          rfc_message_id_hint,
+          source_received_at,
+          stored_path,
+          file_size,
+          sha256
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+        ON CONFLICT (mailbox_key, provider_mailbox, provider_uid_validity, provider_uid)
+        DO NOTHING
+        RETURNING *
+      `, [
+        input.mailboxKey,
+        input.providerName || 'imap',
+        input.providerMailbox,
+        input.providerUidValidity,
+        input.providerUid,
+        input.rfcMessageIdHint || '',
+        input.sourceReceivedAt || null,
+        input.storedPath,
+        input.fileSize,
+        input.sha256
+      ]);
+      const created = mapRawMessageRow(insertResult.rows[0]);
+      if (created) return { rawMessage: created, created: true };
+      return {
+        rawMessage: await this.findRawMessageIdentity(input),
+        created: false
+      };
+    },
+
+    async createRawScanAttempt(input) {
+      const result = await queryTarget.query(`
+        WITH next_attempt AS (
+          SELECT COALESCE(MAX(attempt_no), 0) + 1 AS attempt_no
+          FROM email_raw_scan_attempts
+          WHERE raw_message_id = $1
+        )
+        INSERT INTO email_raw_scan_attempts (
+          raw_message_id,
+          attempt_no,
+          engine,
+          engine_version,
+          signature_version,
+          verdict,
+          finding_code,
+          safe_detail,
+          started_at,
+          completed_at
+        )
+        SELECT $1, next_attempt.attempt_no, $2, $3, $4, $5, $6, $7, $8, $9
+        FROM next_attempt
+        RETURNING *
+      `, [
+        input.rawMessageId,
+        input.engine,
+        input.engineVersion || '',
+        input.signatureVersion || '',
+        input.verdict,
+        input.findingCode || '',
+        input.safeDetail || '',
+        input.startedAt,
+        input.completedAt
+      ]);
+      return mapEvidenceAttemptRow(result.rows[0]);
+    },
+
+    async createRawProcessingAttempt(input) {
+      const result = await queryTarget.query(`
+        WITH next_attempt AS (
+          SELECT COALESCE(MAX(attempt_no), 0) + 1 AS attempt_no
+          FROM email_raw_processing_attempts
+          WHERE raw_message_id = $1
+        )
+        INSERT INTO email_raw_processing_attempts (
+          raw_message_id,
+          attempt_no,
+          stage,
+          outcome,
+          processor_version,
+          safe_error_code,
+          safe_detail,
+          started_at,
+          completed_at
+        )
+        SELECT $1, next_attempt.attempt_no, $2, $3, $4, $5, $6, $7, $8
+        FROM next_attempt
+        RETURNING *
+      `, [
+        input.rawMessageId,
+        input.stage,
+        input.outcome,
+        input.processorVersion || '',
+        input.safeErrorCode || '',
+        input.safeDetail || '',
+        input.startedAt,
+        input.completedAt
+      ]);
+      return mapEvidenceAttemptRow(result.rows[0]);
+    },
+
+    async createAttachmentScanAttempt(input) {
+      const result = await queryTarget.query(`
+        WITH next_attempt AS (
+          SELECT COALESCE(MAX(attempt_no), 0) + 1 AS attempt_no
+          FROM email_attachment_scan_attempts
+          WHERE attachment_id = $1
+        )
+        INSERT INTO email_attachment_scan_attempts (
+          attachment_id,
+          attempt_no,
+          engine,
+          engine_version,
+          signature_version,
+          verdict,
+          finding_code,
+          safe_detail,
+          started_at,
+          completed_at
+        )
+        SELECT $1, next_attempt.attempt_no, $2, $3, $4, $5, $6, $7, $8, $9
+        FROM next_attempt
+        RETURNING *
+      `, [
+        input.attachmentId,
+        input.engine,
+        input.engineVersion || '',
+        input.signatureVersion || '',
+        input.verdict,
+        input.findingCode || '',
+        input.safeDetail || '',
+        input.startedAt,
+        input.completedAt
+      ]);
+      return mapEvidenceAttemptRow(result.rows[0]);
+    },
+
+    async createClassificationEvent(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO email_classification_events (
+          message_id,
+          thread_id,
+          actor_type,
+          actor_version,
+          actor_user_id,
+          category,
+          confidence,
+          reason_codes,
+          is_final
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9)
+        RETURNING *
+      `, [
+        input.messageId,
+        input.threadId,
+        input.actorType,
+        input.actorVersion || '',
+        input.actorUserId || null,
+        input.category,
+        input.confidence ?? null,
+        JSON.stringify(input.reasonCodes || []),
+        Boolean(input.isFinal)
+      ]);
+      return result.rows[0] || null;
+    },
 
     async listThreads({ archiveDisposition = 'active' } = {}) {
       const normalizedDisposition = ['active', 'archived', 'spam'].includes(archiveDisposition)
@@ -366,6 +603,11 @@ export function createEmailArchiveRepository(queryTarget) {
           provider_mailbox,
           provider_uid_validity,
           provider_uid,
+          raw_message_id,
+          raw_eml_stored_path,
+          raw_eml_file_size,
+          raw_eml_sha256,
+          imported_at,
           from_address,
           from_name,
           to_recipients,
@@ -380,7 +622,12 @@ export function createEmailArchiveRepository(queryTarget) {
           delivery_status,
           received_at
         )
-        VALUES ($1, 'inbound', $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13, $14, $15::jsonb, $16, $17, $18, 'received', $19)
+        VALUES (
+          $1, 'inbound', $2, $3, $4::jsonb, $5, $6, $7,
+          $8, $9, $10, $11, $12,
+          $13, $14, $15::jsonb, $16::jsonb, $17, $18, $19, $20::jsonb,
+          $21, $22, $23, 'received', $24
+        )
         ON CONFLICT DO NOTHING
         RETURNING *
       `, [
@@ -391,6 +638,11 @@ export function createEmailArchiveRepository(queryTarget) {
         input.providerMailbox || '',
         input.providerUidValidity || '',
         input.providerUid || null,
+        input.rawMessageId || null,
+        input.rawEmlStoredPath || null,
+        input.rawEmlFileSize || null,
+        input.rawEmlSha256 || null,
+        input.importedAt || null,
         input.fromAddress,
         input.fromName || '',
         JSON.stringify(input.toRecipients || []),
@@ -403,6 +655,30 @@ export function createEmailArchiveRepository(queryTarget) {
         input.classificationCategory || 'inquiry',
         input.classificationReason || 'manual_review',
         input.receivedAt
+      ]);
+      return mapMessageRow(result.rows[0]);
+    },
+
+    async linkInboundMessageRawArchive(input) {
+      const result = await queryTarget.query(`
+        UPDATE email_messages
+        SET
+          raw_message_id = $2,
+          raw_eml_stored_path = $3,
+          raw_eml_file_size = $4,
+          raw_eml_sha256 = $5,
+          imported_at = COALESCE(imported_at, $6)
+        WHERE id = $1
+          AND direction = 'inbound'
+          AND raw_message_id IS NULL
+        RETURNING *
+      `, [
+        input.messageId,
+        input.rawMessageId,
+        input.rawEmlStoredPath,
+        input.rawEmlFileSize,
+        input.rawEmlSha256,
+        input.importedAt
       ]);
       return mapMessageRow(result.rows[0]);
     },

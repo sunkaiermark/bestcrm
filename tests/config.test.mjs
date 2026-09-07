@@ -189,6 +189,44 @@ test('email intake hard-caps every batch at 50 messages', () => {
   assert.equal(config.emailIntake.maxMessages, 50);
 });
 
+test('raw email archive and historical raw backfill are fail-closed and disabled by default', () => {
+  const defaults = loadConfig({ NODE_ENV: 'development' });
+  assert.deepEqual(defaults.emailRawArchive, {
+    enabled: false,
+    backfillEnabled: false,
+    maxBytes: 50 * 1024 * 1024,
+    scanner: {
+      enabled: false,
+      command: 'clamdscan',
+      timeoutMs: 120000
+    }
+  });
+
+  assert.throws(() => loadConfig({
+    NODE_ENV: 'development',
+    EMAIL_RAW_ARCHIVE_ENABLED: 'true'
+  }), /EMAIL_RAW_MALWARE_SCAN_ENABLED must be true/);
+  assert.throws(() => loadConfig({
+    NODE_ENV: 'development',
+    EMAIL_RAW_BACKFILL_ENABLED: 'true'
+  }), /EMAIL_RAW_ARCHIVE_ENABLED must be true/);
+
+  const configured = loadConfig({
+    NODE_ENV: 'development',
+    EMAIL_RAW_ARCHIVE_ENABLED: 'true',
+    EMAIL_RAW_MALWARE_SCAN_ENABLED: 'true',
+    EMAIL_RAW_BACKFILL_ENABLED: 'true',
+    EMAIL_RAW_MAX_MB: '25',
+    EMAIL_RAW_SCANNER_COMMAND: '/usr/bin/clamdscan',
+    EMAIL_RAW_SCAN_TIMEOUT_MS: '60000'
+  });
+  assert.equal(configured.emailRawArchive.enabled, true);
+  assert.equal(configured.emailRawArchive.backfillEnabled, true);
+  assert.equal(configured.emailRawArchive.maxBytes, 25 * 1024 * 1024);
+  assert.equal(configured.emailRawArchive.scanner.command, '/usr/bin/clamdscan');
+  assert.equal(configured.emailRawArchive.scanner.timeoutMs, 60000);
+});
+
 test('Google mail stays fully disabled with the frozen single mailbox defaults', () => {
   const config = loadConfig({ NODE_ENV: 'development' });
 

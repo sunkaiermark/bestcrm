@@ -47,6 +47,7 @@ const imapSyncAndEmailTriageMigrationPath = new URL('../../src/db/migrations/045
 const customerContactUniquenessMigrationPath = new URL('../../src/db/migrations/046_customer_contact_uniqueness.sql', import.meta.url);
 const opportunityRecordGuardrailsMigrationPath = new URL('../../src/db/migrations/047_opportunity_record_guardrails.sql', import.meta.url);
 const opportunityActivitySpineMigrationPath = new URL('../../src/db/migrations/048_opportunity_activity_spine.sql', import.meta.url);
+const emailRawArchiveFoundationMigrationPath = new URL('../../src/db/migrations/049_email_raw_archive_foundation.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -843,4 +844,28 @@ test('opportunity activity spine migration creates typed append-only links and t
   assert.match(sql, /AFTER UPDATE OF opportunity_id ON sales_work_logs/);
   assert.match(sql, /rawEmlSha256/);
   assert.doesNotMatch(sql, /text_body|html_body|password|secret|token/i);
+});
+
+test('raw email archive migration creates immutable evidence, scan indexes, and transitional message binding', async () => {
+  const sql = await readFile(emailRawArchiveFoundationMigrationPath, 'utf8');
+
+  for (const table of [
+    'email_raw_messages',
+    'email_raw_scan_attempts',
+    'email_raw_processing_attempts',
+    'email_attachment_scan_attempts',
+    'email_classification_events'
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  assert.match(sql, /UNIQUE \(mailbox_key, provider_mailbox, provider_uid_validity, provider_uid\)/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL CHECK \(sha256 ~ '\^\[0-9a-f\]\{64\}\$'\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS raw_message_id bigint/);
+  assert.match(sql, /REFERENCES email_raw_messages\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /email_messages_raw_message_idx/);
+  assert.match(sql, /Nullable only during the historical raw-email backfill transition/);
+  assert.match(sql, /Email evidence records are immutable and append-only/);
+  assert.match(sql, /Raw email compatibility fields must match authoritative evidence/);
+  assert.match(sql, /OLD\.raw_message_id IS NULL[\s\S]*NEW\.raw_message_id IS NOT NULL/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
 });
