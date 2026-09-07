@@ -10,6 +10,8 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ENV_READER="${BESTCRM_ENV_READER:-$SCRIPT_DIR/read-env-value.mjs}"
 STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_PATH="$BACKUP_DIR/$STAMP"
+RAW_EMAIL_DIR="$UPLOAD_DIR/email-raw"
+RAW_EMAIL_INVENTORY="$BACKUP_PATH/email-raw-files.sha256"
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "Missing environment file: $ENV_FILE" >&2
@@ -22,11 +24,24 @@ if [ ! -f "$ENV_READER" ]; then
 fi
 
 DATABASE_URL="$(node "$ENV_READER" "$ENV_FILE" DATABASE_URL)"
+RAW_ARCHIVE_ENABLED="$(node "$ENV_READER" "$ENV_FILE" EMAIL_RAW_ARCHIVE_ENABLED)"
 export DATABASE_URL
 
 if [ -z "${DATABASE_URL:-}" ]; then
   echo "DATABASE_URL is required in $ENV_FILE" >&2
   exit 1
+fi
+
+if systemctl is-active --quiet bestcrm-email-backfill.service; then
+  echo "Raw email backfill is active; stop it before creating a backup." >&2
+  exit 1
+fi
+
+if [ "$RAW_ARCHIVE_ENABLED" = "true" ]; then
+  if systemctl is-active --quiet bestcrm || systemctl is-active --quiet bestcrm-email-intake.service; then
+    echo "Raw email archive is enabled; stop BESTCRM and email intake before creating a consistent database/file backup." >&2
+    exit 1
+  fi
 fi
 
 mkdir -p "$BACKUP_PATH"
@@ -40,6 +55,21 @@ else
   tar -czf "$BACKUP_PATH/uploads.tar.gz" --files-from /dev/null
 fi
 
+if [ -d "$RAW_EMAIL_DIR" ]; then
+  (
+    cd "$UPLOAD_DIR"
+    find email-raw -type f -name '*.eml' ! -path 'email-raw/.staging/*' -print0 \
+      | LC_ALL=C sort -z \
+      | xargs -0 -r sha256sum
+  ) > "$RAW_EMAIL_INVENTORY"
+  RAW_EMAIL_FILE_COUNT="$(find "$RAW_EMAIL_DIR" -type f -name '*.eml' ! -path "$RAW_EMAIL_DIR/.staging/*" | wc -l)"
+  RAW_EMAIL_SIZE_BYTES="$(find "$RAW_EMAIL_DIR" -type f -name '*.eml' ! -path "$RAW_EMAIL_DIR/.staging/*" -printf '%s\n' | awk '{total += $1} END {print total + 0}')"
+else
+  : > "$RAW_EMAIL_INVENTORY"
+  RAW_EMAIL_FILE_COUNT=0
+  RAW_EMAIL_SIZE_BYTES=0
+fi
+
 if [ -f "$ENV_FILE" ]; then
   cp "$ENV_FILE" "$BACKUP_PATH/bestcrm.env"
   chmod 600 "$BACKUP_PATH/bestcrm.env"
@@ -47,6 +77,7 @@ fi
 
 DATABASE_SHA256="$(sha256sum "$BACKUP_PATH/database.sql" | awk '{print $1}')"
 UPLOADS_SHA256="$(sha256sum "$BACKUP_PATH/uploads.tar.gz" | awk '{print $1}')"
+RAW_EMAIL_INVENTORY_SHA256="$(sha256sum "$RAW_EMAIL_INVENTORY" | awk '{print $1}')"
 ENV_SHA256=""
 if [ -f "$BACKUP_PATH/bestcrm.env" ]; then
   ENV_SHA256="$(sha256sum "$BACKUP_PATH/bestcrm.env" | awk '{print $1}')"
@@ -71,6 +102,9 @@ database_size_bytes=$(stat -c%s "$BACKUP_PATH/database.sql")
 database_sha256=$DATABASE_SHA256
 uploads_size_bytes=$(stat -c%s "$BACKUP_PATH/uploads.tar.gz")
 uploads_sha256=$UPLOADS_SHA256
+raw_email_inventory_sha256=$RAW_EMAIL_INVENTORY_SHA256
+raw_email_file_count=$RAW_EMAIL_FILE_COUNT
+raw_email_size_bytes=$RAW_EMAIL_SIZE_BYTES
 env_sha256=$ENV_SHA256
 MANIFEST
 

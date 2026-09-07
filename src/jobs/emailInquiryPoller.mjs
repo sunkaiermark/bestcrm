@@ -92,6 +92,7 @@ function supportsUidCheckpointing(repository) {
 }
 
 function normalizeSyncMode(value) {
+  if (value === 'raw-backfill') return 'raw-backfill';
   return value === 'backfill' ? 'backfill' : 'incremental';
 }
 
@@ -228,8 +229,27 @@ async function selectMessagesForSync({
     mailboxName: mailbox,
     uidValidity,
     incrementalLastUid: uidNext - 1,
-    backfillBeforeUid: uidNext
+    backfillBeforeUid: uidNext,
+    rawBackfillBeforeUid: uidNext
   });
+
+  if (syncMode === 'raw-backfill') {
+    if (state.rawBackfillComplete) {
+      return { mode: syncMode, state, selectedUids: [], batchComplete: true };
+    }
+    const beforeUid = uidNumber(state.rawBackfillBeforeUid, uidNext);
+    const endUid = beforeUid - 1;
+    if (endUid < 1) {
+      return { mode: syncMode, state, selectedUids: [], batchComplete: true };
+    }
+    const uids = await client.search({ uid: `1:${endUid}` }, { uid: true }) || [];
+    const selectedUids = uids
+      .map((uid) => uidNumber(uid))
+      .filter((uid) => uid > 0 && uid < beforeUid)
+      .sort((left, right) => right - left)
+      .slice(0, maxMessages);
+    return { mode: syncMode, state, selectedUids, batchComplete: selectedUids.length < maxMessages };
+  }
 
   if (syncMode === 'backfill') {
     if (state.backfillComplete) {
@@ -293,6 +313,9 @@ export async function pollEmailInquiries({
     throw new Error('Raw email archiving requires the email archive repository, transaction, and malware scanner');
   }
   const requestedMode = normalizeSyncMode(syncMode);
+  if (requestedMode === 'raw-backfill' && !rawArchiveEnabled) {
+    throw new Error('Raw email backfill requires raw email archiving to be enabled');
+  }
   const imported = [];
   const filtered = [];
   const skipped = [];
@@ -323,7 +346,15 @@ export async function pollEmailInquiries({
 
     const checkpoint = async (uid, complete = false) => {
       if (!selection.state) return;
-      if (selection.mode === 'backfill') {
+      if (selection.mode === 'raw-backfill') {
+        selection.state = await emailArchiveRepository.updateImapRawBackfillCheckpoint({
+          mailboxKey,
+          mailboxName: mailbox,
+          uidValidity,
+          beforeUid: uid,
+          complete
+        });
+      } else if (selection.mode === 'backfill') {
         selection.state = await emailArchiveRepository.updateImapBackfillCheckpoint({
           mailboxKey,
           mailboxName: mailbox,
@@ -566,7 +597,18 @@ export async function pollEmailInquiries({
       await checkpoint(uid);
     }
 
-    if (selection.state && selection.mode === 'backfill' && selection.batchComplete) {
+    if (selection.state && selection.mode === 'raw-backfill' && selection.batchComplete) {
+      const beforeUid = selectedUids.length
+        ? selectedUids[selectedUids.length - 1]
+        : selection.state.rawBackfillBeforeUid;
+      selection.state = await emailArchiveRepository.updateImapRawBackfillCheckpoint({
+        mailboxKey,
+        mailboxName: mailbox,
+        uidValidity,
+        beforeUid,
+        complete: true
+      });
+    } else if (selection.state && selection.mode === 'backfill' && selection.batchComplete) {
       const beforeUid = selectedUids.length
         ? selectedUids[selectedUids.length - 1]
         : selection.state.backfillBeforeUid;
@@ -605,6 +647,8 @@ export async function pollEmailInquiries({
     filtered,
     skipped,
     mode: selection?.mode || requestedMode,
-    backfillComplete: Boolean(selection?.state?.backfillComplete)
+    backfillComplete: selection?.mode === 'raw-backfill'
+      ? Boolean(selection?.state?.rawBackfillComplete)
+      : Boolean(selection?.state?.backfillComplete)
   };
 }

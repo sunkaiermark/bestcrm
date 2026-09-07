@@ -46,6 +46,9 @@ test('release candidate requires every email feature flag to remain disabled', (
   assert.doesNotThrow(() => assertEmailFlagsDisabled([
     'CRM_EMAIL_CENTER_ENABLED=false',
     'EMAIL_INTAKE_ENABLED=false',
+    'EMAIL_RAW_ARCHIVE_ENABLED=false',
+    'EMAIL_RAW_MALWARE_SCAN_ENABLED=false',
+    'EMAIL_RAW_BACKFILL_ENABLED=false',
     'CRM_EMAIL_SENDING_ENABLED=false',
     'GOOGLE_MAIL_ENABLED=false',
     'GOOGLE_MAIL_INBOUND_ENABLED=false',
@@ -55,6 +58,9 @@ test('release candidate requires every email feature flag to remain disabled', (
   assert.throws(() => assertEmailFlagsDisabled([
     'CRM_EMAIL_CENTER_ENABLED=true',
     'EMAIL_INTAKE_ENABLED=false',
+    'EMAIL_RAW_ARCHIVE_ENABLED=false',
+    'EMAIL_RAW_MALWARE_SCAN_ENABLED=false',
+    'EMAIL_RAW_BACKFILL_ENABLED=false',
     'CRM_EMAIL_SENDING_ENABLED=false',
     'GOOGLE_MAIL_ENABLED=false',
     'GOOGLE_MAIL_INBOUND_ENABLED=false',
@@ -64,6 +70,9 @@ test('release candidate requires every email feature flag to remain disabled', (
   assert.throws(() => assertEmailFlagsDisabled([
     'CRM_EMAIL_CENTER_ENABLED=false',
     'EMAIL_INTAKE_ENABLED=false',
+    'EMAIL_RAW_ARCHIVE_ENABLED=false',
+    'EMAIL_RAW_MALWARE_SCAN_ENABLED=false',
+    'EMAIL_RAW_BACKFILL_ENABLED=false',
     'CRM_EMAIL_SENDING_ENABLED=false',
     'GOOGLE_MAIL_ENABLED=true',
     'GOOGLE_MAIL_INBOUND_ENABLED=false',
@@ -115,7 +124,19 @@ test('release builder creates a reproducible commit-only archive and checksum ma
       productionCredentialsIncluded: false
     });
     assert.match(checksum, new RegExp(`^${result.sha256}  bestcrm-v2099\\.01\\.01-01-rc\\.1\\.zip`));
-    assert.match(manifest.latestMigration, /048_opportunity_activity_spine\.sql$/);
+    assert.match(manifest.latestMigration, /050_email_raw_backfill_checkpoint\.sql$/);
+    assert.deepEqual(manifest.emailFeatureFlags, {
+      CRM_EMAIL_CENTER_ENABLED: false,
+      EMAIL_INTAKE_ENABLED: false,
+      EMAIL_RAW_ARCHIVE_ENABLED: false,
+      EMAIL_RAW_MALWARE_SCAN_ENABLED: false,
+      EMAIL_RAW_BACKFILL_ENABLED: false,
+      CRM_EMAIL_SENDING_ENABLED: false,
+      GOOGLE_MAIL_ENABLED: false,
+      GOOGLE_MAIL_INBOUND_ENABLED: false,
+      GOOGLE_MAIL_OUTBOUND_ENABLED: false,
+      GOOGLE_MAIL_PUSH_ENABLED: false
+    });
   } finally {
     await rm(outputDir, { recursive: true, force: true });
   }

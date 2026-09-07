@@ -252,6 +252,56 @@ test('email archive repository persists independent incremental and backfill IMA
   assert.match(calls[2].sql, /LEAST\(backfill_before_uid, \$4\)/);
 });
 
+test('email archive repository keeps raw EML backfill independent from parsed-email backfill', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [{
+        id: '1', mailbox_key: 'sales@sunkaier.com', mailbox_name: 'INBOX', uid_validity: '44',
+        incremental_last_uid: '205', backfill_before_uid: '1', backfill_complete: true,
+        raw_backfill_before_uid: '150', raw_backfill_complete: false
+      }] };
+    }
+  });
+
+  const state = await repository.updateImapRawBackfillCheckpoint({
+    mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '44',
+    beforeUid: 150, complete: false
+  });
+
+  assert.equal(state.backfillComplete, true);
+  assert.equal(state.rawBackfillBeforeUid, 150);
+  assert.equal(state.rawBackfillComplete, false);
+  assert.match(calls[0].sql, /LEAST\(raw_backfill_before_uid, \$4\)/);
+  assert.match(calls[0].sql, /last_raw_backfill_sync_at = now\(\)/);
+});
+
+test('email archive repository never initializes the raw cursor from the parsed cursor implicitly', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [{
+        id: '1', mailbox_key: 'sales@sunkaier.com', mailbox_name: 'INBOX', uid_validity: '44',
+        incremental_last_uid: '205', backfill_before_uid: '100', backfill_complete: false,
+        raw_backfill_before_uid: null, raw_backfill_complete: false
+      }] };
+    }
+  });
+
+  await repository.initializeImapSyncState({
+    mailboxKey: 'sales@sunkaier.com',
+    mailboxName: 'INBOX',
+    uidValidity: '44',
+    incrementalLastUid: 205,
+    backfillBeforeUid: 100
+  });
+
+  assert.equal(calls[0].params[4], 100);
+  assert.equal(calls[0].params[5], null);
+});
+
 test('outbound archive state keeps immutable content while delivery attempts increment on one message', async () => {
   const calls = [];
   const rows = [

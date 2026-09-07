@@ -97,8 +97,11 @@ function mapImapSyncStateRow(row) {
     incrementalLastUid: Number(row.incremental_last_uid || 0),
     backfillBeforeUid: numberOrNull(row.backfill_before_uid),
     backfillComplete: Boolean(row.backfill_complete),
+    rawBackfillBeforeUid: numberOrNull(row.raw_backfill_before_uid),
+    rawBackfillComplete: Boolean(row.raw_backfill_complete),
     lastIncrementalSyncAt: row.last_incremental_sync_at,
     lastBackfillSyncAt: row.last_backfill_sync_at,
+    lastRawBackfillSyncAt: row.last_raw_backfill_sync_at,
     lastErrorCode: text(row.last_error_code),
     lastErrorAt: row.last_error_at,
     createdAt: row.created_at,
@@ -855,9 +858,10 @@ export function createEmailArchiveRepository(queryTarget) {
           mailbox_name,
           uid_validity,
           incremental_last_uid,
-          backfill_before_uid
+          backfill_before_uid,
+          raw_backfill_before_uid
         )
-        VALUES ($1, $2, $3, $4, $5)
+        VALUES ($1, $2, $3, $4, $5, $6)
         ON CONFLICT (mailbox_key, mailbox_name)
         DO UPDATE SET
           uid_validity = EXCLUDED.uid_validity,
@@ -876,6 +880,16 @@ export function createEmailArchiveRepository(queryTarget) {
               THEN false
             ELSE email_imap_sync_states.backfill_complete
           END,
+          raw_backfill_before_uid = CASE
+            WHEN email_imap_sync_states.uid_validity IS DISTINCT FROM EXCLUDED.uid_validity
+              THEN EXCLUDED.raw_backfill_before_uid
+            ELSE COALESCE(email_imap_sync_states.raw_backfill_before_uid, EXCLUDED.raw_backfill_before_uid)
+          END,
+          raw_backfill_complete = CASE
+            WHEN email_imap_sync_states.uid_validity IS DISTINCT FROM EXCLUDED.uid_validity
+              THEN false
+            ELSE email_imap_sync_states.raw_backfill_complete
+          END,
           last_error_code = CASE
             WHEN email_imap_sync_states.uid_validity IS DISTINCT FROM EXCLUDED.uid_validity
               THEN 'uid_validity_changed'
@@ -893,7 +907,8 @@ export function createEmailArchiveRepository(queryTarget) {
         input.mailboxName,
         input.uidValidity,
         input.incrementalLastUid || 0,
-        input.backfillBeforeUid || null
+        input.backfillBeforeUid || null,
+        input.rawBackfillBeforeUid || null
       ]);
       return mapImapSyncStateRow(result.rows[0]);
     },
@@ -926,6 +941,34 @@ export function createEmailArchiveRepository(queryTarget) {
           END,
           backfill_complete = $5,
           last_backfill_sync_at = now(),
+          last_error_code = '',
+          last_error_at = NULL,
+          updated_at = now()
+        WHERE mailbox_key = $1
+          AND mailbox_name = $2
+          AND uid_validity = $3
+        RETURNING *
+      `, [
+        input.mailboxKey,
+        input.mailboxName,
+        input.uidValidity,
+        input.beforeUid || null,
+        Boolean(input.complete)
+      ]);
+      return mapImapSyncStateRow(result.rows[0]);
+    },
+
+    async updateImapRawBackfillCheckpoint(input) {
+      const result = await queryTarget.query(`
+        UPDATE email_imap_sync_states
+        SET
+          raw_backfill_before_uid = CASE
+            WHEN $4::bigint IS NULL THEN raw_backfill_before_uid
+            WHEN raw_backfill_before_uid IS NULL THEN $4
+            ELSE LEAST(raw_backfill_before_uid, $4)
+          END,
+          raw_backfill_complete = $5,
+          last_raw_backfill_sync_at = now(),
           last_error_code = '',
           last_error_at = NULL,
           updated_at = now()

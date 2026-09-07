@@ -48,6 +48,7 @@ const customerContactUniquenessMigrationPath = new URL('../../src/db/migrations/
 const opportunityRecordGuardrailsMigrationPath = new URL('../../src/db/migrations/047_opportunity_record_guardrails.sql', import.meta.url);
 const opportunityActivitySpineMigrationPath = new URL('../../src/db/migrations/048_opportunity_activity_spine.sql', import.meta.url);
 const emailRawArchiveFoundationMigrationPath = new URL('../../src/db/migrations/049_email_raw_archive_foundation.sql', import.meta.url);
+const emailRawBackfillCheckpointMigrationPath = new URL('../../src/db/migrations/050_email_raw_backfill_checkpoint.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -868,4 +869,13 @@ test('raw email archive migration creates immutable evidence, scan indexes, and 
   assert.match(sql, /Raw email compatibility fields must match authoritative evidence/);
   assert.match(sql, /OLD\.raw_message_id IS NULL[\s\S]*NEW\.raw_message_id IS NOT NULL/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('raw email backfill migration creates an independent resumable cursor', async () => {
+  const sql = await readFile(emailRawBackfillCheckpointMigrationPath, 'utf8');
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS raw_backfill_before_uid bigint/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS raw_backfill_complete boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS last_raw_backfill_sync_at timestamptz/);
+  assert.match(sql, /email_imap_sync_states_raw_backfill_idx/);
+  assert.match(sql, /never reuse the parsed-email backfill cursor/);
 });

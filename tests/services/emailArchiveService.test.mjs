@@ -217,6 +217,82 @@ test('archived attachments retain checksum and independent email-archive file', 
   }
 });
 
+test('attachment scan evidence can be retried without deleting an attachment already indexed', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-scan-retry-'));
+  const attachment = {
+    id: 51,
+    messageId: 10,
+    sourceIndex: 0,
+    storedPath: 'email-archive/retry.pdf'
+  };
+  const scanAttempts = [];
+  try {
+    const result = await storeEmailArchiveAttachments({
+      emailArchiveRepository: {
+        async listAttachmentsByMessage() { return [attachment]; },
+        async createAttachment() { assert.fail('duplicate attachment must not be inserted again'); },
+        async createAttachmentScanAttempt(input) { scanAttempts.push(input); return input; }
+      },
+      messageId: 10,
+      attachments: [{ filename: 'retry.pdf', content: Buffer.from('safe-content') }],
+      attachmentScans: [{
+        engine: 'clamav',
+        engineVersion: '1.4',
+        signatureVersion: '20260908',
+        verdict: 'clean',
+        findingCode: '',
+        safeDetail: '',
+        startedAt: '2026-09-08T00:00:00.000Z',
+        completedAt: '2026-09-08T00:00:01.000Z'
+      }],
+      uploadDir,
+      maxUploadMb: 1
+    });
+
+    assert.deepEqual(result, { stored: [], skipped: [{ sourceIndex: 0, reason: 'duplicate' }] });
+    assert.equal(scanAttempts.length, 1);
+    assert.equal(scanAttempts[0].attachmentId, 51);
+    assert.equal(scanAttempts[0].verdict, 'clean');
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('attachment file remains recoverable when scan evidence insert fails after indexing', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-scan-event-fail-'));
+  let indexedAttachment;
+  try {
+    await assert.rejects(() => storeEmailArchiveAttachments({
+      emailArchiveRepository: {
+        async listAttachmentsByMessage() { return []; },
+        async createAttachment(input) {
+          indexedAttachment = { id: 61, ...input };
+          return indexedAttachment;
+        },
+        async createAttachmentScanAttempt() { throw new Error('scan event database failure'); }
+      },
+      messageId: 10,
+      attachments: [{ filename: 'recoverable.pdf', content: Buffer.from('safe-content') }],
+      attachmentScans: [{
+        engine: 'clamav',
+        verdict: 'clean',
+        startedAt: '2026-09-08T00:00:00.000Z',
+        completedAt: '2026-09-08T00:00:01.000Z'
+      }],
+      uploadDir,
+      maxUploadMb: 1
+    }), /scan event database failure/);
+
+    assert.ok(indexedAttachment);
+    assert.equal(
+      await readFile(path.resolve(uploadDir, indexedAttachment.storedPath), 'utf8'),
+      'safe-content'
+    );
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('thread visibility keeps unlinked mail manager-only and uses opportunity membership when linked', async () => {
   const unlinked = { id: 1, inquiryId: 8, opportunityId: null };
   const linked = { id: 2, inquiryId: 9, opportunityId: 20 };

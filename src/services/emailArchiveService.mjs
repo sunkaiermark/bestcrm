@@ -319,13 +319,25 @@ export async function storeEmailArchiveAttachments({
   const existing = typeof emailArchiveRepository.listAttachmentsByMessage === 'function'
     ? await emailArchiveRepository.listAttachmentsByMessage(messageId)
     : [];
-  const existingIndexes = new Set(existing.map((attachment) => Number(attachment.sourceIndex)));
+  const existingByIndex = new Map(
+    existing.map((attachment) => [Number(attachment.sourceIndex), attachment])
+  );
   const maxBytes = maxAttachmentBytes(maxUploadMb);
   const stored = [];
   const skipped = [];
 
   for (const [index, attachment] of attachments.entries()) {
-    if (existingIndexes.has(index)) {
+    if (existingByIndex.has(index)) {
+      const existingAttachment = existingByIndex.get(index);
+      const retryScan = attachmentScans[index] || null;
+      if (retryScan?.verdict === 'malware') throw new EmailRawMalwareError(retryScan);
+      if (retryScan && retryScan.verdict !== 'clean') throw new EmailRawScanError(retryScan);
+      if (retryScan && typeof emailArchiveRepository.createAttachmentScanAttempt === 'function') {
+        await emailArchiveRepository.createAttachmentScanAttempt({
+          attachmentId: existingAttachment.id,
+          ...scanAttemptInput(null, retryScan)
+        });
+      }
       skipped.push({ sourceIndex: index, reason: 'duplicate' });
       continue;
     }
@@ -347,8 +359,9 @@ export async function storeEmailArchiveAttachments({
       content,
       prefix: 'email-archive'
     });
+    let record = null;
     try {
-      const record = await emailArchiveRepository.createAttachment({
+      record = await emailArchiveRepository.createAttachment({
         messageId,
         sourceIndex: index,
         originalName,
@@ -371,7 +384,10 @@ export async function storeEmailArchiveAttachments({
         skipped.push({ sourceIndex: index, reason: 'duplicate' });
       }
     } catch (error) {
-      await removeStoredAttachmentFile(file.absolutePath);
+      // Once the immutable attachment row exists, retain the matching file. A
+      // retry will detect the duplicate and append the newly completed scan
+      // attempt instead of leaving a database row that points at a missing file.
+      if (!record) await removeStoredAttachmentFile(file.absolutePath);
       throw error;
     }
   }

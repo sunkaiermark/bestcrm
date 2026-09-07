@@ -62,7 +62,7 @@ async function runOnce() {
     contactRepository,
     emailArchiveTransaction,
     malwareScanner,
-    syncMode: backfill ? 'backfill' : 'incremental'
+    syncMode: backfill ? 'raw-backfill' : 'incremental'
   });
   console.log(JSON.stringify({
     event: 'email_inquiry_poll_complete',

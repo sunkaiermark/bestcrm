@@ -24,13 +24,16 @@
     "email:poll:once": "node scripts/poll-email-inquiries.mjs --once",
     "email:backfill": "node scripts/poll-email-inquiries.mjs --backfill",
     "email:preview": "node scripts/preview-email-classification.mjs",
+    "email:raw:preview": "node scripts/preview-email-raw-backfill.mjs",
+    "email:raw:audit": "node scripts/audit-email-raw-archive.mjs",
     "email:classify": "node scripts/classify-email-inquiries.mjs",
     "email:cleanup-attachments": "node scripts/cleanup-email-inquiry-attachments.mjs",
     "notifications:deliver": "node scripts/deliver-notifications.mjs",
     "notifications:deliver:once": "node scripts/deliver-notifications.mjs --once",
     "notifications:generate-vapid": "node scripts/generate-vapid-keys.mjs",
     "release:build": "node scripts/build-release-candidate.mjs",
-    "backup:verify": "node scripts/verify-backup-artifacts.mjs"
+    "backup:verify": "node scripts/verify-backup-artifacts.mjs",
+    "backup:verify:email-raw": "node scripts/verify-email-raw-restore.mjs"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

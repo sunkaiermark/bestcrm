@@ -674,6 +674,85 @@ test('historical backfill walks UIDs newest-first and marks the cursor complete'
   assert.equal(result.backfillComplete, true);
 });
 
+test('raw EML backfill uses its own newest-first cursor even when parsed backfill is complete', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-cursor-'));
+  const archive = createMemoryArchive();
+  const evidence = enableRawArchiveMemory(archive);
+  const checkpoints = [];
+  const state = {
+    mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '109',
+    incrementalLastUid: 120, backfillBeforeUid: 1, backfillComplete: true,
+    rawBackfillBeforeUid: 101, rawBackfillComplete: false
+  };
+  Object.assign(archive.repository, {
+    async initializeImapSyncState() { return { ...state }; },
+    async updateImapIncrementalCheckpoint() { return { ...state }; },
+    async updateImapBackfillCheckpoint() { assert.fail('parsed-email backfill cursor must not change'); },
+    async updateImapRawBackfillCheckpoint(input) {
+      checkpoints.push({ beforeUid: input.beforeUid, complete: input.complete });
+      if (input.beforeUid) state.rawBackfillBeforeUid = Number(input.beforeUid);
+      state.rawBackfillComplete = Boolean(input.complete);
+      return { ...state };
+    }
+  });
+  const client = {
+    mailbox: { uidValidity: 109n, uidNext: 121n },
+    async connect() {}, async mailboxOpen() {},
+    async search(query, options) {
+      assert.deepEqual({ query, options }, { query: { uid: '1:100' }, options: { uid: true } });
+      return [50, 100, 75];
+    },
+    async fetchOne(uid) { return { uid: Number(uid), source: rawEmail(`raw-history-${uid}`) }; },
+    async logout() {}
+  };
+
+  const inquiryRepository = {
+    async createInquiry(input) { return { id: Number(input.rawPayload.uid), ...input }; }
+  };
+  const contactRepository = { async findUniqueByEmail() { return null; } };
+  const malwareScanner = {
+    async scanFile() {
+      return {
+        engine: 'fake', verdict: 'clean', startedAt: '2026-09-08T00:00:00Z',
+        completedAt: '2026-09-08T00:00:01Z'
+      };
+    },
+    async scanBuffer() { return { engine: 'fake', verdict: 'clean' }; }
+  };
+
+  try {
+    const result = await pollEmailInquiries({
+      config: config({
+        uploadDir,
+        maxMessages: 5,
+        markSeen: false,
+        emailRawArchive: { enabled: true, maxBytes: 1024 * 1024 }
+      }),
+      inquiryRepository,
+      emailArchiveRepository: archive.repository,
+      contactRepository,
+      emailArchiveTransaction: (callback) => callback({
+        emailArchiveRepository: archive.repository, inquiryRepository, contactRepository
+      }),
+      malwareScanner,
+      imapClientFactory: () => client,
+      syncMode: 'raw-backfill'
+    });
+
+    assert.deepEqual(result.imported.map((item) => item.uid), [100, 75, 50]);
+    assert.equal(evidence.rawMessages.length, 3);
+    assert.deepEqual(checkpoints, [
+      { beforeUid: 100, complete: false },
+      { beforeUid: 75, complete: false },
+      { beforeUid: 50, complete: false },
+      { beforeUid: 50, complete: true }
+    ]);
+    assert.equal(result.backfillComplete, true);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('classification preview is read-only and prioritizes exact CRM contacts', async () => {
   const calls = [];
   const client = {
