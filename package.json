@@ -18,6 +18,7 @@
     "activity:backfill": "node scripts/backfill-opportunity-activities.mjs",
     "activity:audit": "node scripts/audit-opportunity-activities.mjs",
     "test:opportunity-activity-db": "node scripts/verify-opportunity-activity-spine.mjs",
+    "test:email-raw-db": "node scripts/verify-email-raw-migrations.mjs",
     "db:migrate": "node src/db/migrate.mjs",
     "db:seed": "node src/db/seed.mjs",
     "email:poll": "node scripts/poll-email-inquiries.mjs",
