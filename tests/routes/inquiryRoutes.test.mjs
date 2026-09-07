@@ -286,6 +286,7 @@ test('sales manager can view inquiry list from navigation', async () => {
   assert.match(response.text, /\.inquiry-list-body\s*\{[^}]*max-height:\s*70vh;[^}]*overflow:\s*auto;/);
   assert.match(response.text, /\.inquiry-list-table thead th\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;/);
   assert.match(response.text, /\.content-fit-table\.inquiry-list-table th,[\s\S]*?\.content-fit-table\.inquiry-list-table td\s*\{[^}]*overflow:\s*hidden;[^}]*overflow-wrap:\s*normal;[^}]*text-align:\s*center;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table th:nth-child\(5\),[\s\S]*?\.content-fit-table\.inquiry-list-table td:nth-child\(7\)\s*\{[^}]*text-align:\s*left;/);
   assert.match(response.text, /\.inquiry-list-table\s*\{[^}]*min-width:\s*1630px;[^}]*table-layout:\s*fixed;/);
   assert.match(response.text, /\.inquiry-list-table th:nth-child\(5\),[\s\S]*?width:\s*clamp\(360px, 30vw, 520px\);/);
   assert.match(response.text, /\.inquiry-list-table th:nth-child\(6\),[\s\S]*?width:\s*clamp\(200px, 17vw, 300px\);/);
