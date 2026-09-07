@@ -26,6 +26,40 @@ work on Opportunities, Customers, Contacts, the sidebar, and email polling is
 excluded. No Phase C meeting/channel tables, Phase D document vault, Phase E
 new timeline UI, or Phase F recovery proof is included.
 
+## Production deployment record
+
+Deployment completed on 2026-09-08 (Singapore time):
+
+- deployed release: `v2026.09.07-03-rc.3`;
+- release commit: `7d668afd12037611f64db72dcf759f80e4e6e9cf`;
+- release ZIP SHA-256:
+  `e2bbac986baaf805100cfadeac9fccf8d1e5a4a40c216cb77e7114f7ced32705`;
+- exact packaged-tree test result: 878 passed, 0 failed;
+- isolated restore rehearsal: passed against backup `20260907-235610`;
+- verified cutover backup: `20260908-002351`;
+- cutover database SHA-256:
+  `b856b22c850a247e4d1663516c8de057516f37a1d5c2cbad5c9cc7500fb9b094`;
+- cutover uploads SHA-256:
+  `e04d5b57bd960bbdc26a1f473108557dcceb5c8b6fa1eacfb33412f780ee7c04`;
+- production migrations: 47, latest `048_opportunity_activity_spine.sql`;
+- Phase A audit: 101 customers, 87 contacts, 107 opportunities, no null or
+  duplicate record UID, 38 core-targeting foreign keys using restrictive
+  deletion, and all 9 required triggers present;
+- Phase B backfill: 508 activities indexed; a second pass processed zero;
+- Phase B audit: zero missing, duplicate, or mismatched primary links and zero
+  opportunity-contact-history mismatches;
+- service state: main CRM and incremental email intake active; historical email
+  backfill inactive;
+- smoke checks: local and public health passed, public `/health` returned HTTP
+  200, English and Chinese login pages rendered, anonymous Inquiries access
+  redirected to login, and the login logo was available.
+
+The first local health request ran immediately after `systemctl start` and
+briefly received connection refused. The required retry then passed after the
+Node listener was ready; no rollback was necessary. The uncommitted local
+Opportunities, Customers, Contacts, sidebar, and email-polling work remained
+outside this deployment.
+
 ## Verified production baseline
 
 The read-only preflight on 2026-09-07 verified:
