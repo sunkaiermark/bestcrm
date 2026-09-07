@@ -46,6 +46,7 @@ const contactCodeMigrationPath = new URL('../../src/db/migrations/044_contact_co
 const imapSyncAndEmailTriageMigrationPath = new URL('../../src/db/migrations/045_imap_sync_and_email_triage.sql', import.meta.url);
 const customerContactUniquenessMigrationPath = new URL('../../src/db/migrations/046_customer_contact_uniqueness.sql', import.meta.url);
 const opportunityRecordGuardrailsMigrationPath = new URL('../../src/db/migrations/047_opportunity_record_guardrails.sql', import.meta.url);
+const opportunityActivitySpineMigrationPath = new URL('../../src/db/migrations/048_opportunity_activity_spine.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -810,4 +811,36 @@ test('opportunity record guardrails migration makes core records stable, archiva
   assert.match(sql, /ON DELETE RESTRICT/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE/);
   assert.doesNotMatch(sql, /ON DELETE SET NULL/);
+});
+
+test('opportunity activity spine migration creates typed append-only links and transaction-local indexing', async () => {
+  const sql = await readFile(opportunityActivitySpineMigrationPath, 'utf8');
+
+  for (const table of [
+    'opportunity_contacts',
+    'activity_types',
+    'opportunity_activities',
+    'opportunity_activity_links',
+    'opportunity_activity_participants',
+    'opportunity_activity_backfill_state'
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TABLE ${table}`));
+  }
+  for (const type of [
+    'email', 'meeting', 'call', 'channel_message', 'note', 'task', 'file',
+    'workflow', 'approval', 'technical', 'quotation', 'contract', 'ownership', 'outcome'
+  ]) {
+    assert.match(sql, new RegExp(`\\('${type}'`));
+  }
+  assert.match(sql, /num_nonnulls\([\s\S]*engineering_contribution_id[\s\S]*\) = 1/);
+  assert.match(sql, /UNIQUE \(source_system, source_external_key\)/);
+  assert.match(sql, /Opportunity activity spine records are append-only/);
+  assert.match(sql, /bestcrm_index_activity_source\(p_source_table text, p_source_id bigint\)/);
+  assert.match(sql, /AFTER INSERT ON email_messages/);
+  assert.match(sql, /AFTER UPDATE OF opportunity_id ON email_threads/);
+  assert.match(sql, /bestcrm_protect_indexed_source_opportunity/);
+  assert.match(sql, /AFTER UPDATE OF opportunity_id ON sales_work_plans/);
+  assert.match(sql, /AFTER UPDATE OF opportunity_id ON sales_work_logs/);
+  assert.match(sql, /rawEmlSha256/);
+  assert.doesNotMatch(sql, /text_body|html_body|password|secret|token/i);
 });
