@@ -8,6 +8,7 @@ import { createInquiryAttachmentRepository } from '../src/repositories/inquiryAt
 import { createInquiryRepository } from '../src/repositories/inquiryRepository.mjs';
 import { runEmailBackfillLoop } from '../src/jobs/emailBackfillLoop.mjs';
 import { pollEmailInquiries } from '../src/jobs/emailInquiryPoller.mjs';
+import { createClamAvScanner } from '../src/services/emailMalwareScannerService.mjs';
 
 const once = process.argv.includes('--once');
 const continuousBackfill = process.argv.includes('--backfill-continuous');
@@ -18,6 +19,10 @@ if (!config.emailIntake.enabled) {
   console.error('Email intake is disabled. Set EMAIL_INTAKE_ENABLED=true before running this worker.');
   process.exit(1);
 }
+if (backfill && !config.emailRawArchive.backfillEnabled) {
+  console.error('Raw email backfill is disabled. Set EMAIL_RAW_BACKFILL_ENABLED=true only after backup and restore verification.');
+  process.exit(1);
+}
 
 const pool = createPool(config);
 const inquiryRepository = createInquiryRepository(pool);
@@ -25,6 +30,9 @@ const inquiryAttachmentRepository = createInquiryAttachmentRepository(pool);
 const emailArchiveRepository = createEmailArchiveRepository(pool);
 const contactRepository = createContactRepository(pool);
 const emailArchiveTransaction = createEmailArchiveTransaction(pool);
+const malwareScanner = config.emailRawArchive.enabled
+  ? createClamAvScanner(config.emailRawArchive.scanner)
+  : null;
 const stopController = new AbortController();
 let stopping = false;
 
@@ -53,6 +61,7 @@ async function runOnce() {
     emailArchiveRepository,
     contactRepository,
     emailArchiveTransaction,
+    malwareScanner,
     syncMode: backfill ? 'backfill' : 'incremental'
   });
   console.log(JSON.stringify({

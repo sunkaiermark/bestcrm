@@ -2,9 +2,15 @@ import { ImapFlow } from 'imapflow';
 import {
   EmailArchiveDuplicateRaceError,
   archiveInboundEmailRecord,
+  persistRawEmailCaptureOnly,
   resolveInboundEmailClassification,
   storeEmailArchiveAttachments
 } from '../services/emailArchiveService.mjs';
+import {
+  EmailRawMalwareError,
+  EmailRawScanError,
+  prepareEmailRawCapture
+} from '../services/emailRawArchiveService.mjs';
 import { storeEmailInquiryAttachments } from '../services/emailInquiryAttachmentService.mjs';
 import {
   parseEmailArchiveSourceWithAttachments,
@@ -102,6 +108,24 @@ function entryDecisionSummary(items) {
     summary[decision] = (summary[decision] || 0) + 1;
     return summary;
   }, { accept: 0, manual_review: 0, reject_spam: 0 });
+}
+
+async function scanEmailAttachments(scanner, attachments = []) {
+  if (!attachments.length) return [];
+  if (!scanner || typeof scanner.scanBuffer !== 'function') {
+    throw new EmailRawScanError({ verdict: 'error', findingCode: 'attachment_scanner_unavailable' });
+  }
+  const scans = [];
+  for (const attachment of attachments) {
+    if (!Buffer.isBuffer(attachment?.content)) {
+      throw new EmailRawScanError({ verdict: 'error', findingCode: 'attachment_content_missing' });
+    }
+    const scan = await scanner.scanBuffer(attachment.content);
+    if (scan?.verdict === 'malware') throw new EmailRawMalwareError(scan);
+    if (scan?.verdict !== 'clean') throw new EmailRawScanError(scan);
+    scans.push(scan);
+  }
+  return scans;
 }
 
 export async function previewEmailClassifications({
@@ -253,6 +277,7 @@ export async function pollEmailInquiries({
   emailArchiveRepository,
   contactRepository,
   emailArchiveTransaction,
+  malwareScanner = null,
   imapClientFactory = createEmailImapClient,
   logger = console,
   syncMode = 'incremental'
@@ -262,6 +287,11 @@ export async function pollEmailInquiries({
   const mailbox = requiredText(emailIntake.mailbox) || 'INBOX';
   const maxMessages = Number(emailIntake.maxMessages || 20);
   const markSeen = emailIntake.markSeen !== false;
+  const rawArchiveConfig = config.emailRawArchive || {};
+  const rawArchiveEnabled = rawArchiveConfig.enabled === true;
+  if (rawArchiveEnabled && (!emailArchiveRepository || !emailArchiveTransaction || !malwareScanner)) {
+    throw new Error('Raw email archiving requires the email archive repository, transaction, and malware scanner');
+  }
   const requestedMode = normalizeSyncMode(syncMode);
   const imported = [];
   const filtered = [];
@@ -326,13 +356,66 @@ export async function pollEmailInquiries({
         uidValidity,
         internalDate: message.internalDate
       };
-      const parsedEmail = emailArchiveRepository
-        ? await parseEmailArchiveSourceWithAttachments(message.source, parseMeta)
-        : await parseEmailInquirySourceWithAttachments(message.source, parseMeta);
+      let rawCandidate = rawArchiveEnabled
+        ? await prepareEmailRawCapture({
+          source: message.source,
+          uploadDir: config.uploadDir,
+          mailboxKey,
+          providerName: 'imap',
+          providerMailbox: mailbox,
+          providerUidValidity: uidValidity,
+          providerUid: message.uid || uid,
+          maxBytes: rawArchiveConfig.maxBytes,
+          scanner: malwareScanner
+        })
+        : null;
+      let parsedEmail;
+      try {
+        parsedEmail = emailArchiveRepository
+          ? await parseEmailArchiveSourceWithAttachments(message.source, parseMeta)
+          : await parseEmailInquirySourceWithAttachments(message.source, parseMeta);
+      } catch (error) {
+        if (!rawCandidate) throw error;
+        const rawCapture = await rawCandidate.commit();
+        rawCandidate = null;
+        const rawMessage = await emailArchiveTransaction((repositories) => persistRawEmailCaptureOnly(
+          repositories,
+          rawCapture,
+          {
+            stage: 'parse',
+            outcome: 'retryable_error',
+            safeErrorCode: 'mime_parse_failed',
+            safeDetail: String(error?.message || 'Email MIME parsing failed').slice(0, 500)
+          }
+        ));
+        logger.error?.(`Deferred email UID ${uid}: raw evidence ${rawMessage.id} captured before parse retry`);
+        skipped.push({ uid, reason: 'parse_deferred', rawMessageId: rawMessage.id });
+        await checkpoint(uid);
+        continue;
+      }
       const normalized = parsedEmail.inquiry;
       if (!normalized.sourceReference || !normalized.requirementText) {
-        logger.warn?.(`Skipping email UID ${uid}: missing required inquiry fields`);
-        skipped.push({ uid, reason: 'missing_required_fields' });
+        if (rawCandidate) {
+          const rawCapture = await rawCandidate.commit({
+            rfcMessageIdHint: parsedEmail.message?.messageId || '',
+            sourceReceivedAt: parsedEmail.message?.receivedAt || null
+          });
+          rawCandidate = null;
+          const rawMessage = await emailArchiveTransaction((repositories) => persistRawEmailCaptureOnly(
+            repositories,
+            rawCapture,
+            {
+              stage: 'archive',
+              outcome: 'retryable_error',
+              safeErrorCode: 'missing_required_fields'
+            }
+          ));
+          logger.warn?.(`Deferred email UID ${uid}: raw evidence ${rawMessage.id} is missing parsed CRM fields`);
+          skipped.push({ uid, reason: 'missing_required_fields', rawMessageId: rawMessage.id });
+        } else {
+          logger.warn?.(`Skipping email UID ${uid}: missing required inquiry fields`);
+          skipped.push({ uid, reason: 'missing_required_fields' });
+        }
         await checkpoint(uid);
         continue;
       }
@@ -354,7 +437,48 @@ export async function pollEmailInquiries({
       let archiveResult = null;
       let archiveAttachments = { stored: [], skipped: [] };
       if (emailArchiveRepository) {
-        const archiveCallback = (repositories) => archiveInboundEmailRecord(repositories, parsedEmail);
+        let resolvedClassification = null;
+        let rawCapture = null;
+        let attachmentScans = [];
+        if (rawCandidate) {
+          try {
+            const existing = await emailArchiveRepository.findMessageIdentity(parsedEmail.message);
+            resolvedClassification = existing
+              ? null
+              : await resolveInboundEmailClassification({
+                emailArchiveRepository,
+                contactRepository
+              }, parsedEmail);
+            if (resolvedClassification?.classification.entryDecision === 'reject_spam') {
+              await rawCandidate.discard();
+              rawCandidate = null;
+              filtered.push({
+                uid,
+                reason: 'reject_spam',
+                category: resolvedClassification.classification.classificationCategory,
+                spamScore: resolvedClassification.classification.spamScore
+              });
+              if (markSeen) {
+                await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
+              }
+              await checkpoint(uid);
+              continue;
+            }
+            attachmentScans = await scanEmailAttachments(malwareScanner, parsedEmail.attachments);
+            rawCapture = await rawCandidate.commit({
+              rfcMessageIdHint: parsedEmail.message.messageId,
+              sourceReceivedAt: parsedEmail.message.receivedAt
+            });
+            rawCandidate = null;
+          } catch (error) {
+            if (rawCandidate) await rawCandidate.discard().catch(() => {});
+            throw error;
+          }
+        }
+        const archiveCallback = (repositories) => archiveInboundEmailRecord(repositories, parsedEmail, {
+          rawCapture,
+          resolvedClassification
+        });
         try {
           archiveResult = emailArchiveTransaction
             ? await emailArchiveTransaction(archiveCallback)
@@ -387,6 +511,7 @@ export async function pollEmailInquiries({
           emailArchiveRepository,
           messageId: archiveResult.message.id,
           attachments: parsedEmail.attachments,
+          attachmentScans,
           uploadDir: config.uploadDir,
           maxUploadMb: config.maxUploadMb
         });

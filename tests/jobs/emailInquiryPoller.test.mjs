@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -23,6 +23,7 @@ function config(overrides = {}) {
       markSeen: true,
       ...overrides
     },
+    emailRawArchive: overrides.emailRawArchive || { enabled: false },
     uploadDir: overrides.uploadDir || './var/uploads',
     maxUploadMb: overrides.maxUploadMb || 25
   };
@@ -102,6 +103,40 @@ function rawReplyEmail(id, inReplyTo) {
     '',
     'Please revise the quotation.'
   ].join('\r\n'));
+}
+
+function enableRawArchiveMemory(archive) {
+  const rawMessages = [];
+  const rawScans = [];
+  const processingAttempts = [];
+  const attachmentScans = [];
+  const classificationEvents = [];
+  Object.assign(archive.repository, {
+    async findRawMessageIdentity(identity) {
+      return rawMessages.find((raw) => raw.mailboxKey === identity.mailboxKey
+        && raw.providerMailbox === identity.providerMailbox
+        && raw.providerUidValidity === identity.providerUidValidity
+        && Number(raw.providerUid) === Number(identity.providerUid)) || null;
+    },
+    async createRawMessage(input) {
+      const existing = await this.findRawMessageIdentity(input);
+      if (existing) return { rawMessage: existing, created: false };
+      const rawMessage = { id: rawMessages.length + 1, ...input };
+      rawMessages.push(rawMessage);
+      return { rawMessage, created: true };
+    },
+    async createRawScanAttempt(input) { rawScans.push(input); return input; },
+    async createRawProcessingAttempt(input) { processingAttempts.push(input); return input; },
+    async createAttachmentScanAttempt(input) { attachmentScans.push(input); return input; },
+    async createClassificationEvent(input) { classificationEvents.push(input); return input; },
+    async linkInboundMessageRawArchive(input) {
+      const message = archive.messages.find((item) => item.id === Number(input.messageId));
+      if (!message || message.rawMessageId) return null;
+      Object.assign(message, input);
+      return message;
+    }
+  });
+  return { rawMessages, rawScans, processingAttempts, attachmentScans, classificationEvents };
 }
 
 function rawHighConfidenceSpamEmail(id) {
@@ -678,4 +713,157 @@ test('classification preview is read-only and prioritizes exact CRM contacts', a
   assert.equal(result.items[0].classificationReason, 'google_ads_notification');
   assert.equal(result.items[1].classificationReason, 'known_contact_email');
   assert.equal(result.items[1].matchedContactId, 20);
+});
+
+test('raw-enabled polling scans source and attachments before binding one immutable EML record', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-poller-'));
+  const archive = createMemoryArchive();
+  const evidence = enableRawArchiveMemory(archive);
+  const checkpoints = [];
+  const state = {
+    mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '177',
+    incrementalLastUid: 700, backfillBeforeUid: 702, backfillComplete: false
+  };
+  Object.assign(archive.repository, {
+    async initializeImapSyncState() { return { ...state }; },
+    async updateImapIncrementalCheckpoint(input) {
+      checkpoints.push(input.uid);
+      state.incrementalLastUid = Number(input.uid);
+      return { ...state };
+    },
+    async updateImapBackfillCheckpoint() { return { ...state }; }
+  });
+  const client = {
+    mailbox: { uidValidity: 177n, uidNext: 702n },
+    async connect() {}, async mailboxOpen() {},
+    async search() { return [701]; },
+    async fetchOne(uid) { return { uid: Number(uid), source: rawEmailWithAttachment('raw-701') }; },
+    async messageFlagsAdd() { assert.fail('checkpointed sync must not change read state'); },
+    async logout() {}
+  };
+  const scanCalls = [];
+  const cleanScan = () => ({
+    engine: 'fake-clamav', engineVersion: '1', signatureVersion: '2', verdict: 'clean',
+    findingCode: '', safeDetail: '', startedAt: '2026-09-08T00:00:00Z', completedAt: '2026-09-08T00:00:01Z'
+  });
+  const malwareScanner = {
+    async scanFile(filePath) { scanCalls.push(['source', filePath]); return cleanScan(); },
+    async scanBuffer(content) { scanCalls.push(['attachment', content.toString()]); return cleanScan(); }
+  };
+  const inquiryRepository = {
+    async createInquiry(input) { return { id: 1, ...input }; }
+  };
+  const transaction = (callback) => callback({
+    emailArchiveRepository: archive.repository,
+    inquiryRepository,
+    contactRepository: { async findUniqueByEmail() { return null; } }
+  });
+
+  try {
+    const result = await pollEmailInquiries({
+      config: config({
+        uploadDir,
+        markSeen: false,
+        emailRawArchive: { enabled: true, maxBytes: 1024 * 1024 }
+      }),
+      inquiryRepository,
+      emailArchiveRepository: archive.repository,
+      contactRepository: { async findUniqueByEmail() { return null; } },
+      emailArchiveTransaction: transaction,
+      malwareScanner,
+      imapClientFactory: () => client
+    });
+
+    assert.equal(result.imported.length, 1);
+    assert.deepEqual(scanCalls.map(([kind]) => kind), ['source', 'attachment']);
+    assert.equal(evidence.rawMessages.length, 1);
+    assert.equal(evidence.rawScans.length, 1);
+    assert.equal(evidence.processingAttempts[0].outcome, 'succeeded');
+    assert.equal(evidence.attachmentScans.length, 1);
+    assert.equal(evidence.classificationEvents.length, 1);
+    assert.equal(archive.messages[0].rawMessageId, evidence.rawMessages[0].id);
+    assert.match(evidence.rawMessages[0].storedPath, /^email-raw\//);
+    assert.equal(await readFile(path.join(uploadDir, ...evidence.rawMessages[0].storedPath.split('/')), 'utf8'), rawEmailWithAttachment('raw-701').toString());
+    assert.deepEqual(checkpoints, [701]);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('raw-enabled polling discards high-confidence spam after scanning and stores no CRM evidence', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-spam-'));
+  const archive = createMemoryArchive();
+  const evidence = enableRawArchiveMemory(archive);
+  const client = {
+    mailbox: { uidValidity: 188n },
+    async connect() {}, async mailboxOpen() {}, async search() { return [801]; },
+    async fetchOne(uid) { return { uid: Number(uid), source: rawHighConfidenceSpamEmail('raw-spam-801') }; },
+    async messageFlagsAdd() {}, async logout() {}
+  };
+  const inquiryRepository = { async createInquiry() { assert.fail('spam must not create inquiry'); } };
+  const contactRepository = { async findUniqueByEmail() { return null; } };
+  const transaction = (callback) => callback({ emailArchiveRepository: archive.repository, inquiryRepository, contactRepository });
+
+  try {
+    const result = await pollEmailInquiries({
+      config: config({ uploadDir, emailRawArchive: { enabled: true, maxBytes: 1024 * 1024 } }),
+      inquiryRepository,
+      emailArchiveRepository: archive.repository,
+      contactRepository,
+      emailArchiveTransaction: transaction,
+      malwareScanner: {
+        async scanFile() { return { engine: 'fake', verdict: 'clean' }; },
+        async scanBuffer() { return { engine: 'fake', verdict: 'clean' }; }
+      },
+      imapClientFactory: () => client
+    });
+
+    assert.equal(result.filtered.length, 1);
+    assert.equal(evidence.rawMessages.length, 0);
+    assert.equal(archive.messages.length, 0);
+    assert.deepEqual(await readdir(path.join(uploadDir, 'email-raw', '.staging')), []);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('raw-enabled polling does not advance the checkpoint when malware is detected', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-malware-'));
+  const archive = createMemoryArchive();
+  enableRawArchiveMemory(archive);
+  let checkpointUpdates = 0;
+  const state = {
+    mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '199',
+    incrementalLastUid: 900, backfillBeforeUid: 902, backfillComplete: false
+  };
+  Object.assign(archive.repository, {
+    async initializeImapSyncState() { return { ...state }; },
+    async updateImapIncrementalCheckpoint() { checkpointUpdates += 1; return { ...state }; },
+    async updateImapBackfillCheckpoint() { return { ...state }; },
+    async recordImapSyncError() { return { ...state }; }
+  });
+  const client = {
+    mailbox: { uidValidity: 199n, uidNext: 902n },
+    async connect() {}, async mailboxOpen() {}, async search() { return [901]; },
+    async fetchOne(uid) { return { uid: Number(uid), source: rawEmail('malware-901') }; },
+    async logout() {}
+  };
+  const inquiryRepository = { async createInquiry() { assert.fail('malware must not create inquiry'); } };
+  const contactRepository = { async findUniqueByEmail() { return null; } };
+
+  try {
+    await assert.rejects(() => pollEmailInquiries({
+      config: config({ uploadDir, markSeen: false, emailRawArchive: { enabled: true, maxBytes: 1024 * 1024 } }),
+      inquiryRepository,
+      emailArchiveRepository: archive.repository,
+      contactRepository,
+      emailArchiveTransaction: (callback) => callback({ emailArchiveRepository: archive.repository, inquiryRepository, contactRepository }),
+      malwareScanner: { async scanFile() { return { engine: 'fake', verdict: 'malware', findingCode: 'test-malware' }; } },
+      imapClientFactory: () => client
+    }), /failed malware scanning/);
+    assert.equal(checkpointUpdates, 0);
+    assert.equal(archive.messages.length, 0);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
 });

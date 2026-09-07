@@ -4,6 +4,11 @@ import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import { canAccessInquiryInbox } from './inquiryService.mjs';
 import { canViewOpportunity } from './opportunityService.mjs';
 import { removeStoredAttachmentFile, storeAttachmentBuffer } from './attachmentFileService.mjs';
+import {
+  EmailRawIdentityConflictError,
+  EmailRawMalwareError,
+  EmailRawScanError
+} from './emailRawArchiveService.mjs';
 
 function text(value) {
   return String(value || '').trim();
@@ -118,18 +123,113 @@ export async function resolveInboundEmailClassification(repositories, parsed) {
   return { thread, inquiry: effectiveInquiry, classification };
 }
 
-export async function archiveInboundEmailRecord(repositories, parsed) {
+function assertRawCaptureMatches(rawMessage, rawCapture) {
+  if (!rawMessage
+    || rawMessage.sha256 !== rawCapture.sha256
+    || Number(rawMessage.fileSize) !== Number(rawCapture.fileSize)
+    || rawMessage.storedPath !== rawCapture.storedPath) {
+    throw new EmailRawIdentityConflictError();
+  }
+}
+
+function scanAttemptInput(rawMessageId, scan = {}) {
+  const now = new Date().toISOString();
+  return {
+    rawMessageId,
+    engine: text(scan.engine) || 'unknown',
+    engineVersion: text(scan.engineVersion),
+    signatureVersion: text(scan.signatureVersion),
+    verdict: text(scan.verdict) || 'error',
+    findingCode: text(scan.findingCode),
+    safeDetail: text(scan.safeDetail).slice(0, 1000),
+    startedAt: scan.startedAt || now,
+    completedAt: scan.completedAt || now
+  };
+}
+
+export async function persistRawEmailCapture(emailArchiveRepository, rawCapture) {
+  if (!rawCapture) return null;
+  const result = await emailArchiveRepository.createRawMessage({
+    mailboxKey: rawCapture.mailboxKey,
+    providerName: rawCapture.providerName,
+    providerMailbox: rawCapture.providerMailbox,
+    providerUidValidity: rawCapture.providerUidValidity,
+    providerUid: rawCapture.providerUid,
+    rfcMessageIdHint: rawCapture.rfcMessageIdHint || '',
+    sourceReceivedAt: rawCapture.sourceReceivedAt || null,
+    storedPath: rawCapture.storedPath,
+    fileSize: rawCapture.fileSize,
+    sha256: rawCapture.sha256
+  });
+  assertRawCaptureMatches(result.rawMessage, rawCapture);
+  await emailArchiveRepository.createRawScanAttempt(
+    scanAttemptInput(result.rawMessage.id, rawCapture.scan)
+  );
+  return result.rawMessage;
+}
+
+export async function persistRawEmailCaptureOnly(repositories, rawCapture, processing = {}) {
+  const rawMessage = await persistRawEmailCapture(repositories.emailArchiveRepository, rawCapture);
+  const now = new Date().toISOString();
+  await repositories.emailArchiveRepository.createRawProcessingAttempt({
+    rawMessageId: rawMessage.id,
+    stage: processing.stage || 'parse',
+    outcome: processing.outcome || 'retryable_error',
+    processorVersion: processing.processorVersion || 'email-parser-v1',
+    safeErrorCode: processing.safeErrorCode || 'parse_failed',
+    safeDetail: text(processing.safeDetail).slice(0, 1000),
+    startedAt: processing.startedAt || now,
+    completedAt: processing.completedAt || now
+  });
+  return rawMessage;
+}
+
+async function recordSuccessfulRawProcessing(emailArchiveRepository, rawMessageId) {
+  if (!rawMessageId || typeof emailArchiveRepository.createRawProcessingAttempt !== 'function') return;
+  const now = new Date().toISOString();
+  await emailArchiveRepository.createRawProcessingAttempt({
+    rawMessageId,
+    stage: 'parse',
+    outcome: 'succeeded',
+    processorVersion: 'email-parser-v1',
+    startedAt: now,
+    completedAt: now
+  });
+}
+
+export async function archiveInboundEmailRecord(repositories, parsed, options = {}) {
   const { emailArchiveRepository, inquiryRepository } = repositories;
   const { message, inquiry } = parsed;
   assertInboundIdentity(message);
 
   const existing = await emailArchiveRepository.findMessageIdentity(message);
   if (existing) {
+    let rawMessage = null;
+    if (options.rawCapture) {
+      rawMessage = await persistRawEmailCapture(emailArchiveRepository, options.rawCapture);
+      if (existing.rawMessageId && existing.rawMessageId !== rawMessage.id) {
+        throw new EmailRawIdentityConflictError();
+      }
+      if (!existing.rawMessageId) {
+        const linked = await emailArchiveRepository.linkInboundMessageRawArchive({
+          messageId: existing.id,
+          rawMessageId: rawMessage.id,
+          rawEmlStoredPath: rawMessage.storedPath,
+          rawEmlFileSize: rawMessage.fileSize,
+          rawEmlSha256: rawMessage.sha256,
+          importedAt: new Date().toISOString()
+        });
+        if (!linked) throw new EmailRawIdentityConflictError('Existing email could not bind raw evidence');
+        Object.assign(existing, linked);
+      }
+      await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage.id);
+    }
     const thread = await emailArchiveRepository.findThreadById(existing.threadId);
-    return { duplicate: true, message: existing, thread, inquiry: null };
+    return { duplicate: true, message: existing, thread, inquiry: null, rawMessage };
   }
 
-  const resolved = await resolveInboundEmailClassification(repositories, parsed);
+  const resolved = options.resolvedClassification
+    || await resolveInboundEmailClassification(repositories, parsed);
   let thread = resolved.thread;
   const effectiveInquiry = resolved.inquiry;
   const classification = resolved.classification;
@@ -143,6 +243,9 @@ export async function archiveInboundEmailRecord(repositories, parsed) {
       classification
     };
   }
+  const rawMessage = options.rawCapture
+    ? await persistRawEmailCapture(emailArchiveRepository, options.rawCapture)
+    : null;
   let inquiryRecord = null;
   if (!thread) {
     inquiryRecord = await inquiryRepository.createInquiry(effectiveInquiry);
@@ -161,6 +264,11 @@ export async function archiveInboundEmailRecord(repositories, parsed) {
   const archivedMessage = await emailArchiveRepository.createInboundMessage({
     ...message,
     ...classification,
+    rawMessageId: rawMessage?.id || null,
+    rawEmlStoredPath: rawMessage?.storedPath || null,
+    rawEmlFileSize: rawMessage?.fileSize || null,
+    rawEmlSha256: rawMessage?.sha256 || null,
+    importedAt: rawMessage ? new Date().toISOString() : null,
     threadId: thread.id
   });
   if (!archivedMessage) {
@@ -169,13 +277,31 @@ export async function archiveInboundEmailRecord(repositories, parsed) {
   if (thread.lastMessageAt !== message.receivedAt) {
     await emailArchiveRepository.touchThread(thread.id, message.receivedAt);
   }
+  if (typeof emailArchiveRepository.createClassificationEvent === 'function') {
+    await emailArchiveRepository.createClassificationEvent({
+      messageId: archivedMessage.id,
+      threadId: thread.id,
+      actorType: 'rule',
+      actorVersion: classification.ruleVersion || 'email-intake-rule-v1',
+      category: classification.classificationCategory,
+      confidence: classification.entryDecision === 'accept' ? 1 : 0.5,
+      reasonCodes: [
+        classification.classificationReason,
+        ...classification.spamSignals,
+        ...classification.protectedReasons
+      ].filter(Boolean),
+      isFinal: false
+    });
+  }
+  await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage?.id);
   return {
     duplicate: false,
     rejectedSpam: false,
     message: archivedMessage,
     thread,
     inquiry: inquiryRecord,
-    classification
+    classification,
+    rawMessage
   };
 }
 
@@ -183,6 +309,7 @@ export async function storeEmailArchiveAttachments({
   emailArchiveRepository,
   messageId,
   attachments = [],
+  attachmentScans = [],
   uploadDir,
   maxUploadMb
 }) {
@@ -210,6 +337,9 @@ export async function storeEmailArchiveAttachments({
     if (maxBytes > 0 && content.length > maxBytes) {
       throw new EmailArchiveError('Email attachment exceeds configured limit', 413);
     }
+    const scan = attachmentScans[index] || null;
+    if (scan?.verdict === 'malware') throw new EmailRawMalwareError(scan);
+    if (scan && scan.verdict !== 'clean') throw new EmailRawScanError(scan);
     const originalName = normalizeUploadedFilename(attachment.filename || fallbackAttachmentName(index));
     const file = await storeAttachmentBuffer({
       uploadDir,
@@ -229,6 +359,12 @@ export async function storeEmailArchiveAttachments({
         contentId: attachment.cid || attachment.contentId || ''
       });
       if (record) {
+        if (scan && typeof emailArchiveRepository.createAttachmentScanAttempt === 'function') {
+          await emailArchiveRepository.createAttachmentScanAttempt({
+            attachmentId: record.id,
+            ...scanAttemptInput(null, scan)
+          });
+        }
         stored.push(record);
       } else {
         await removeStoredAttachmentFile(file.absolutePath);
