@@ -194,7 +194,16 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(salesCompose.text, />Email signature preview</);
   assert.match(salesCompose.text, /customer-email-signature-preview/);
   assert.match(salesCompose.text, /aria-readonly="true"/);
-  assert.match(salesCompose.text, /Best regards,[\s\S]*User 7[\s\S]*Project Engineer[\s\S]*SUNKAIER[\s\S]*E: user7@sunkaier\.com/);
+  assert.match(salesCompose.text, /Best regards,/);
+  assert.match(salesCompose.text, /User 7/);
+  assert.match(salesCompose.text, /Project Engineer/);
+  assert.match(salesCompose.text, /user7@sunkaier\.com/);
+  assert.match(salesCompose.text, /mailto:user7@sunkaier\.com/);
+  assert.match(salesCompose.text, /SUNKAIER Asia Pacific Pte\. Ltd\./);
+  assert.match(salesCompose.text, /2 Venture Drive, #10-30, Vision Exchange, Singapore 608526/);
+  assert.match(salesCompose.text, /src="\/assets\/sunkaier-logo-email\.png"/);
+  assert.match(salesCompose.text, /CONFIDENTIALITY NOTICE:/);
+  assert.match(salesCompose.text, /www\.sunkaier\.com/);
   assert.match(salesCompose.text, /data-customer-email-file-picker/);
   assert.match(salesCompose.text, />Attachments</);
   assert.doesNotMatch(salesCompose.text, />Additional attachments</);

@@ -8,6 +8,7 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import {
   buildPersonalEmailIdentity,
   createCustomerEmailDraft,
+  personalEmailSignatureHtmlPreview,
   personalEmailSignaturePreview,
   sendCustomerEmail
 } from '../../src/services/customerEmailService.mjs';
@@ -31,7 +32,33 @@ test('signature preview uses the exact identity signature and stays unavailable 
     personalEmailSignaturePreview(completeActor),
     buildPersonalEmailIdentity(completeActor).signature
   );
+  assert.equal(
+    personalEmailSignatureHtmlPreview(completeActor),
+    buildPersonalEmailIdentity(completeActor).signaturePreviewHtml
+  );
+  assert.match(personalEmailSignaturePreview(completeActor), /W: www\.sunkaier\.com/);
+  assert.match(personalEmailSignaturePreview(completeActor), /SUNKAIER Asia Pacific Pte\. Ltd\./);
+  assert.match(personalEmailSignaturePreview(completeActor), /2 Venture Drive, #10-30, Vision Exchange, Singapore 608526/);
+  assert.match(personalEmailSignatureHtmlPreview(completeActor), /mailto:steven\.yang@sunkaier\.com/);
+  assert.match(personalEmailSignatureHtmlPreview(completeActor), /SUNKAIER Asia Pacific Pte\. Ltd\./);
+  assert.match(personalEmailSignatureHtmlPreview(completeActor), /src="\/assets\/sunkaier-logo-email\.png"/);
+  assert.match(personalEmailSignatureHtmlPreview(completeActor), /2 Venture Drive, #10-30, Vision Exchange, Singapore 608526/);
+  assert.match(personalEmailSignatureHtmlPreview(completeActor), /CONFIDENTIALITY NOTICE:/);
+  assert.match(personalEmailSignatureHtmlPreview(completeActor), /www\.sunkaier\.com/);
   assert.equal(personalEmailSignaturePreview(actor({ emailSignatureTitle: '' })), '');
+  assert.equal(personalEmailSignatureHtmlPreview(actor({ emailSignatureTitle: '' })), '');
+});
+
+test('HTML signature escapes employee-controlled profile fields', () => {
+  const signature = personalEmailSignatureHtmlPreview(actor({
+    emailSignatureName: '<script>alert(1)</script>',
+    emailSignatureTitle: 'Sales & Service',
+    phone: '<img src=x onerror=alert(2)>'
+  }));
+  assert.doesNotMatch(signature, /<script>|<img src=x/);
+  assert.match(signature, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(signature, /Sales &amp; Service/);
+  assert.match(signature, /&lt;img src=x onerror=alert\(2\)&gt;/);
 });
 
 function createDependencies(uploadDir, options = {}) {
@@ -225,11 +252,22 @@ test('fake SMTP receives fixed shared sender, personal signature, reply headers,
     assert.equal(result.deliveryStatus, 'sent');
     assert.equal(sent.length, 1);
     assert.deepEqual(sent[0].from, { name: 'Steven Yang | SUNKAIER', address: 'sales@sunkaier.com' });
-    assert.match(sent[0].text, /Steven Yang\nSales Manager\nSUNKAIER/);
+    assert.match(sent[0].text, /Steven Yang\nSales Manager\nSUNKAIER Asia Pacific Pte\. Ltd\./);
+    assert.match(sent[0].text, /W: www\.sunkaier\.com/);
+    assert.match(sent[0].text, /CONFIDENTIALITY NOTICE:/);
+    assert.match(sent[0].html, /Steven Yang/);
+    assert.match(sent[0].html, /src="cid:sunkaier-signature-logo@sunkaier\.com"/);
+    assert.match(sent[0].html, /Attached is our approved quotation\./);
     assert.equal(sent[0].messageId, '<bestcrm-00000000-0000-4000-8000-000000000009@sunkaier.com>');
     assert.equal(sent[0].inReplyTo, '<buyer-1@example.com>');
     assert.deepEqual(sent[0].references, ['<root@example.com>', '<buyer-1@example.com>']);
     assert.equal(sent[0].attachments[0].filename, 'QP-V2.pdf');
+    const inlineLogo = sent[0].attachments.at(-1);
+    assert.equal(inlineLogo.filename, 'sunkaier-logo.png');
+    assert.equal(inlineLogo.contentType, 'image/png');
+    assert.match(inlineLogo.path, /src[\\/]public[\\/]assets[\\/]sunkaier-logo-email\.png$/);
+    assert.equal(inlineLogo.cid, 'sunkaier-signature-logo@sunkaier.com');
+    assert.equal(inlineLogo.contentDisposition, 'inline');
     assert.equal(dependencies.state.sentPackages.length, 1);
     assert.equal(dependencies.state.sentPackages[0].sentEmailMessageId, result.id);
     assert.equal(dependencies.state.attempts[0].status, 'sent');

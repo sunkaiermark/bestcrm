@@ -84,7 +84,7 @@
           <label><%= t('emailBody') %><textarea name="body" rows="12" required></textarea></label>
           <div class="customer-email-signature-field">
             <span class="customer-email-field-label" id="customer-email-signature-label"><%= t('emailSignaturePreview') %></span>
-            <pre class="customer-email-signature-preview<%= context.signaturePreview ? '' : ' is-empty' %>" role="textbox" aria-readonly="true" aria-labelledby="customer-email-signature-label" tabindex="0"><%= context.signaturePreview || t('emailSignaturePreviewUnavailable') %></pre>
+            <div class="customer-email-signature-preview<%= context.signatureHtmlPreview ? '' : ' is-empty' %>" role="textbox" aria-readonly="true" aria-labelledby="customer-email-signature-label" tabindex="0"><% if (context.signatureHtmlPreview) { %><%- context.signatureHtmlPreview %><% } else { %><%= t('emailSignaturePreviewUnavailable') %><% } %></div>
           </div>
           <div class="customer-email-attachment-field">
             <span class="customer-email-field-label" id="customer-email-attachments-label"><%= t('emailAttachments') %></span>
