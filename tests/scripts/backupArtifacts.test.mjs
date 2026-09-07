@@ -53,6 +53,7 @@ test('production backup and rollback scripts record and enforce artifact checksu
   const root = path.resolve(import.meta.dirname, '..', '..');
   const backupScript = await readFile(path.join(root, 'scripts', 'backup-production.sh'), 'utf8');
   const rollbackScript = await readFile(path.join(root, 'scripts', 'rollback-production.sh'), 'utf8');
+  assert.match(backupScript, /KEEP_DAYS="\$\{BESTCRM_BACKUP_KEEP_DAYS:-7\}"/);
   assert.match(backupScript, /database_sha256=\$DATABASE_SHA256/);
   assert.match(backupScript, /uploads_sha256=\$UPLOADS_SHA256/);
   assert.match(rollbackScript, /verify_backup_checksum "\$DB_BACKUP"/);
@@ -76,6 +77,22 @@ test('production deployment and rollback keep uploads private but traversable by
     assert.match(script, /sudo -u "\$SERVICE_USER" test -r "\$UPLOAD_DIR"/);
     assert.match(script, /sudo -u "\$SERVICE_USER" test -w "\$UPLOAD_DIR"/);
   }
+});
+
+test('Phase A+B production preflight is read-only and checks the exact migration boundary', async () => {
+  const root = path.resolve(import.meta.dirname, '..', '..');
+  const preflightScript = await readFile(
+    path.join(root, 'scripts', 'preflight-phase-ab-production.sh'),
+    'utf8'
+  );
+  assert.match(preflightScript, /PREFLIGHT_MODE=read_only/);
+  assert.match(preflightScript, /LATEST_MIGRATION=/);
+  assert.match(preflightScript, /PHASE_A_FK_INVENTORY_MATCH=/);
+  assert.match(preflightScript, /047_opportunity_record_guardrails\.sql/);
+  assert.match(preflightScript, /048_opportunity_activity_spine\.sql/);
+  assert.match(preflightScript, /PHASE_B_ELIGIBLE_ROWS=/);
+  assert.match(preflightScript, /PREFLIGHT_RESULT=passed/);
+  assert.doesNotMatch(preflightScript, /^\s*(?:sudo\s+)?(?:rm|mv|cp|install|mkdir|systemctl\s+(?:stop|start|restart)|pg_dump|createdb|dropdb|npm\s+run\s+db:migrate)\b/m);
 });
 
 test('backup verifier streams artifact hashing for multi-gigabyte archives', async () => {

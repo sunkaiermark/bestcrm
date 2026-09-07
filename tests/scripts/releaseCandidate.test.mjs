@@ -115,7 +115,7 @@ test('release builder creates a reproducible commit-only archive and checksum ma
       productionCredentialsIncluded: false
     });
     assert.match(checksum, new RegExp(`^${result.sha256}  bestcrm-v2099\\.01\\.01-01-rc\\.1\\.zip`));
-    assert.match(manifest.latestMigration, /046_customer_contact_uniqueness\.sql$/);
+    assert.match(manifest.latestMigration, /048_opportunity_activity_spine\.sql$/);
   } finally {
     await rm(outputDir, { recursive: true, force: true });
   }
