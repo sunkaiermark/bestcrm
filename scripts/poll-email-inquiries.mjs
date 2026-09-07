@@ -25,12 +25,24 @@ const inquiryAttachmentRepository = createInquiryAttachmentRepository(pool);
 const emailArchiveRepository = createEmailArchiveRepository(pool);
 const contactRepository = createContactRepository(pool);
 const emailArchiveTransaction = createEmailArchiveTransaction(pool);
+const stopController = new AbortController();
 let stopping = false;
 
 for (const signal of ['SIGINT', 'SIGTERM']) {
   process.on(signal, () => {
     stopping = true;
+    stopController.abort();
   });
+}
+
+async function waitForNextPoll(intervalMs) {
+  try {
+    await delay(intervalMs, undefined, { signal: stopController.signal });
+  } catch (error) {
+    if (error?.name !== 'AbortError') {
+      throw error;
+    }
+  }
 }
 
 async function runOnce() {
@@ -58,7 +70,7 @@ try {
   if (continuousBackfill) {
     const summary = await runEmailBackfillLoop({
       runBatch: runOnce,
-      wait: delay,
+      wait: waitForNextPoll,
       intervalMs: config.emailIntake.pollIntervalMs,
       isStopping: () => stopping
     });
@@ -72,7 +84,7 @@ try {
     while (!stopping) {
       await runOnce();
       if (!stopping) {
-        await delay(config.emailIntake.pollIntervalMs);
+        await waitForNextPoll(config.emailIntake.pollIntervalMs);
       }
     }
   }
