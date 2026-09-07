@@ -21,27 +21,27 @@
             <button type="submit"><%= t('search') %></button>
             <a class="secondary-action" href="/customers"><%= t('clearFilters') %></a>
           </form>
-          <div class="list-body">
-            <table class="list-table content-fit-table">
+          <div class="list-body record-list-body customer-list-body" tabindex="0" aria-label="<%= t('customers') %>">
+            <table class="list-table record-list-table customer-list-table">
               <thead>
                 <tr>
-                  <th><%= t('customerCode') %></th>
-                  <th><%= t('name') %></th>
-                  <th><%= t('industry') %></th>
-                  <th><%= t('country') %></th>
-                  <th><%= t('region') %></th>
-                  <th><%= t('contacts') %></th>
+                  <th scope="col"><%= t('customerCode') %></th>
+                  <th scope="col"><%= t('name') %></th>
+                  <th scope="col"><%= t('industry') %></th>
+                  <th scope="col"><%= t('country') %></th>
+                  <th scope="col"><%= t('region') %></th>
+                  <th scope="col"><%= t('contacts') %></th>
                 </tr>
               </thead>
               <tbody>
                 <% for (const customer of customers) { %>
                   <tr>
-                    <td><a href="/customers/<%= customer.id %>"><%= customer.customerCode %></a></td>
-                    <td><a href="/customers/<%= customer.id %>"><%= customer.name %></a></td>
-                    <td><%= customer.industry %></td>
-                    <td><%= customer.country %></td>
-                    <td><%= customer.region %></td>
-                    <td><%= customer.contactCount %></td>
+                    <td data-label="<%= t('customerCode') %>"><a href="/customers/<%= customer.id %>"><%= customer.customerCode %></a></td>
+                    <td data-label="<%= t('name') %>"><a href="/customers/<%= customer.id %>" title="<%= customer.name %>"><%= customer.name %></a></td>
+                    <td data-label="<%= t('industry') %>"><%= customer.industry %></td>
+                    <td data-label="<%= t('country') %>"><%= customer.country %></td>
+                    <td data-label="<%= t('region') %>"><%= customer.region %></td>
+                    <td data-label="<%= t('contacts') %>"><%= customer.contactCount %></td>
                   </tr>
                 <% } %>
               </tbody>

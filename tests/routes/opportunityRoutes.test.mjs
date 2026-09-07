@@ -602,15 +602,21 @@ test('logged in salesperson can view opportunity list and is redirected to lead 
   assert.match(list.text, /Factory upgrade/);
   assert.match(list.text, /C000010 · Acme Co/);
   assert.match(list.text, /Acme Co/);
-  assert.match(list.text, /<th>Opportunity Name<\/th>/);
-  assert.doesNotMatch(list.text, /<th>Title<\/th>/);
-  assert.match(list.text, /<th>Owner<\/th>/);
+  assert.match(list.text, /<th scope="col">Opportunity Name<\/th>/);
+  assert.doesNotMatch(list.text, /<th(?: scope="col")?>Title<\/th>/);
+  assert.match(list.text, /<th scope="col">Owner<\/th>/);
   assert.match(list.text, /Sales One/);
   assert.match(list.text, /CT000020 · Alice/);
-  assert.match(list.text, /<table class="list-table opportunity-list-table">/);
-  assert.match(list.text, /\.opportunity-list-table\s*\{[\s\S]*table-layout:\s*auto;/);
-  assert.match(list.text, /\.opportunity-list-table thead th\s*\{[\s\S]*background:\s*#1e3a5f;/);
-  assert.match(list.text, /\.opportunity-list-table th,\s*\.opportunity-list-table td\s*\{[\s\S]*white-space:\s*nowrap;/);
+  assert.match(list.text, /class="list-body record-list-body opportunity-list-body" tabindex="0"/);
+  assert.match(list.text, /<table class="list-table record-list-table opportunity-list-table">/);
+  assert.match(list.text, /\.record-list-body\s*\{[\s\S]*max-height:\s*70vh;[\s\S]*overflow:\s*auto;/);
+  assert.match(list.text, /\.record-list-table thead th\s*\{[\s\S]*font-weight:\s*500;[\s\S]*position:\s*sticky;[\s\S]*text-transform:\s*none;/);
+  assert.match(list.text, /\.record-list-table th,\s*\.record-list-table td\s*\{[\s\S]*border-right:[^;]+;[\s\S]*text-align:\s*center;[\s\S]*white-space:\s*nowrap;/);
+  assert.match(list.text, /\.opportunity-list-table\s*\{[\s\S]*min-width:\s*1420px;/);
+  assert.match(list.text, /\.opportunity-list-table th:nth-child\(2\),[\s\S]*?\.opportunity-list-table td:nth-child\(5\),[\s\S]*?\.customer-list-table th:nth-child\(2\),[\s\S]*?\.contact-list-table td:nth-child\(6\)\s*\{[^}]*text-align:\s*left;/);
+  assert.match(list.text, /\.opportunity-list-table th:nth-child\(7\),[\s\S]*?\.opportunity-list-table td:nth-child\(7\) \.cell-link\s*\{[^}]*text-align:\s*right;/);
+  assert.match(list.text, /data-label="Opportunity Name"/);
+  assert.match(list.text, /\.record-list-table tbody td::before\s*\{[\s\S]*content:\s*attr\(data-label\);/);
   assert.equal((list.text.match(/class="cell-link" href="\/opportunities\/30"/g) || []).length, 7);
 
   const form = await agent.get('/opportunities/new');
@@ -740,7 +746,7 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.match(list.text, /提交新线索/);
   assert.match(list.text, /\u9500\u552e\u8d1f\u8d23\u4eba/);
   assert.match(list.text, />\u67e5\u8be2<\/button>/);
-  assert.match(list.text, /<th>\u5546\u673a\u540d\u79f0<\/th>/);
+  assert.match(list.text, /<th scope="col">\u5546\u673a\u540d\u79f0<\/th>/);
   assert.match(list.text, /<span class="status">\u8349\u7a3f<\/span>/);
 
   const detail = await agent.get('/opportunities/30');

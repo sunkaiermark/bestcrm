@@ -53,31 +53,31 @@
             <a class="secondary-action" href="/opportunities?archiveScope=<%= archiveScope %>"><%= t('clearFilters') %></a>
           </form>
 
-          <div class="list-body">
-            <table class="list-table opportunity-list-table">
+          <div class="list-body record-list-body opportunity-list-body" tabindex="0" aria-label="<%= t('opportunities') %>">
+            <table class="list-table record-list-table opportunity-list-table">
               <thead>
                 <tr>
-                  <th><%= t('no') %></th>
-                  <th><%= t('opportunityName') %></th>
-                  <th><%= t('customer') %></th>
-                  <th><%= t('owner') %></th>
-                  <th><%= t('contacts') %></th>
-                  <th><%= t('status') %></th>
-                  <th><%= t('estimatedAmount') %></th>
+                  <th scope="col"><%= t('no') %></th>
+                  <th scope="col"><%= t('opportunityName') %></th>
+                  <th scope="col"><%= t('customer') %></th>
+                  <th scope="col"><%= t('owner') %></th>
+                  <th scope="col"><%= t('contacts') %></th>
+                  <th scope="col"><%= t('status') %></th>
+                  <th scope="col"><%= t('estimatedAmount') %></th>
                 </tr>
               </thead>
               <tbody>
                 <% for (const opportunity of opportunities) { %>
                   <tr>
-                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a></td>
-                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a></td>
-                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %></a></td>
-                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.salespersonDisplayName || opportunity.salespersonUsername || '' %></a></td>
-                    <td class="clickable-cell">
+                    <td class="clickable-cell" data-label="<%= t('no') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a></td>
+                    <td class="clickable-cell" data-label="<%= t('opportunityName') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>" title="<%= opportunity.title %>"><%= opportunity.title %></a></td>
+                    <td class="clickable-cell" data-label="<%= t('customer') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>" title="<%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %>"><%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %></a></td>
+                    <td class="clickable-cell" data-label="<%= t('owner') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.salespersonDisplayName || opportunity.salespersonUsername || '' %></a></td>
+                    <td class="clickable-cell" data-label="<%= t('contacts') %>">
                       <a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.primaryContactCode ? `${opportunity.primaryContactCode} · ` : '' %><%= opportunity.primaryContactName || '' %></a>
                     </td>
-                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><span class="status"><%= statusLabel(opportunity.status) %></span></a></td>
-                    <td class="clickable-cell"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.estimatedAmount ?? '' %></a></td>
+                    <td class="clickable-cell" data-label="<%= t('status') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><span class="status"><%= statusLabel(opportunity.status) %></span></a></td>
+                    <td class="clickable-cell" data-label="<%= t('estimatedAmount') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.estimatedAmount ?? '' %></a></td>
                   </tr>
                 <% } %>
               </tbody>

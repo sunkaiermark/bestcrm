@@ -853,7 +853,7 @@
         overflow-x: auto;
       }
 
-      .opportunity-filter-panel {
+      .form-panel.opportunity-filter-panel {
         align-items: flex-end;
         display: flex;
         flex-wrap: wrap;
@@ -863,6 +863,8 @@
       }
 
       .opportunity-filter-panel label {
+        flex: 1 1 220px;
+        margin-bottom: 0;
         min-width: 220px;
       }
 
@@ -872,6 +874,18 @@
 
       .opportunity-filter-panel .opportunity-search-field input {
         width: 100%;
+      }
+
+      .opportunity-filter-panel input,
+      .opportunity-filter-panel select,
+      .opportunity-filter-panel button,
+      .opportunity-filter-panel .secondary-action {
+        align-items: center;
+        display: inline-flex;
+        height: 46px;
+        line-height: 1.2;
+        padding-bottom: 0;
+        padding-top: 0;
       }
 
       .form-panel.inquiry-filter-panel {
@@ -951,56 +965,164 @@
         padding: 7px 8px;
       }
 
-      .opportunity-list-table {
+      .record-list-body {
+        max-height: 70vh;
+        overflow: auto;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+      }
+
+      .record-list-table {
         min-width: 100%;
         table-layout: fixed;
         width: 100%;
       }
 
-      .opportunity-list-table thead th {
+      .record-list-table thead th {
         background: #1e3a5f;
         border-bottom-color: #1e3a5f;
         color: #ffffff;
+        font-weight: 500;
+        position: sticky;
+        text-transform: none;
+        top: 0;
+        vertical-align: middle;
+        z-index: 2;
       }
 
-      .opportunity-list-table th,
-      .opportunity-list-table td {
+      .record-list-table th,
+      .record-list-table td {
+        border-right: 1px solid #d7e0e7;
+        line-height: 1.35;
+        overflow: hidden;
+        text-align: center;
+        text-overflow: ellipsis;
+        vertical-align: middle;
+        white-space: nowrap;
+      }
+
+      .record-list-table thead th {
+        border-right-color: rgba(255, 255, 255, 0.26);
+      }
+
+      .record-list-table th:last-child,
+      .record-list-table td:last-child {
+        border-right: 0;
+      }
+
+      .record-list-table a {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
 
+      .opportunity-list-table {
+        min-width: 1420px;
+      }
+
       .opportunity-list-table th:nth-child(1),
       .opportunity-list-table td:nth-child(1) {
-        width: 9%;
+        width: 110px;
       }
 
       .opportunity-list-table th:nth-child(2),
       .opportunity-list-table td:nth-child(2) {
-        width: 28%;
+        width: clamp(340px, 30vw, 520px);
       }
 
       .opportunity-list-table th:nth-child(3),
       .opportunity-list-table td:nth-child(3) {
-        width: 20%;
+        width: clamp(260px, 22vw, 400px);
       }
 
       .opportunity-list-table th:nth-child(4),
-      .opportunity-list-table td:nth-child(4),
+      .opportunity-list-table td:nth-child(4) {
+        width: 150px;
+      }
+
       .opportunity-list-table th:nth-child(5),
       .opportunity-list-table td:nth-child(5) {
-        width: 11%;
+        width: 220px;
       }
 
       .opportunity-list-table th:nth-child(6),
       .opportunity-list-table td:nth-child(6) {
-        width: 9%;
+        width: 190px;
       }
 
       .opportunity-list-table th:nth-child(7),
       .opportunity-list-table td:nth-child(7) {
+        width: 170px;
+      }
+
+      .opportunity-list-table th:nth-child(2),
+      .opportunity-list-table td:nth-child(2),
+      .opportunity-list-table th:nth-child(3),
+      .opportunity-list-table td:nth-child(3),
+      .opportunity-list-table th:nth-child(5),
+      .opportunity-list-table td:nth-child(5),
+      .customer-list-table th:nth-child(2),
+      .customer-list-table td:nth-child(2),
+      .contact-list-table th:nth-child(2),
+      .contact-list-table td:nth-child(2),
+      .contact-list-table th:nth-child(3),
+      .contact-list-table td:nth-child(3),
+      .contact-list-table th:nth-child(4),
+      .contact-list-table td:nth-child(4),
+      .contact-list-table th:nth-child(6),
+      .contact-list-table td:nth-child(6) {
+        text-align: left;
+      }
+
+      .opportunity-list-table td:nth-child(2) .cell-link,
+      .opportunity-list-table td:nth-child(3) .cell-link,
+      .opportunity-list-table td:nth-child(5) .cell-link {
+        text-align: left;
+      }
+
+      .opportunity-list-table th:nth-child(7),
+      .opportunity-list-table td:nth-child(7),
+      .opportunity-list-table td:nth-child(7) .cell-link {
         text-align: right;
-        width: 12%;
+      }
+
+      .customer-list-table {
+        min-width: 1080px;
+      }
+
+      .customer-list-table th:nth-child(1),
+      .customer-list-table td:nth-child(1) { width: 160px; }
+      .customer-list-table th:nth-child(2),
+      .customer-list-table td:nth-child(2) { width: clamp(300px, 32vw, 520px); }
+      .customer-list-table th:nth-child(3),
+      .customer-list-table td:nth-child(3) { width: 180px; }
+      .customer-list-table th:nth-child(4),
+      .customer-list-table td:nth-child(4) { width: 170px; }
+      .customer-list-table th:nth-child(5),
+      .customer-list-table td:nth-child(5) { width: 180px; }
+      .customer-list-table th:nth-child(6),
+      .customer-list-table td:nth-child(6) { width: 120px; }
+
+      .contact-list-table {
+        min-width: 1300px;
+      }
+
+      .contact-list-table th:nth-child(1),
+      .contact-list-table td:nth-child(1) { width: 160px; }
+      .contact-list-table th:nth-child(2),
+      .contact-list-table td:nth-child(2) { width: 200px; }
+      .contact-list-table th:nth-child(3),
+      .contact-list-table td:nth-child(3) { width: clamp(300px, 28vw, 460px); }
+      .contact-list-table th:nth-child(4),
+      .contact-list-table td:nth-child(4) { width: 220px; }
+      .contact-list-table th:nth-child(5),
+      .contact-list-table td:nth-child(5) { width: 210px; }
+      .contact-list-table th:nth-child(6),
+      .contact-list-table td:nth-child(6) { width: 320px; }
+
+      .record-list-table td.clickable-cell .cell-link {
+        display: block;
+        text-align: center;
       }
 
       .content-fit-table {
@@ -2357,6 +2479,106 @@
           gap: 10px;
           grid-template-columns: minmax(0, 1fr);
           margin: 12px 0;
+        }
+
+        .opportunity-filter-panel {
+          align-items: stretch;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          margin: 12px 0;
+        }
+
+        .opportunity-filter-panel label,
+        .opportunity-filter-panel .opportunity-search-field {
+          min-width: 0;
+          width: 100%;
+        }
+
+        .opportunity-filter-panel button,
+        .opportunity-filter-panel .secondary-action {
+          justify-content: center;
+          width: 100%;
+        }
+
+        .record-list-body {
+          max-height: none;
+          overflow: visible;
+          padding-left: 0;
+          padding-right: 0;
+          scrollbar-gutter: auto;
+        }
+
+        .record-list-table {
+          display: block;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .record-list-table thead {
+          clip: rect(0 0 0 0);
+          clip-path: inset(50%);
+          height: 1px;
+          overflow: hidden;
+          position: absolute;
+          white-space: nowrap;
+          width: 1px;
+        }
+
+        .record-list-table tbody {
+          display: grid;
+          gap: 12px;
+        }
+
+        .record-list-table tbody tr {
+          background: #ffffff;
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          display: grid;
+          overflow: hidden;
+        }
+
+        .record-list-table tbody td {
+          align-items: start;
+          border-bottom: 1px solid var(--line);
+          border-right: 0;
+          display: grid;
+          gap: 10px;
+          grid-template-columns: minmax(110px, 34%) minmax(0, 1fr);
+          min-width: 0;
+          padding: 9px 10px;
+          text-align: left;
+          white-space: normal;
+          width: auto;
+        }
+
+        .record-list-table tbody td::before {
+          color: var(--muted);
+          content: attr(data-label);
+          font-size: 13px;
+          font-weight: 500;
+          line-height: 1.35;
+        }
+
+        .record-list-table tbody td:last-child {
+          border-bottom: 0;
+        }
+
+        .record-list-table tbody td.clickable-cell {
+          padding: 9px 10px;
+        }
+
+        .record-list-table tbody td.clickable-cell .cell-link {
+          display: block;
+          min-width: 0;
+          padding: 0;
+          text-align: left;
+          white-space: normal;
+        }
+
+        .record-list-table tbody td > a:not(.cell-link) {
+          min-width: 0;
+          overflow-wrap: anywhere;
+          white-space: normal;
         }
 
         .inquiry-filter-panel label,

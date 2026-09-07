@@ -191,10 +191,14 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(list.text, /Acme Co/);
   assert.match(list.text, /Country/);
   assert.match(list.text, /China/);
-  assert.match(list.text, /<table class="list-table content-fit-table">/);
-  assert.match(list.text, /\.content-fit-table\s*\{[\s\S]*table-layout:\s*auto;/);
-  assert.match(list.text, /\.content-fit-table thead th\s*\{[\s\S]*background:\s*#1e3a5f;/);
-  assert.match(list.text, /\.content-fit-table th,\s*\.content-fit-table td\s*\{[\s\S]*white-space:\s*nowrap;/);
+  assert.match(list.text, /class="list-body record-list-body customer-list-body" tabindex="0"/);
+  assert.match(list.text, /<table class="list-table record-list-table customer-list-table">/);
+  assert.match(list.text, /<th scope="col">Customer Code<\/th>/);
+  assert.match(list.text, /data-label="Customer Code"/);
+  assert.match(list.text, /\.customer-list-table\s*\{[\s\S]*min-width:\s*1080px;/);
+  assert.match(list.text, /\.customer-list-table th:nth-child\(2\),[\s\S]*?\.customer-list-table td:nth-child\(2\),[\s\S]*?\.contact-list-table td:nth-child\(6\)\s*\{[^}]*text-align:\s*left;/);
+  assert.match(list.text, /\.record-list-table thead th\s*\{[\s\S]*position:\s*sticky;[\s\S]*text-transform:\s*none;/);
+  assert.match(list.text, /\.record-list-table tbody td::before\s*\{[\s\S]*content:\s*attr\(data-label\);/);
 
   const form = await agent.get('/customers/new');
   assert.equal(form.status, 200);
@@ -304,7 +308,12 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.match(list.text, /CT000020/);
   assert.match(list.text, /Alice/);
   assert.match(list.text, /C000010 · Acme Co/);
-  assert.match(list.text, /<table class="list-table content-fit-table">/);
+  assert.match(list.text, /class="list-body record-list-body contact-list-body" tabindex="0"/);
+  assert.match(list.text, /<table class="list-table record-list-table contact-list-table">/);
+  assert.match(list.text, /<th scope="col">Contact Code<\/th>/);
+  assert.match(list.text, /data-label="Contact Code"/);
+  assert.match(list.text, /\.contact-list-table\s*\{[\s\S]*min-width:\s*1300px;/);
+  assert.match(list.text, /\.contact-list-table th:nth-child\(2\),[\s\S]*?\.contact-list-table td:nth-child\(6\)\s*\{[^}]*text-align:\s*left;/);
 
   const form = await agent.get('/contacts/new');
   assert.equal(form.status, 200);
@@ -376,9 +385,11 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.equal(customers.status, 200);
   assert.match(customers.text, /<h1>\u5ba2\u6237<\/h1>/);
   assert.match(customers.text, /\u65b0\u5efa\u5ba2\u6237/);
-  assert.match(customers.text, /<th>\u540d\u79f0<\/th>/);
-  assert.match(customers.text, /<th>\u56fd\u5bb6<\/th>/);
-  assert.match(customers.text, /<th>\u884c\u4e1a<\/th>/);
+  assert.match(customers.text, />\s*\u5f52\u6863\s*<select name="archiveScope">/);
+  assert.match(customers.text, /<option value="active" selected>\u6b63\u5e38\u8bb0\u5f55<\/option>/);
+  assert.match(customers.text, /<th scope="col">\u540d\u79f0<\/th>/);
+  assert.match(customers.text, /<th scope="col">\u56fd\u5bb6<\/th>/);
+  assert.match(customers.text, /<th scope="col">\u884c\u4e1a<\/th>/);
 
   const customerDetail = await agent.get('/customers/10');
   assert.equal(customerDetail.status, 200);
@@ -397,9 +408,11 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.equal(contacts.status, 200);
   assert.match(contacts.text, /<h1>\u8054\u7cfb\u4eba<\/h1>/);
   assert.match(contacts.text, /\u65b0\u5efa\u8054\u7cfb\u4eba/);
-  assert.match(contacts.text, /<th>\u8054\u7cfb\u4eba\u4ee3\u7801<\/th>/);
+  assert.match(contacts.text, />\s*\u5f52\u6863\s*<select name="archiveScope">/);
+  assert.match(contacts.text, /<option value="active" selected>\u6b63\u5e38\u8bb0\u5f55<\/option>/);
+  assert.match(contacts.text, /<th scope="col">\u8054\u7cfb\u4eba\u4ee3\u7801<\/th>/);
   assert.match(contacts.text, /\u6309\u8054\u7cfb\u4eba\u4ee3\u7801\u3001\u59d3\u540d\u3001\u5ba2\u6237\u3001\u90ae\u7bb1\u3001\u7535\u8bdd\u6216\u5fae\u4fe1\u67e5\u8be2/);
-  assert.match(contacts.text, /<th>\u804c\u52a1<\/th>/);
+  assert.match(contacts.text, /<th scope="col">\u804c\u52a1<\/th>/);
 
   const contactDetail = await agent.get('/contacts/20');
   assert.equal(contactDetail.status, 200);
