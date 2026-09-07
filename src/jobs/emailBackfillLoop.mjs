@@ -21,6 +21,7 @@ export async function runEmailBackfillLoop({
     batches: 0,
     scanned: 0,
     imported: 0,
+    filtered: 0,
     skipped: 0,
     backfillComplete: false,
     stopped: false
@@ -31,6 +32,7 @@ export async function runEmailBackfillLoop({
     summary.batches += 1;
     summary.scanned += nonNegativeCount(result?.scanned);
     summary.imported += nonNegativeCount(result?.imported?.length);
+    summary.filtered += nonNegativeCount(result?.filtered?.length);
     summary.skipped += nonNegativeCount(result?.skipped?.length);
     summary.backfillComplete = Boolean(result?.backfillComplete);
 

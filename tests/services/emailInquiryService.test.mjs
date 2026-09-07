@@ -56,8 +56,13 @@ test('normalizeEmailInquiryPayload maps sender body fields and attachments into 
       emailFilter: {
         status: 'new',
         category: 'inquiry',
-        reason: 'inquiry_intent',
-        matchedRules: ['\\brfq\\b', '\\bevaporators?\\b']
+        reason: 'protected_business_intent',
+        matchedRules: ['\\brfq\\b', '\\bevaporators?\\b'],
+        entryDecision: 'accept',
+        ruleVersion: 'spam-entry-v1',
+        spamScore: 0,
+        spamSignals: [],
+        protectedReasons: ['explicit_rfq_or_project_product_intent']
       }
     },
     priority: 'normal',

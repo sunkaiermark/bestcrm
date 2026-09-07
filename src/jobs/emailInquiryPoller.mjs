@@ -96,6 +96,14 @@ function classificationSummary(items) {
   }, { active: 0, archived: 0, spam: 0 });
 }
 
+function entryDecisionSummary(items) {
+  return items.reduce((summary, item) => {
+    const decision = item.entryDecision || 'manual_review';
+    summary[decision] = (summary[decision] || 0) + 1;
+    return summary;
+  }, { accept: 0, manual_review: 0, reject_spam: 0 });
+}
+
 export async function previewEmailClassifications({
   config,
   contactRepository,
@@ -143,6 +151,10 @@ export async function previewEmailClassifications({
         archiveDisposition: resolved.classification.archiveDisposition,
         classificationCategory: resolved.classification.classificationCategory,
         classificationReason: resolved.classification.classificationReason,
+        entryDecision: resolved.classification.entryDecision,
+        spamScore: resolved.classification.spamScore,
+        spamSignals: resolved.classification.spamSignals,
+        protectedReasons: resolved.classification.protectedReasons,
         matchedCustomerId: resolved.inquiry.matchedCustomerId || null,
         matchedContactId: resolved.inquiry.matchedContactId || null
       });
@@ -151,7 +163,12 @@ export async function previewEmailClassifications({
     await client.logout().catch(() => {});
   }
 
-  return { scanned: items.length, counts: classificationSummary(items), items };
+  return {
+    scanned: items.length,
+    counts: classificationSummary(items),
+    entryCounts: entryDecisionSummary(items),
+    items
+  };
 }
 
 async function selectMessagesForSync({
@@ -247,6 +264,7 @@ export async function pollEmailInquiries({
   const markSeen = emailIntake.markSeen !== false;
   const requestedMode = normalizeSyncMode(syncMode);
   const imported = [];
+  const filtered = [];
   const skipped = [];
   let scanned = 0;
   let selection = null;
@@ -318,6 +336,19 @@ export async function pollEmailInquiries({
         await checkpoint(uid);
         continue;
       }
+      if (!emailArchiveRepository && normalized.rawPayload?.emailFilter?.entryDecision === 'reject_spam') {
+        filtered.push({
+          uid,
+          reason: 'reject_spam',
+          category: normalized.rawPayload.emailFilter.category,
+          spamScore: normalized.rawPayload.emailFilter.spamScore
+        });
+        if (markSeen) {
+          await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
+        }
+        await checkpoint(uid);
+        continue;
+      }
       let inquiry;
       let attachments;
       let archiveResult = null;
@@ -338,6 +369,19 @@ export async function pollEmailInquiries({
             thread: await emailArchiveRepository.findThreadById(existing.threadId),
             inquiry: null
           };
+        }
+        if (archiveResult.rejectedSpam) {
+          filtered.push({
+            uid,
+            reason: 'reject_spam',
+            category: archiveResult.classification.classificationCategory,
+            spamScore: archiveResult.classification.spamScore
+          });
+          if (markSeen && selection.mode === 'legacy-unseen') {
+            await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
+          }
+          await checkpoint(uid);
+          continue;
         }
         archiveAttachments = await storeEmailArchiveAttachments({
           emailArchiveRepository,
@@ -433,6 +477,7 @@ export async function pollEmailInquiries({
   return {
     scanned,
     imported,
+    filtered,
     skipped,
     mode: selection?.mode || requestedMode,
     backfillComplete: Boolean(selection?.state?.backfillComplete)

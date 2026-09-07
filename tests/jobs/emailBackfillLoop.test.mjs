@@ -4,9 +4,9 @@ import { runEmailBackfillLoop } from '../../src/jobs/emailBackfillLoop.mjs';
 
 test('historical email backfill aggregates bounded batches and exits when complete', async () => {
   const batches = [
-    { scanned: 50, imported: Array(45), skipped: Array(5), backfillComplete: false },
-    { scanned: 50, imported: Array(48), skipped: Array(2), backfillComplete: false },
-    { scanned: 12, imported: Array(10), skipped: Array(2), backfillComplete: true }
+    { scanned: 50, imported: Array(43), filtered: Array(2), skipped: Array(5), backfillComplete: false },
+    { scanned: 50, imported: Array(47), filtered: Array(1), skipped: Array(2), backfillComplete: false },
+    { scanned: 12, imported: Array(10), filtered: [], skipped: Array(2), backfillComplete: true }
   ];
   const waits = [];
 
@@ -19,7 +19,8 @@ test('historical email backfill aggregates bounded batches and exits when comple
   assert.deepEqual(summary, {
     batches: 3,
     scanned: 112,
-    imported: 103,
+    imported: 100,
+    filtered: 3,
     skipped: 9,
     backfillComplete: true,
     stopped: false

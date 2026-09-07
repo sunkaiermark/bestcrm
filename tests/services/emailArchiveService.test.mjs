@@ -65,30 +65,37 @@ test('reply headers join an existing opportunity thread without creating another
   assert.equal(result.inquiry, null);
 });
 
-test('automatic email classification is preserved on both thread and message archive records', async () => {
-  const created = {};
+test('high-confidence spam creates no inquiry, thread, message, or archive record', async () => {
+  const calls = [];
   const spam = parsed();
   spam.inquiry = {
     ...spam.inquiry,
     status: 'spam',
-    rawPayload: { emailFilter: { category: 'marketing_spam', reason: 'seo_outreach' } }
+    rawPayload: {
+      emailFilter: {
+        category: 'marketing_spam',
+        reason: 'seo_outreach',
+        entryDecision: 'reject_spam',
+        spamScore: 8,
+        spamSignals: ['confirmed_spam_domain']
+      }
+    }
   };
-  await archiveInboundEmailRecord({
-    inquiryRepository: { async createInquiry(input) { return { id: 8, ...input }; } },
+  const result = await archiveInboundEmailRecord({
+    inquiryRepository: { async createInquiry() { calls.push('inquiry'); } },
     emailArchiveRepository: {
       async findMessageIdentity() { return null; },
       async findThreadByReferences() { return null; },
-      async createThread(input) { created.thread = input; return { id: 3, ...input }; },
-      async createInboundMessage(input) { created.message = input; return { id: 9, ...input }; },
-      async touchThread() {}
+      async createThread() { calls.push('thread'); },
+      async createInboundMessage() { calls.push('message'); }
     }
   }, spam);
 
-  for (const record of [created.thread, created.message]) {
-    assert.equal(record.archiveDisposition, 'spam');
-    assert.equal(record.classificationCategory, 'marketing_spam');
-    assert.equal(record.classificationReason, 'seo_outreach');
-  }
+  assert.deepEqual(calls, []);
+  assert.equal(result.rejectedSpam, true);
+  assert.equal(result.message, null);
+  assert.equal(result.thread, null);
+  assert.equal(result.classification.spamScore, 8);
 });
 
 test('one exact existing contact overrides spam heuristics and links the archived thread', async () => {
@@ -123,6 +130,55 @@ test('one exact existing contact overrides spam heuristics and links the archive
   assert.equal(created.inquiry.matchedContactId, 20);
   assert.equal(created.thread.archiveDisposition, 'active');
   assert.equal(created.message.classificationReason, 'known_contact_email');
+  assert.equal(created.inquiry.rawPayload.emailFilter.entryDecision, 'accept');
+  assert.deepEqual(created.inquiry.rawPayload.emailFilter.protectedReasons, ['known_contact_email']);
+});
+
+test('an existing message thread protects a reply even when content scores as spam', async () => {
+  let inquiryCreates = 0;
+  const existingThread = {
+    id: 4,
+    inquiryId: 8,
+    opportunityId: 20,
+    archiveDisposition: 'active',
+    classificationCategory: 'inquiry',
+    classificationReason: 'inquiry_intent',
+    lastMessageAt: '2026-09-01T01:00:00Z'
+  };
+  const candidate = parsed({
+    messageId: 'reply-spam@example.com',
+    inReplyTo: 'original@example.com',
+    replyReferenceIds: ['original@example.com']
+  });
+  candidate.inquiry = {
+    ...candidate.inquiry,
+    status: 'spam',
+    rawPayload: {
+      emailFilter: {
+        category: 'marketing_spam',
+        reason: 'spam_score_threshold',
+        entryDecision: 'reject_spam',
+        spamScore: 8,
+        spamSignals: ['seo_outreach_cluster', 'irrelevant_unsolicited_service']
+      }
+    }
+  };
+
+  const result = await archiveInboundEmailRecord({
+    inquiryRepository: { async createInquiry() { inquiryCreates += 1; } },
+    emailArchiveRepository: {
+      async findMessageIdentity() { return null; },
+      async findThreadByReferences() { return existingThread; },
+      async createInboundMessage(input) { return { id: 10, ...input }; },
+      async touchThread() {}
+    }
+  }, candidate);
+
+  assert.equal(inquiryCreates, 0);
+  assert.equal(result.rejectedSpam, false);
+  assert.equal(result.message.threadId, 4);
+  assert.equal(result.classification.entryDecision, 'accept');
+  assert.deepEqual(result.classification.protectedReasons, ['known_thread_reply']);
 });
 
 test('duplicate Message-ID returns the existing archive without creating records', async () => {

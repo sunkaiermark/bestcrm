@@ -50,12 +50,19 @@ function inboundClassification(inquiry = {}) {
   return {
     archiveDisposition,
     classificationCategory: text(filter.category) || 'inquiry',
-    classificationReason: text(filter.reason) || 'manual_review'
+    classificationReason: text(filter.reason) || 'manual_review',
+    entryDecision: text(filter.entryDecision)
+      || (inquiry.status === 'spam' ? 'reject_spam' : inquiry.status === 'new' ? 'manual_review' : 'accept'),
+    ruleVersion: text(filter.ruleVersion),
+    spamScore: Number(filter.spamScore || 0),
+    spamSignals: Array.isArray(filter.spamSignals) ? filter.spamSignals : [],
+    protectedReasons: Array.isArray(filter.protectedReasons) ? filter.protectedReasons : []
   };
 }
 
 function knownContactInquiry(inquiry, contact) {
   if (!contact) return inquiry;
+  const previousFilter = inquiry.rawPayload?.emailFilter || {};
   return {
     ...inquiry,
     status: 'new',
@@ -67,7 +74,17 @@ function knownContactInquiry(inquiry, contact) {
         status: 'new',
         category: 'known_contact',
         reason: 'known_contact_email',
-        matchedRules: [String(contact.contactCode || contact.id)]
+        matchedRules: [String(contact.contactCode || contact.id)],
+        entryDecision: 'accept',
+        ruleVersion: text(previousFilter.ruleVersion),
+        spamScore: Number(previousFilter.spamScore || 0),
+        spamSignals: Array.isArray(previousFilter.spamSignals) ? previousFilter.spamSignals : [],
+        protectedReasons: [
+          ...new Set([
+            ...(Array.isArray(previousFilter.protectedReasons) ? previousFilter.protectedReasons : []),
+            'known_contact_email'
+          ])
+        ]
       }
     },
     reviewNote: inquiry.reviewNote || ''
@@ -88,7 +105,14 @@ export async function resolveInboundEmailClassification(repositories, parsed) {
     ? {
         archiveDisposition: thread.archiveDisposition || 'active',
         classificationCategory: thread.classificationCategory || 'conversation',
-        classificationReason: thread.classificationReason || 'known_thread_reply'
+        classificationReason: thread.classificationReason || 'known_thread_reply',
+        entryDecision: 'accept',
+        ruleVersion: text(inquiry.rawPayload?.emailFilter?.ruleVersion),
+        spamScore: Number(inquiry.rawPayload?.emailFilter?.spamScore || 0),
+        spamSignals: Array.isArray(inquiry.rawPayload?.emailFilter?.spamSignals)
+          ? inquiry.rawPayload.emailFilter.spamSignals
+          : [],
+        protectedReasons: ['known_thread_reply']
       }
     : inboundClassification(effectiveInquiry);
   return { thread, inquiry: effectiveInquiry, classification };
@@ -109,6 +133,16 @@ export async function archiveInboundEmailRecord(repositories, parsed) {
   let thread = resolved.thread;
   const effectiveInquiry = resolved.inquiry;
   const classification = resolved.classification;
+  if (!thread && classification.entryDecision === 'reject_spam') {
+    return {
+      duplicate: false,
+      rejectedSpam: true,
+      message: null,
+      thread: null,
+      inquiry: null,
+      classification
+    };
+  }
   let inquiryRecord = null;
   if (!thread) {
     inquiryRecord = await inquiryRepository.createInquiry(effectiveInquiry);
@@ -137,9 +171,11 @@ export async function archiveInboundEmailRecord(repositories, parsed) {
   }
   return {
     duplicate: false,
+    rejectedSpam: false,
     message: archivedMessage,
     thread,
-    inquiry: inquiryRecord
+    inquiry: inquiryRecord,
+    classification
   };
 }
 

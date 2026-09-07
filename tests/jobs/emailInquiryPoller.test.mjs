@@ -104,6 +104,18 @@ function rawReplyEmail(id, inReplyTo) {
   ].join('\r\n'));
 }
 
+function rawHighConfidenceSpamEmail(id) {
+  return Buffer.from([
+    `Message-ID: <${id}@example.com>`,
+    'Date: Sat, 01 Aug 2026 04:00:00 +0000',
+    'From: Outreach <keyword.savvy@topseoagency.co>',
+    'To: sales@sunkaier.com',
+    'Subject: SEO and backlinks for your website ranking',
+    '',
+    'We sell SEO services and guest post placements.'
+  ].join('\r\n'));
+}
+
 function createMemoryArchive() {
   const threads = [];
   const messages = [];
@@ -209,6 +221,7 @@ test('pollEmailInquiries imports unseen messages and marks them seen', async () 
       { uid: 101, inquiryId: 11, duplicate: false, attachments: 0, skippedAttachments: 0 },
       { uid: 102, inquiryId: 12, duplicate: false, attachments: 0, skippedAttachments: 0 }
     ],
+    filtered: [],
     skipped: [],
     mode: 'legacy-unseen',
     backfillComplete: false
@@ -454,6 +467,52 @@ test('attachment archive failure leaves mail unseen and a retry completes the sa
   }
 });
 
+test('high-confidence spam advances the checkpoint without writing any CRM record', async () => {
+  const archive = createMemoryArchive();
+  const checkpoints = [];
+  const state = {
+    mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '144',
+    incrementalLastUid: 900, backfillBeforeUid: 902, backfillComplete: false
+  };
+  Object.assign(archive.repository, {
+    async initializeImapSyncState() { return { ...state }; },
+    async updateImapIncrementalCheckpoint(input) {
+      checkpoints.push(input.uid);
+      state.incrementalLastUid = Number(input.uid);
+      return { ...state };
+    },
+    async updateImapBackfillCheckpoint() { return { ...state }; }
+  });
+  let inquiryCreates = 0;
+  const client = {
+    mailbox: { uidValidity: 144n, uidNext: 902n },
+    async connect() {},
+    async mailboxOpen() {},
+    async search(query, options) {
+      assert.deepEqual({ query, options }, { query: { uid: '901:*' }, options: { uid: true } });
+      return [901];
+    },
+    async fetchOne(uid) { return { uid: Number(uid), source: rawHighConfidenceSpamEmail('spam-901') }; },
+    async messageFlagsAdd() { assert.fail('checkpointed filtering must not change mailbox read state'); },
+    async logout() {}
+  };
+
+  const result = await pollEmailInquiries({
+    config: config({ markSeen: false }),
+    inquiryRepository: { async createInquiry() { inquiryCreates += 1; } },
+    emailArchiveRepository: archive.repository,
+    imapClientFactory: () => client
+  });
+
+  assert.equal(inquiryCreates, 0);
+  assert.equal(archive.threads.length, 0);
+  assert.equal(archive.messages.length, 0);
+  assert.equal(archive.attachments.length, 0);
+  assert.deepEqual(result.imported, []);
+  assert.deepEqual(result.filtered, [{ uid: 901, reason: 'reject_spam', category: 'marketing_spam', spamScore: 16 }]);
+  assert.deepEqual(checkpoints, [901]);
+});
+
 test('checkpointed incremental sync uses UID ranges without changing mailbox read state', async () => {
   const archive = createMemoryArchive();
   const inquiries = [];
@@ -615,6 +674,7 @@ test('classification preview is read-only and prioritizes exact CRM contacts', a
   assert.deepEqual(calls[0], ['search', { uid: '1:*' }, { uid: true }]);
   assert.equal(result.scanned, 2);
   assert.deepEqual(result.counts, { active: 1, archived: 1, spam: 0 });
+  assert.deepEqual(result.entryCounts, { accept: 2, manual_review: 0, reject_spam: 0 });
   assert.equal(result.items[0].classificationReason, 'google_ads_notification');
   assert.equal(result.items[1].classificationReason, 'known_contact_email');
   assert.equal(result.items[1].matchedContactId, 20);

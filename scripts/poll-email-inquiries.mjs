@@ -60,6 +60,7 @@ async function runOnce() {
     mode: result.mode,
     scanned: result.scanned,
     imported: result.imported.length,
+    filtered: result.filtered.length,
     skipped: result.skipped.length,
     backfillComplete: result.backfillComplete
   }));

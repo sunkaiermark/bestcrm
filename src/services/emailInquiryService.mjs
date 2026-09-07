@@ -99,12 +99,14 @@ function attachmentMetadata(attachments) {
 function safeHeaders(parsed) {
   const safe = {};
   for (const name of [
+    'authentication-results',
     'auto-submitted',
     'content-language',
     'importance',
     'list-id',
     'list-unsubscribe',
     'precedence',
+    'received-spf',
     'x-mailer'
   ]) {
     const value = parsed.headers?.get?.(name);
