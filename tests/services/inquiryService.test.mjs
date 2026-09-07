@@ -67,6 +67,23 @@ test('inquiry list filter is available only to sales managers and administrators
     assignedUserId: 7,
     status: 'spam'
   });
+  assert.deepEqual(inquiryListFilterFor(salesManager, {
+    query: '  Acme evaporator  ',
+    dateFrom: '2026-07-01',
+    dateTo: '2026-07-31',
+    assignedUserId: 'not-a-user'
+  }), {
+    excludeStatuses: ['converted', 'contact_saved', 'customer_saved', 'spam', 'duplicate', 'archived'],
+    searchTerm: 'Acme evaporator',
+    dateFrom: '2026-07-01',
+    dateTo: '2026-07-31'
+  });
+  assert.deepEqual(inquiryListFilterFor(salesManager, {
+    dateFrom: '2026-02-31',
+    dateTo: 'not-a-date'
+  }), {
+    excludeStatuses: ['converted', 'contact_saved', 'customer_saved', 'spam', 'duplicate', 'archived']
+  });
   assert.throws(() => inquiryListFilterFor(salesperson, {}), /Forbidden/);
 });
 

@@ -126,20 +126,61 @@ function addNotInFilter(where, params, column, values) {
   where.push(`${column} NOT IN (${placeholders.join(', ')})`);
 }
 
+const listReceivedAtSql = `CASE
+  WHEN i.source_received_at > now() + interval '1 day' THEN i.created_at
+  ELSE COALESCE(i.source_received_at, i.created_at)
+END`;
+
+function buildInquiryListFilter(filter = {}) {
+  const where = [];
+  const params = [];
+  addFilter(where, params, 'i.status = ?', filter.status);
+  addFilter(where, params, 'i.source = ?', filter.source);
+  addFilter(where, params, 'i.assigned_user_id = ?', filter.assignedUserId);
+  addFilter(where, params, 'i.created_by = ?', filter.createdBy);
+  addFilter(where, params, 'i.submission_type = ?', filter.submissionType);
+  addNotInFilter(where, params, 'i.status', filter.excludeStatuses);
+  if (filter.visibleToUserId) {
+    params.push(filter.visibleToUserId);
+    where.push(`(i.assigned_user_id = $${params.length} OR i.created_by = $${params.length})`);
+  }
+  if (filter.searchTerm) {
+    params.push(`%${String(filter.searchTerm).replace(/[\\%_]/g, '\\$&')}%`);
+    const searchParam = `$${params.length}`;
+    where.push(`(
+      i.subject ILIKE ${searchParam} ESCAPE '\\'
+      OR i.company_name ILIKE ${searchParam} ESCAPE '\\'
+      OR i.contact_name ILIKE ${searchParam} ESCAPE '\\'
+      OR i.contact_email ILIKE ${searchParam} ESCAPE '\\'
+    )`);
+  }
+  if (filter.dateFrom) {
+    params.push(filter.dateFrom);
+    where.push(`(${listReceivedAtSql} AT TIME ZONE 'Asia/Singapore')::date >= $${params.length}::date`);
+  }
+  if (filter.dateTo) {
+    params.push(filter.dateTo);
+    where.push(`(${listReceivedAtSql} AT TIME ZONE 'Asia/Singapore')::date <= $${params.length}::date`);
+  }
+  return { where, params };
+}
+
 export function createInquiryRepository(queryTarget) {
   return {
     async listInquiries(filter = {}) {
-      const where = [];
-      const params = [];
-      addFilter(where, params, 'i.status = ?', filter.status);
-      addFilter(where, params, 'i.source = ?', filter.source);
-      addFilter(where, params, 'i.assigned_user_id = ?', filter.assignedUserId);
-      addFilter(where, params, 'i.created_by = ?', filter.createdBy);
-      addFilter(where, params, 'i.submission_type = ?', filter.submissionType);
-      addNotInFilter(where, params, 'i.status', filter.excludeStatuses);
-      if (filter.visibleToUserId) {
-        params.push(filter.visibleToUserId);
-        where.push(`(i.assigned_user_id = $${params.length} OR i.created_by = $${params.length})`);
+      const { where, params } = buildInquiryListFilter(filter);
+      const limit = Number.isSafeInteger(Number(filter.limit)) && Number(filter.limit) > 0
+        ? Math.min(Number(filter.limit), 500)
+        : null;
+      const offset = Number.isSafeInteger(Number(filter.offset)) && Number(filter.offset) >= 0
+        ? Number(filter.offset)
+        : 0;
+      let paginationSql = '';
+      if (limit) {
+        params.push(limit);
+        paginationSql += `LIMIT $${params.length}`;
+        params.push(offset);
+        paginationSql += ` OFFSET $${params.length}`;
       }
       const result = await queryTarget.query(`
         ${inquirySelect}
@@ -152,10 +193,21 @@ export function createInquiryRepository(queryTarget) {
             WHEN 'converted' THEN 4
             ELSE 5
           END,
-          COALESCE(i.source_received_at, i.created_at) DESC,
+          ${listReceivedAtSql} DESC,
           i.id DESC
+        ${paginationSql}
       `, params);
       return result.rows.map(mapInquiryRow);
+    },
+
+    async countInquiries(filter = {}) {
+      const { where, params } = buildInquiryListFilter(filter);
+      const result = await queryTarget.query(`
+        SELECT count(*)::int AS count
+        FROM inquiries i
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      `, params);
+      return Number(result.rows[0]?.count || 0);
     },
 
     async findById(id) {

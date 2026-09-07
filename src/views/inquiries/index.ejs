@@ -8,7 +8,12 @@
         </header>
 
         <section class="list-section">
-          <form class="form-panel" method="get" action="/inquiries">
+          <form class="form-panel inquiry-filter-panel" method="get" action="/inquiries">
+            <% if (viewMode === 'all') { %><input name="view" type="hidden" value="all"><% } %>
+            <label class="inquiry-search-field">
+              <%= t('keyword') %>
+              <input name="query" type="search" maxlength="200" value="<%= filters.query %>" placeholder="<%= t('inquirySearchPlaceholder') %>">
+            </label>
             <label>
               <%= t('source') %>
               <select name="source">
@@ -27,40 +32,68 @@
                 <% } %>
               </select>
             </label>
-            <button type="submit"><%= t('filter') %></button>
+            <label>
+              <%= t('fromDate') %>
+              <% if (language === 'en') { %>
+                <input name="dateFrom" type="text" inputmode="numeric" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" placeholder="YYYY-MM-DD" title="YYYY-MM-DD" value="<%= filters.dateFrom %>">
+              <% } else { %>
+                <input name="dateFrom" type="date" value="<%= filters.dateFrom %>">
+              <% } %>
+            </label>
+            <label>
+              <%= t('toDate') %>
+              <% if (language === 'en') { %>
+                <input name="dateTo" type="text" inputmode="numeric" pattern="[0-9]{4}-[0-9]{2}-[0-9]{2}" placeholder="YYYY-MM-DD" title="YYYY-MM-DD" value="<%= filters.dateTo %>">
+              <% } else { %>
+                <input name="dateTo" type="date" value="<%= filters.dateTo %>">
+              <% } %>
+            </label>
+            <label>
+              <%= t('assignedTo') %>
+              <select name="assignedUserId">
+                <option value=""><%= t('allAssignees') %></option>
+                <% for (const assignee of assignees) { %>
+                  <option value="<%= assignee.id %>"<%= String(filters.assignedUserId || '') === String(assignee.id) ? ' selected' : '' %>><%= assignee.displayName || assignee.username %></option>
+                <% } %>
+              </select>
+            </label>
+            <div class="inquiry-filter-actions">
+              <button type="submit"><%= t('filter') %></button>
+              <a class="secondary-action" href="<%= clearFiltersUrl %>"><%= t('clearFilters') %></a>
+            </div>
           </form>
 
-          <div class="list-body">
-            <table class="list-table content-fit-table">
+          <div class="list-body inquiry-list-body" tabindex="0" aria-label="<%= t('inquiries') %>">
+            <table class="list-table content-fit-table inquiry-list-table">
               <thead>
                 <tr>
-                  <th><%= t('receivedAt') %></th>
-                  <th><%= t('source') %></th>
-                  <th><%= t('status') %></th>
-                  <th><%= t('priority') %></th>
-                  <th><%= t('subject') %></th>
-                  <th><%= t('companyName') %></th>
-                  <th><%= t('contact') %></th>
-                  <th><%= t('productInterest') %></th>
-                  <th><%= t('opportunityType') %></th>
-                  <th><%= t('assignedTo') %></th>
-                  <th><%= t('actions') %></th>
+                  <th><%= t('inquiryListDate') %></th>
+                  <th><%= t('inquiryListSource') %></th>
+                  <th><%= t('inquiryListStatus') %></th>
+                  <th><%= t('inquiryListPriority') %></th>
+                  <th><%= t('inquiryListSubject') %></th>
+                  <th><%= t('inquiryListCompany') %></th>
+                  <th><%= t('inquiryListContact') %></th>
+                  <th><%= t('inquiryListProducts') %></th>
+                  <th><%= t('inquiryListType') %></th>
+                  <th><%= t('inquiryListAssignedTo') %></th>
+                  <th><%= t('inquiryListActions') %></th>
                 </tr>
               </thead>
               <tbody>
                 <% for (const inquiry of inquiries) { %>
                   <tr>
-                    <td><%= inquiry.sourceReceivedAt || inquiry.createdAt || '' %></td>
-                    <td><%= t(`inquirySource.${inquiry.source}`) %></td>
-                    <td><span class="status"><%= t(`inquiryStatus.${inquiry.status}`) %></span></td>
-                    <td><%= t(`inquiryPriority.${inquiry.priority}`) %></td>
-                    <td class="clickable-cell"><a class="cell-link" href="/inquiries/<%= inquiry.id %>"><%= inquiry.subject || `#${inquiry.id}` %></a></td>
-                    <td><%= inquiry.companyName || '' %></td>
-                    <td><% if (inquiry.matchedContactId) { %><%= inquiry.matchedContactCode ? `${inquiry.matchedContactCode} · ` : '' %><%= inquiry.matchedContactName || inquiry.contactName || inquiry.contactEmail || '' %><% } else { %><%= inquiry.contactName || inquiry.contactEmail || '' %><% } %></td>
-                    <td><%= inquiry.productInterest || '' %></td>
-                    <td><%= inquiry.opportunityType || '' %></td>
-                    <td><%= inquiry.assignedDisplayName || '' %></td>
-                    <td><a class="secondary-action" href="/inquiries/<%= inquiry.id %>"><%= t('view') %></a></td>
+                    <td data-label="<%= t('inquiryListDate') %>" title="<%= inquiry.sourceDateInvalid ? t('invalidSourceDateIgnored') : inquiry.listReceivedAt %>"><%= inquiry.listReceivedAt %></td>
+                    <td data-label="<%= t('inquiryListSource') %>"><%= t(`inquirySource.${inquiry.source}`) %></td>
+                    <td data-label="<%= t('inquiryListStatus') %>"><span class="status"><%= t(`inquiryStatus.${inquiry.status}`) %></span></td>
+                    <td data-label="<%= t('inquiryListPriority') %>"><%= t(`inquiryPriority.${inquiry.priority}`) %></td>
+                    <td class="clickable-cell" data-label="<%= t('inquiryListSubject') %>" title="<%= inquiry.subject || `#${inquiry.id}` %>"><a class="cell-link" href="/inquiries/<%= inquiry.id %>"><%= inquiry.subject || `#${inquiry.id}` %></a></td>
+                    <td data-label="<%= t('inquiryListCompany') %>" title="<%= inquiry.companyName || '' %>"><%= inquiry.companyName || '' %></td>
+                    <td data-label="<%= t('inquiryListContact') %>"><% if (inquiry.matchedContactId) { %><%= inquiry.matchedContactCode ? `${inquiry.matchedContactCode} · ` : '' %><%= inquiry.matchedContactName || inquiry.contactName || inquiry.contactEmail || '' %><% } else { %><%= inquiry.contactName || inquiry.contactEmail || '' %><% } %></td>
+                    <td data-label="<%= t('inquiryListProducts') %>" title="<%= inquiry.productInterest || '' %>"><%= inquiry.productInterest || '' %></td>
+                    <td data-label="<%= t('inquiryListType') %>"><%= inquiry.opportunityType || '' %></td>
+                    <td data-label="<%= t('inquiryListAssignedTo') %>"><%= inquiry.assignedDisplayName || '' %></td>
+                    <td data-label="<%= t('inquiryListActions') %>"><a class="secondary-action" href="/inquiries/<%= inquiry.id %>"><%= t('view') %></a></td>
                   </tr>
                 <% } %>
               </tbody>
@@ -69,5 +102,32 @@
               <p class="empty"><%= t('noInquiries') %></p>
             <% } %>
           </div>
+          <nav class="inquiry-pagination" aria-label="<%= t('pagination') %>">
+            <span><%= t('showing') %> <strong><%= pagination.firstItem %>–<%= pagination.lastItem %></strong> / <strong><%= pagination.totalItems %></strong></span>
+            <form class="inquiry-view-mode-form" method="get" action="/inquiries">
+              <% for (const [key, value] of Object.entries(filters)) { %>
+                <% if (value !== '' && value !== null && value !== undefined) { %><input name="<%= key %>" type="hidden" value="<%= value %>"><% } %>
+              <% } %>
+              <select name="view" aria-label="<%= t('viewMode') %>" onchange="this.form.submit()">
+                <option value="page"<%= viewMode === 'page' ? ' selected' : '' %>><%= t('paginatedView') %></option>
+                <option value="all"<%= viewMode === 'all' ? ' selected' : '' %>><%= t('showAll') %></option>
+              </select>
+            </form>
+            <% if (viewMode === 'page') { %>
+              <span><%= t('page') %> <strong><%= pagination.page %></strong> / <strong><%= pagination.totalPages %></strong></span>
+              <div class="inquiry-pagination-actions">
+                <% if (pagination.previousUrl) { %>
+                  <a class="secondary-action" href="<%= pagination.previousUrl %>"><%= t('previousPage') %></a>
+                <% } else { %>
+                  <span class="secondary-action is-disabled" aria-disabled="true"><%= t('previousPage') %></span>
+                <% } %>
+                <% if (pagination.nextUrl) { %>
+                  <a class="secondary-action" href="<%= pagination.nextUrl %>"><%= t('nextPage') %></a>
+                <% } else { %>
+                  <span class="secondary-action is-disabled" aria-disabled="true"><%= t('nextPage') %></span>
+                <% } %>
+              </div>
+            <% } %>
+          </nav>
         </section>
 <%- include('../partials/app-end') %>

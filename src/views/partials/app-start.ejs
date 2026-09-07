@@ -163,7 +163,7 @@
       .app-shell {
         min-height: 100vh;
         display: grid;
-        grid-template-columns: 220px minmax(0, 1fr);
+        grid-template-columns: 280px minmax(0, 1fr);
       }
 
       .left-nav {
@@ -200,7 +200,7 @@
       .nav-account-name {
         color: var(--rail-ink);
         font-size: 20px;
-        font-weight: 700;
+        font-weight: 400;
         overflow-wrap: anywhere;
       }
 
@@ -215,7 +215,7 @@
         padding: 9px 10px;
         border-radius: 6px;
         color: var(--rail-muted);
-        font-weight: 600;
+        font-weight: 400;
       }
 
       .nav-parent {
@@ -223,7 +223,7 @@
         padding: 9px 10px;
         border-radius: 6px;
         color: var(--rail-ink);
-        font-weight: 700;
+        font-weight: 400;
       }
 
       .nav-subgroup {
@@ -619,6 +619,7 @@
         border: 1px solid rgba(255, 255, 255, 0.18);
         background: transparent;
         color: var(--rail-muted);
+        font-weight: 400;
         text-align: left;
       }
 
@@ -873,6 +874,49 @@
         width: 100%;
       }
 
+      .form-panel.inquiry-filter-panel {
+        align-items: flex-end;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px;
+        margin: 12px;
+        max-width: none;
+      }
+
+      .inquiry-filter-panel label {
+        flex: 1 1 190px;
+        margin-bottom: 0;
+        min-width: 190px;
+      }
+
+      .inquiry-filter-panel .inquiry-search-field {
+        flex: 2 1 360px;
+      }
+
+      .inquiry-filter-actions,
+      .inquiry-pagination,
+      .inquiry-pagination-actions {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+      }
+
+      .inquiry-filter-actions {
+        padding-bottom: 0;
+      }
+
+      .inquiry-filter-panel input:not([type="hidden"]),
+      .inquiry-filter-panel select,
+      .inquiry-filter-actions button,
+      .inquiry-filter-actions .secondary-action {
+        align-items: center;
+        display: inline-flex;
+        height: 46px;
+        line-height: 1.2;
+        padding-bottom: 0;
+        padding-top: 0;
+      }
+
       .cad-preview-frame {
         background: #ffffff;
         border: 1px solid var(--line);
@@ -969,6 +1013,121 @@
         background: #1e3a5f;
         border-bottom-color: #1e3a5f;
         color: #ffffff;
+      }
+
+      .inquiry-list-body {
+        max-height: 70vh;
+        overflow: auto;
+        overscroll-behavior: contain;
+        scrollbar-gutter: stable;
+      }
+
+      .inquiry-list-table thead th {
+        position: sticky;
+        top: 0;
+        z-index: 2;
+      }
+
+      .inquiry-list-table {
+        min-width: 1630px;
+        table-layout: fixed;
+        width: 100%;
+      }
+
+      .content-fit-table.inquiry-list-table th,
+      .content-fit-table.inquiry-list-table td {
+        border-right: 1px solid #d7e0e7;
+        line-height: 1.35;
+        overflow: hidden;
+        overflow-wrap: normal;
+        text-align: center;
+        text-overflow: ellipsis;
+        vertical-align: middle;
+        white-space: nowrap;
+      }
+
+      .content-fit-table.inquiry-list-table thead th {
+        border-right-color: rgba(255, 255, 255, 0.26);
+        font-weight: 500;
+        text-transform: none;
+        vertical-align: middle;
+      }
+
+      .content-fit-table.inquiry-list-table th:last-child,
+      .content-fit-table.inquiry-list-table td:last-child {
+        border-right: 0;
+      }
+
+      .inquiry-list-table th:nth-child(1),
+      .inquiry-list-table td:nth-child(1) { width: 130px; }
+      .inquiry-list-table th:nth-child(2),
+      .inquiry-list-table td:nth-child(2) { width: 110px; }
+      .inquiry-list-table th:nth-child(3),
+      .inquiry-list-table td:nth-child(3) { width: 120px; }
+      .inquiry-list-table th:nth-child(4),
+      .inquiry-list-table td:nth-child(4) { width: 100px; }
+      .inquiry-list-table th:nth-child(5),
+      .inquiry-list-table td:nth-child(5) { width: clamp(360px, 30vw, 520px); }
+      .inquiry-list-table th:nth-child(6),
+      .inquiry-list-table td:nth-child(6) { width: clamp(200px, 17vw, 300px); }
+      .inquiry-list-table th:nth-child(7),
+      .inquiry-list-table td:nth-child(7) { width: 150px; }
+      .inquiry-list-table th:nth-child(8),
+      .inquiry-list-table td:nth-child(8) { width: 190px; }
+      .inquiry-list-table th:nth-child(9),
+      .inquiry-list-table td:nth-child(9) { width: 120px; }
+      .inquiry-list-table th:nth-child(10),
+      .inquiry-list-table td:nth-child(10) { width: 150px; }
+      .inquiry-list-table th:nth-child(11),
+      .inquiry-list-table td:nth-child(11) {
+        overflow-wrap: normal;
+        white-space: nowrap;
+        width: 100px;
+      }
+
+      .content-fit-table.inquiry-list-table th:nth-child(5),
+      .content-fit-table.inquiry-list-table td:nth-child(5),
+      .content-fit-table.inquiry-list-table th:nth-child(6),
+      .content-fit-table.inquiry-list-table td:nth-child(6),
+      .content-fit-table.inquiry-list-table th:nth-child(8),
+      .content-fit-table.inquiry-list-table td:nth-child(8) {
+        overflow: hidden;
+        overflow-wrap: normal;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .content-fit-table.inquiry-list-table td:nth-child(5) .cell-link {
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .inquiry-pagination {
+        flex-wrap: wrap;
+        justify-content: flex-end;
+        padding: 10px 12px;
+      }
+
+      .inquiry-pagination > span:first-child {
+        margin-right: auto;
+      }
+
+      .inquiry-pagination .is-disabled {
+        cursor: not-allowed;
+        opacity: 0.5;
+      }
+
+      .inquiry-view-mode-form {
+        margin: 0;
+      }
+
+      .inquiry-view-mode-form select {
+        height: 42px;
+        min-width: 190px;
+        padding-bottom: 0;
+        padding-top: 0;
+        width: auto;
       }
 
       .content-fit-table th,
@@ -2177,6 +2336,164 @@
         .topbar {
           align-items: flex-start;
           flex-direction: column;
+        }
+
+        .page-header .quick-action {
+          justify-content: center;
+          width: 100%;
+        }
+
+        .form-panel.inquiry-filter-panel {
+          display: grid;
+          gap: 10px;
+          grid-template-columns: minmax(0, 1fr);
+          margin: 12px 0;
+        }
+
+        .inquiry-filter-panel label,
+        .inquiry-filter-panel .inquiry-search-field {
+          min-width: 0;
+          width: 100%;
+        }
+
+        .inquiry-filter-actions {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          width: 100%;
+        }
+
+        .inquiry-filter-actions button,
+        .inquiry-filter-actions .secondary-action {
+          justify-content: center;
+          width: 100%;
+        }
+
+        .inquiry-list-body {
+          max-height: none;
+          overflow: visible;
+          padding-left: 0;
+          padding-right: 0;
+          scrollbar-gutter: auto;
+        }
+
+        .inquiry-list-table {
+          display: block;
+          min-width: 0;
+          width: 100%;
+        }
+
+        .inquiry-list-table thead {
+          clip: rect(0 0 0 0);
+          clip-path: inset(50%);
+          height: 1px;
+          overflow: hidden;
+          position: absolute;
+          white-space: nowrap;
+          width: 1px;
+        }
+
+        .inquiry-list-table tbody {
+          display: grid;
+          gap: 12px;
+        }
+
+        .inquiry-list-table tbody tr {
+          background: #ffffff;
+          border: 1px solid var(--line);
+          border-radius: 8px;
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+          overflow: hidden;
+        }
+
+        .content-fit-table.inquiry-list-table tbody td {
+          border-bottom: 1px solid var(--line);
+          border-right: 0;
+          display: block;
+          min-width: 0;
+          padding: 9px 10px;
+          text-align: left;
+          width: auto;
+        }
+
+        .content-fit-table.inquiry-list-table tbody td:nth-child(odd) {
+          border-right: 1px solid var(--line);
+        }
+
+        .content-fit-table.inquiry-list-table tbody td::before {
+          color: var(--muted);
+          content: attr(data-label);
+          display: block;
+          font-size: 12px;
+          font-weight: 500;
+          line-height: 1.25;
+          margin-bottom: 4px;
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .content-fit-table.inquiry-list-table tbody td:nth-child(5),
+        .content-fit-table.inquiry-list-table tbody td:nth-child(6),
+        .content-fit-table.inquiry-list-table tbody td:nth-child(7),
+        .content-fit-table.inquiry-list-table tbody td:nth-child(8),
+        .content-fit-table.inquiry-list-table tbody td:nth-child(11) {
+          border-right: 0;
+          grid-column: 1 / -1;
+        }
+
+        .content-fit-table.inquiry-list-table tbody td:nth-child(5),
+        .content-fit-table.inquiry-list-table tbody td:nth-child(6),
+        .content-fit-table.inquiry-list-table tbody td:nth-child(8),
+        .content-fit-table.inquiry-list-table tbody td:nth-child(5) .cell-link {
+          overflow: hidden;
+          text-overflow: ellipsis;
+          white-space: nowrap;
+        }
+
+        .content-fit-table.inquiry-list-table tbody td.clickable-cell {
+          padding: 9px 10px;
+        }
+
+        .content-fit-table.inquiry-list-table tbody td.clickable-cell .cell-link {
+          padding: 0;
+        }
+
+        .content-fit-table.inquiry-list-table tbody td:nth-child(11) {
+          border-bottom: 0;
+        }
+
+        .content-fit-table.inquiry-list-table tbody td:nth-child(11) .secondary-action {
+          justify-content: center;
+          width: 100%;
+        }
+
+        .inquiry-pagination {
+          align-items: stretch;
+          display: grid;
+          grid-template-columns: minmax(0, 1fr);
+          justify-content: stretch;
+          padding: 10px 0;
+        }
+
+        .inquiry-pagination > span,
+        .inquiry-pagination > span:first-child {
+          margin-right: 0;
+          text-align: center;
+        }
+
+        .inquiry-view-mode-form select {
+          width: 100%;
+        }
+
+        .inquiry-pagination-actions {
+          display: grid;
+          grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .inquiry-pagination-actions .secondary-action {
+          justify-content: center;
+          width: 100%;
         }
 
         .notification-row,

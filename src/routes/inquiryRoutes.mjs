@@ -32,6 +32,76 @@ import {
 import { attachmentPreviewKind, extractDocxPlainText, renderDxfPreview } from '../utils/attachmentPreview.mjs';
 import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
 
+const INQUIRY_PAGE_SIZE = 50;
+const FUTURE_DATE_TOLERANCE_MS = 24 * 60 * 60 * 1000;
+const inquiryListDateFormatter = new Intl.DateTimeFormat('en-GB', {
+  timeZone: 'Asia/Singapore',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit'
+});
+
+function positivePageNumber(value) {
+  const page = Number(value);
+  return Number.isSafeInteger(page) && page > 0 ? page : 1;
+}
+
+function inquiryListViewMode(value) {
+  return value === 'all' ? 'all' : 'page';
+}
+
+function inquiryListViewFilters(filter) {
+  return {
+    query: filter.searchTerm || '',
+    source: filter.source || '',
+    status: filter.status || '',
+    dateFrom: filter.dateFrom || '',
+    dateTo: filter.dateTo || '',
+    assignedUserId: filter.assignedUserId || ''
+  };
+}
+
+function inquiryListPageUrl(filters, page) {
+  const params = new URLSearchParams();
+  for (const [key, value] of Object.entries(filters)) {
+    if (value !== '' && value !== null && value !== undefined) {
+      params.set(key, String(value));
+    }
+  }
+  if (page > 1) {
+    params.set('page', String(page));
+  }
+  const query = params.toString();
+  return query ? `/inquiries?${query}` : '/inquiries';
+}
+
+function formatInquiryListDate(value) {
+  const date = new Date(value);
+  if (!Number.isFinite(date.getTime())) {
+    return '';
+  }
+  const parts = Object.fromEntries(
+    inquiryListDateFormatter.formatToParts(date)
+      .filter((part) => part.type !== 'literal')
+      .map((part) => [part.type, part.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day}`;
+}
+
+function inquiryListItem(inquiry, now = Date.now()) {
+  const sourceDate = new Date(inquiry.sourceReceivedAt);
+  const sourceDateInvalid = Boolean(inquiry.sourceReceivedAt)
+    && (!Number.isFinite(sourceDate.getTime()) || sourceDate.getTime() > now + FUTURE_DATE_TOLERANCE_MS);
+  const effectiveDate = sourceDateInvalid || !inquiry.sourceReceivedAt
+    ? inquiry.createdAt
+    : inquiry.sourceReceivedAt;
+  return {
+    ...inquiry,
+    listReceivedAt: formatInquiryListDate(effectiveDate),
+    sourceDateInvalid
+  };
+}
+
 function forbidden(res) {
   res.status(403).send('Forbidden');
 }
@@ -213,10 +283,40 @@ export function inquiryRoutes({
 
   router.get('/inquiries', async (req, res, next) => {
     try {
-      const inquiries = await inquiryRepository.listInquiries(inquiryListFilterFor(req.currentUser, req.query));
+      const filter = inquiryListFilterFor(req.currentUser, req.query);
+      const viewMode = inquiryListViewMode(req.query.view);
+      const totalItems = await inquiryRepository.countInquiries(filter);
+      const totalPages = viewMode === 'all' ? 1 : Math.max(1, Math.ceil(totalItems / INQUIRY_PAGE_SIZE));
+      const page = viewMode === 'all' ? 1 : Math.min(positivePageNumber(req.query.page), totalPages);
+      const listFilter = viewMode === 'all'
+        ? filter
+        : {
+            ...filter,
+            limit: INQUIRY_PAGE_SIZE,
+            offset: (page - 1) * INQUIRY_PAGE_SIZE
+          };
+      const [inquiries, users] = await Promise.all([
+        inquiryRepository.listInquiries(listFilter),
+        userRepository.listUsersWithRoles()
+      ]);
+      const filters = inquiryListViewFilters(filter);
+      const paginationFilters = { ...filters, view: viewMode === 'all' ? 'all' : '' };
       res.render('inquiries/index', {
-        inquiries,
-        filters: req.query,
+        inquiries: inquiries.map((inquiry) => inquiryListItem(inquiry)),
+        filters,
+        viewMode,
+        clearFiltersUrl: viewMode === 'all' ? '/inquiries?view=all' : '/inquiries',
+        assignees: inquiryAssignableUsers(req.currentUser, users),
+        pagination: {
+          page,
+          pageSize: INQUIRY_PAGE_SIZE,
+          totalItems,
+          totalPages,
+          firstItem: totalItems ? (viewMode === 'all' ? 1 : ((page - 1) * INQUIRY_PAGE_SIZE) + 1) : 0,
+          lastItem: viewMode === 'all' ? totalItems : Math.min(page * INQUIRY_PAGE_SIZE, totalItems),
+          previousUrl: viewMode === 'page' && page > 1 ? inquiryListPageUrl(paginationFilters, page - 1) : '',
+          nextUrl: viewMode === 'page' && page < totalPages ? inquiryListPageUrl(paginationFilters, page + 1) : ''
+        },
         ...inquiryFormOptions
       });
     } catch (error) {

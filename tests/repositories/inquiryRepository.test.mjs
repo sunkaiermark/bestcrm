@@ -121,6 +121,35 @@ test('inquiry repository excludes filtered statuses when requested', async () =>
   assert.deepEqual(queryTarget.queries[0].params, ['spam', 'archived']);
 });
 
+test('inquiry repository searches, date-filters, counts, and paginates inquiries', async () => {
+  const queryTarget = createFakeQueryTarget([
+    [inquiryRow],
+    [{ count: 120 }]
+  ]);
+  const repository = createInquiryRepository(queryTarget);
+  const filter = {
+    assignedUserId: 7,
+    searchTerm: 'Acme_100%',
+    dateFrom: '2026-07-01',
+    dateTo: '2026-07-31'
+  };
+
+  await repository.listInquiries({ ...filter, limit: 50, offset: 50 });
+  const count = await repository.countInquiries(filter);
+
+  assert.equal(count, 120);
+  assert.match(queryTarget.queries[0].sql, /i\.subject ILIKE \$2 ESCAPE/);
+  assert.match(queryTarget.queries[0].sql, /i\.contact_email ILIKE \$2 ESCAPE/);
+  assert.match(queryTarget.queries[0].sql, /AT TIME ZONE 'Asia\/Singapore'\)?:?::date >= \$3::date/);
+  assert.match(queryTarget.queries[0].sql, /AT TIME ZONE 'Asia\/Singapore'\)?:?::date <= \$4::date/);
+  assert.match(queryTarget.queries[0].sql, /source_received_at > now\(\) \+ interval '1 day'/);
+  assert.match(queryTarget.queries[0].sql, /LIMIT \$5 OFFSET \$6/);
+  assert.deepEqual(queryTarget.queries[0].params, [7, '%Acme\\_100\\%%', '2026-07-01', '2026-07-31', 50, 50]);
+  assert.match(queryTarget.queries[1].sql, /SELECT count\(\*\)::int AS count/);
+  assert.doesNotMatch(queryTarget.queries[1].sql, /LIMIT/);
+  assert.deepEqual(queryTarget.queries[1].params, [7, '%Acme\\_100\\%%', '2026-07-01', '2026-07-31']);
+});
+
 test('inquiry repository creates review and conversion updates', async () => {
   const queryTarget = createFakeQueryTarget([
     [{ ...inquiryRow, id: '12' }],

@@ -94,6 +94,10 @@ async function createLoggedInAgent(options = {}) {
       }
     },
     inquiryRepository: {
+      async countInquiries(filter) {
+        calls.push(['countInquiries', filter]);
+        return 1;
+      },
       async listInquiries(filter) {
         calls.push(['listInquiries', filter]);
         return [inquiry];
@@ -274,13 +278,137 @@ test('sales manager can view inquiry list from navigation', async () => {
   assert.equal(response.status, 200);
   assert.match(response.text, /href="\/inquiries"/);
   assert.match(response.text, /Inquiries/);
+  assert.match(response.text, /class="list-body inquiry-list-body" tabindex="0"/);
+  assert.match(response.text, /class="list-table content-fit-table inquiry-list-table"/);
+  assert.match(response.text, /\.form-panel\.inquiry-filter-panel\s*\{[^}]*max-width:\s*none;/);
+  assert.match(response.text, /\.inquiry-filter-panel label\s*\{[^}]*margin-bottom:\s*0;/);
+  assert.match(response.text, /\.inquiry-filter-panel input:not\(\[type="hidden"\]\),[\s\S]*?\.inquiry-filter-actions \.secondary-action\s*\{[^}]*height:\s*46px;/);
+  assert.match(response.text, /\.inquiry-list-body\s*\{[^}]*max-height:\s*70vh;[^}]*overflow:\s*auto;/);
+  assert.match(response.text, /\.inquiry-list-table thead th\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table th,[\s\S]*?\.content-fit-table\.inquiry-list-table td\s*\{[^}]*overflow:\s*hidden;[^}]*overflow-wrap:\s*normal;[^}]*text-align:\s*center;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
+  assert.match(response.text, /\.inquiry-list-table\s*\{[^}]*min-width:\s*1630px;[^}]*table-layout:\s*fixed;/);
+  assert.match(response.text, /\.inquiry-list-table th:nth-child\(5\),[\s\S]*?width:\s*clamp\(360px, 30vw, 520px\);/);
+  assert.match(response.text, /\.inquiry-list-table th:nth-child\(6\),[\s\S]*?width:\s*clamp\(200px, 17vw, 300px\);/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table thead th\s*\{[^}]*font-weight:\s*500;/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table thead th\s*\{[^}]*text-transform:\s*none;/);
+  assert.match(response.text, /<th>Date<\/th>\s*<th>Source<\/th>\s*<th>Status<\/th>\s*<th>Priority<\/th>\s*<th>Subject<\/th>\s*<th>Company<\/th>\s*<th>Contact<\/th>\s*<th>Products<\/th>\s*<th>Type<\/th>\s*<th>Assigned to<\/th>\s*<th>Actions<\/th>/);
+  assert.match(response.text, /<td data-label="Date"[^>]*>2026-07-30<\/td>/);
+  assert.match(response.text, /<td class="clickable-cell" data-label="Subject"/);
+  assert.match(response.text, /<td data-label="Company" title="Acme Co">Acme Co<\/td>/);
+  assert.match(response.text, /<td data-label="Products" title="Evaporator">Evaporator<\/td>/);
+  assert.match(response.text, /@media \(max-width:\s*860px\)\s*\{[\s\S]*?\.inquiry-list-table tbody tr\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table tbody td::before\s*\{[^}]*content:\s*attr\(data-label\);/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table tbody td:nth-child\(5\),[\s\S]*?\.content-fit-table\.inquiry-list-table tbody td:nth-child\(7\),[\s\S]*?\.content-fit-table\.inquiry-list-table tbody td:nth-child\(11\)\s*\{[^}]*grid-column:\s*1 \/ -1;/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table th:nth-child\(5\),[\s\S]*?\.content-fit-table\.inquiry-list-table td:nth-child\(8\)\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table td:nth-child\(5\) \.cell-link\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
   assert.match(response.text, /Need evaporator quote/);
   assert.match(response.text, /CT000030 · Alice/);
   assert.match(response.text, /Acme Co/);
   assert.match(response.text, /Evaporator/);
+  assert.match(response.text, /name="query" type="search" maxlength="200"/);
+  assert.match(response.text, /name="dateFrom" type="text"[^>]*placeholder="YYYY-MM-DD"/);
+  assert.match(response.text, /name="dateTo" type="text"[^>]*placeholder="YYYY-MM-DD"/);
+  assert.match(response.text, /name="assignedUserId"/);
+  assert.match(response.text, /name="view" aria-label="View mode"/);
+  assert.match(response.text, /value="page" selected>By page/);
+  assert.match(response.text, /value="all">Show all/);
+  assert.match(response.text, /Showing <strong>1–1<\/strong> \/ <strong>1<\/strong>/);
   assert.deepEqual(calls.filter((call) => call[0] === 'listInquiries'), [
-    ['listInquiries', { status: 'reviewing', source: 'email' }]
+    ['listInquiries', { status: 'reviewing', source: 'email', limit: 50, offset: 0 }]
   ]);
+});
+
+test('inquiry list can show all filtered results without pagination controls', async () => {
+  const { agent, calls } = await createLoggedInAgent({
+    inquiryRepository: {
+      async countInquiries(filter) {
+        calls.push(['countInquiries', filter]);
+        return 120;
+      }
+    }
+  });
+
+  const response = await agent.get('/inquiries?query=Acme&status=reviewing&view=all');
+
+  assert.equal(response.status, 200);
+  const expectedFilter = { status: 'reviewing', searchTerm: 'Acme' };
+  assert.deepEqual(calls.filter((call) => call[0] === 'countInquiries'), [
+    ['countInquiries', expectedFilter]
+  ]);
+  assert.deepEqual(calls.filter((call) => call[0] === 'listInquiries'), [
+    ['listInquiries', expectedFilter]
+  ]);
+  assert.match(response.text, /value="all" selected>Show all/);
+  assert.match(response.text, /Showing <strong>1–120<\/strong> \/ <strong>120<\/strong>/);
+  assert.match(response.text, /name="query" type="hidden" value="Acme"/);
+  assert.doesNotMatch(response.text, /Page <strong>/);
+  assert.doesNotMatch(response.text, /href="[^"]*page=2/);
+});
+
+test('Chinese inquiry list keeps native date controls', async () => {
+  const { agent } = await createLoggedInAgent({ language: 'zh' });
+
+  const response = await agent.get('/inquiries');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /name="dateFrom" type="date"/);
+  assert.match(response.text, /name="dateTo" type="date"/);
+  assert.match(response.text, /<th>\u65e5\u671f<\/th>\s*<th>\u6765\u6e90<\/th>\s*<th>\u72b6\u6001<\/th>\s*<th>\u4f18\u5148\u7ea7<\/th>\s*<th>\u4e3b\u9898<\/th>\s*<th>\u516c\u53f8<\/th>\s*<th>\u8054\u7cfb\u4eba<\/th>\s*<th>\u4ea7\u54c1<\/th>\s*<th>\u7c7b\u578b<\/th>\s*<th>\u8d1f\u8d23\u4eba<\/th>\s*<th>\u64cd\u4f5c<\/th>/);
+  assert.match(response.text, /<td data-label="\u65e5\u671f"/);
+  assert.match(response.text, /<td class="clickable-cell" data-label="\u4e3b\u9898"/);
+});
+
+test('inquiry list applies search filters and server-side pagination', async () => {
+  const { agent, calls } = await createLoggedInAgent({
+    inquiryRepository: {
+      async countInquiries(filter) {
+        calls.push(['countInquiries', filter]);
+        return 120;
+      }
+    }
+  });
+
+  const response = await agent.get('/inquiries?query=Acme&source=email&status=reviewing&dateFrom=2026-07-01&dateTo=2026-07-31&assignedUserId=7&page=2');
+
+  assert.equal(response.status, 200);
+  const expectedFilter = {
+    status: 'reviewing',
+    source: 'email',
+    assignedUserId: 7,
+    searchTerm: 'Acme',
+    dateFrom: '2026-07-01',
+    dateTo: '2026-07-31'
+  };
+  assert.deepEqual(calls.filter((call) => call[0] === 'countInquiries'), [
+    ['countInquiries', expectedFilter]
+  ]);
+  assert.deepEqual(calls.filter((call) => call[0] === 'listInquiries'), [
+    ['listInquiries', { ...expectedFilter, limit: 50, offset: 50 }]
+  ]);
+  assert.match(response.text, /value="Acme"/);
+  assert.match(response.text, /value="2026-07-01"/);
+  assert.match(response.text, /value="2026-07-31"/);
+  assert.match(response.text, /value="7" selected>Sales One/);
+  assert.match(response.text, /Showing <strong>51–100<\/strong> \/ <strong>120<\/strong>/);
+  assert.match(response.text, /page=3/);
+});
+
+test('inquiry list ignores an implausible future source date', async () => {
+  const { agent } = await createLoggedInAgent({
+    inquiryRepository: {
+      async listInquiries() {
+        return [{ ...inquiry, sourceReceivedAt: '2157-01-01T00:01:57.000Z' }];
+      }
+    }
+  });
+
+  const response = await agent.get('/inquiries');
+
+  assert.equal(response.status, 200);
+  assert.match(response.text, /2026-07-30/);
+  assert.doesNotMatch(response.text, /2026-07-30 16:01/);
+  assert.match(response.text, /Invalid future source date ignored/);
+  assert.doesNotMatch(response.text, /2157-01-01/);
 });
 
 test('sales manager opens manual inquiry form and creates inquiry', async () => {

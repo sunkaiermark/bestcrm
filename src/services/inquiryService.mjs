@@ -37,6 +37,23 @@ function isoTimestampOrNull(value) {
   return normalized || null;
 }
 
+function dateInputOrEmpty(value) {
+  const normalized = text(value);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized);
+  if (!match) {
+    return '';
+  }
+  const year = Number(match[1]);
+  const month = Number(match[2]);
+  const day = Number(match[3]);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year
+    && date.getUTCMonth() === month - 1
+    && date.getUTCDate() === day
+    ? normalized
+    : '';
+}
+
 function textInputOrCurrent(input, field, currentInquiry) {
   return Object.hasOwn(input, field) ? text(input[field]) : text(currentInquiry[field]);
 }
@@ -151,8 +168,21 @@ export function inquiryListFilterFor(user, query = {}) {
   if (isInquirySource(query.source)) {
     filter.source = query.source;
   }
-  if (query.assignedUserId) {
-    filter.assignedUserId = Number(query.assignedUserId);
+  const assignedUserId = Number(query.assignedUserId);
+  if (Number.isSafeInteger(assignedUserId) && assignedUserId > 0) {
+    filter.assignedUserId = assignedUserId;
+  }
+  const searchTerm = text(query.query).slice(0, 200);
+  if (searchTerm) {
+    filter.searchTerm = searchTerm;
+  }
+  const dateFrom = dateInputOrEmpty(query.dateFrom);
+  if (dateFrom) {
+    filter.dateFrom = dateFrom;
+  }
+  const dateTo = dateInputOrEmpty(query.dateTo);
+  if (dateTo) {
+    filter.dateTo = dateTo;
   }
   return filter;
 }

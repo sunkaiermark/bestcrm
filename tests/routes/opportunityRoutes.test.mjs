@@ -322,10 +322,15 @@ async function createLoggedInAgent(extraOptions = {}) {
 function assertAppSidebar(html, activeHref) {
   const navAccount = html.match(/<div class="nav-account"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || '';
   assert.match(html, /class="left-nav"/);
+  assert.match(html, /\.app-shell\s*\{[^}]*grid-template-columns:\s*280px minmax\(0, 1fr\);/);
   assert.match(html, /font:\s*20px\/1\.45 Arial, "Microsoft YaHei", Helvetica, sans-serif;/);
   assert.match(html, /th\s*\{[\s\S]*font-size:\s*20px;/);
   assert.match(html, /h1\s*\{[\s\S]*font-size:\s*24px;/);
   assert.match(html, /\.nav-subgroup \.nav-link\s*\{[\s\S]*font-size:\s*20px;/);
+  assert.match(html, /\.nav-account-name\s*\{[^}]*font-weight:\s*400;/);
+  assert.match(html, /\.nav-link\s*\{[^}]*font-weight:\s*400;/);
+  assert.match(html, /\.nav-parent\s*\{[^}]*font-weight:\s*400;/);
+  assert.match(html, /\.logout-button\s*\{[^}]*font-weight:\s*400;/);
   assert.match(html, /\.status\s*\{[\s\S]*font-size:\s*20px;/);
   assert.match(html, /--rail:\s*#0B0F6E;/);
   assert.match(html, /--rail-ink:\s*#ffffff;/);
