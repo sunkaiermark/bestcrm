@@ -162,7 +162,10 @@ sudo systemctl status bestcrm --no-pager
 
 Install the managed worker only after the application release contains
 `scripts/poll-email-inquiries.mjs`. The installer follows the main BESTCRM
-service user and deliberately does not enable or start the worker:
+service user and deliberately does not enable or start the worker. Like the
+historical backfill unit, it uses `PrivateTmp=false` because `clamdscan
+--fdpass` must pass restricted staging-file descriptors to the host ClamAV
+daemon:
 
 ```bash
 sudo -n /opt/bestcrm/app/scripts/install-email-intake-service.sh

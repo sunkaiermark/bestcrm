@@ -7,6 +7,7 @@ import {
   storeEmailArchiveAttachments
 } from '../services/emailArchiveService.mjs';
 import {
+  EmailRawIdentityConflictError,
   EmailRawMalwareError,
   EmailRawScanError,
   prepareEmailRawCapture
@@ -496,11 +497,23 @@ export async function pollEmailInquiries({
               continue;
             }
             attachmentScans = await scanEmailAttachments(malwareScanner, parsedEmail.attachments);
-            rawCapture = await rawCandidate.commit({
-              rfcMessageIdHint: parsedEmail.message.messageId,
-              sourceReceivedAt: parsedEmail.message.receivedAt
-            });
-            rawCandidate = null;
+            if (existing?.rawMessageId) {
+              const sameRawEvidence = existing.rawEmlSha256 === rawCandidate.sha256
+                && Number(existing.rawEmlFileSize) === Number(rawCandidate.fileSize);
+              if (!sameRawEvidence) {
+                throw new EmailRawIdentityConflictError(
+                  'Duplicate email identity has different raw evidence'
+                );
+              }
+              await rawCandidate.discard();
+              rawCandidate = null;
+            } else {
+              rawCapture = await rawCandidate.commit({
+                rfcMessageIdHint: parsedEmail.message.messageId,
+                sourceReceivedAt: parsedEmail.message.receivedAt
+              });
+              rawCandidate = null;
+            }
           } catch (error) {
             if (rawCandidate) await rawCandidate.discard().catch(() => {});
             throw error;

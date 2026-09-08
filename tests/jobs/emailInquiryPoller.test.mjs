@@ -869,6 +869,152 @@ test('raw-enabled polling scans source and attachments before binding one immuta
   }
 });
 
+test('raw-enabled polling rejects divergent duplicate Message-ID before committing a second EML file', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-conflict-'));
+  const archive = createMemoryArchive();
+  const evidence = enableRawArchiveMemory(archive);
+  const checkpoints = [];
+  const state = {
+    mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '178',
+    incrementalLastUid: 700, backfillBeforeUid: 703, backfillComplete: false
+  };
+  Object.assign(archive.repository, {
+    async initializeImapSyncState() { return { ...state }; },
+    async updateImapIncrementalCheckpoint(input) {
+      checkpoints.push(input.uid);
+      state.incrementalLastUid = Number(input.uid);
+      return { ...state };
+    },
+    async updateImapBackfillCheckpoint() { return { ...state }; }
+  });
+  let pass = 0;
+  const client = {
+    mailbox: { uidValidity: 178n, uidNext: 703n },
+    async connect() {}, async mailboxOpen() {}, async search() { return [701 + pass]; },
+    async fetchOne(uid) {
+      return {
+        uid: Number(uid),
+        source: rawEmail('raw-duplicate', pass === 0 ? 'RFQ' : 'RFQ changed in transit')
+      };
+    },
+    async messageFlagsAdd() {},
+    async logout() { pass += 1; }
+  };
+  const inquiryRepository = {
+    async createInquiry(input) { return { id: 1, ...input }; }
+  };
+  const contactRepository = { async findUniqueByEmail() { return null; } };
+  const malwareScanner = {
+    async scanFile() { return { engine: 'fake', verdict: 'clean' }; },
+    async scanBuffer() { return { engine: 'fake', verdict: 'clean' }; }
+  };
+  const options = {
+    config: config({
+      uploadDir,
+      markSeen: false,
+      emailRawArchive: { enabled: true, maxBytes: 1024 * 1024 }
+    }),
+    inquiryRepository,
+    emailArchiveRepository: archive.repository,
+    contactRepository,
+    emailArchiveTransaction: (callback) => callback({
+      emailArchiveRepository: archive.repository,
+      inquiryRepository,
+      contactRepository
+    }),
+    malwareScanner,
+    imapClientFactory: () => client
+  };
+
+  try {
+    await pollEmailInquiries(options);
+    await assert.rejects(
+      () => pollEmailInquiries(options),
+      (error) => error?.code === 'email_raw_identity_conflict'
+    );
+
+    const rawFiles = (await readdir(path.join(uploadDir, 'email-raw'), { recursive: true }))
+      .filter((entry) => entry.endsWith('.eml'));
+    assert.equal(evidence.rawMessages.length, 1);
+    assert.equal(archive.messages.length, 1);
+    assert.equal(rawFiles.length, 1);
+    assert.deepEqual(checkpoints, [701]);
+    assert.deepEqual(await readdir(path.join(uploadDir, 'email-raw', '.staging')), []);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('raw-enabled polling reuses matching duplicate Message-ID without a second EML file', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-duplicate-'));
+  const archive = createMemoryArchive();
+  const evidence = enableRawArchiveMemory(archive);
+  const checkpoints = [];
+  const state = {
+    mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '179',
+    incrementalLastUid: 700, backfillBeforeUid: 703, backfillComplete: false
+  };
+  Object.assign(archive.repository, {
+    async initializeImapSyncState() { return { ...state }; },
+    async updateImapIncrementalCheckpoint(input) {
+      checkpoints.push(input.uid);
+      state.incrementalLastUid = Number(input.uid);
+      return { ...state };
+    },
+    async updateImapBackfillCheckpoint() { return { ...state }; }
+  });
+  let pass = 0;
+  const client = {
+    mailbox: { uidValidity: 179n, uidNext: 703n },
+    async connect() {}, async mailboxOpen() {}, async search() { return [701 + pass]; },
+    async fetchOne(uid) { return { uid: Number(uid), source: rawEmail('raw-same-duplicate') }; },
+    async messageFlagsAdd() {},
+    async logout() { pass += 1; }
+  };
+  const inquiryRepository = {
+    async createInquiry(input) { return { id: 1, ...input }; }
+  };
+  const contactRepository = { async findUniqueByEmail() { return null; } };
+  const malwareScanner = {
+    async scanFile() { return { engine: 'fake', verdict: 'clean' }; },
+    async scanBuffer() { return { engine: 'fake', verdict: 'clean' }; }
+  };
+  const options = {
+    config: config({
+      uploadDir,
+      markSeen: false,
+      emailRawArchive: { enabled: true, maxBytes: 1024 * 1024 }
+    }),
+    inquiryRepository,
+    emailArchiveRepository: archive.repository,
+    contactRepository,
+    emailArchiveTransaction: (callback) => callback({
+      emailArchiveRepository: archive.repository,
+      inquiryRepository,
+      contactRepository
+    }),
+    malwareScanner,
+    imapClientFactory: () => client
+  };
+
+  try {
+    const first = await pollEmailInquiries(options);
+    const duplicate = await pollEmailInquiries(options);
+    const rawFiles = (await readdir(path.join(uploadDir, 'email-raw'), { recursive: true }))
+      .filter((entry) => entry.endsWith('.eml'));
+
+    assert.equal(first.imported[0].duplicate, false);
+    assert.equal(duplicate.imported[0].duplicate, true);
+    assert.equal(evidence.rawMessages.length, 1);
+    assert.equal(archive.messages.length, 1);
+    assert.equal(rawFiles.length, 1);
+    assert.deepEqual(checkpoints, [701, 702]);
+    assert.deepEqual(await readdir(path.join(uploadDir, 'email-raw', '.staging')), []);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('raw-enabled polling discards high-confidence spam after scanning and stores no CRM evidence', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-spam-'));
   const archive = createMemoryArchive();

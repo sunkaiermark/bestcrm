@@ -14,6 +14,8 @@ test('email intake service installer is fail-closed and uses the deployed worker
   assert.match(source, /Restart=on-failure/);
   assert.match(source, /RestartSec=300/);
   assert.match(source, /StartLimitBurst=3/);
+  assert.match(source, /PrivateTmp=false/);
+  assert.doesNotMatch(source, /PrivateTmp=true/);
   assert.match(source, /The unit was not enabled or started/);
   assert.doesNotMatch(source, /systemctl (?:enable|start|restart) bestcrm-email-intake/);
 });
