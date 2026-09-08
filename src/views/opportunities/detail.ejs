@@ -16,6 +16,15 @@
   const canDeleteRequirementMaterials = ['draft', 'initiation_rejected'].includes(opportunity.status);
   const supplementalRequirementUpdates = typeof requirementUpdates === 'undefined' ? [] : requirementUpdates;
   const technicalSolutionDeleteStatuses = ['technical_solution_in_progress', 'technical_solution_rejected'];
+  const shortDateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Singapore',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
   const formatShortDate = (value) => {
     if (!value) {
       return '';
@@ -24,8 +33,10 @@
     if (Number.isNaN(date.getTime())) {
       return String(value);
     }
-    const pad = (part) => String(part).padStart(2, '0');
-    return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    const parts = Object.fromEntries(
+      shortDateFormatter.formatToParts(date).map((part) => [part.type, part.value])
+    );
+    return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
   };
   const requirementTimelineSortValue = (value) => {
     if (!value) {

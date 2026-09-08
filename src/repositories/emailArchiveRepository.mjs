@@ -37,6 +37,7 @@ function mapThreadRow(row) {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     messageCount: Number(row.message_count || 0),
+    attachmentCount: Number(row.attachment_count || 0),
     lastDirection: text(row.last_direction),
     lastFromAddress: text(row.last_from_address),
     lastTextPreview: text(row.last_text_preview)
@@ -227,6 +228,7 @@ const threadSelect = `
     thread.created_at,
     thread.updated_at,
     COALESCE(summary.message_count, 0) AS message_count,
+    COALESCE(summary.attachment_count, 0) AS attachment_count,
     last_message.direction AS last_direction,
     last_message.from_address AS last_from_address,
     left(last_message.text_body, 240) AS last_text_preview
@@ -236,8 +238,11 @@ const threadSelect = `
   LEFT JOIN customers customer ON customer.id = thread.customer_id
   LEFT JOIN contacts contact ON contact.id = thread.contact_id
   LEFT JOIN LATERAL (
-    SELECT count(*)::integer AS message_count
+    SELECT
+      count(DISTINCT message.id)::integer AS message_count,
+      count(attachment.id)::integer AS attachment_count
     FROM email_messages message
+    LEFT JOIN email_attachments attachment ON attachment.message_id = message.id
     WHERE message.thread_id = thread.id
   ) summary ON true
   LEFT JOIN LATERAL (

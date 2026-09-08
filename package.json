@@ -6,7 +6,7 @@
   "scripts": {
     "dev": "node --watch src/server.mjs",
     "start": "node src/server.mjs",
-    "test": "node --test",
+    "test": "node --test \"tests/**/*.test.mjs\"",
     "test:bid-center-db": "node scripts/verify-bid-center-migrations.mjs",
     "test:bid-center-library-db": "node scripts/verify-bid-center-library.mjs",
     "test:bid-workspaces-db": "node scripts/verify-bid-workspaces.mjs",

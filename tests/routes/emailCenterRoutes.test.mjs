@@ -13,7 +13,7 @@ function thread(overrides = {}) {
     id: 1, mailboxKey: 'sales@sunkaier.com', subject: '<script>alert(1)</script> RFQ', inquiryId: 8,
     opportunityId: null, opportunityNo: '', opportunityTitle: '', customerId: null, customerCode: '', customerName: '', contactId: null,
     contactCode: '', contactName: '',
-    lastMessageAt: '2026-09-03T01:00:00Z', messageCount: 1, lastFromAddress: 'buyer@example.com',
+    lastMessageAt: '2026-09-03T01:00:00Z', messageCount: 1, attachmentCount: 1, lastFromAddress: 'buyer@example.com',
     lastTextPreview: '<img src=x onerror=alert(1)> Need quote', messages: [{
       id: 11, threadId: 1, direction: 'inbound', messageId: 'rfq@example.com', inReplyTo: '',
       referenceIds: [], fromAddress: 'buyer@example.com', fromName: 'Buyer',
@@ -28,7 +28,14 @@ function thread(overrides = {}) {
   };
 }
 
-async function createAgent({ userId, roles, language = 'en', uploadDir = './var/uploads', sendingEnabled = false, teamMembers = [] }) {
+async function createAgent({
+  userId,
+  roles,
+  language = 'en',
+  uploadDir = './var/uploads',
+  sendingEnabled = false,
+  teamMembers = []
+}) {
   const passwordHash = await hashPassword('ChangeMe123!');
   const user = {
     id: userId, username: `user${userId}`, displayName: `User ${userId}`,
@@ -102,7 +109,7 @@ async function createAgent({ userId, roles, language = 'en', uploadDir = './var/
 }
 
 test('email center remains unavailable while the feature flag is disabled', async () => {
-  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret', emailCenter: { enabled: false } });
   const response = await request(app).get('/email-center');
   assert.equal(response.status, 404);
 });
@@ -119,25 +126,67 @@ test('sales manager sees bilingual protected threads and plain-text escaped mess
   const list = await agent.get('/email-center');
   assert.equal(list.status, 200);
   assert.match(list.text, /邮件中心/);
-  assert.match(list.text, /业务邮件和附件永久保存在 CRM 归档中/);
+  assert.doesNotMatch(list.text, /业务邮件和附件永久保存在 CRM 归档中/);
+  assert.doesNotMatch(list.text, /当前连接状态/);
+  assert.match(list.text, /class="email-folder-tab is-active"[^>]*aria-current="page"[^>]*>业务邮件<\/a>/);
+  assert.match(list.text, /class="email-inbox-list"/);
+  assert.match(list.text, /class="email-inbox-row" href="\/email-center\/threads\/1\?from=active" title="打开会话"/);
+  assert.match(list.text, /class="email-inbox-sender" title="buyer@example\.com">buyer@example\.com<\/span>/);
+  assert.match(list.text, /class="email-inbox-preview" title="&lt;img src=x onerror=alert\(1\)&gt; Need quote"/);
+  assert.match(list.text, /class="email-inbox-message-count" title="往来封数">\(2\)<\/span>/);
+  assert.match(list.text, /class="email-inbox-attachment" title="附件数"><span aria-hidden="true">📎<\/span> 1<\/span>/);
+  assert.doesNotMatch(list.text, /C000010|Acme Co|CT000020|Alice/);
+  assert.match(list.text, /\.email-inbox-row\s*\{[\s\S]*font-size:\s*18px;[\s\S]*grid-template-columns:\s*minmax\(260px, 300px\) minmax\(0, 1fr\) 64px 168px;/);
+  assert.match(list.text, /\.email-inbox-preview\s*\{[\s\S]*text-overflow:\s*ellipsis;/);
+  assert.match(list.text, /2026-09-03 09:00/);
+  assert.doesNotMatch(list.text, /GMT\+0800|China Standard Time|09:00:00/);
   assert.match(list.text, /垃圾邮件隔离区/);
   assert.match(list.text, /&lt;script&gt;alert\(1\)&lt;\/script&gt; RFQ/);
   assert.doesNotMatch(list.text, /<script>alert\(1\)<\/script>/);
 
   const detail = await agent.get('/email-center/threads/1');
   assert.equal(detail.status, 200);
+  assert.match(detail.text, /href="\/email-center\?folder=active">← 返回邮件列表<\/a>/);
+  assert.match(detail.text, /class="email-conversation-list"/);
+  assert.match(detail.text, /<details class="email-conversation-item email-message-inbound" open>/);
+  assert.match(detail.text, /class="email-conversation-summary"/);
+  assert.match(detail.text, /class="email-message-details"/);
+  assert.match(detail.text, /class="email-attachment-chip" href="\/email-center\/attachments\/21\/download"/);
+  assert.match(detail.text, /class="email-attachment-integrity"/);
   assert.match(detail.text, /&lt;script&gt;alert\(2\)&lt;\/script&gt; Need quote/);
   assert.doesNotMatch(detail.text, /tracker\.example\/pixel/);
   assert.match(detail.text, new RegExp('a'.repeat(64)));
+});
+
+test('email thread back action preserves its source folder', async () => {
+  const agent = await createAgent({ userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh' });
+  const detail = await agent.get('/email-center/threads/1?from=all');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /href="\/email-center\?folder=all">← 返回邮件列表<\/a>/);
+});
+
+test('email conversation opens the newest message without reply actions in the archive view', async () => {
+  const agent = await createAgent({ userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh', sendingEnabled: true });
+  const detail = await agent.get('/email-center/threads/2');
+
+  assert.equal(detail.status, 200);
+  assert.equal((detail.text.match(/class="email-conversation-item/g) || []).length, 2);
+  assert.match(detail.text, /<details class="email-conversation-item email-message-outbound" open>/);
+  assert.doesNotMatch(detail.text, /邮件回复/);
+  assert.doesNotMatch(detail.text, /\/email-center\/compose\?threadId=2/);
+  assert.doesNotMatch(detail.text, /\/email-center\/messages\/12\/send/);
+  assert.match(detail.text, /C000010/);
+  assert.match(detail.text, /CT000020/);
+  assert.match(detail.text, /2026-09-03 10:00/);
 });
 
 test('salesperson sees assigned opportunity mail but direct unlinked mail access is forbidden', async () => {
   const agent = await createAgent({ userId: 7, roles: [ROLES.SALESPERSON] });
   const list = await agent.get('/email-center');
   assert.equal(list.status, 200);
-  assert.match(list.text, /Mixer Project/);
-  assert.match(list.text, /C000010 · Acme Co/);
-  assert.match(list.text, /CT000020 · Alice/);
+  assert.match(list.text, /\/email-center\/threads\/2\?from=active/);
+  assert.doesNotMatch(list.text, /Mixer Project|C000010|Acme Co|CT000020|Alice/);
   assert.doesNotMatch(list.text, /Protected unlinked email/);
   assert.equal((await agent.get('/email-center/threads/1')).status, 403);
   const detail = await agent.get('/email-center/threads/2');

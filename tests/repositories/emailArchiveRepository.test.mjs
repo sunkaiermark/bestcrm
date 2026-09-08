@@ -9,7 +9,7 @@ function threadRow(overrides = {}) {
     opportunity_title: null, customer_id: null, customer_code: null, customer_name: null, contact_id: null,
     contact_code: null, contact_name: null, archive_disposition: 'active', classification_category: 'inquiry',
     classification_reason: 'inquiry_intent', last_message_at: '2026-09-03T01:00:00Z', created_at: '2026-09-03T01:00:00Z',
-    updated_at: '2026-09-03T01:00:00Z', message_count: 1, last_direction: 'inbound',
+    updated_at: '2026-09-03T01:00:00Z', message_count: 1, attachment_count: 2, last_direction: 'inbound',
     last_from_address: 'buyer@example.com', last_text_preview: 'Need quote', ...overrides
   };
 }
@@ -38,6 +38,7 @@ test('email archive repository lists threaded summaries without exposing bodies 
 
   const threads = await repository.listThreads();
   assert.equal(threads[0].messageCount, 1);
+  assert.equal(threads[0].attachmentCount, 2);
   assert.equal(threads[0].inquiryId, 8);
   assert.equal(threads[0].lastFromAddress, 'buyer@example.com');
   assert.match(calls[0].sql, /LEFT JOIN LATERAL/);
@@ -46,6 +47,8 @@ test('email archive repository lists threaded summaries without exposing bodies 
   assert.deepEqual(calls[0].params, ['active']);
   assert.match(calls[0].sql, /customer\.customer_code/);
   assert.match(calls[0].sql, /contact\.contact_code/);
+  assert.match(calls[0].sql, /AS attachment_count/);
+  assert.match(calls[0].sql, /LEFT JOIN email_attachments attachment/);
 });
 
 test('email archive repository supports explicit archived, spam, and all-mail views', async () => {

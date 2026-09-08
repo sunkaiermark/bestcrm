@@ -43,6 +43,7 @@ const authenticatorMfaMigrationPath = new URL('../../src/db/migrations/041_authe
 const googleWorkspaceCustomerCenterMigrationPath = new URL('../../src/db/migrations/042_google_workspace_customer_center.sql', import.meta.url);
 const customerCodeMigrationPath = new URL('../../src/db/migrations/043_customer_code.sql', import.meta.url);
 const contactCodeMigrationPath = new URL('../../src/db/migrations/044_contact_code.sql', import.meta.url);
+const contactCodeLPrefixMigrationPath = new URL('../../src/db/migrations/052_contact_code_l_prefix.sql', import.meta.url);
 const imapSyncAndEmailTriageMigrationPath = new URL('../../src/db/migrations/045_imap_sync_and_email_triage.sql', import.meta.url);
 const customerContactUniquenessMigrationPath = new URL('../../src/db/migrations/046_customer_contact_uniqueness.sql', import.meta.url);
 const opportunityRecordGuardrailsMigrationPath = new URL('../../src/db/migrations/047_opportunity_record_guardrails.sql', import.meta.url);
@@ -761,6 +762,21 @@ test('contact code migration backfills stable immutable CT000001-style codes', a
   assert.match(sql, /ALTER COLUMN contact_code SET NOT NULL/);
   assert.match(sql, /bestcrm_protect_contact_code/);
   assert.match(sql, /contact_code is immutable/);
+});
+
+test('contact code prefix migration converts existing codes and configures immutable L000001-style codes', async () => {
+  const sql = await readFile(contactCodeLPrefixMigrationPath, 'utf8');
+
+  assert.match(sql, /contact_code !~ '\^CT\[0-9\]\{6\}\$'/);
+  assert.match(sql, /UPDATE contacts\s+SET contact_code = 'L' \|\| substring\(contact_code FROM 3\)/);
+  assert.match(sql, /ALTER COLUMN contact_code SET DEFAULT \('L' \|\| lpad\(nextval\('contact_code_seq'\)::text, 6, '0'\)\)/);
+  assert.match(sql, /contact_code ~ '\^L\[0-9\]\{6\}\$'/);
+
+  const triggerDrop = sql.indexOf('DROP TRIGGER IF EXISTS contacts_protect_contact_code');
+  const conversion = sql.indexOf("UPDATE contacts\nSET contact_code = 'L'");
+  const triggerRestore = sql.lastIndexOf('CREATE TRIGGER contacts_protect_contact_code');
+  assert.ok(triggerDrop >= 0 && triggerDrop < conversion);
+  assert.ok(triggerRestore > conversion);
 });
 
 test('IMAP sync migration separates realtime and historical cursors and preserves triage evidence', async () => {

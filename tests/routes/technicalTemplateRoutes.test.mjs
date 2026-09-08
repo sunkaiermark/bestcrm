@@ -196,7 +196,7 @@ test('quotation engineers only receive published templates and clauses', async (
   assert.match(templates.text, /Technical Agreement Templates/);
   assert.match(templates.text, /MX-100/);
   assert.match(templates.text, /href="\/technical-templates"/);
-  assert.match(templates.text, /href="\/technical-clauses"/);
+  assert.match(templates.text, /href="\/bid-center\/clauses"/);
   assert.doesNotMatch(templates.text, /New Technical Template/);
   assert.deepEqual(calls[0], { method: 'listTemplates', filter: { publishedOnly: true } });
 

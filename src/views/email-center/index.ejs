@@ -6,37 +6,27 @@
           </div>
         </header>
 
-        <section class="form-panel"><strong><%= t('emailArchivePermanentNotice') %></strong><p class="muted"><%= t('emailReceiveOnlyNotice') %></p></section>
-        <nav class="form-actions" aria-label="<%= t('emailArchiveFolders') %>">
+        <nav class="email-folder-tabs" aria-label="<%= t('emailArchiveFolders') %>">
           <% for (const item of ['active', 'archived', 'spam', 'all']) { %>
-            <a class="<%= folder === item ? 'primary-action' : 'secondary-action' %>" href="/email-center?folder=<%= item %>"><%= t(`emailArchiveFolder.${item}`) %></a>
+            <a class="email-folder-tab<%= folder === item ? ' is-active' : '' %>" href="/email-center?folder=<%= item %>"<% if (folder === item) { %> aria-current="page"<% } %>><%= t(`emailArchiveFolder.${item}`) %></a>
           <% } %>
         </nav>
-        <section class="list-section">
-          <div class="list-body">
-            <table class="list-table content-fit-table">
-              <thead><tr><th><%= t('lastMessageAt') %></th><th><%= t('subject') %></th><th><%= t('linkedRecord') %></th><th><%= t('messageCount') %></th><th><%= t('sender') %></th><th><%= t('preview') %></th><th><%= t('actions') %></th></tr></thead>
-              <tbody>
-                <% for (const thread of threads) { %>
-                  <tr>
-                    <td><%= thread.lastMessageAt || '' %></td>
-                    <td><strong><%= thread.subject || t('noSubject') %></strong><br><span class="muted"><%= t(`emailArchiveFolder.${thread.archiveDisposition || 'active'}`) %></span></td>
-                    <td>
-                      <% if (thread.opportunityId) { %><span class="status"><%= t('opportunity') %> <%= thread.opportunityNo || `#${thread.opportunityId}` %> · <%= thread.opportunityTitle %></span>
-                      <% } else if (thread.inquiryId) { %><span class="status"><%= t('inquiry') %> #<%= thread.inquiryId %></span>
-                      <% } else if (!thread.customerId) { %><span class="muted"><%= t('unlinkedEmail') %></span><% } %>
-                      <% if (thread.customerId) { %><br><a href="/customers/<%= thread.customerId %>"><%= thread.customerCode ? `${thread.customerCode} · ` : '' %><%= thread.customerName %></a><% } %>
-                      <% if (thread.contactId) { %><br><a href="/contacts/<%= thread.contactId %>"><%= thread.contactCode ? `${thread.contactCode} · ` : '' %><%= thread.contactName %></a><% } %>
-                    </td>
-                    <td><%= thread.messageCount %></td>
-                    <td><%= thread.lastFromAddress %></td>
-                    <td><%= thread.lastTextPreview %></td>
-                    <td><a class="secondary-action" href="/email-center/threads/<%= thread.id %>"><%= t('openEmailThread') %></a></td>
-                  </tr>
-                <% } %>
-                <% if (!threads.length) { %><tr><td colspan="7" class="empty"><%= t('noEmailThreads') %></td></tr><% } %>
-              </tbody>
-            </table>
-          </div>
+        <section class="email-inbox-list" aria-label="<%= t('emailCenter') %>">
+          <% for (const thread of threads) { %>
+            <a class="email-inbox-row" href="/email-center/threads/<%= thread.id %>?from=<%= folder %>" title="<%= t('openEmailThread') %>">
+              <span class="email-inbox-sender" title="<%= thread.lastFromAddress %>"><%= thread.lastFromAddress || '-' %></span>
+              <span class="email-inbox-main">
+                <span class="email-inbox-summary">
+                  <strong class="email-inbox-subject"><%= thread.subject || t('noSubject') %></strong>
+                  <% if (thread.messageCount > 1) { %><span class="email-inbox-message-count" title="<%= t('messageCount') %>">(<%= thread.messageCount %>)</span><% } %>
+                  <span class="email-inbox-separator" aria-hidden="true">—</span>
+                  <span class="email-inbox-preview" title="<%= thread.lastTextPreview %>"><%= thread.lastTextPreview %></span>
+                </span>
+              </span>
+              <span class="email-inbox-attachment<%= thread.attachmentCount ? '' : ' is-empty' %>" title="<%= t('attachmentCount') %>"><% if (thread.attachmentCount) { %><span aria-hidden="true">📎</span> <%= thread.attachmentCount %><% } %></span>
+              <time class="email-inbox-time" datetime="<%= thread.lastMessageAt || '' %>"><%= formatEmailListDate(thread.lastMessageAt) %></time>
+            </a>
+          <% } %>
+          <% if (!threads.length) { %><p class="empty"><%= t('noEmailThreads') %></p><% } %>
         </section>
 <%- include('../partials/app-end') %>

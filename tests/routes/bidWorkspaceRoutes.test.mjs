@@ -6,7 +6,12 @@ import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
 test('anonymous users are redirected only from project bid workspace route families', async () => {
-  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret', bidCenter: { enabled: true } });
+  const app = createApp({
+    databaseUrl: '',
+    sessionSecret: 'test-secret',
+    bidCenter: { enabled: true },
+    emailCenter: { enabled: false }
+  });
   assert.equal((await request(app).get('/bid-center/workspaces')).status, 302);
   assert.equal((await request(app).get('/opportunities/20/bid-workspace')).status, 302);
   assert.equal((await request(app).get('/email-center')).status, 404);

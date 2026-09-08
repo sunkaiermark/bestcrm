@@ -29,6 +29,26 @@ function archiveFolder(value) {
   return ['active', 'archived', 'spam', 'all'].includes(value) ? value : 'active';
 }
 
+const emailListDateFormatter = new Intl.DateTimeFormat('en-CA', {
+  timeZone: 'Asia/Singapore',
+  year: 'numeric',
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+  hourCycle: 'h23'
+});
+
+function formatEmailListDate(value) {
+  if (!value) return '';
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return '';
+  const parts = Object.fromEntries(
+    emailListDateFormatter.formatToParts(date).map((part) => [part.type, part.value])
+  );
+  return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
 export function emailCenterRoutes({
   enabled = false,
   emailArchiveRepository,
@@ -82,7 +102,11 @@ export function emailCenterRoutes({
         req.currentUser,
         folder === 'all' ? {} : { archiveDisposition: folder }
       );
-      res.render('email-center/index', { threads, folder });
+      res.render('email-center/index', {
+        threads,
+        folder,
+        formatEmailListDate
+      });
     } catch (error) {
       handleError(error, res, next);
     }
@@ -91,10 +115,8 @@ export function emailCenterRoutes({
   router.get('/email-center/threads/:threadId', async (req, res, next) => {
     try {
       const thread = await getVisibleEmailThread(dependencies, req.currentUser, req.params.threadId);
-      const canSendEmail = sendingEnabled
-        ? (await getCustomerEmailComposeContext(dependencies, req.currentUser, { threadId: thread.id })).canSend
-        : false;
-      res.render('email-center/detail', { thread, sendingEnabled, canSendEmail });
+      const backFolder = archiveFolder(String(req.query.from || 'active'));
+      res.render('email-center/detail', { thread, formatEmailListDate, backFolder });
     } catch (error) {
       handleError(error, res, next);
     }
