@@ -869,7 +869,7 @@ test('raw-enabled polling scans source and attachments before binding one immuta
   }
 });
 
-test('raw-enabled polling rejects divergent duplicate Message-ID before committing a second EML file', async () => {
+test('raw-enabled polling indexes divergent duplicate Message-ID for manual review without changing the existing message', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-conflict-'));
   const archive = createMemoryArchive();
   const evidence = enableRawArchiveMemory(archive);
@@ -928,17 +928,24 @@ test('raw-enabled polling rejects divergent duplicate Message-ID before committi
 
   try {
     await pollEmailInquiries(options);
-    await assert.rejects(
-      () => pollEmailInquiries(options),
-      (error) => error?.code === 'email_raw_identity_conflict'
-    );
+    const conflict = await pollEmailInquiries(options);
 
     const rawFiles = (await readdir(path.join(uploadDir, 'email-raw'), { recursive: true }))
       .filter((entry) => entry.endsWith('.eml'));
-    assert.equal(evidence.rawMessages.length, 1);
+    assert.deepEqual(conflict.skipped, [{
+      uid: 702,
+      reason: 'raw_identity_conflict',
+      rawMessageId: 2
+    }]);
+    assert.equal(evidence.rawMessages.length, 2);
     assert.equal(archive.messages.length, 1);
-    assert.equal(rawFiles.length, 1);
-    assert.deepEqual(checkpoints, [701]);
+    assert.equal(rawFiles.length, 2);
+    assert.equal(evidence.processingAttempts.at(-1).outcome, 'permanent_error');
+    assert.equal(
+      evidence.processingAttempts.at(-1).safeErrorCode,
+      'duplicate_email_identity_conflict'
+    );
+    assert.deepEqual(checkpoints, [701, 702]);
     assert.deepEqual(await readdir(path.join(uploadDir, 'email-raw', '.staging')), []);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });

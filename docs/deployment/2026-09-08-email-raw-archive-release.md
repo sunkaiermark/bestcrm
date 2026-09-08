@@ -76,7 +76,7 @@ When raw capture is enabled, `backup-production.sh` refuses an online backup. St
 2. Review mailbox UID count, missing raw count, disk capacity, backup capacity, and estimated maintenance duration.
 3. Obtain a separate approval.
 4. Set `EMAIL_RAW_BACKFILL_ENABLED=true` only for the controlled backfill window and run small batches.
-5. After every batch, run `npm run email:raw:audit`; pause on any missing file, hash mismatch, unindexed file, non-clean latest scan, or checkpoint error.
+5. After every batch, run `npm run email:raw:audit`; review every `rawIdentityConflicts` entry as a provider UID/RFC Message-ID conflict requiring manual reconciliation, and pause on any missing file, hash mismatch, unindexed file, non-clean latest scan, or checkpoint error. A conflict is preserved as indexed raw evidence with a permanent processing outcome; it never replaces the existing message's immutable raw binding.
 6. When complete, set `EMAIL_RAW_BACKFILL_ENABLED=false`, verify it is inactive, take a frozen backup, and perform an isolated restore rehearsal with `--require-complete`.
 7. Only then prepare a later migration that makes `email_messages.raw_message_id` mandatory for inbound mail.
 

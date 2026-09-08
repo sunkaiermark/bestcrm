@@ -42,8 +42,13 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
       raw.stored_path,
       raw.file_size,
       raw.sha256,
+      raw.provider_mailbox,
+      raw.provider_uid_validity,
+      raw.provider_uid,
       message.id AS message_id,
-      latest_scan.verdict AS latest_scan_verdict
+      latest_scan.verdict AS latest_scan_verdict,
+      latest_processing.outcome AS latest_processing_outcome,
+      latest_processing.safe_error_code AS latest_processing_error_code
     FROM email_raw_messages raw
     LEFT JOIN email_messages message ON message.raw_message_id = raw.id
     LEFT JOIN LATERAL (
@@ -53,6 +58,13 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
       ORDER BY scan.attempt_no DESC
       LIMIT 1
     ) latest_scan ON true
+    LEFT JOIN LATERAL (
+      SELECT processing.outcome, processing.safe_error_code
+      FROM email_raw_processing_attempts processing
+      WHERE processing.raw_message_id = raw.id
+      ORDER BY processing.attempt_no DESC
+      LIMIT 1
+    ) latest_processing ON true
     ORDER BY raw.id
   `);
   const coverage = await queryTarget.query(`
@@ -67,11 +79,24 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
   let verifiedFiles = 0;
   let rawWithoutMessage = 0;
   let rawWithoutCleanScan = 0;
+  const rawIdentityConflicts = [];
 
   for (const row of result.rows) {
     const storedPath = String(row.stored_path || '');
     indexedPaths.add(storedPath);
-    if (!row.message_id) rawWithoutMessage += 1;
+    if (!row.message_id) {
+      rawWithoutMessage += 1;
+      if (row.latest_processing_outcome === 'permanent_error'
+        && row.latest_processing_error_code === 'duplicate_email_identity_conflict') {
+        rawIdentityConflicts.push({
+          rawMessageId: Number(row.id),
+          providerMailbox: String(row.provider_mailbox || ''),
+          providerUidValidity: String(row.provider_uid_validity || ''),
+          providerUid: Number(row.provider_uid),
+          storedPath
+        });
+      }
+    }
     if (row.latest_scan_verdict !== 'clean') rawWithoutCleanScan += 1;
     const absolutePath = path.resolve(uploadRoot, ...storedPath.split('/'));
     if (!absolutePath.toLowerCase().startsWith(`${uploadRoot}${path.sep}`.toLowerCase())) {
@@ -111,6 +136,7 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
     mismatches,
     unexpectedFiles,
     rawWithoutMessage,
+    rawIdentityConflicts,
     rawWithoutCleanScan,
     inboundMessages,
     inboundMissingRaw,

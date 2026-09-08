@@ -7,7 +7,6 @@ import {
   storeEmailArchiveAttachments
 } from '../services/emailArchiveService.mjs';
 import {
-  EmailRawIdentityConflictError,
   EmailRawMalwareError,
   EmailRawScanError,
   prepareEmailRawCapture
@@ -501,9 +500,29 @@ export async function pollEmailInquiries({
               const sameRawEvidence = existing.rawEmlSha256 === rawCandidate.sha256
                 && Number(existing.rawEmlFileSize) === Number(rawCandidate.fileSize);
               if (!sameRawEvidence) {
-                throw new EmailRawIdentityConflictError(
-                  'Duplicate email identity has different raw evidence'
+                const conflictingCapture = await rawCandidate.commit({
+                  rfcMessageIdHint: parsedEmail.message.messageId,
+                  sourceReceivedAt: parsedEmail.message.receivedAt
+                });
+                rawCandidate = null;
+                const conflictingRawMessage = await emailArchiveTransaction((repositories) => (
+                  persistRawEmailCaptureOnly(repositories, conflictingCapture, {
+                    stage: 'archive',
+                    outcome: 'permanent_error',
+                    safeErrorCode: 'duplicate_email_identity_conflict',
+                    safeDetail: `Existing message ${existing.id} is bound to raw evidence ${existing.rawMessageId}`
+                  })
+                ));
+                logger.error?.(
+                  `Deferred email UID ${uid}: raw evidence ${conflictingRawMessage.id} requires identity review`
                 );
+                skipped.push({
+                  uid,
+                  reason: 'raw_identity_conflict',
+                  rawMessageId: conflictingRawMessage.id
+                });
+                await checkpoint(uid);
+                continue;
               }
               await rawCandidate.discard();
               rawCandidate = null;
