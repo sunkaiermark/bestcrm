@@ -151,6 +151,27 @@ function mapEvidenceAttemptRow(row) {
   };
 }
 
+function mapMalwareSecurityEventRow(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    mailboxKey: text(row.mailbox_key),
+    providerMailbox: text(row.provider_mailbox),
+    providerUidValidity: text(row.provider_uid_validity),
+    providerUid: Number(row.provider_uid),
+    sha256: text(row.sha256),
+    engine: text(row.engine),
+    engineVersion: text(row.engine_version),
+    signatureVersion: text(row.signature_version),
+    verdict: text(row.verdict),
+    findingCode: text(row.finding_code),
+    safeDetail: text(row.safe_detail),
+    startedAt: row.scan_started_at,
+    completedAt: row.scan_completed_at,
+    createdAt: row.created_at
+  };
+}
+
 function mapAttachmentRow(row) {
   if (!row) return null;
   return {
@@ -298,6 +319,68 @@ export function createEmailArchiveRepository(queryTarget) {
       if (created) return { rawMessage: created, created: true };
       return {
         rawMessage: await this.findRawMessageIdentity(input),
+        created: false
+      };
+    },
+
+    async findMalwareSecurityEventIdentity(input) {
+      const result = await queryTarget.query(`
+        SELECT *
+        FROM email_raw_malware_events
+        WHERE mailbox_key = $1
+          AND provider_mailbox = $2
+          AND provider_uid_validity = $3
+          AND provider_uid = $4
+        LIMIT 1
+      `, [
+        input.mailboxKey,
+        input.providerMailbox,
+        input.providerUidValidity,
+        input.providerUid
+      ]);
+      return mapMalwareSecurityEventRow(result.rows[0]);
+    },
+
+    async createMalwareSecurityEvent(input) {
+      const insertResult = await queryTarget.query(`
+        INSERT INTO email_raw_malware_events (
+          mailbox_key,
+          provider_mailbox,
+          provider_uid_validity,
+          provider_uid,
+          sha256,
+          engine,
+          engine_version,
+          signature_version,
+          verdict,
+          finding_code,
+          safe_detail,
+          scan_started_at,
+          scan_completed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        ON CONFLICT (mailbox_key, provider_mailbox, provider_uid_validity, provider_uid)
+        DO NOTHING
+        RETURNING *
+      `, [
+        input.mailboxKey,
+        input.providerMailbox,
+        input.providerUidValidity,
+        input.providerUid,
+        input.sha256,
+        input.engine,
+        input.engineVersion || '',
+        input.signatureVersion || '',
+        input.verdict,
+        input.findingCode || '',
+        input.safeDetail || '',
+        input.startedAt,
+        input.completedAt
+      ]);
+      const created = mapMalwareSecurityEventRow(insertResult.rows[0]);
+      if (created) return { malwareEvent: created, created: true };
+      return {
+        malwareEvent: await this.findMalwareSecurityEventIdentity(input),
         created: false
       };
     },

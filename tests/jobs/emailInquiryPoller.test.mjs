@@ -111,6 +111,7 @@ function enableRawArchiveMemory(archive) {
   const processingAttempts = [];
   const attachmentScans = [];
   const classificationEvents = [];
+  const malwareEvents = [];
   Object.assign(archive.repository, {
     async findRawMessageIdentity(identity) {
       return rawMessages.find((raw) => raw.mailboxKey === identity.mailboxKey
@@ -129,6 +130,19 @@ function enableRawArchiveMemory(archive) {
     async createRawProcessingAttempt(input) { processingAttempts.push(input); return input; },
     async createAttachmentScanAttempt(input) { attachmentScans.push(input); return input; },
     async createClassificationEvent(input) { classificationEvents.push(input); return input; },
+    async findMalwareSecurityEventIdentity(identity) {
+      return malwareEvents.find((event) => event.mailboxKey === identity.mailboxKey
+        && event.providerMailbox === identity.providerMailbox
+        && event.providerUidValidity === identity.providerUidValidity
+        && Number(event.providerUid) === Number(identity.providerUid)) || null;
+    },
+    async createMalwareSecurityEvent(input) {
+      const existing = await this.findMalwareSecurityEventIdentity(input);
+      if (existing) return { malwareEvent: existing, created: false };
+      const malwareEvent = { id: malwareEvents.length + 1, ...input };
+      malwareEvents.push(malwareEvent);
+      return { malwareEvent, created: true };
+    },
     async linkInboundMessageRawArchive(input) {
       const message = archive.messages.find((item) => item.id === Number(input.messageId));
       if (!message || message.rawMessageId) return null;
@@ -136,7 +150,7 @@ function enableRawArchiveMemory(archive) {
       return message;
     }
   });
-  return { rawMessages, rawScans, processingAttempts, attachmentScans, classificationEvents };
+  return { rawMessages, rawScans, processingAttempts, attachmentScans, classificationEvents, malwareEvents };
 }
 
 function rawHighConfidenceSpamEmail(id) {
@@ -1059,10 +1073,10 @@ test('raw-enabled polling discards high-confidence spam after scanning and store
   }
 });
 
-test('raw-enabled polling does not advance the checkpoint when malware is detected', async () => {
+test('raw-enabled polling records only malware metadata, advances the checkpoint, and creates no CRM record', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-malware-'));
   const archive = createMemoryArchive();
-  enableRawArchiveMemory(archive);
+  const evidence = enableRawArchiveMemory(archive);
   let checkpointUpdates = 0;
   const state = {
     mailboxKey: 'sales@sunkaier.com', mailboxName: 'INBOX', uidValidity: '199',
@@ -1084,17 +1098,30 @@ test('raw-enabled polling does not advance the checkpoint when malware is detect
   const contactRepository = { async findUniqueByEmail() { return null; } };
 
   try {
-    await assert.rejects(() => pollEmailInquiries({
+    const result = await pollEmailInquiries({
       config: config({ uploadDir, markSeen: false, emailRawArchive: { enabled: true, maxBytes: 1024 * 1024 } }),
       inquiryRepository,
       emailArchiveRepository: archive.repository,
       contactRepository,
       emailArchiveTransaction: (callback) => callback({ emailArchiveRepository: archive.repository, inquiryRepository, contactRepository }),
-      malwareScanner: { async scanFile() { return { engine: 'fake', verdict: 'malware', findingCode: 'test-malware' }; } },
+      malwareScanner: { async scanFile() { return {
+        engine: 'clamav', engineVersion: '1.5.3', signatureVersion: '20260908',
+        verdict: 'malware', findingCode: 'test-malware', safeDetail: 'ClamAV detected malicious content',
+        startedAt: '2026-09-08T01:00:00.000Z', completedAt: '2026-09-08T01:00:01.000Z'
+      }; } },
       imapClientFactory: () => client
-    }), /failed malware scanning/);
-    assert.equal(checkpointUpdates, 0);
+    });
+    assert.equal(result.skipped.length, 1);
+    assert.equal(result.skipped[0].reason, 'raw_malware_blocked');
+    assert.equal(checkpointUpdates, 1);
     assert.equal(archive.messages.length, 0);
+    assert.equal(evidence.rawMessages.length, 0);
+    assert.equal(evidence.malwareEvents.length, 1);
+    assert.equal(evidence.malwareEvents[0].providerUid, 901);
+    assert.match(evidence.malwareEvents[0].sha256, /^[0-9a-f]{64}$/);
+    assert.equal(evidence.malwareEvents[0].findingCode, 'test-malware');
+    assert.equal(Object.hasOwn(evidence.malwareEvents[0], 'source'), false);
+    assert.deepEqual(await readdir(path.join(uploadDir, 'email-raw', '.staging')), []);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

@@ -131,6 +131,7 @@ test('raw email production preflight is read-only and checks scanner, migrations
   assert.match(preflightScript, /PREFLIGHT_MODE=read_only/);
   assert.match(preflightScript, /049_email_raw_archive_foundation\.sql/);
   assert.match(preflightScript, /050_email_raw_backfill_checkpoint\.sql/);
+  assert.match(preflightScript, /051_email_raw_malware_events\.sql/);
   assert.match(preflightScript, /EMAIL_RAW_SCANNER_READY/);
   assert.match(preflightScript, /EMAIL_RAW_BACKFILL_ENABLED/);
   assert.match(preflightScript, /RAW_INCREMENTAL_ACTIVATION_READY/);

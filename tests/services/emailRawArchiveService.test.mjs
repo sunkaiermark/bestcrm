@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, chmod, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { access, chmod, mkdtemp, readFile, readdir, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -68,12 +68,17 @@ test('raw email capture scans a restricted staging file before atomically commit
 test('raw email capture rejects malware and scanner errors without committing evidence', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-reject-'));
   try {
-    await assert.rejects(() => prepareEmailRawCapture(input(uploadDir, {
+    const malwareError = await prepareEmailRawCapture(input(uploadDir, {
       scanner: { async scanFile() { return { verdict: 'malware', findingCode: 'Eicar-Test-Signature' }; } }
-    })), EmailRawMalwareError);
+    })).catch((error) => error);
+    assert.ok(malwareError instanceof EmailRawMalwareError);
+    assert.equal(malwareError.capture.providerUid, 7);
+    assert.match(malwareError.capture.sha256, /^[0-9a-f]{64}$/);
+    assert.equal(Object.hasOwn(malwareError.capture, 'source'), false);
     await assert.rejects(() => prepareEmailRawCapture(input(uploadDir, {
       scanner: { async scanFile() { throw new Error('daemon unavailable'); } }
     })), EmailRawScanError);
+    assert.deepEqual(await readdir(path.join(uploadDir, 'email-raw', '.staging')), []);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

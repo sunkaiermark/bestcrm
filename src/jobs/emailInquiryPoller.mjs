@@ -7,6 +7,7 @@ import {
   storeEmailArchiveAttachments
 } from '../services/emailArchiveService.mjs';
 import {
+  EmailRawIdentityConflictError,
   EmailRawMalwareError,
   EmailRawScanError,
   prepareEmailRawCapture
@@ -387,19 +388,63 @@ export async function pollEmailInquiries({
         uidValidity,
         internalDate: message.internalDate
       };
-      let rawCandidate = rawArchiveEnabled
-        ? await prepareEmailRawCapture({
-          source: message.source,
-          uploadDir: config.uploadDir,
-          mailboxKey,
-          providerName: 'imap',
-          providerMailbox: mailbox,
-          providerUidValidity: uidValidity,
-          providerUid: message.uid || uid,
-          maxBytes: rawArchiveConfig.maxBytes,
-          scanner: malwareScanner
-        })
-        : null;
+      let rawCandidate = null;
+      if (rawArchiveEnabled) {
+        try {
+          rawCandidate = await prepareEmailRawCapture({
+            source: message.source,
+            uploadDir: config.uploadDir,
+            mailboxKey,
+            providerName: 'imap',
+            providerMailbox: mailbox,
+            providerUidValidity: uidValidity,
+            providerUid: message.uid || uid,
+            maxBytes: rawArchiveConfig.maxBytes,
+            scanner: malwareScanner
+          });
+        } catch (error) {
+          if (!(error instanceof EmailRawMalwareError)) throw error;
+          const capture = error.capture || {};
+          const scan = error.scan || {};
+          const stored = await emailArchiveTransaction(({ emailArchiveRepository: transactionRepository }) => {
+            if (typeof transactionRepository?.createMalwareSecurityEvent !== 'function') {
+              throw new Error('Raw malware handling requires the malware security event repository');
+            }
+            return transactionRepository.createMalwareSecurityEvent({
+              mailboxKey: capture.mailboxKey,
+              providerMailbox: capture.providerMailbox,
+              providerUidValidity: capture.providerUidValidity,
+              providerUid: capture.providerUid,
+              sha256: capture.sha256,
+              engine: scan.engine,
+              engineVersion: scan.engineVersion,
+              signatureVersion: scan.signatureVersion,
+              verdict: scan.verdict,
+              findingCode: scan.findingCode,
+              safeDetail: scan.safeDetail,
+              startedAt: scan.startedAt,
+              completedAt: scan.completedAt
+            });
+          });
+          if (!stored?.malwareEvent
+            || stored.malwareEvent.sha256 !== capture.sha256
+            || stored.malwareEvent.verdict !== 'malware') {
+            throw new EmailRawIdentityConflictError(
+              'Malware metadata provider identity conflicts with the stored security event'
+            );
+          }
+          logger.error?.(
+            `Blocked email UID ${uid}: malware metadata event ${stored.malwareEvent.id}; raw source discarded before parsing`
+          );
+          skipped.push({
+            uid,
+            reason: 'raw_malware_blocked',
+            malwareEventId: stored.malwareEvent.id
+          });
+          await checkpoint(uid);
+          continue;
+        }
+      }
       let parsedEmail;
       try {
         parsedEmail = emailArchiveRepository

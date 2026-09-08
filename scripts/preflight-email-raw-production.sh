@@ -90,8 +90,11 @@ MIGRATION_049_APPLIED="$(psql -X "$DATABASE_URL" --no-align --tuples-only -v ON_
   -c "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE name = '049_email_raw_archive_foundation.sql');")"
 MIGRATION_050_APPLIED="$(psql -X "$DATABASE_URL" --no-align --tuples-only -v ON_ERROR_STOP=1 \
   -c "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE name = '050_email_raw_backfill_checkpoint.sql');")"
+MIGRATION_051_APPLIED="$(psql -X "$DATABASE_URL" --no-align --tuples-only -v ON_ERROR_STOP=1 \
+  -c "SELECT EXISTS (SELECT 1 FROM schema_migrations WHERE name = '051_email_raw_malware_events.sql');")"
 echo "MIGRATION_049_APPLIED=$MIGRATION_049_APPLIED"
 echo "MIGRATION_050_APPLIED=$MIGRATION_050_APPLIED"
+echo "MIGRATION_051_APPLIED=$MIGRATION_051_APPLIED"
 
 if [ "$MIGRATION_049_APPLIED" = "t" ]; then
   psql -X "$DATABASE_URL" --no-align --tuples-only -v ON_ERROR_STOP=1 <<'SQL'
@@ -116,7 +119,8 @@ else
 fi
 
 ACTIVATION_READY=true
-if [ "$MIGRATION_049_APPLIED" != "t" ] || [ "$MIGRATION_050_APPLIED" != "t" ]; then
+if [ "$MIGRATION_049_APPLIED" != "t" ] || [ "$MIGRATION_050_APPLIED" != "t" ] \
+  || [ "$MIGRATION_051_APPLIED" != "t" ]; then
   ACTIVATION_READY=false
 fi
 if [ "$SCANNER_READY" != "true" ] || [ "$BACKFILL_STATE" = "active" ]; then

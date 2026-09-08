@@ -84,10 +84,18 @@ export class EmailRawIdentityConflictError extends EmailRawArchiveError {
 }
 
 export class EmailRawMalwareError extends EmailRawArchiveError {
-  constructor(scan) {
+  constructor(scan, capture = {}) {
     super('Raw email failed malware scanning', 'email_raw_malware_detected');
     this.name = 'EmailRawMalwareError';
     this.scan = scan;
+    this.capture = Object.freeze({
+      mailboxKey: capture.mailboxKey,
+      providerName: capture.providerName,
+      providerMailbox: capture.providerMailbox,
+      providerUidValidity: capture.providerUidValidity,
+      providerUid: capture.providerUid,
+      sha256: capture.sha256
+    });
   }
 }
 
@@ -165,7 +173,9 @@ export async function prepareEmailRawCapture({
   }
   if (scan?.verdict !== 'clean') {
     await rm(stagingPath, { force: true });
-    if (scan?.verdict === 'malware') throw new EmailRawMalwareError(scan);
+    if (scan?.verdict === 'malware') {
+      throw new EmailRawMalwareError(scan, { ...identity, sha256 });
+    }
     throw new EmailRawScanError(scan || { verdict: 'error', findingCode: 'missing_verdict' });
   }
 

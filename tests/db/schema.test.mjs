@@ -49,6 +49,7 @@ const opportunityRecordGuardrailsMigrationPath = new URL('../../src/db/migration
 const opportunityActivitySpineMigrationPath = new URL('../../src/db/migrations/048_opportunity_activity_spine.sql', import.meta.url);
 const emailRawArchiveFoundationMigrationPath = new URL('../../src/db/migrations/049_email_raw_archive_foundation.sql', import.meta.url);
 const emailRawBackfillCheckpointMigrationPath = new URL('../../src/db/migrations/050_email_raw_backfill_checkpoint.sql', import.meta.url);
+const emailRawMalwareEventsMigrationPath = new URL('../../src/db/migrations/051_email_raw_malware_events.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -878,4 +879,15 @@ test('raw email backfill migration creates an independent resumable cursor', asy
   assert.match(sql, /ADD COLUMN IF NOT EXISTS last_raw_backfill_sync_at timestamptz/);
   assert.match(sql, /email_imap_sync_states_raw_backfill_idx/);
   assert.match(sql, /never reuse the parsed-email backfill cursor/);
+});
+
+test('raw malware event migration stores metadata only and remains append-only', async () => {
+  const sql = await readFile(emailRawMalwareEventsMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_raw_malware_events/);
+  assert.match(sql, /provider_uid bigint NOT NULL CHECK \(provider_uid > 0\)/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL CHECK \(sha256 ~ '\^\[0-9a-f\]\{64\}\$'\)/);
+  assert.match(sql, /verdict text NOT NULL CHECK \(verdict = 'malware'\)/);
+  assert.match(sql, /email_raw_malware_events_no_change/);
+  assert.match(sql, /raw bytes and CRM records are intentionally not stored/);
+  assert.doesNotMatch(sql, /subject|from_address|to_recipients|text_body|html_body|stored_path|bytea/i);
 });

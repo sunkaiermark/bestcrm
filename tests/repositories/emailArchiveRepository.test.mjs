@@ -182,6 +182,36 @@ test('email archive repository creates immutable raw evidence and reuses provide
   assert.match(calls[2].sql, /FROM email_raw_messages/);
 });
 
+test('email archive repository records only UID, SHA-256, and ClamAV result for blocked raw mail', async () => {
+  const calls = [];
+  const row = {
+    id: '91', mailbox_key: 'sales@sunkaier.com', provider_mailbox: 'INBOX',
+    provider_uid_validity: '44', provider_uid: '901', sha256: 'c'.repeat(64),
+    engine: 'clamav', engine_version: '1.5.3', signature_version: '20260908',
+    verdict: 'malware', finding_code: 'Win.Trojan.Test', safe_detail: 'ClamAV detected malicious content',
+    scan_started_at: '2026-09-08T01:00:00Z', scan_completed_at: '2026-09-08T01:00:01Z',
+    created_at: '2026-09-08T01:00:02Z'
+  };
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) { calls.push({ sql: String(sql), params }); return { rows: [row] }; }
+  });
+
+  const result = await repository.createMalwareSecurityEvent({
+    mailboxKey: 'sales@sunkaier.com', providerMailbox: 'INBOX', providerUidValidity: '44',
+    providerUid: 901, sha256: 'c'.repeat(64), engine: 'clamav', engineVersion: '1.5.3',
+    signatureVersion: '20260908', verdict: 'malware', findingCode: 'Win.Trojan.Test',
+    safeDetail: 'ClamAV detected malicious content', startedAt: '2026-09-08T01:00:00Z',
+    completedAt: '2026-09-08T01:00:01Z'
+  });
+
+  assert.equal(result.created, true);
+  assert.equal(result.malwareEvent.providerUid, 901);
+  assert.equal(result.malwareEvent.sha256, 'c'.repeat(64));
+  assert.match(calls[0].sql, /INSERT INTO email_raw_malware_events/);
+  assert.doesNotMatch(calls[0].sql, /subject|from_address|text_body|stored_path/i);
+  assert.equal(calls[0].params.length, 13);
+});
+
 test('email archive repository records append-only raw, attachment, processing, and classification evidence', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({

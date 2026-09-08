@@ -73,6 +73,10 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
       count(*) FILTER (WHERE direction = 'inbound' AND raw_message_id IS NULL)::integer AS inbound_missing_raw
     FROM email_messages
   `);
+  const malwareCoverage = await queryTarget.query(`
+    SELECT count(*)::integer AS malware_security_events
+    FROM email_raw_malware_events
+  `);
   const uploadRoot = path.resolve(uploadDir);
   const indexedPaths = new Set();
   const mismatches = [];
@@ -130,6 +134,7 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
     .sort();
   const inboundMessages = Number(coverage.rows[0]?.inbound_messages || 0);
   const inboundMissingRaw = Number(coverage.rows[0]?.inbound_missing_raw || 0);
+  const malwareSecurityEvents = Number(malwareCoverage.rows[0]?.malware_security_events || 0);
   return {
     indexedRawMessages: result.rows.length,
     verifiedFiles,
@@ -140,6 +145,7 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
     rawWithoutCleanScan,
     inboundMessages,
     inboundMissingRaw,
+    malwareSecurityEvents,
     readyToEnforceRawNotNull: inboundMissingRaw === 0
       && mismatches.length === 0
       && unexpectedFiles.length === 0

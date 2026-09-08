@@ -8,7 +8,7 @@ Status: prepared locally; production deployment and mailbox backfill are not aut
 - Each accepted inbound message has one immutable `.eml` source object plus a database index and append-only scan/processing/classification evidence.
 - Inquiries and Opportunities reference the Email Center record. They do not own a second copy of the original mail.
 - High-confidence spam is scanned and classified, then discarded before any CRM raw/message/inquiry record is committed.
-- Malware or scanner failure is fail-closed: no CRM record and no mailbox checkpoint advance.
+- Whole-message malware is rejected before MIME parsing: store only its mailbox UID identity, SHA-256, and append-only ClamAV result, then advance past it without creating a raw/message/inquiry record. Scanner failure or any non-malware non-clean verdict remains fail-closed with no checkpoint advance.
 - Attachments are scanned individually before storage. No attachment is sent to an external AI service by default.
 - Historical `.eml` capture uses its own IMAP cursor. It must never reuse or reset the parsed-email cursor.
 - Raw files and evidence rows are append-only. Operational cleanup must never delete them.
@@ -37,7 +37,7 @@ Deploying the code and migrations therefore cannot start raw capture or historic
 
 1. With separate approval, install and update the host-managed ClamAV daemon/client.
 2. Keep all three raw-email flags false.
-3. Run the preflight with `BESTCRM_REQUIRE_RAW_ACTIVATION_READY=yes` after migrations 049 and 050 exist. The service account must successfully scan the deployed `package.json` through `clamdscan`.
+3. Run the preflight with `BESTCRM_REQUIRE_RAW_ACTIVATION_READY=yes` after migrations 049, 050, and 051 exist. The service account must successfully scan the deployed `package.json` through `clamdscan`.
 4. Do not store scanner output containing message content, sender addresses, subjects, or attachment names.
 
 ### Gate 3 — code and schema deployment, features still off
@@ -45,7 +45,7 @@ Deploying the code and migrations therefore cannot start raw capture or historic
 1. Verify the release ZIP SHA-256 and manifest.
 2. Create and verify a production backup.
 3. Deploy the exact commit-only release archive.
-4. Confirm migrations `049_email_raw_archive_foundation.sql` and `050_email_raw_backfill_checkpoint.sql` are present in `schema_migrations`.
+4. Confirm migrations `049_email_raw_archive_foundation.sql`, `050_email_raw_backfill_checkpoint.sql`, and `051_email_raw_malware_events.sql` are present in `schema_migrations`.
 5. Confirm the main app is healthy and all raw-email flags remain false.
 
 ### Gate 4 — incremental raw capture
@@ -88,7 +88,7 @@ If incremental capture fails, stop intake, set `EMAIL_RAW_ARCHIVE_ENABLED=false`
 
 ### Code-only rollback
 
-Use `scripts/rollback-production.sh <previous-version>` to repoint the app to the previous immutable release. Migrations 049 and 050 are additive and may remain in place while the flags are false.
+Use `scripts/rollback-production.sh <previous-version>` to repoint the app to the previous immutable release. Migrations 049, 050, and 051 are additive and may remain in place while the flags are false.
 
 ### Full data rollback
 
@@ -100,7 +100,7 @@ A full rollback replaces the database and upload tree. Preserve the current fail
 
 Stop immediately and leave backfill disabled if any of these occur:
 
-- scanner unavailable, timeout, suspicious, malware, or error verdict;
+- scanner unavailable, timeout, suspicious, or error verdict; a confirmed whole-message malware verdict follows the metadata-only skip path above;
 - database row without its `.eml`, file without an index, size mismatch, or SHA-256 mismatch;
 - backfill service active during backup;
 - raw capture enabled while attempting an online backup;

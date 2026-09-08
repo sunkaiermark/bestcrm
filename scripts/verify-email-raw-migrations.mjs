@@ -44,13 +44,37 @@ async function verify() {
     const suffix = `${Date.now()}-${process.pid}`;
     const migrations = await client.query(`
       SELECT name FROM schema_migrations
-      WHERE name IN ('049_email_raw_archive_foundation.sql', '050_email_raw_backfill_checkpoint.sql')
+      WHERE name IN (
+        '049_email_raw_archive_foundation.sql',
+        '050_email_raw_backfill_checkpoint.sql',
+        '051_email_raw_malware_events.sql'
+      )
       ORDER BY name
     `);
     assert.deepEqual(migrations.rows.map((row) => row.name), [
       '049_email_raw_archive_foundation.sql',
-      '050_email_raw_backfill_checkpoint.sql'
+      '050_email_raw_backfill_checkpoint.sql',
+      '051_email_raw_malware_events.sql'
     ]);
+
+    const malwareEvent = await client.query(`
+      INSERT INTO email_raw_malware_events (
+        mailbox_key, provider_mailbox, provider_uid_validity, provider_uid, sha256,
+        engine, engine_version, signature_version, verdict, finding_code, safe_detail,
+        scan_started_at, scan_completed_at
+      ) VALUES (
+        'sales@sunkaier.com', 'INBOX', '44', 6999, repeat('c', 64),
+        'clamav', '1.5.3', '20260908', 'malware', 'Win.Trojan.Test',
+        'ClamAV detected malicious content', now(), now()
+      ) RETURNING id
+    `);
+    await expectBlocked(client, 'malware_event_update_blocked', () => client.query(
+      "UPDATE email_raw_malware_events SET finding_code = 'changed' WHERE id = $1",
+      [malwareEvent.rows[0].id]
+    ), /immutable and append-only/i);
+    await expectBlocked(client, 'malware_event_delete_blocked', () => client.query(
+      'DELETE FROM email_raw_malware_events WHERE id = $1', [malwareEvent.rows[0].id]
+    ), /immutable and append-only/i);
 
     const thread = await client.query(`
       INSERT INTO email_threads (mailbox_key, subject, normalized_subject, last_message_at)
@@ -162,6 +186,7 @@ async function verify() {
       cleanRawScans: 2,
       cleanAttachmentScans: 1,
       classificationEvents: 1,
+      malwareSecurityEvents: 1,
       legacyBindingsVerified: 1,
       independentRawCursorVerified: true
     }, null, 2));
