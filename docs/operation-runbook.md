@@ -185,7 +185,11 @@ sudo -n systemctl enable --now bestcrm-email-backfill.service
 The backfill unit uses a persisted IMAP history cursor, imports at most 50
 messages per batch, waits for `EMAIL_INTAKE_POLL_INTERVAL_MS` between batches,
 and resumes after a failure. It exits successfully when history is complete.
-The incremental intake worker continues from its independent cursor.
+The incremental intake worker continues from its independent cursor. The
+backfill unit deliberately uses `PrivateTmp=false` because `clamdscan --fdpass`
+must pass each restricted staging-file descriptor to the host ClamAV daemon;
+do not restore `PrivateTmp=true` without replacing and verifying that scanner
+transport.
 
 浏览器访问：
 

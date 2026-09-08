@@ -13,6 +13,8 @@ test('email backfill service installer is restartable and does not auto-start', 
   assert.match(source, /Restart=on-failure/);
   assert.match(source, /RestartSec=300/);
   assert.match(source, /StartLimitBurst=3/);
+  assert.match(source, /PrivateTmp=false/);
+  assert.doesNotMatch(source, /PrivateTmp=true/);
   assert.match(source, /The unit was not enabled or started/);
   assert.doesNotMatch(source, /systemctl (?:enable|start|restart) bestcrm-email-backfill/);
 });

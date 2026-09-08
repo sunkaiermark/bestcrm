@@ -47,7 +47,10 @@ RestartSec=300
 User=${SERVICE_USER}
 Group=${SERVICE_GROUP}
 NoNewPrivileges=true
-PrivateTmp=true
+# clamdscan --fdpass hands an open file descriptor to the host clamav-daemon.
+# A private /tmp namespace makes ClamAV 1.5 reject that descriptor as a
+# non-regular file, so this worker must share the host temporary namespace.
+PrivateTmp=false
 
 [Install]
 WantedBy=multi-user.target
