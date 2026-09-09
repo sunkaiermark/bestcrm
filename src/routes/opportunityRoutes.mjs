@@ -140,7 +140,6 @@ const commercialQuoteDeleteStatuses = new Set([
 ]);
 
 const contractDeleteStatuses = new Set([
-  STATUSES.CUSTOMER_NEGOTIATION,
   STATUSES.WON_CONTRACT_PENDING,
   STATUSES.CONTRACT_REJECTED
 ]);
@@ -182,6 +181,18 @@ async function loadUsersByRole(userRepository) {
     return [role, await userRepository.listUsersByRole(role)];
   }));
   return Object.fromEntries(entries);
+}
+
+async function loadOpportunityCorrespondence(emailArchiveRepository, opportunityId) {
+  if (emailArchiveRepository?.supportsEmailArchive !== true
+      || typeof emailArchiveRepository.listThreadsByOpportunity !== 'function'
+      || typeof emailArchiveRepository.getThreadDetail !== 'function') {
+    return [];
+  }
+  const threads = await emailArchiveRepository.listThreadsByOpportunity(opportunityId);
+  return Promise.all(threads.map(async (thread) => (
+    await emailArchiveRepository.getThreadDetail(thread.id) || { ...thread, messages: [] }
+  )));
 }
 
 function userSelectField(name, label, users, value = null) {
@@ -285,7 +296,10 @@ function formForAction(action, usersByRole, opportunity = {}) {
         action,
         title: 'Reject Technical Solution',
         button: 'Reject',
-        fields: [textareaField('reason', 'Reason')]
+        fields: [
+          textareaField('reason', 'Reason'),
+          textareaField('improvement', 'Improvement Required')
+        ]
       };
     case ACTIONS.SUBMIT_COMMERCIAL_QUOTE:
       return {
@@ -637,11 +651,12 @@ function canUploadAttachment(user, opportunity, category) {
     case 'other':
       return isSalesOwner;
     case 'technical_solution':
-      return isQuotationEngineer || isSupportingTechnicalEngineer;
+      return technicalSolutionDeleteStatuses.has(opportunity.status)
+        && (isQuotationEngineer || isSupportingTechnicalEngineer);
     case 'commercial_quote':
-      return isSalesOwner || isQuotationEngineer;
+      return commercialQuoteDeleteStatuses.has(opportunity.status) && isQuotationEngineer;
     case 'contract':
-      return isSalesOwner;
+      return contractDeleteStatuses.has(opportunity.status) && isSalesOwner;
     default:
       return false;
   }
@@ -656,6 +671,10 @@ function uploadPermissionsFor(user, opportunity) {
 
 function requiredText(value) {
   return String(value || '').trim();
+}
+
+function normalizedRequirementText(value) {
+  return requiredText(value).replace(/\s+/g, ' ').toLowerCase();
 }
 
 function requiredPositiveInteger(value) {
@@ -699,6 +718,8 @@ export function opportunityRoutes({
   customerRepository,
   contactRepository,
   attachmentRepository,
+  emailArchiveRepository,
+  emailCenterEnabled = false,
   commercialQuoteRepository,
   technicalSolutionRepository,
   opportunityTechnicalDraftRepository,
@@ -928,7 +949,8 @@ export function opportunityRoutes({
         engineeringContributions,
         ownerTransfers,
         responsibilityUsers,
-        quotationPackages
+        quotationPackages,
+        correspondenceThreads
       ] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
@@ -968,7 +990,8 @@ export function opportunityRoutes({
         canManageResponsibility || canManageEngineeringTeam ? listResponsibilityUsers(userRepository) : [],
         quotationPackageRepository?.supportsQuotationPackages === true
           ? quotationPackageRepository.listByOpportunity(opportunity.id)
-          : []
+          : [],
+        emailCenterEnabled ? loadOpportunityCorrespondence(emailArchiveRepository, opportunity.id) : []
       ]);
       const workflowForms = buildWorkflowForms(
         req.currentUser,
@@ -992,6 +1015,7 @@ export function opportunityRoutes({
         technicalSolutions,
         commercialQuotes,
         quotationPackages,
+        correspondenceThreads,
         materialVersions,
         versionedTechnicalDraftsEnabled: opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true,
         canManageResponsibility,
@@ -1014,6 +1038,7 @@ export function opportunityRoutes({
         teamMemberEvents,
         engineeringContributions,
         canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity),
+        requirementSaveState: req.query.requirement === 'duplicate' ? 'duplicate' : '',
         canUploadAttachments: uploadPermissionsFor(req.currentUser, opportunity),
         canEditOpportunity: canEditOpportunity(req.currentUser, opportunity),
         canArchiveOpportunity: canArchiveOpportunity(req.currentUser, opportunity),
@@ -1216,6 +1241,17 @@ export function opportunityRoutes({
       const reason = requiredText(req.body.reason);
       if (!requirementText || !reason) {
         res.status(400).send('Requirement update and reason are required');
+        return;
+      }
+      const existingRequirementUpdates = typeof requirementUpdateRepository?.listByOpportunity === 'function'
+        ? await requirementUpdateRepository.listByOpportunity(opportunity.id)
+        : [];
+      const duplicateRequirement = [
+        opportunity.requirement,
+        ...existingRequirementUpdates.map((update) => update.requirementText)
+      ].some((existingText) => normalizedRequirementText(existingText) === normalizedRequirementText(requirementText));
+      if (duplicateRequirement) {
+        res.redirect(`/opportunities/${opportunity.id}?requirement=duplicate#requirement-materials`);
         return;
       }
       if (preSubmissionRequirementUpdateStatuses.has(opportunity.status)) {

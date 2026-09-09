@@ -803,7 +803,7 @@ test('technical manager rejection marks latest pending technical solution versio
     actor: { id: 4, roles: [ROLES.TECHNICAL_MANAGER] },
     opportunityId: 10,
     action: ACTIONS.REJECT_TECHNICAL_SOLUTION,
-    payload: { reason: 'revise calculation' },
+    payload: { reason: 'revise calculation', improvement: 'Recheck pump head and motor power' },
     repositories
   });
 
@@ -815,14 +815,14 @@ test('technical manager rejection marks latest pending technical solution versio
       opportunityId: 10,
       status: 'rejected',
       reviewedBy: 4,
-      reviewComment: 'revise calculation'
+      reviewComment: 'revise calculation\nImprovement required: Recheck pump head and motor power'
     }],
     ['findLatestMaterialVersion', 10, 'technical_solution'],
     ['reviewMaterialVersion', {
       versionId: 300,
       status: 'rejected',
       reviewedBy: 4,
-      reviewComment: 'revise calculation'
+      reviewComment: 'revise calculation\nImprovement required: Recheck pump head and motor power'
     }],
     ['createEvent', {
       opportunityId: 10,
@@ -831,7 +831,7 @@ test('technical manager rejection marks latest pending technical solution versio
       toStatus: STATUSES.TECHNICAL_SOLUTION_REJECTED,
       actorUserId: 4,
       targetUserId: 3,
-      comment: 'revise calculation'
+      comment: 'revise calculation\nImprovement required: Recheck pump head and motor power'
     }],
     ['closeTodos', 10, 'completed'],
     ['createTodo', { opportunityId: 10, assigneeUserId: 3, title: 'Revise technical solution' }]
@@ -1115,7 +1115,7 @@ test('commercial manager approval marks latest pending commercial quote version 
       comment: 'approved'
     }],
     ['closeTodos', 10, 'completed'],
-    ['createTodo', { opportunityId: 10, assigneeUserId: 1, title: 'Record customer result' }]
+    ['createTodo', { opportunityId: 10, assigneeUserId: 1, title: 'Send approved quote to customer' }]
   ]);
 });
 

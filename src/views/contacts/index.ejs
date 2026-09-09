@@ -27,7 +27,8 @@
                 <tr>
                   <th scope="col"><%= t('contactCode') %></th>
                   <th scope="col"><%= t('name') %></th>
-                  <th scope="col"><%= t('customer') %></th>
+                  <th scope="col"><%= t('customerCode') %></th>
+                  <th scope="col"><%= t('customerName') %></th>
                   <th scope="col"><%= t('title') %></th>
                   <th scope="col"><%= t('phone') %></th>
                   <th scope="col"><%= t('email') %></th>
@@ -38,7 +39,8 @@
                   <tr>
                     <td data-label="<%= t('contactCode') %>"><a href="/contacts/<%= contact.id %>"><%= contact.contactCode %></a></td>
                     <td data-label="<%= t('name') %>"><a href="/contacts/<%= contact.id %>"><%= contact.name %></a></td>
-                    <td data-label="<%= t('customer') %>"><a href="/customers/<%= contact.customerId %>" title="<%= [contact.customerCode, contact.customerName].filter(Boolean).join(' · ') %>"><%= [contact.customerCode, contact.customerName].filter(Boolean).join(' · ') %></a></td>
+                    <td data-label="<%= t('customerCode') %>"><a href="/customers/<%= contact.customerId %>"><%= contact.customerCode %></a></td>
+                    <td data-label="<%= t('customerName') %>"><a href="/customers/<%= contact.customerId %>" title="<%= contact.customerName %>"><%= contact.customerName %></a></td>
                     <td data-label="<%= t('title') %>"><%= contact.title %></td>
                     <td data-label="<%= t('phone') %>"><%= contact.phone %></td>
                     <td data-label="<%= t('email') %>"><%= contact.email %></td>

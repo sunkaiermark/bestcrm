@@ -196,7 +196,7 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(list.text, /<th scope="col">Customer Code<\/th>/);
   assert.match(list.text, /data-label="Customer Code"/);
   assert.match(list.text, /\.customer-list-table\s*\{[\s\S]*min-width:\s*1080px;/);
-  assert.match(list.text, /\.customer-list-table th:nth-child\(2\),[\s\S]*?\.customer-list-table td:nth-child\(2\),[\s\S]*?\.contact-list-table td:nth-child\(6\)\s*\{[^}]*text-align:\s*left;/);
+  assert.match(list.text, /\.customer-list-table tbody td:nth-child\(2\),[\s\S]*?\.contact-list-table tbody td:nth-child\(7\)\s*\{[^}]*text-align:\s*left;/);
   assert.match(list.text, /\.record-list-table thead th\s*\{[\s\S]*position:\s*sticky;[\s\S]*text-transform:\s*none;/);
   assert.match(list.text, /\.record-list-table tbody td::before\s*\{[\s\S]*content:\s*attr\(data-label\);/);
 
@@ -244,10 +244,12 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.doesNotMatch(customerHeaderHtml, /href="\/opportunities\/new\?customerId=10"/);
   const customerDetailHtml = detail.text.match(/<h2>Customer detail<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(customerDetailHtml, /class="basic-info-grid"/);
-  assert.match(customerDetailHtml, /<th scope="row">Customer Code<\/th>\s*<td>C000010<\/td>/);
-  assert.equal((customerDetailHtml.match(/<table class="detail-table">/g) || []).length, 2);
-  assert.equal((customerDetailHtml.match(/<table class="detail-table detail-table-wide">/g) || []).length, 3);
-  assert.match(detail.text, /\.detail-table-wide\s*\{[\s\S]*grid-column:\s*1 \/ -1;/);
+  assert.match(customerDetailHtml, /<table class="detail-table basic-info-table customer-detail-table">/);
+  assert.equal((customerDetailHtml.match(/<table class="detail-table basic-info-table customer-detail-table">/g) || []).length, 1);
+  assert.equal((customerDetailHtml.match(/class="customer-detail-label-column"/g) || []).length, 2);
+  assert.match(customerDetailHtml, /<th scope="row">Customer Code<\/th>\s*<td title="C000010">C000010<\/td>\s*<th scope="row">Industry<\/th>/);
+  assert.match(detail.text, /\.customer-detail-table \.customer-detail-label-column\s*\{[\s\S]*width:\s*210px;/);
+  assert.match(detail.text, /\.customer-detail-table td\s*\{[\s\S]*text-overflow:\s*ellipsis;[\s\S]*white-space:\s*nowrap;/);
   assert.match(customerDetailHtml, /<th scope="row">Industry<\/th>/);
   assert.match(customerDetailHtml, /<th scope="row">Company Website<\/th>/);
   assert.match(customerDetailHtml, /href="https:\/\/www\.acme\.example"/);
@@ -259,17 +261,23 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(customerDetailHtml, /<th scope="row">Country<\/th>/);
   assert.match(customerDetailHtml, /China/);
   assert.match(customerDetailHtml, /<th scope="row">Address<\/th>/);
-  assert.match(customerDetailHtml, /<th scope="row">Company Highlights<\/th>/);
+  assert.equal((customerDetailHtml.match(/<tr class="customer-detail-long-row">/g) || []).length, 2);
+  assert.match(customerDetailHtml, /<tr class="customer-detail-long-row">\s*<th scope="row">Company Highlights<\/th>\s*<td colspan="3"[^>]*>/);
+  assert.match(customerDetailHtml, /<tr class="customer-detail-long-row">\s*<th scope="row">Customer Outline<\/th>\s*<td colspan="3"[^>]*>/);
   assert.match(customerDetailHtml, /Regional leader in precision assembly/);
   const customerContactsHtml = detail.text.match(/<h2>Contacts<\/h2>[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(customerContactsHtml, /href="\/contacts\/new\?customerId=10"/);
-  assert.match(customerContactsHtml, /<table class="list-table content-fit-table">/);
-  assert.match(customerContactsHtml, /<th>Contact Code<\/th>/);
+  assert.match(customerContactsHtml, /class="customer-contact-table-wrap"/);
+  assert.match(customerContactsHtml, /<table class="list-table content-fit-table customer-contact-table">/);
+  assert.match(customerContactsHtml, /<th scope="col">Contact Code<\/th>/);
   assert.match(customerContactsHtml, /href="\/contacts\/20">CT000020<\/a>/);
-  assert.match(customerContactsHtml, /<th>Name<\/th>/);
-  assert.match(customerContactsHtml, /<th>Title<\/th>/);
-  assert.match(customerContactsHtml, /<th>Phone<\/th>/);
-  assert.match(customerContactsHtml, /<th>Email<\/th>/);
+  assert.match(customerContactsHtml, /<th scope="col">Name<\/th>/);
+  assert.match(customerContactsHtml, /<th scope="col">Title<\/th>/);
+  assert.match(customerContactsHtml, /<th scope="col">Phone<\/th>/);
+  assert.match(customerContactsHtml, /<th scope="col">Email<\/th>/);
+  assert.match(detail.text, /\.customer-contact-table thead th\s*\{[\s\S]*font-weight:\s*400;[\s\S]*text-align:\s*center;[\s\S]*text-transform:\s*none;/);
+  assert.match(detail.text, /\.customer-contact-table th,[\s\S]*\.customer-contact-table td\s*\{[\s\S]*border-right:\s*1px solid #d7e0e7;[\s\S]*text-align:\s*center;/);
+  assert.match(detail.text, /\.customer-contact-table th:nth-child\(1\),[\s\S]*?width:\s*15%;[\s\S]*?\.customer-contact-table th:nth-child\(5\),[\s\S]*?width:\s*26%;/);
   assert.match(customerContactsHtml, /href="\/contacts\/20"/);
   assert.doesNotMatch(customerContactsHtml, /<th>Actions<\/th>/);
   assert.doesNotMatch(customerContactsHtml, /New opportunity/);
@@ -307,13 +315,18 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.match(list.text, /Contact Code/);
   assert.match(list.text, /CT000020/);
   assert.match(list.text, /Alice/);
-  assert.match(list.text, /C000010 · Acme Co/);
+  assert.match(list.text, /<th scope="col">Customer Code<\/th>/);
+  assert.match(list.text, /<th scope="col">Customer Name<\/th>/);
+  assert.match(list.text, /data-label="Customer Code"><a href="\/customers\/10">C000010<\/a>/);
+  assert.match(list.text, /data-label="Customer Name"><a href="\/customers\/10" title="Acme Co">Acme Co<\/a>/);
   assert.match(list.text, /class="list-body record-list-body contact-list-body" tabindex="0"/);
   assert.match(list.text, /<table class="list-table record-list-table contact-list-table">/);
   assert.match(list.text, /<th scope="col">Contact Code<\/th>/);
   assert.match(list.text, /data-label="Contact Code"/);
-  assert.match(list.text, /\.contact-list-table\s*\{[\s\S]*min-width:\s*1300px;/);
-  assert.match(list.text, /\.contact-list-table th:nth-child\(2\),[\s\S]*?\.contact-list-table td:nth-child\(6\)\s*\{[^}]*text-align:\s*left;/);
+  assert.match(list.text, /\.contact-list-table\s*\{[\s\S]*min-width:\s*1400px;/);
+  assert.match(list.text, /\.contact-list-table thead th\s*\{[\s\S]*font-weight:\s*400;[\s\S]*text-align:\s*center;/);
+  assert.match(list.text, /\.contact-list-table tbody td:nth-child\(2\),[\s\S]*?\.contact-list-table tbody td:nth-child\(7\)\s*\{[^}]*text-align:\s*left;/);
+  assert.match(list.text, /\.record-list-table thead th\s*\{[\s\S]*text-transform:\s*none;/);
 
   const form = await agent.get('/contacts/new');
   assert.equal(form.status, 200);
@@ -402,7 +415,7 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.match(customerDetail.text, />\u5730\u5740<\/th>/);
   assert.match(customerDetail.text, />\u5ba2\u6237\u6982\u8981<\/th>/);
   assert.match(customerDetail.text, />\u8054\u7cfb\u4eba<\/h2>/);
-  assert.match(customerDetail.text, /<th>\u8054\u7cfb\u4eba\u4ee3\u7801<\/th>/);
+  assert.match(customerDetail.text, /<th scope="col">\u8054\u7cfb\u4eba\u4ee3\u7801<\/th>/);
 
   const contacts = await agent.get('/contacts');
   assert.equal(contacts.status, 200);
@@ -411,6 +424,8 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.match(contacts.text, />\s*\u5f52\u6863\s*<select name="archiveScope">/);
   assert.match(contacts.text, /<option value="active" selected>\u6b63\u5e38\u8bb0\u5f55<\/option>/);
   assert.match(contacts.text, /<th scope="col">\u8054\u7cfb\u4eba\u4ee3\u7801<\/th>/);
+  assert.match(contacts.text, /<th scope="col">\u5ba2\u6237\u4ee3\u7801<\/th>/);
+  assert.match(contacts.text, /<th scope="col">\u5ba2\u6237\u540d\u79f0<\/th>/);
   assert.match(contacts.text, /\u6309\u8054\u7cfb\u4eba\u4ee3\u7801\u3001\u59d3\u540d\u3001\u5ba2\u6237\u3001\u90ae\u7bb1\u3001\u7535\u8bdd\u6216\u5fae\u4fe1\u67e5\u8be2/);
   assert.match(contacts.text, /<th scope="col">\u804c\u52a1<\/th>/);
 

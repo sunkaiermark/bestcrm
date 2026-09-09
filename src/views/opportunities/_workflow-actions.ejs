@@ -1,0 +1,40 @@
+<% if (Array.isArray(forms) && forms.length > 0) { %>
+  <div class="workflow-action-list stage-workflow-actions">
+    <% for (const workflowForm of forms) { %>
+      <section class="action-section workflow-action-row">
+        <h3><%= workflowForm.title %></h3>
+        <div class="section-body workflow-action-content">
+          <% if (workflowForm.missingRequirements && workflowForm.missingRequirements.length > 0) { %>
+            <ul class="inline-list">
+              <% for (const requirement of workflowForm.missingRequirements) { %>
+                <li><%= requirement %></li>
+              <% } %>
+            </ul>
+          <% } %>
+          <form class="form-panel workflow-action-form" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+            <%- csrfField() %>
+            <input type="hidden" name="action" value="<%= workflowForm.action %>">
+            <% for (const field of workflowForm.fields) { %>
+              <label>
+                <%= field.label %>
+                <% if (field.type === 'userSelect') { %>
+                  <select name="<%= field.name %>" required>
+                    <option value=""></option>
+                    <% for (const user of field.users) { %>
+                      <option value="<%= user.id %>" <%= Number(field.value) === Number(user.id) ? 'selected' : '' %>><%= user.displayName %></option>
+                    <% } %>
+                  </select>
+                <% } else if (field.type === 'textarea') { %>
+                  <textarea name="<%= field.name %>" <%= field.required ? 'required' : '' %>></textarea>
+                <% } else { %>
+                  <input name="<%= field.name %>" type="<%= field.inputType %>" <%= field.required ? 'required' : '' %>>
+                <% } %>
+              </label>
+            <% } %>
+            <button type="submit" <%= workflowForm.blocked ? 'disabled' : '' %>><%= workflowForm.button %></button>
+          </form>
+        </div>
+      </section>
+    <% } %>
+  </div>
+<% } %>

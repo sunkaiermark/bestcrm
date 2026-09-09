@@ -80,6 +80,8 @@
       key: `solution-${solution.id}`,
       type: 'Text',
       text: solution.summary,
+      versionNo: solution.versionNo,
+      versionStatus: solution.status,
       at: solution.submittedAt,
       sortAt: requirementTimelineSortValue(solution.submittedAt)
     })),
@@ -89,6 +91,8 @@
         key: `solution-review-${solution.id}`,
         type: 'Text',
         text: solution.reviewComment,
+        versionNo: solution.versionNo,
+        versionStatus: solution.status,
         at: solution.reviewedAt,
         sortAt: requirementTimelineSortValue(solution.reviewedAt)
       })),
@@ -106,7 +110,6 @@
     }
     return String(left.key).localeCompare(String(right.key));
   });
-  const commercialQuoteVersions = typeof commercialQuotes === 'undefined' ? [] : commercialQuotes;
   const commercialQuoteTimeline = [
     ...commercialQuoteAttachments.map((attachment) => ({
       key: `commercial-quote-file-${attachment.id}`,
@@ -138,12 +141,7 @@
     return String(left.key).localeCompare(String(right.key));
   });
   const materialApprovalVersions = typeof materialVersions === 'undefined' ? [] : materialVersions;
-  const materialVersionsFor = (materialType) => materialApprovalVersions
-    .filter((version) => version.materialType === materialType)
-    .sort((left, right) => Number(left.versionNo || 0) - Number(right.versionNo || 0));
-  const technicalMaterialVersions = materialVersionsFor('technical_solution');
-  const commercialQuoteMaterialVersions = materialVersionsFor('commercial_quote');
-  const contractMaterialVersions = materialVersionsFor('contract');
+  const materialVersionById = new Map(materialApprovalVersions.map((version) => [Number(version.id), version]));
   const materialVersionStatusClass = (status) => String(status || 'draft').replace(/[^a-z0-9_-]/gi, '-').toLowerCase();
   const opportunityTeamMembers = typeof teamMembers === 'undefined' ? [] : teamMembers;
   const supportingEngineers = opportunityTeamMembers.filter((member) => member.roleCode === 'quotation_engineer');
@@ -168,7 +166,25 @@
   const technicalSubmitWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_technical_solution');
   const commercialQuoteWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_commercial_quote');
   const contractApprovalWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_contract_approval');
-  const remainingWorkflowForms = allWorkflowForms.filter((workflowForm) => workflowForm.action !== 'submit_initiation' && workflowForm.action !== 'submit_technical_solution' && workflowForm.action !== 'submit_commercial_quote' && workflowForm.action !== 'submit_contract_approval');
+  const requirementWorkflowForms = allWorkflowForms.filter((workflowForm) => ['withdraw_initiation', 'approve_initiation', 'reject_initiation'].includes(workflowForm.action));
+  const technicalWorkflowForms = allWorkflowForms.filter((workflowForm) => ['change_quotation_engineer', 'withdraw_technical_solution', 'approve_technical_solution', 'reject_technical_solution'].includes(workflowForm.action));
+  const commercialWorkflowForms = allWorkflowForms.filter((workflowForm) => ['withdraw_commercial_quote', 'approve_commercial_quote', 'reject_commercial_quote', 'mark_won', 'mark_lost'].includes(workflowForm.action));
+  const contractWorkflowForms = allWorkflowForms.filter((workflowForm) => ['withdraw_contract_approval', 'approve_contract', 'reject_contract'].includes(workflowForm.action));
+  const technicalStartedStatuses = new Set([
+    'technical_solution_in_progress', 'technical_solution_pending', 'technical_solution_rejected',
+    'commercial_quote_in_progress', 'commercial_quote_pending', 'commercial_quote_rejected',
+    'customer_negotiation', 'lost_archived', 'won_contract_pending',
+    'contract_approval_in_progress', 'contract_rejected', 'contract_archived'
+  ]);
+  const commercialStartedStatuses = new Set([
+    'commercial_quote_in_progress', 'commercial_quote_pending', 'commercial_quote_rejected',
+    'customer_negotiation', 'lost_archived', 'won_contract_pending',
+    'contract_approval_in_progress', 'contract_rejected', 'contract_archived'
+  ]);
+  const contractStartedStatuses = new Set(['won_contract_pending', 'contract_approval_in_progress', 'contract_rejected', 'contract_archived']);
+  const technicalStarted = technicalStartedStatuses.has(opportunity.status);
+  const commercialStarted = commercialStartedStatuses.has(opportunity.status);
+  const contractStarted = contractStartedStatuses.has(opportunity.status);
   const canDeleteTechnicalSolutionAttachments = technicalSolutionDeleteStatuses.includes(opportunity.status);
   const canDeleteCommercialQuoteAttachments = ['commercial_quote_in_progress', 'commercial_quote_rejected'].includes(opportunity.status);
   const canDeleteContractAttachments = ['customer_negotiation', 'won_contract_pending', 'contract_rejected'].includes(opportunity.status);
@@ -184,18 +200,30 @@
     }
     return t('contractApprovalPrerequisite');
   })();
+  const showResponsibility = canManageOpportunityResponsibility
+    || canManageOpportunityEngineeringTeam
+    || signedInUserIsSupportingEngineer
+    || Number(signedInUserId) === Number(opportunity.quotationEngineerId);
+  const correspondence = (typeof correspondenceThreads === 'undefined' ? [] : correspondenceThreads)
+    .flatMap((thread) => (thread.messages || []).map((message) => ({
+      ...message,
+      threadId: thread.id,
+      threadSubject: thread.subject,
+      occurredAt: message.receivedAt || message.sentAt || message.createdAt
+    })))
+    .sort((left, right) => requirementTimelineSortValue(right.occurredAt).localeCompare(requirementTimelineSortValue(left.occurredAt)));
 %>
         <p class="breadcrumb"><a href="/opportunities"><%= t('opportunities') %></a></p>
-        <header class="page-header">
-          <div>
+        <header class="page-header opportunity-detail-header">
+          <div class="opportunity-detail-heading">
             <h1><%= opportunity.title %></h1>
-            <div class="user-line"><%= opportunity.opportunityNo %> - <%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %></div>
+            <div class="user-line"><%= opportunity.opportunityNo %></div>
           </div>
-          <div class="page-actions">
-            <a class="secondary-action" href="/opportunities"><%= t('backToList') %></a>
-            <% if (customerEmailSendingEnabled) { %><a class="secondary-action" href="/email-center/compose?opportunityId=<%= opportunity.id %>"><%= t('composeCustomerEmail') %></a><% } %>
-            <% if (typeof bidCenterEnabled !== 'undefined' && bidCenterEnabled) { %><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/bid-workspace"><%= t('createOrOpenBidWorkspace') %></a><% } %>
-            <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('projectTechnicalDrafts') %></a>
+          <div class="page-actions opportunity-detail-actions">
+            <a class="secondary-action" href="/opportunities" title="<%= t('backToList') %>" aria-label="<%= t('backToList') %>"><span aria-hidden="true">←</span> <%= t('backShort') %></a>
+            <% if (customerEmailSendingEnabled) { %><a class="secondary-action" href="/email-center/compose?opportunityId=<%= opportunity.id %>" title="<%= t('composeCustomerEmail') %>" aria-label="<%= t('composeCustomerEmail') %>"><span aria-hidden="true">✉</span> <%= t('emailShort') %></a><% } %>
+            <% if (typeof bidCenterEnabled !== 'undefined' && bidCenterEnabled) { %><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/bid-workspace" title="<%= t('createOrOpenBidWorkspace') %>" aria-label="<%= t('createOrOpenBidWorkspace') %>"><%= t('biddingShort') %></a><% } %>
+            <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-drafts" title="<%= t('projectTechnicalDrafts') %>" aria-label="<%= t('projectTechnicalDrafts') %>"><%= t('technicalShort') %></a>
             <% if (typeof canEditOpportunity !== 'undefined' && canEditOpportunity) { %>
               <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit"><%= t('edit') %></a>
             <% } %>
@@ -270,6 +298,42 @@
             </div>
           </section>
 
+          <% if (correspondence.length > 0) { %>
+            <section class="content-section business-section business-section-correspondence">
+              <h2><span><%= t('correspondence') %></span><span class="section-heading-meta"><%= correspondence.length %> <%= t('messages') %></span></h2>
+              <div class="section-body correspondence-timeline">
+                <% for (const message of correspondence) { const recipients = (message.toRecipients || []).map((recipient) => recipient.name ? `${recipient.name} <${recipient.address}>` : recipient.address).join(', '); %>
+                  <details class="correspondence-item">
+                    <summary>
+                      <time><%= formatShortDate(message.occurredAt) %></time>
+                      <span class="correspondence-marker" aria-hidden="true"></span>
+                      <span class="correspondence-summary-main">
+                        <strong><%= message.subject || message.threadSubject || t('noSubject') %></strong>
+                        <span class="muted"><%= message.fromAddress %><% if (recipients) { %> → <%= recipients %><% } %></span>
+                      </span>
+                      <span class="correspondence-direction"><%= message.direction === 'outbound' ? `→ ${t('outgoing')}` : `← ${t('incoming')}` %></span>
+                    </summary>
+                    <div class="correspondence-content">
+                      <pre><%= message.textBody %></pre>
+                      <% if (message.attachments && message.attachments.length > 0) { %>
+                        <div class="correspondence-attachments">
+                          <% for (const attachment of message.attachments) { %>
+                            <a href="/email-center/attachments/<%= attachment.id %>/download"><%= attachment.originalName %></a>
+                          <% } %>
+                        </div>
+                      <% } %>
+                      <div class="inline-actions correspondence-actions">
+                        <a href="/email-center/threads/<%= message.threadId %>"><%= t('openEmailThread') %></a>
+                        <% if (customerEmailSendingEnabled) { %><a href="/email-center/compose?threadId=<%= message.threadId %>"><%= t('reply') %></a><% } %>
+                      </div>
+                    </div>
+                  </details>
+                <% } %>
+              </div>
+            </section>
+          <% } %>
+
+          <% if (showResponsibility) { %>
           <section class="content-section business-section-responsibility">
             <h2><%= t('responsibility') %></h2>
             <div class="section-body">
@@ -278,7 +342,7 @@
                   <div class="responsibility-block responsibility-block-lead">
                     <h3><%= t('projectLeadEngineer') %></h3>
                     <div class="responsibility-content">
-                      <p><strong><%= projectLeadEngineerName %></strong></p>
+                      <p><%= projectLeadEngineerName %></p>
                     </div>
                   </div>
                   <div class="responsibility-block responsibility-block-supporting">
@@ -516,31 +580,77 @@
               </div>
             </div>
           </section>
+          <% } %>
 
-          <section class="content-section business-section business-section-requirement">
-            <h2><%= t('requirementMaterials') %></h2>
+          <section class="content-section business-section business-section-requirement" id="requirement-materials">
+            <h2>1 · <%= t('requirementMaterials') %></h2>
             <div class="section-body">
-              <% if (canAddRequirementUpdate) { %>
-                <form class="form-panel requirement-input-panel" method="post" action="/opportunities/<%= opportunity.id %>/requirement-updates">
-                  <%- csrfField() %>
-                  <label>
-                    <%= t('requirementDescription') %>
-                    <textarea name="requirementText" required></textarea>
-                  </label>
-                  <input type="hidden" name="reason" value="<%= t('customerRequirementUpdateReason') %>">
-                  <div class="requirement-input-actions">
-                    <button type="submit"><%= t('save') %></button>
-                  </div>
-                </form>
-              <% } %>
-              <% if (uploadPermissions.requirement) { %>
-                <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
-                  <%- csrfField() %>
-                  <input type="hidden" name="category" value="requirement">
-                  <input type="file" name="attachment" required>
-                  <button type="submit"><%= t('upload') %></button>
-                </form>
-              <% } %>
+              <div class="requirement-source-stack">
+                <section class="requirement-source-block">
+                  <h3>1 · <%= t('requirementText') %></h3>
+                  <% if (canAddRequirementUpdate) { %>
+                    <form class="requirement-input-panel" method="post" action="/opportunities/<%= opportunity.id %>/requirement-updates">
+                      <%- csrfField() %>
+                      <label class="visually-hidden" for="requirement-text-<%= opportunity.id %>"><%= t('requirementText') %></label>
+                      <textarea id="requirement-text-<%= opportunity.id %>" name="requirementText" required></textarea>
+                      <input type="hidden" name="reason" value="<%= t('customerRequirementUpdateReason') %>">
+                      <div class="requirement-input-actions">
+                        <button type="submit"><%= t('save') %></button>
+                      </div>
+                      <% if (typeof requirementSaveState !== 'undefined' && requirementSaveState === 'duplicate') { %><p class="duplicate-save-note"><%= t('duplicateRequirementBlocked') %></p><% } %>
+                    </form>
+                  <% } %>
+                  <% for (const item of requirementTimeline.filter((entry) => !entry.attachment)) { %>
+                    <article class="requirement-row requirement-row-text">
+                      <span class="requirement-row-time"><%= item.at ? formatShortDate(item.at) : item.timeLabel %></span>
+                      <span class="requirement-row-content"><%= item.text %></span>
+                    </article>
+                  <% } %>
+                </section>
+
+                <section class="requirement-source-block">
+                  <h3>2 · <%= t('linkedEmail') %></h3>
+                  <% if (typeof correspondenceThreads !== 'undefined' && correspondenceThreads.length > 0) { %>
+                    <% for (const thread of correspondenceThreads) { %>
+                      <article class="requirement-row requirement-row-email">
+                        <span class="requirement-row-time"><%= formatShortDate(thread.lastMessageAt) %></span>
+                        <span class="requirement-row-content"><%= thread.subject || t('noSubject') %></span>
+                        <a class="requirement-action-preview" href="/email-center/threads/<%= thread.id %>"><%= t('openEmailThread') %></a>
+                      </article>
+                    <% } %>
+                  <% } else { %>
+                    <p class="empty"><%= t('noLinkedEmail') %></p>
+                  <% } %>
+                </section>
+
+                <section class="requirement-source-block">
+                  <h3>3 · <%= t('uploadedFiles') %></h3>
+                  <% for (const item of requirementTimeline.filter((entry) => entry.attachment)) { %>
+                    <article class="requirement-row requirement-row-file">
+                      <span class="requirement-row-time"><%= formatShortDate(item.at) %></span>
+                      <span class="requirement-row-content"><%= item.text %></span>
+                      <div class="inline-actions requirement-row-actions">
+                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
+                        <% if (canDeleteRequirementMaterials) { %>
+                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteRequirementFileConfirm') %>')">
+                            <%- csrfField() %>
+                            <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
+                          </form>
+                        <% } %>
+                      </div>
+                    </article>
+                  <% } %>
+                  <% if (uploadPermissions.requirement) { %>
+                    <form class="attachment-upload-panel requirement-file-upload" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                      <%- csrfField() %>
+                      <input type="hidden" name="category" value="requirement">
+                      <input type="file" name="attachment" required>
+                      <button type="submit"><%= t('upload') %></button>
+                    </form>
+                  <% } %>
+                </section>
+              </div>
               <% if (initiationWorkflowForm) { %>
                 <div class="requirement-initiation-actions">
                   <% if (initiationWorkflowForm.missingRequirements && initiationWorkflowForm.missingRequirements.length > 0) { %>
@@ -557,35 +667,13 @@
                   </form>
                 </div>
               <% } %>
-              <% if (requirementTimeline.length > 0) { %>
-                <div class="requirement-timeline">
-                  <% for (const item of requirementTimeline) { %>
-                    <article class="requirement-row <%= item.attachment ? 'requirement-row-file' : 'requirement-row-text' %>">
-                      <span class="requirement-row-time"><%= item.at ? formatShortDate(item.at) : item.timeLabel %></span>
-                      <span class="requirement-row-content"><%= item.text %></span>
-                      <% if (item.attachment) { %>
-                        <div class="inline-actions requirement-row-actions">
-                          <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
-                          <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
-                          <% if (canDeleteRequirementMaterials) { %>
-                            <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteRequirementFileConfirm') %>')">
-                              <%- csrfField() %>
-                              <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
-                            </form>
-                          <% } %>
-                        </div>
-                      <% } %>
-                    </article>
-                  <% } %>
-                </div>
-              <% } else { %>
-                <p class="empty"><%= t('noRequirementRecords') %></p>
-              <% } %>
+              <%- include('_workflow-actions', { forms: requirementWorkflowForms }) %>
             </div>
           </section>
 
+          <% if (technicalStarted) { %>
           <section class="content-section business-section business-section-technical">
-            <h2><%= t('technicalSolution') %></h2>
+            <h2>2 · <%= t('technicalSolution') %></h2>
             <div class="section-body">
               <% if (uploadPermissions.technical_solution) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
@@ -622,31 +710,12 @@
                   </form>
                 <% } %>
               <% } %>
-              <% if (technicalMaterialVersions.length > 0) { %>
-                <div class="material-version-strip">
-                  <% for (const version of technicalMaterialVersions) { %>
-                    <article class="material-version-card">
-                      <span class="material-version-badge">V<%= version.versionNo %></span>
-                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= t(`materialStatus.${version.status}`) %></span>
-                      <% if (version.submittedAt || version.submitterDisplayName) { %>
-                        <span><%= t('submitted') %> <%= formatShortDate(version.submittedAt) %><% if (version.submitterDisplayName) { %> <%= t('by') %> <%= version.submitterDisplayName %><% } %></span>
-                      <% } %>
-                      <% if (version.reviewedAt || version.reviewerDisplayName) { %>
-                        <span><%= t('reviewed') %> <%= formatShortDate(version.reviewedAt) %><% if (version.reviewerDisplayName) { %> <%= t('by') %> <%= version.reviewerDisplayName %><% } %></span>
-                      <% } %>
-                      <% if (version.reviewComment) { %>
-                        <span class="material-version-comment"><%= version.reviewComment %></span>
-                      <% } %>
-                    </article>
-                  <% } %>
-                </div>
-              <% } %>
               <% if (technicalSolutionTimeline.length > 0) { %>
                 <div class="requirement-timeline">
-                  <% for (const item of technicalSolutionTimeline) { %>
+                  <% for (const item of technicalSolutionTimeline) { const linkedVersion = item.attachment ? materialVersionById.get(Number(item.attachment.opportunityMaterialVersionId)) : null; const displayVersionNo = item.versionNo || linkedVersion?.versionNo; const displayVersionStatus = item.attachment ? null : item.versionStatus; %>
                     <article class="requirement-row <%= item.attachment ? 'requirement-row-file' : 'requirement-row-text' %>">
                       <span class="requirement-row-time"><%= item.at ? formatShortDate(item.at) : '' %></span>
-                      <span class="requirement-row-content"><%= item.text %></span>
+                      <span class="requirement-row-content"><%= item.text %><% if (displayVersionNo) { %> <span class="file-version">V<%= displayVersionNo %></span><% } %><% if (displayVersionStatus) { %> <span class="material-version-status material-version-status-<%= materialVersionStatusClass(displayVersionStatus) %>"><%= t(`materialStatus.${displayVersionStatus}`) %></span><% } %></span>
                       <% if (item.attachment) { %>
                         <div class="inline-actions requirement-row-actions">
                           <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
@@ -665,11 +734,18 @@
               <% } else { %>
                 <p class="empty"><%= t('noTechnicalSolutionRecords') %></p>
               <% } %>
+              <%- include('_workflow-actions', { forms: technicalWorkflowForms }) %>
             </div>
           </section>
+          <% } else { %>
+            <section class="content-section business-section business-section-technical business-section-future">
+              <h2><span>2 · <%= t('technicalSolution') %></span><span class="section-heading-meta"><%= t('notStarted') %></span></h2>
+            </section>
+          <% } %>
 
+          <% if (commercialStarted) { %>
           <section class="content-section business-section business-section-quote">
-            <h2><%= t('commercialQuote') %></h2>
+            <h2>3 · <%= t('commercialQuote') %></h2>
             <div class="section-body">
               <div class="form-panel requirement-input-panel">
                 <p><strong><%= t('quotationPackages') %></strong> · <%= t('quotationPackageSnapshotNotice') %></p>
@@ -717,31 +793,12 @@
                   <button type="submit" <%= commercialQuoteWorkflowForm.blocked ? 'disabled' : '' %>><%= commercialQuoteWorkflowForm.button %></button>
                 </form>
               <% } %>
-              <% if (commercialQuoteMaterialVersions.length > 0) { %>
-                <div class="material-version-strip">
-                  <% for (const version of commercialQuoteMaterialVersions) { %>
-                    <article class="material-version-card">
-                      <span class="material-version-badge">V<%= version.versionNo %></span>
-                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= t(`materialStatus.${version.status}`) %></span>
-                      <% if (version.submittedAt || version.submitterDisplayName) { %>
-                        <span><%= t('submitted') %> <%= formatShortDate(version.submittedAt) %><% if (version.submitterDisplayName) { %> <%= t('by') %> <%= version.submitterDisplayName %><% } %></span>
-                      <% } %>
-                      <% if (version.reviewedAt || version.reviewerDisplayName) { %>
-                        <span><%= t('reviewed') %> <%= formatShortDate(version.reviewedAt) %><% if (version.reviewerDisplayName) { %> <%= t('by') %> <%= version.reviewerDisplayName %><% } %></span>
-                      <% } %>
-                      <% if (version.reviewComment) { %>
-                        <span class="material-version-comment"><%= version.reviewComment %></span>
-                      <% } %>
-                    </article>
-                  <% } %>
-                </div>
-              <% } %>
               <% if (commercialQuoteTimeline.length > 0) { %>
                 <div class="requirement-timeline">
-                  <% for (const item of commercialQuoteTimeline) { %>
+                  <% for (const item of commercialQuoteTimeline) { const linkedVersion = materialVersionById.get(Number(item.attachment.opportunityMaterialVersionId)); %>
                     <article class="requirement-row requirement-row-file">
                       <div class="requirement-row-time"><%= formatShortDate(item.at) %></div>
-                      <div class="requirement-row-content"><%= item.text %></div>
+                      <div class="requirement-row-content"><%= item.text %><% if (linkedVersion?.versionNo) { %> <span class="file-version">V<%= linkedVersion.versionNo %></span><% } %></div>
                       <div class="inline-actions requirement-row-actions">
                         <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
                         <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
@@ -758,11 +815,18 @@
               <% } else { %>
                 <p class="empty"><%= t('noCommercialQuoteFiles') %></p>
               <% } %>
+              <%- include('_workflow-actions', { forms: commercialWorkflowForms }) %>
             </div>
           </section>
+          <% } else { %>
+            <section class="content-section business-section business-section-quote business-section-future">
+              <h2><span>3 · <%= t('commercialQuote') %></span><span class="section-heading-meta"><%= t('notStarted') %></span></h2>
+            </section>
+          <% } %>
 
+          <% if (contractStarted) { %>
           <section class="content-section business-section business-section-contract">
-            <h2><%= t('commercialContract') %></h2>
+            <h2>4 · <%= t('commercialContract') %></h2>
             <div class="section-body">
               <% if (uploadPermissions.contract) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
@@ -808,31 +872,12 @@
                   <button type="button" disabled><%= t('workflowButton.submit_contract_approval') %></button>
                 </div>
               <% } %>
-              <% if (contractMaterialVersions.length > 0) { %>
-                <div class="material-version-strip">
-                  <% for (const version of contractMaterialVersions) { %>
-                    <article class="material-version-card">
-                      <span class="material-version-badge">V<%= version.versionNo %></span>
-                      <span class="material-version-status material-version-status-<%= materialVersionStatusClass(version.status) %>"><%= t(`materialStatus.${version.status}`) %></span>
-                      <% if (version.submittedAt || version.submitterDisplayName) { %>
-                        <span><%= t('submitted') %> <%= formatShortDate(version.submittedAt) %><% if (version.submitterDisplayName) { %> <%= t('by') %> <%= version.submitterDisplayName %><% } %></span>
-                      <% } %>
-                      <% if (version.reviewedAt || version.reviewerDisplayName) { %>
-                        <span><%= t('reviewed') %> <%= formatShortDate(version.reviewedAt) %><% if (version.reviewerDisplayName) { %> <%= t('by') %> <%= version.reviewerDisplayName %><% } %></span>
-                      <% } %>
-                      <% if (version.reviewComment) { %>
-                        <span class="material-version-comment"><%= version.reviewComment %></span>
-                      <% } %>
-                    </article>
-                  <% } %>
-                </div>
-              <% } %>
               <% if (contractTimeline.length > 0) { %>
                 <div class="requirement-timeline">
-                  <% for (const item of contractTimeline) { %>
+                  <% for (const item of contractTimeline) { const linkedVersion = materialVersionById.get(Number(item.attachment.opportunityMaterialVersionId)); %>
                     <article class="requirement-row requirement-row-file">
                       <div class="requirement-row-time"><%= formatShortDate(item.at) %></div>
-                      <div class="requirement-row-content"><%= item.text %></div>
+                      <div class="requirement-row-content"><%= item.text %><% if (linkedVersion?.versionNo) { %> <span class="file-version">V<%= linkedVersion.versionNo %></span><% } %></div>
                       <div class="inline-actions requirement-row-actions">
                         <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
                         <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
@@ -849,10 +894,16 @@
               <% } else { %>
                 <p class="empty"><%= t('noContractFiles') %></p>
               <% } %>
+              <%- include('_workflow-actions', { forms: contractWorkflowForms }) %>
             </div>
           </section>
+          <% } else { %>
+            <section class="content-section business-section business-section-contract business-section-future">
+              <h2><span>4 · <%= t('commercialContract') %></span><span class="section-heading-meta"><%= t('notStarted') %></span></h2>
+            </section>
+          <% } %>
 
-          <section class="content-section">
+          <section class="content-section business-section-audit">
             <h2><%= t('timeline') %></h2>
             <div class="section-body">
               <% if (timelineEvents && timelineEvents.length > 0) { %>
@@ -879,48 +930,5 @@
             </div>
           </section>
 
-          <% if (remainingWorkflowForms.length > 0) { %>
-            <section>
-              <h2><%= t('workflowActions') %></h2>
-              <div class="section-stack">
-                <% for (const workflowForm of remainingWorkflowForms) { %>
-                  <section class="action-section">
-                    <h3><%= workflowForm.title %></h3>
-                    <div class="section-body">
-                      <% if (workflowForm.missingRequirements && workflowForm.missingRequirements.length > 0) { %>
-                        <ul class="inline-list">
-                          <% for (const requirement of workflowForm.missingRequirements) { %>
-                            <li><%= requirement %></li>
-                          <% } %>
-                        </ul>
-                      <% } %>
-                      <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
-                        <%- csrfField() %>
-                        <input type="hidden" name="action" value="<%= workflowForm.action %>">
-                        <% for (const field of workflowForm.fields) { %>
-                          <label>
-                            <%= field.label %>
-                            <% if (field.type === 'userSelect') { %>
-                              <select name="<%= field.name %>" required>
-                                <option value=""></option>
-                                <% for (const user of field.users) { %>
-                                  <option value="<%= user.id %>" <%= Number(field.value) === Number(user.id) ? 'selected' : '' %>><%= user.displayName %></option>
-                                <% } %>
-                              </select>
-                            <% } else if (field.type === 'textarea') { %>
-                              <textarea name="<%= field.name %>" <%= field.required ? 'required' : '' %>></textarea>
-                            <% } else { %>
-                              <input name="<%= field.name %>" type="<%= field.inputType %>" <%= field.required ? 'required' : '' %>>
-                            <% } %>
-                          </label>
-                        <% } %>
-                        <button type="submit" <%= workflowForm.blocked ? 'disabled' : '' %>><%= workflowForm.button %></button>
-                      </form>
-                    </div>
-                  </section>
-                <% } %>
-              </div>
-            </section>
-          <% } %>
         </div>
 <%- include('../partials/app-end') %>

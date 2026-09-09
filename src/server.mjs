@@ -393,6 +393,7 @@ const emptyQuotationPackageRepository = {
 const emptyEmailArchiveRepository = {
   supportsEmailArchive: false,
   async listThreads() { return []; },
+  async listThreadsByOpportunity() { return []; },
   async findThreadById() { return null; },
   async getThreadDetail() { return null; },
   async findMessageById() { return null; },
@@ -939,6 +940,8 @@ export function createApp(options = {}) {
     customerRepository,
     contactRepository,
     attachmentRepository,
+    emailArchiveRepository,
+    emailCenterEnabled: Boolean(config.emailCenter?.enabled),
     commercialQuoteRepository,
     technicalSolutionRepository,
     opportunityTechnicalDraftRepository,

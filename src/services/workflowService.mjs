@@ -121,7 +121,11 @@ function timestampValue(value) {
 }
 
 function commentFromPayload(payload) {
-  return payload.reason || payload.comment || null;
+  const primary = payload.reason || payload.comment || '';
+  const improvement = payload.improvement || '';
+  return [primary, improvement ? `Improvement required: ${improvement}` : '']
+    .filter(Boolean)
+    .join('\n') || null;
 }
 
 function targetUserForAction(action, before, after, payload) {
@@ -193,7 +197,7 @@ function nextTodosForAction(action, after, payload) {
     case ACTIONS.REJECT_COMMERCIAL_QUOTE:
       return [{ opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Revise commercial quote' }];
     case ACTIONS.APPROVE_COMMERCIAL_QUOTE:
-      return [{ opportunityId: after.id, assigneeUserId: after.salespersonId, title: 'Record customer result' }];
+      return [{ opportunityId: after.id, assigneeUserId: after.salespersonId, title: 'Send approved quote to customer' }];
     case ACTIONS.MARK_WON:
       return [{ opportunityId: after.id, assigneeUserId: after.salespersonId, title: 'Submit contract approval' }];
     case ACTIONS.SUBMIT_CONTRACT_APPROVAL:

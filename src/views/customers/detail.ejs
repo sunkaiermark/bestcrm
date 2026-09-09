@@ -27,67 +27,49 @@
           <h2><%= t('customerDetail') %></h2>
           <div class="section-body">
             <div class="basic-info-grid">
-              <table class="detail-table">
+              <table class="detail-table basic-info-table customer-detail-table">
+                <colgroup>
+                  <col class="customer-detail-label-column">
+                  <col>
+                  <col class="customer-detail-label-column">
+                  <col>
+                </colgroup>
                 <tbody>
                   <tr>
                     <th scope="row"><%= t('customerCode') %></th>
-                    <td><%= customer.customerCode %></td>
-                  </tr>
-                  <tr>
+                    <td title="<%= customer.customerCode || '' %>"><%= customer.customerCode %></td>
                     <th scope="row"><%= t('industry') %></th>
-                    <td><%= customer.industry %></td>
+                    <td title="<%= customer.industry || '' %>"><%= customer.industry %></td>
                   </tr>
                   <tr>
                     <th scope="row"><%= t('website') %></th>
-                    <td>
+                    <td title="<%= customer.website || '' %>">
                       <% if (customer.website) { %>
                         <a href="<%= customer.website %>" target="_blank" rel="noopener noreferrer"><%= customer.website %></a>
                       <% } %>
                     </td>
-                  </tr>
-                  <tr>
                     <th scope="row"><%= t('country') %></th>
-                    <td><%= customer.country %></td>
+                    <td title="<%= customer.country || '' %>"><%= customer.country %></td>
                   </tr>
                   <tr>
                     <th scope="row"><%= t('parentCompany') %></th>
-                    <td><%= customer.parentCompany %></td>
-                  </tr>
-                </tbody>
-              </table>
-              <table class="detail-table">
-                <tbody>
-                  <tr>
+                    <td title="<%= customer.parentCompany || '' %>"><%= customer.parentCompany %></td>
                     <th scope="row"><%= t('region') %></th>
-                    <td><%= customer.region %></td>
+                    <td title="<%= customer.region || '' %>"><%= customer.region %></td>
                   </tr>
                   <tr>
                     <th scope="row"><%= t('address') %></th>
-                    <td><%= customer.address %></td>
-                  </tr>
-                </tbody>
-              </table>
-              <table class="detail-table detail-table-wide">
-                <tbody>
-                  <tr>
+                    <td title="<%= customer.address || '' %>"><%= customer.address %></td>
                     <th scope="row"><%= t('enterpriseNature') %></th>
-                    <td><%= customer.enterpriseNature %></td>
+                    <td title="<%= customer.enterpriseNature || '' %>"><%= customer.enterpriseNature %></td>
                   </tr>
-                </tbody>
-              </table>
-              <table class="detail-table detail-table-wide">
-                <tbody>
-                  <tr>
+                  <tr class="customer-detail-long-row">
                     <th scope="row"><%= t('companyHighlights') %></th>
-                    <td><%= customer.companyHighlights %></td>
+                    <td colspan="3" title="<%= customer.companyHighlights || '' %>"><%= customer.companyHighlights %></td>
                   </tr>
-                </tbody>
-              </table>
-              <table class="detail-table detail-table-wide">
-                <tbody>
-                  <tr>
+                  <tr class="customer-detail-long-row">
                     <th scope="row"><%= t('customerOutline') %></th>
-                    <td><%= customer.notes %></td>
+                    <td colspan="3" title="<%= customer.notes || '' %>"><%= customer.notes %></td>
                   </tr>
                 </tbody>
               </table>
@@ -100,28 +82,30 @@
           <div class="section-body">
             <p><a href="/contacts/new?customerId=<%= customer.id %>"><%= t('newContact') %></a></p>
             <% if ((customer.contacts || []).length > 0) { %>
-              <table class="list-table content-fit-table">
-                <thead>
-                  <tr>
-                    <th><%= t('contactCode') %></th>
-                    <th><%= t('name') %></th>
-                    <th><%= t('title') %></th>
-                    <th><%= t('phone') %></th>
-                    <th><%= t('email') %></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <% for (const contact of customer.contacts || []) { %>
+              <div class="customer-contact-table-wrap">
+                <table class="list-table content-fit-table customer-contact-table">
+                  <thead>
                     <tr>
-                      <td><a href="/contacts/<%= contact.id %>"><%= contact.contactCode %></a></td>
-                      <td><a href="/contacts/<%= contact.id %>"><%= contact.name %></a></td>
-                      <td><%= contact.title %></td>
-                      <td><%= contact.phone %></td>
-                      <td><%= contact.email %></td>
+                      <th scope="col"><%= t('contactCode') %></th>
+                      <th scope="col"><%= t('name') %></th>
+                      <th scope="col"><%= t('title') %></th>
+                      <th scope="col"><%= t('phone') %></th>
+                      <th scope="col"><%= t('email') %></th>
                     </tr>
-                  <% } %>
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    <% for (const contact of customer.contacts || []) { %>
+                      <tr>
+                        <td><a href="/contacts/<%= contact.id %>"><%= contact.contactCode %></a></td>
+                        <td><a href="/contacts/<%= contact.id %>"><%= contact.name %></a></td>
+                        <td><%= contact.title %></td>
+                        <td><%= contact.phone %></td>
+                        <td><%= contact.email %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              </div>
             <% } else { %>
               <p class="empty"><%= t('noContacts') %></p>
             <% } %>
