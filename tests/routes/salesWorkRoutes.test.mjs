@@ -192,6 +192,13 @@ test('salesperson can view sales work plan list and navigation entry', async () 
   assert.match(response.text, /Sales Work/);
   assert.match(response.text, /Work Plans/);
   assert.match(response.text, /New Plan/);
+  assert.match(response.text, /<table class="list-table content-fit-table sales-work-plan-table">/);
+  assert.match(response.text, /<th>Plan date<\/th>/);
+  assert.match(response.text, /<th>Activity type<\/th>/);
+  assert.match(response.text, /<th>Next step<\/th>/);
+  assert.match(response.text, /\.sales-work-plan-table thead th\s*\{[^}]*border-right:\s*1px solid rgba\(255, 255, 255, 0\.28\);[^}]*font-weight:\s*400;[^}]*text-align:\s*center;[^}]*text-transform:\s*none;/);
+  assert.match(response.text, /\.sales-work-plan-table tbody td\s*\{[^}]*border-right:\s*1px solid #d7e0e7;/);
+  assert.match(response.text, /\.sales-work-plan-table th:last-child,[\s\S]*?\.sales-work-plan-table td:last-child\s*\{[^}]*border-right:\s*0;/);
   assert.match(response.text, /Customer visit/);
   assert.match(response.text, /Acme Co/);
   assert.match(response.text, /CT000020 · Alice/);

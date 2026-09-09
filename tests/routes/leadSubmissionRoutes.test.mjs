@@ -110,6 +110,10 @@ test('salesperson submits a manager-assigned lead with one supporting file', asy
     const form = await agent.get('/lead-submissions/new');
     assert.equal(form.status, 200);
     assert.match(form.text, /Sales Manager/);
+    assert.match(form.text, /class="form-panel lead-submission-form"/);
+    assert.match(form.text, /class="lead-submission-form-wide"/);
+    assert.match(form.text, /\.form-panel\.lead-submission-form\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*margin-left: auto;[^}]*margin-right: auto;[^}]*max-width: 1180px;/s);
+    assert.match(form.text, /@media \(max-width: 900px\)\s*\{[^}]*\.form-panel\.lead-submission-form\s*\{[^}]*grid-template-columns: 1fr;/s);
     const token = form.text.match(/name="submissionToken" value="([^"]+)"/)?.[1];
     assert.ok(token);
 

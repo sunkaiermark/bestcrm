@@ -1,4 +1,8 @@
 <%- include('../partials/app-start', { title: `${t('workPlans')} - BESTCRM`, activeNav: 'sales-work' }) %>
+        <% const sentenceCase = (value) => {
+          const text = String(value || '');
+          return text ? `${text.charAt(0).toLocaleUpperCase()}${text.slice(1).toLocaleLowerCase()}` : text;
+        }; %>
         <header class="page-header">
           <div>
             <p class="breadcrumb"><%= t('salesWork') %></p>
@@ -9,19 +13,19 @@
 
         <section class="list-section">
           <div class="list-body">
-            <table class="list-table content-fit-table">
+            <table class="list-table content-fit-table sales-work-plan-table">
               <thead>
                 <tr>
-                  <th><%= t('planDate') %></th>
-                  <th><%= t('salesperson') %></th>
-                  <th><%= t('customer') %></th>
-                  <th><%= t('contacts') %></th>
-                  <th><%= t('opportunity') %></th>
-                  <th><%= t('activityType') %></th>
-                  <th><%= t('subject') %></th>
-                  <th><%= t('status') %></th>
-                  <th><%= t('nextStep') %></th>
-                  <th><%= t('actions') %></th>
+                  <th><%= sentenceCase(t('planDate')) %></th>
+                  <th><%= sentenceCase(t('salesperson')) %></th>
+                  <th><%= sentenceCase(t('customer')) %></th>
+                  <th><%= sentenceCase(t('contacts')) %></th>
+                  <th><%= sentenceCase(t('opportunity')) %></th>
+                  <th><%= sentenceCase(t('activityType')) %></th>
+                  <th><%= sentenceCase(t('subject')) %></th>
+                  <th><%= sentenceCase(t('status')) %></th>
+                  <th><%= sentenceCase(t('nextStep')) %></th>
+                  <th><%= sentenceCase(t('actions')) %></th>
                 </tr>
               </thead>
               <tbody>

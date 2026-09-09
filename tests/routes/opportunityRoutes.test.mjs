@@ -600,24 +600,31 @@ test('logged in salesperson can view opportunity list and is redirected to lead 
   assertAppSidebar(list.text, '/opportunities');
   assert.match(list.text, /Opportunities/);
   assert.match(list.text, /Factory upgrade/);
-  assert.match(list.text, /C000010 · Acme Co/);
-  assert.match(list.text, /Acme Co/);
+  assert.match(list.text, /<td class="clickable-cell" data-label="Customer Code"><a[^>]*>C000010<\/a><\/td>/);
+  assert.match(list.text, /<td class="clickable-cell" data-label="Customer Name"><a[^>]*title="Acme Co">Acme Co<\/a><\/td>/);
   assert.match(list.text, /<th scope="col">Opportunity Name<\/th>/);
+  assert.match(list.text, /<th scope="col">Customer Code<\/th>/);
+  assert.match(list.text, /<th scope="col">Customer Name<\/th>/);
+  assert.match(list.text, /<th scope="col">Contact Code<\/th>/);
+  assert.match(list.text, /<th scope="col">Contact Name<\/th>/);
   assert.doesNotMatch(list.text, /<th(?: scope="col")?>Title<\/th>/);
   assert.match(list.text, /<th scope="col">Owner<\/th>/);
   assert.match(list.text, /Sales One/);
-  assert.match(list.text, /CT000020 · Alice/);
+  assert.match(list.text, /<td class="clickable-cell" data-label="Contact Code"><a[^>]*>CT000020<\/a><\/td>/);
+  assert.match(list.text, /<td class="clickable-cell" data-label="Contact Name"><a[^>]*title="Alice">Alice<\/a><\/td>/);
   assert.match(list.text, /class="list-body record-list-body opportunity-list-body" tabindex="0"/);
   assert.match(list.text, /<table class="list-table record-list-table opportunity-list-table">/);
   assert.match(list.text, /\.record-list-body\s*\{[\s\S]*max-height:\s*70vh;[\s\S]*overflow:\s*auto;/);
   assert.match(list.text, /\.record-list-table thead th\s*\{[\s\S]*font-weight:\s*500;[\s\S]*position:\s*sticky;[\s\S]*text-transform:\s*none;/);
   assert.match(list.text, /\.record-list-table th,\s*\.record-list-table td\s*\{[\s\S]*border-right:[^;]+;[\s\S]*text-align:\s*center;[\s\S]*white-space:\s*nowrap;/);
-  assert.match(list.text, /\.opportunity-list-table\s*\{[\s\S]*min-width:\s*1420px;/);
-  assert.match(list.text, /\.opportunity-list-table th:nth-child\(2\),[\s\S]*?\.opportunity-list-table td:nth-child\(5\),[\s\S]*?\.customer-list-table th:nth-child\(2\),[\s\S]*?\.contact-list-table td:nth-child\(6\)\s*\{[^}]*text-align:\s*left;/);
-  assert.match(list.text, /\.opportunity-list-table th:nth-child\(7\),[\s\S]*?\.opportunity-list-table td:nth-child\(7\) \.cell-link\s*\{[^}]*text-align:\s*right;/);
+  assert.match(list.text, /\.opportunity-list-table\s*\{[\s\S]*min-width:\s*1760px;/);
+  assert.match(list.text, /\.opportunity-list-table th,\s*\.opportunity-list-table td\s*\{[^}]*border-right-color:\s*#b8c6d1;/);
+  assert.match(list.text, /\.opportunity-list-table thead th\s*\{[^}]*border-right-color:\s*rgba\(255, 255, 255, 0\.42\);[^}]*text-align:\s*center;/);
+  assert.match(list.text, /\.opportunity-list-table tbody td,\s*\.opportunity-list-table tbody td\.clickable-cell \.cell-link\s*\{[^}]*text-align:\s*left;/);
+  assert.match(list.text, /\.opportunity-list-table th:last-child,\s*\.opportunity-list-table td:last-child\s*\{[^}]*border-right:\s*0;/);
   assert.match(list.text, /data-label="Opportunity Name"/);
   assert.match(list.text, /\.record-list-table tbody td::before\s*\{[\s\S]*content:\s*attr\(data-label\);/);
-  assert.equal((list.text.match(/class="cell-link" href="\/opportunities\/30"/g) || []).length, 7);
+  assert.equal((list.text.match(/class="cell-link" href="\/opportunities\/30"/g) || []).length, 9);
 
   const form = await agent.get('/opportunities/new');
   assert.equal(form.status, 302);
@@ -632,11 +639,14 @@ test('logged in salesperson can view opportunity list and is redirected to lead 
   assert.match(detail.text, /CT000020 · Alice/);
   const basicInfoHtml = detail.text.match(/<section class="content-section business-section business-section-basic">[\s\S]*?<\/section>/)?.[0] || '';
   assert.match(basicInfoHtml, /class="basic-info-grid"/);
-  assert.equal((basicInfoHtml.match(/<table class="detail-table">/g) || []).length, 2);
+  assert.equal((basicInfoHtml.match(/<table class="detail-table basic-info-table">/g) || []).length, 1);
+  assert.equal((basicInfoHtml.match(/class="basic-info-label-column"/g) || []).length, 2);
+  assert.match(basicInfoHtml, /<th scope="row">No\.<\/th>\s*<td>OPP-20260605-abcdef12<\/td>\s*<th scope="row">Status<\/th>\s*<td>Draft<\/td>/);
   assert.match(basicInfoHtml, /<th scope="row">Status<\/th>\s*<td>Draft<\/td>/);
-  assert.match(basicInfoHtml, /<th scope="row">Delivery Period<\/th>/);
+  assert.match(basicInfoHtml, /<th scope="row">Delivery Period<\/th>\s*<td>[\s\S]*?<th scope="row">Expected Bid Date<\/th>/);
   assert.doesNotMatch(basicInfoHtml, /<th scope="row">Delivery Cycle<\/th>/);
-  assert.match(detail.text, /\.basic-info-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
+  assert.match(detail.text, /\.basic-info-table \.basic-info-label-column\s*\{[^}]*width:\s*190px;/s);
+  assert.match(detail.text, /\.business-section-basic > h2,[\s\S]*\.business-section-basic \.detail-table th,[\s\S]*font-weight:\s*400;/);
 });
 
 test('opportunity list supports active archived and all scopes', async () => {
@@ -1361,6 +1371,10 @@ test('opportunity detail shows lead supporting engineers and assignment history'
   assert.equal((detail.text.match(/class="responsibility-column"/g) || []).length, 2);
   assert.match(detail.text, /\.responsibility-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
   assert.match(detail.text, /\.responsibility-grid\s*\{[\s\S]*gap:\s*8px;/);
+  assert.match(detail.text, /\.responsibility-column\s*\{[^}]*display:\s*contents;/s);
+  assert.match(detail.text, /\.responsibility-block-lead\s*\{\s*order:\s*1;\s*\}/);
+  assert.match(detail.text, /\.responsibility-block-owner-transfer\s*\{\s*order:\s*2;\s*\}/);
+  assert.match(detail.text, /\.business-section-responsibility \.responsibility-block h3,[\s\S]*font-weight:\s*400;/);
   assert.match(detail.text, /\.responsibility-content\s*\{[\s\S]*padding:\s*6px 8px;/);
   assert.match(detail.text, /\.responsibility-content \.list-table th,\s*\.responsibility-content \.list-table td\s*\{[\s\S]*padding:\s*5px 6px;/);
   assert.doesNotMatch(detail.text, /Current Responsible/);

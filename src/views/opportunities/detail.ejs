@@ -222,19 +222,31 @@
             <h2><%= t('basicInfo') %></h2>
             <div class="section-body">
               <div class="basic-info-grid">
-                <table class="detail-table">
+                <table class="detail-table basic-info-table">
+                  <colgroup>
+                    <col class="basic-info-label-column">
+                    <col>
+                    <col class="basic-info-label-column">
+                    <col>
+                  </colgroup>
                   <tbody>
                     <tr>
                       <th scope="row"><%= t('no') %></th>
                       <td><%= opportunity.opportunityNo %></td>
+                      <th scope="row"><%= t('status') %></th>
+                      <td><%= statusLabel(opportunity.status) %></td>
                     </tr>
                     <tr>
                       <th scope="row"><%= t('owner') %></th>
                       <td><%= ownerName %></td>
+                      <th scope="row"><%= t('estimatedAmount') %></th>
+                      <td><%= opportunity.estimatedAmount ?? '' %></td>
                     </tr>
                     <tr>
                       <th scope="row"><%= t('customer') %></th>
                       <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %></a></td>
+                      <th scope="row"><%= t('productInterest') %></th>
+                      <td><%= opportunity.productInterest || '' %></td>
                     </tr>
                     <tr>
                       <th scope="row"><%= t('primaryContact') %></th>
@@ -243,32 +255,12 @@
                           <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactCode ? `${opportunity.primaryContactCode} · ` : '' %><%= opportunity.primaryContactName %></a>
                         <% } %>
                       </td>
-                    </tr>
-                  </tbody>
-                </table>
-                <table class="detail-table">
-                  <tbody>
-                    <tr>
-                      <th scope="row"><%= t('status') %></th>
-                      <td><%= statusLabel(opportunity.status) %></td>
-                    </tr>
-                    <tr>
-                      <th scope="row"><%= t('estimatedAmount') %></th>
-                      <td><%= opportunity.estimatedAmount ?? '' %></td>
-                    </tr>
-                    <tr>
-                      <th scope="row"><%= t('productInterest') %></th>
-                      <td><%= opportunity.productInterest || '' %></td>
-                    </tr>
-                    <tr>
                       <th scope="row"><%= t('opportunityType') %></th>
                       <td><%= opportunity.projectType %></td>
                     </tr>
                     <tr>
                       <th scope="row"><%= t('deliveryPeriod') %></th>
                       <td><%= opportunity.deliveryCycle %></td>
-                    </tr>
-                    <tr>
                       <th scope="row"><%= t('expectedBidDate') %></th>
                       <td><%= opportunity.expectedBidDate || '' %></td>
                     </tr>
@@ -278,18 +270,18 @@
             </div>
           </section>
 
-          <section class="content-section">
+          <section class="content-section business-section-responsibility">
             <h2><%= t('responsibility') %></h2>
             <div class="section-body">
               <div class="responsibility-grid">
                 <div class="responsibility-column">
-                  <div class="responsibility-block">
+                  <div class="responsibility-block responsibility-block-lead">
                     <h3><%= t('projectLeadEngineer') %></h3>
                     <div class="responsibility-content">
                       <p><strong><%= projectLeadEngineerName %></strong></p>
                     </div>
                   </div>
-                  <div class="responsibility-block">
+                  <div class="responsibility-block responsibility-block-supporting">
                     <h3><%= t('supportingEngineers') %></h3>
                     <div class="responsibility-content">
                       <% if (supportingEngineers.length > 0) { %>
@@ -367,7 +359,7 @@
                       <% } %>
                     </div>
                   </div>
-                  <div class="responsibility-block">
+                  <div class="responsibility-block responsibility-block-contributions">
                     <h3><%= t('engineeringContributions') %></h3>
                     <div class="responsibility-content">
                       <% if (canRecordEngineeringContribution) { %>
@@ -404,7 +396,7 @@
                       <% } %>
                     </div>
                   </div>
-                  <div class="responsibility-block">
+                  <div class="responsibility-block responsibility-block-audit">
                     <h3><%= t('engineeringAuditHistory') %></h3>
                     <div class="responsibility-content">
                       <% if (engineeringAssignmentEvents.length > 0) { %>
@@ -442,7 +434,7 @@
                 </div>
 
                 <div class="responsibility-column">
-                  <div class="responsibility-block">
+                  <div class="responsibility-block responsibility-block-owner-transfer">
                     <h3><%= t('ownerTransferHistory') %></h3>
                     <div class="responsibility-content">
                       <% if (canManageOpportunityResponsibility) { %>

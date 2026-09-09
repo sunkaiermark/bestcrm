@@ -7,7 +7,7 @@
           </div>
         </header>
 
-        <form class="form-panel" method="post" action="/lead-submissions" enctype="multipart/form-data">
+        <form class="form-panel lead-submission-form" method="post" action="/lead-submissions" enctype="multipart/form-data">
           <%- csrfField() %>
           <input type="hidden" name="submissionToken" value="<%= submissionToken %>">
           <label>
@@ -51,7 +51,7 @@
               <% } %>
             </select>
           </label>
-          <label><%= t('requirement') %><textarea name="requirementText" required><%= submission.requirementText || '' %></textarea></label>
+          <label class="lead-submission-form-wide"><%= t('requirement') %><textarea name="requirementText" required><%= submission.requirementText || '' %></textarea></label>
           <label>
             <%= t('supportingFile') %>
             <input type="file" name="attachment">

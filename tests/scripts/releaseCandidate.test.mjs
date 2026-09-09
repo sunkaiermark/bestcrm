@@ -126,7 +126,7 @@ test('release builder creates a reproducible commit-only archive and checksum ma
       productionCredentialsIncluded: false
     });
     assert.match(checksum, new RegExp(`^${result.sha256}  bestcrm-v2099\\.01\\.01-01-rc\\.1\\.zip`));
-    assert.match(manifest.latestMigration, /051_email_raw_malware_events\.sql$/);
+    assert.match(manifest.latestMigration, /052_contact_code_l_prefix\.sql$/);
     assert.deepEqual(manifest.emailFeatureFlags, {
       CRM_EMAIL_CENTER_ENABLED: false,
       EMAIL_INTAKE_ENABLED: false,

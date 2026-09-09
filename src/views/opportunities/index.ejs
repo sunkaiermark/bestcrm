@@ -59,9 +59,11 @@
                 <tr>
                   <th scope="col"><%= t('no') %></th>
                   <th scope="col"><%= t('opportunityName') %></th>
-                  <th scope="col"><%= t('customer') %></th>
+                  <th scope="col"><%= t('customerCode') %></th>
+                  <th scope="col"><%= t('customerName') %></th>
                   <th scope="col"><%= t('owner') %></th>
-                  <th scope="col"><%= t('contacts') %></th>
+                  <th scope="col"><%= t('contactCode') %></th>
+                  <th scope="col"><%= t('contactName') %></th>
                   <th scope="col"><%= t('status') %></th>
                   <th scope="col"><%= t('estimatedAmount') %></th>
                 </tr>
@@ -71,11 +73,11 @@
                   <tr>
                     <td class="clickable-cell" data-label="<%= t('no') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a></td>
                     <td class="clickable-cell" data-label="<%= t('opportunityName') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>" title="<%= opportunity.title %>"><%= opportunity.title %></a></td>
-                    <td class="clickable-cell" data-label="<%= t('customer') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>" title="<%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %>"><%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %></a></td>
+                    <td class="clickable-cell" data-label="<%= t('customerCode') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.customerCode || '' %></a></td>
+                    <td class="clickable-cell" data-label="<%= t('customerName') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>" title="<%= opportunity.customerName || '' %>"><%= opportunity.customerName || '' %></a></td>
                     <td class="clickable-cell" data-label="<%= t('owner') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.salespersonDisplayName || opportunity.salespersonUsername || '' %></a></td>
-                    <td class="clickable-cell" data-label="<%= t('contacts') %>">
-                      <a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.primaryContactCode ? `${opportunity.primaryContactCode} · ` : '' %><%= opportunity.primaryContactName || '' %></a>
-                    </td>
+                    <td class="clickable-cell" data-label="<%= t('contactCode') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.primaryContactCode || '' %></a></td>
+                    <td class="clickable-cell" data-label="<%= t('contactName') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>" title="<%= opportunity.primaryContactName || '' %>"><%= opportunity.primaryContactName || '' %></a></td>
                     <td class="clickable-cell" data-label="<%= t('status') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><span class="status"><%= statusLabel(opportunity.status) %></span></a></td>
                     <td class="clickable-cell" data-label="<%= t('estimatedAmount') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.estimatedAmount ?? '' %></a></td>
                   </tr>
