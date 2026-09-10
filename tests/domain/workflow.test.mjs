@@ -23,10 +23,14 @@ test('Sales Manager approval assigns quotation engineer and moves to technical w
     opportunity: { status: STATUSES.INITIATION_PENDING, salespersonId: 1, salesManagerId: 2 }
   };
 
-  const next = transition(context, ACTIONS.APPROVE_INITIATION, { quotationEngineerId: 3 });
+  const next = transition(context, ACTIONS.APPROVE_INITIATION, {
+    quotationEngineerId: 3,
+    technicalPlanSubmitDate: '2026-09-16'
+  });
 
   assert.equal(next.status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
   assert.equal(next.quotationEngineerId, 3);
+  assert.equal(next.technicalPlanSubmitDate, '2026-09-16');
 });
 
 test('Sales Manager can change quotation engineer after initial assignment', () => {

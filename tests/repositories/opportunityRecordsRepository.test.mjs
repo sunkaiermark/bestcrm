@@ -79,6 +79,7 @@ test('opportunity repository lists opportunities with customer and contact names
     quotationEngineerDisplayName: 'Lead Engineer',
     technicalManagerId: null,
     commercialManagerId: null,
+    technicalPlanSubmitDate: null,
     acceptedQuotationPackageId: null,
     finalDealAmount: null,
     lostReason: null,

@@ -94,7 +94,8 @@ const RULES = [
       return {
         ...opportunity,
         status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
-        quotationEngineerId: requirePayloadValue(payload, 'quotationEngineerId')
+        quotationEngineerId: requirePayloadValue(payload, 'quotationEngineerId'),
+        technicalPlanSubmitDate: requirePayloadValue(payload, 'technicalPlanSubmitDate')
       };
     }
   },

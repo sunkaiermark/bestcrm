@@ -816,89 +816,153 @@
         font-size: 20px;
       }
 
-      .workflow-actions-section > h2 {
-        font-weight: 400;
-        margin: 0 0 8px;
-      }
-
       .workflow-action-list {
-        border-left: 1px solid var(--line);
-        border-top: 1px solid var(--line);
         display: grid;
       }
 
-      .workflow-action-row {
-        border: 0;
-        border-bottom: 1px solid var(--line);
-        border-radius: 0;
-        border-right: 1px solid var(--line);
-        display: grid;
-        grid-template-columns: 280px minmax(0, 1fr);
-        min-width: 0;
-      }
-
-      .workflow-action-row > h3 {
+      .workflow-compact-row {
         align-items: center;
-        border: 0;
-        border-right: 1px solid var(--line);
+        border-bottom: 1px solid var(--line);
         display: flex;
-        font-size: 16px;
-        font-weight: 400;
-        line-height: 1.35;
-        padding: 8px 10px;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+        min-width: 0;
+        padding: 10px 0;
+      }
+
+      .workflow-compact-row:last-child {
+        border-bottom: 0;
+      }
+
+      .workflow-action-button {
+        flex: 0 0 190px;
+        font-weight: 700;
+        min-height: 38px;
+        white-space: nowrap;
+        width: 190px;
+      }
+
+      .workflow-approve-button {
+        background: #d9efd2;
+        border-color: #67a55d;
+        color: #184b1f;
+      }
+
+      .workflow-reject-button {
+        background: #ffe19b;
+        border-color: #d8a10c;
+        color: #6a4600;
+      }
+
+      .workflow-inline-field {
+        align-items: center;
+        display: grid;
+        flex: 1 1 310px;
+        gap: 10px;
+        grid-template-columns: max-content minmax(0, 1fr);
+        margin: 0;
+        min-width: 240px;
+      }
+
+      .workflow-inline-field > span {
+        font-weight: 700;
         white-space: nowrap;
       }
 
-      .workflow-action-content {
+      .workflow-inline-field input,
+      .workflow-inline-field select {
         min-width: 0;
-        padding: 7px 9px;
-      }
-
-      .workflow-action-content > .inline-list {
-        margin-bottom: 7px;
-      }
-
-      .workflow-action-form {
-        align-items: end;
-        background: transparent;
-        border: 0;
-        border-radius: 0;
-        display: grid;
-        gap: 7px 10px;
-        grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)) auto;
-        max-width: none;
-        padding: 0;
         width: 100%;
       }
 
-      .workflow-action-form > label {
-        margin: 0;
+      .workflow-engineer-field {
+        flex-grow: 1.5;
+      }
+
+      .workflow-engineer-picker {
         min-width: 0;
+        position: relative;
       }
 
-      .workflow-action-form textarea {
-        min-height: 48px;
-      }
-
-      .workflow-action-form > button {
-        align-self: end;
+      .workflow-engineer-picker > summary {
+        align-items: center;
+        background: #fff;
+        border: 1px solid #b9c6d3;
+        border-radius: 4px;
+        cursor: pointer;
+        display: flex;
+        height: 38px;
+        list-style: none;
+        min-width: 0;
+        overflow: hidden;
+        padding: 6px 30px 6px 10px;
+        position: relative;
+        text-overflow: ellipsis;
         white-space: nowrap;
       }
 
+      .workflow-engineer-picker > summary::after {
+        content: '▾';
+        position: absolute;
+        right: 10px;
+      }
+
+      .workflow-engineer-picker > summary::-webkit-details-marker {
+        display: none;
+      }
+
+      .workflow-engineer-options {
+        background: #fff;
+        border: 1px solid #b9c6d3;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.14);
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px 14px;
+        left: 0;
+        max-height: 220px;
+        overflow: auto;
+        padding: 10px;
+        position: absolute;
+        right: 0;
+        top: calc(100% + 4px);
+        z-index: 20;
+      }
+
+      .workflow-engineer-options label {
+        align-items: center;
+        display: inline-flex;
+        gap: 5px;
+        margin: 0;
+        white-space: nowrap;
+      }
+
+      .workflow-engineer-options input {
+        width: auto;
+      }
+
+      .workflow-missing-requirements {
+        flex-basis: 100%;
+        margin-left: 204px;
+      }
+
       @media (max-width: 900px) {
-        .workflow-action-row,
-        .workflow-action-form {
-          grid-template-columns: minmax(0, 1fr);
+        .workflow-compact-row {
+          align-items: stretch;
+          flex-direction: column;
         }
 
-        .workflow-action-row > h3 {
-          border-bottom: 1px solid var(--line);
-          border-right: 0;
-          white-space: normal;
+        .workflow-action-button {
+          flex-basis: auto;
         }
 
-        .workflow-action-form > button {
-          justify-self: start;
+        .workflow-inline-field {
+          flex-basis: auto;
+          grid-template-columns: 150px minmax(0, 1fr);
+          width: 100%;
+        }
+
+        .workflow-missing-requirements {
+          margin-left: 0;
         }
       }
 
@@ -923,7 +987,7 @@
       .section-stack > .business-section-basic { order: 1; }
       .section-stack > .business-section-correspondence { order: 2; }
       .section-stack > .business-section-requirement { order: 3; }
-      .section-stack > .business-section-responsibility { order: 4; }
+      .section-stack > .business-section-project-approval { order: 4; }
       .section-stack > .business-section-technical { order: 5; }
       .section-stack > .business-section-quote { order: 6; }
       .section-stack > .business-section-contract { order: 7; }
@@ -950,43 +1014,57 @@
       }
 
       .business-section-requirement {
-        background: #fffbeb;
-        border-color: #fde68a;
+        background: #fff;
+        border-color: #ced8e3;
       }
 
       .business-section-requirement > h2 {
-        background: #92400e;
-        border-bottom-color: #92400e;
+        background: #47739f;
+        border-bottom-color: #47739f;
+      }
+
+      .business-section-project-approval {
+        background: #fff;
+        border-color: #ced8e3;
+      }
+
+      .business-section-project-approval > h2 {
+        background: #47739f;
+        border-bottom-color: #47739f;
       }
 
       .business-section-technical {
-        background: #eff6ff;
-        border-color: #bfdbfe;
+        background: #fff;
+        border-color: #ced8e3;
       }
 
       .business-section-technical > h2 {
-        background: #1d4ed8;
-        border-bottom-color: #1d4ed8;
+        background: #47739f;
+        border-bottom-color: #47739f;
       }
 
       .business-section-quote {
-        background: #ecfdf5;
-        border-color: #a7f3d0;
+        background: #fff;
+        border-color: #ced8e3;
       }
 
       .business-section-quote > h2 {
-        background: #047857;
-        border-bottom-color: #047857;
+        background: #47739f;
+        border-bottom-color: #47739f;
       }
 
       .business-section-contract {
-        background: #f5f3ff;
-        border-color: #ddd6fe;
+        background: #fff;
+        border-color: #ced8e3;
       }
 
       .business-section-contract > h2 {
-        background: #6d28d9;
-        border-bottom-color: #6d28d9;
+        background: #47739f;
+        border-bottom-color: #47739f;
+      }
+
+      .opportunity-workflow-section > h2 {
+        font-size: 18px;
       }
 
       .business-section-future > h2 {
@@ -1525,11 +1603,7 @@
       }
 
       .business-section-basic > h2,
-      .business-section-responsibility > h2,
-      .business-section-basic .detail-table th,
-      .business-section-responsibility .responsibility-block > h3,
-      .business-section-responsibility .responsibility-content .list-table th,
-      .business-section-responsibility .responsibility-disclosure summary {
+      .business-section-basic .detail-table th {
         font-weight: 400;
       }
 
@@ -1649,130 +1723,6 @@
         .customer-detail-table th:nth-child(3),
         .customer-detail-table td:nth-child(4) {
           border-top: 1px solid var(--line);
-        }
-      }
-
-      .responsibility-grid {
-        align-items: start;
-        border-left: 1px solid var(--line);
-        border-top: 1px solid var(--line);
-        display: grid;
-        gap: 0;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-      }
-
-      .responsibility-column {
-        display: contents;
-      }
-
-      .responsibility-block {
-        background: rgba(255, 255, 255, 0.22);
-        border-bottom: 1px solid var(--line);
-        border-right: 1px solid var(--line);
-        display: grid;
-        grid-template-columns: 240px minmax(0, 1fr);
-        min-width: 0;
-      }
-
-      .responsibility-block-lead { order: 1; }
-      .responsibility-block-owner-transfer { order: 2; }
-      .responsibility-block-supporting { order: 3; }
-      .responsibility-block-contributions { order: 4; }
-      .responsibility-block-audit {
-        grid-column: 1 / -1;
-        order: 5;
-      }
-
-      .responsibility-block > h3 {
-        background: rgba(255, 255, 255, 0.24);
-        border-right: 1px solid var(--line);
-        color: var(--ink);
-        font-size: 16px;
-        margin: 0;
-        padding: 6px 8px;
-        white-space: nowrap;
-      }
-
-      .responsibility-content {
-        overflow-x: auto;
-        padding: 6px 8px;
-      }
-
-      .responsibility-content .empty {
-        margin: 0;
-      }
-
-      .responsibility-block-lead .responsibility-content p {
-        margin: 0;
-      }
-
-      .responsibility-content .list-table th,
-      .responsibility-content .list-table td {
-        padding: 5px 6px;
-      }
-
-      .responsibility-disclosure {
-        background: rgba(255, 255, 255, 0.28);
-        border: 1px solid var(--line);
-        margin-top: 6px;
-      }
-
-      .responsibility-disclosure summary {
-        color: var(--ink);
-        cursor: pointer;
-        font-weight: 700;
-        padding: 6px 8px;
-      }
-
-      .responsibility-disclosure[open] summary {
-        border-bottom: 1px solid var(--line);
-      }
-
-      .responsibility-form {
-        background: transparent;
-        border: 0;
-        border-radius: 0;
-        margin-top: 0;
-        max-width: none;
-        padding: 8px;
-      }
-
-      .responsibility-form label {
-        gap: 4px;
-        margin-bottom: 8px;
-      }
-
-      .responsibility-form input,
-      .responsibility-form select,
-      .responsibility-form textarea {
-        padding: 6px 8px;
-      }
-
-      .responsibility-form textarea {
-        min-height: 58px;
-      }
-
-      .responsibility-form button {
-        padding: 7px 10px;
-      }
-
-      .checkbox-label {
-        align-items: center;
-        display: flex;
-        gap: 8px;
-      }
-
-      .checkbox-label input {
-        width: auto;
-      }
-
-      @media (max-width: 900px) {
-        .responsibility-grid {
-          grid-template-columns: 1fr;
-        }
-
-        .responsibility-block-audit {
-          grid-column: auto;
         }
       }
 
@@ -2114,6 +2064,12 @@
         min-width: 0;
       }
 
+      .attachment-upload-label {
+        flex: 0 0 150px;
+        font-weight: 700;
+        white-space: nowrap;
+      }
+
       .attachment-upload-panel button {
         width: 96px;
         text-align: center;
@@ -2287,8 +2243,8 @@
 
       .requirement-row-time {
         color: var(--muted);
-        font-size: 20px;
-        font-weight: 700;
+        font-size: 16px;
+        font-weight: 400;
         white-space: nowrap;
       }
 
@@ -2427,6 +2383,15 @@
       }
 
       @media (max-width: 900px) {
+        .attachment-upload-panel {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .attachment-upload-label {
+          flex-basis: auto;
+        }
+
         .requirement-row,
         .requirement-row-text {
           align-items: start;

@@ -26,14 +26,16 @@ export function createTodoRepository(queryTarget) {
         INSERT INTO todos (
           opportunity_id,
           assignee_user_id,
-          title
+          title,
+          due_at
         )
-        VALUES ($1, $2, $3)
+        VALUES ($1, $2, $3, $4)
         RETURNING *
       `, [
         todo.opportunityId,
         todo.assigneeUserId,
-        todo.title
+        todo.title,
+        todo.dueAt || null
       ]);
       return {
         id: Number(result.rows[0].id),

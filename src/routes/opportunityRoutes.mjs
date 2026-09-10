@@ -199,6 +199,10 @@ function userSelectField(name, label, users, value = null) {
   return { type: 'userSelect', name, label, users, value };
 }
 
+function multiUserSelectField(name, label, users, values = []) {
+  return { type: 'multiUserSelect', name, label, users, values };
+}
+
 function textareaField(name, label, required = true) {
   return { type: 'textarea', name, label, required };
 }
@@ -215,7 +219,7 @@ function timestampValue(value) {
   return Number.isFinite(timestamp) ? timestamp : null;
 }
 
-function formForAction(action, usersByRole, opportunity = {}) {
+function formForAction(action, usersByRole, opportunity = {}, teamMembers = []) {
   switch (action) {
     case ACTIONS.SUBMIT_INITIATION:
       return {
@@ -236,11 +240,21 @@ function formForAction(action, usersByRole, opportunity = {}) {
     case ACTIONS.APPROVE_INITIATION:
       return {
         action,
-        title: 'Approve Initiation',
-        button: 'Approve and Assign',
+        title: 'Project Approval',
+        button: 'Approve',
         fields: [
-          userSelectField('quotationEngineerId', 'Quotation Engineer', usersByRole[ROLES.QUOTATION_ENGINEER] || []),
-          textareaField('comment', 'Comment', false)
+          multiUserSelectField(
+            'quotationEngineerIds',
+            'Engineers',
+            usersByRole[ROLES.QUOTATION_ENGINEER] || [],
+            [
+              opportunity.quotationEngineerId,
+              ...teamMembers
+                .filter((member) => member.roleCode === ROLES.QUOTATION_ENGINEER)
+                .map((member) => member.userId)
+            ].filter(Boolean)
+          ),
+          inputField('technicalPlanSubmitDate', 'Plan to Submit', 'date')
         ]
       };
     case ACTIONS.REJECT_INITIATION:
@@ -270,12 +284,7 @@ function formForAction(action, usersByRole, opportunity = {}) {
         action,
         title: 'Submit Technical Solution',
         button: 'Submit to Technical Manager',
-        fields: [
-          textareaField('solutionSummary', 'Solution Summary'),
-          textareaField('solutionParameters', 'Technical Parameters', false),
-          textareaField('implementationPlan', 'Implementation Plan', false),
-          textareaField('comment', 'Comment', false)
-        ]
+        fields: []
       };
     case ACTIONS.WITHDRAW_TECHNICAL_SOLUTION:
       return {
@@ -288,18 +297,15 @@ function formForAction(action, usersByRole, opportunity = {}) {
       return {
         action,
         title: 'Approve Technical Solution',
-        button: 'Approve',
-        fields: [textareaField('comment', 'Comment', false)]
+        button: 'Approve Proposal',
+        fields: []
       };
     case ACTIONS.REJECT_TECHNICAL_SOLUTION:
       return {
         action,
         title: 'Reject Technical Solution',
-        button: 'Reject',
-        fields: [
-          textareaField('reason', 'Reason'),
-          textareaField('improvement', 'Improvement Required')
-        ]
+        button: 'Reject Proposal',
+        fields: [textareaField('reason', 'Reason')]
       };
     case ACTIONS.SUBMIT_COMMERCIAL_QUOTE:
       return {
@@ -319,14 +325,14 @@ function formForAction(action, usersByRole, opportunity = {}) {
       return {
         action,
         title: 'Approve Commercial Quote',
-        button: 'Approve',
-        fields: [textareaField('comment', 'Comment', false)]
+        button: 'Approve Proposal',
+        fields: []
       };
     case ACTIONS.REJECT_COMMERCIAL_QUOTE:
       return {
         action,
         title: 'Reject Commercial Quote',
-        button: 'Reject',
+        button: 'Reject Proposal',
         fields: [textareaField('reason', 'Reason')]
       };
     case ACTIONS.MARK_LOST:
@@ -435,7 +441,7 @@ function opportunityWithActiveContractReviewer(opportunity, contractApprovals) {
   };
 }
 
-function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = [], language = 'en', quotationPackages = [], quotationPackagesEnabled = false) {
+function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = [], language = 'en', quotationPackages = [], quotationPackagesEnabled = false, teamMembers = []) {
   if (opportunity.archivedAt) {
     return [];
   }
@@ -450,7 +456,7 @@ function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], co
     opportunity: workflowOpportunity
   });
   return allowedActions
-    .map((action) => formForAction(action, usersByRole, opportunity))
+    .map((action) => formForAction(action, usersByRole, opportunity, teamMembers))
     .filter(Boolean)
     .map((form) => {
       const missingRequirements = missingMaterialsForAction(form.action, attachments, opportunity, contractApprovals, quotationPackages, quotationPackagesEnabled)
@@ -471,8 +477,22 @@ function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], co
 
 function parseWorkflowPayload(body) {
   const payload = {};
+  const rawEngineerIds = Array.isArray(body.quotationEngineerIds)
+    ? body.quotationEngineerIds
+    : String(body.quotationEngineerIds || '').split(',');
+  const quotationEngineerIds = [...new Set(rawEngineerIds
+    .map((value) => Number(value))
+    .filter((value) => Number.isSafeInteger(value) && value > 0))];
+  if (quotationEngineerIds.length > 0) {
+    const preferredLeadId = Number(body.quotationEngineerLeadId);
+    payload.quotationEngineerIds = quotationEngineerIds;
+    payload.quotationEngineerId = quotationEngineerIds.includes(preferredLeadId)
+      ? preferredLeadId
+      : quotationEngineerIds[0];
+  }
   for (const [key, value] of Object.entries(body)) {
-    if (key === 'action' || value === undefined || value === null || value === '') {
+    if (['action', 'quotationEngineerIds', 'quotationEngineerLeadId'].includes(key)
+        || value === undefined || value === null || value === '') {
       continue;
     }
     payload[key] = numericPayloadFields.has(key) ? Number(value) : String(value).trim();
@@ -934,21 +954,13 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      const canManageResponsibility = canManageOpportunityResponsibility(req.currentUser, opportunity);
-      const canManageEngineeringTeam = canManageOpportunityEngineeringTeam(req.currentUser, opportunity);
       const [
         usersByRole,
         activity,
         attachments,
         requirementUpdates,
-        technicalSolutions,
-        commercialQuotes,
         materialVersions,
         teamMembers,
-        teamMemberEvents,
-        engineeringContributions,
-        ownerTransfers,
-        responsibilityUsers,
         quotationPackages,
         correspondenceThreads
       ] = await Promise.all([
@@ -964,12 +976,6 @@ export function opportunityRoutes({
         typeof requirementUpdateRepository?.listByOpportunity === 'function'
           ? requirementUpdateRepository.listByOpportunity(opportunity.id)
           : [],
-        typeof technicalSolutionRepository?.listByOpportunity === 'function'
-          ? technicalSolutionRepository.listByOpportunity(opportunity.id)
-          : [],
-        typeof commercialQuoteRepository?.listByOpportunity === 'function'
-          ? commercialQuoteRepository.listByOpportunity(opportunity.id)
-          : [],
         typeof opportunityMaterialVersionRepository?.listByOpportunity === 'function'
           ? opportunityMaterialVersionRepository.listByOpportunity(opportunity.id)
           : [],
@@ -978,16 +984,6 @@ export function opportunityRoutes({
           : typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
           ? opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
           : [],
-        typeof opportunityResponsibilityRepository?.listTeamMemberEventsByOpportunity === 'function'
-          ? opportunityResponsibilityRepository.listTeamMemberEventsByOpportunity(opportunity.id)
-          : [],
-        typeof opportunityResponsibilityRepository?.listEngineeringContributionsByOpportunity === 'function'
-          ? opportunityResponsibilityRepository.listEngineeringContributionsByOpportunity(opportunity.id)
-          : [],
-        typeof opportunityResponsibilityRepository?.listOwnerTransfersByOpportunity === 'function'
-          ? opportunityResponsibilityRepository.listOwnerTransfersByOpportunity(opportunity.id)
-          : [],
-        canManageResponsibility || canManageEngineeringTeam ? listResponsibilityUsers(userRepository) : [],
         quotationPackageRepository?.supportsQuotationPackages === true
           ? quotationPackageRepository.listByOpportunity(opportunity.id)
           : [],
@@ -1001,42 +997,23 @@ export function opportunityRoutes({
         activity.contractApprovals,
         req.language,
         quotationPackages,
-        quotationPackageRepository?.supportsQuotationPackages === true
+        quotationPackageRepository?.supportsQuotationPackages === true,
+        teamMembers
       );
       res.render('opportunities/detail', {
         opportunity,
         workflowForms,
         timelineEvents: activity.timelineEvents,
         attachments,
-        contractApprovals: activity.contractApprovals,
-        teamMembers,
-        ownerTransfers,
         requirementUpdates,
-        technicalSolutions,
-        commercialQuotes,
-        quotationPackages,
         correspondenceThreads,
         materialVersions,
         versionedTechnicalDraftsEnabled: opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true,
-        canManageResponsibility,
-        canManageEngineeringTeam,
-        canContributeEngineering: canContributeOpportunityEngineering(req.currentUser, {
-          ...opportunity,
-          teamMembers
-        }),
         currentUserId: req.currentUser.id,
         currentUserIsSupportingEngineer: isSupportingEngineer(req.currentUser, {
           ...opportunity,
           teamMembers
         }),
-        responsibilityUsers,
-        supportingEngineerOptions: responsibilityUsers.filter((user) => (
-          userHasRole(user, ROLES.QUOTATION_ENGINEER)
-          && Number(user.id) !== Number(opportunity.quotationEngineerId)
-        )),
-        salesOwnerOptions: responsibilityUsers.filter((user) => userHasRole(user, ROLES.SALESPERSON)),
-        teamMemberEvents,
-        engineeringContributions,
         canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity),
         requirementSaveState: req.query.requirement === 'duplicate' ? 'duplicate' : '',
         canUploadAttachments: uploadPermissionsFor(req.currentUser, opportunity),
@@ -1487,6 +1464,7 @@ export function opportunityRoutes({
           opportunityMaterialVersionRepository,
           contractApprovalRepository,
           approvalSettingRepository,
+          opportunityResponsibilityRepository,
           workflowTransaction
         }
       });

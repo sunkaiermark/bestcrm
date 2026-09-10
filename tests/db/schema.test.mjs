@@ -51,6 +51,7 @@ const opportunityActivitySpineMigrationPath = new URL('../../src/db/migrations/0
 const emailRawArchiveFoundationMigrationPath = new URL('../../src/db/migrations/049_email_raw_archive_foundation.sql', import.meta.url);
 const emailRawBackfillCheckpointMigrationPath = new URL('../../src/db/migrations/050_email_raw_backfill_checkpoint.sql', import.meta.url);
 const emailRawMalwareEventsMigrationPath = new URL('../../src/db/migrations/051_email_raw_malware_events.sql', import.meta.url);
+const opportunityTechnicalPlanSubmitDateMigrationPath = new URL('../../src/db/migrations/053_opportunity_technical_plan_submit_date.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -729,6 +730,13 @@ test('Google Workspace customer center migration creates an append-only assignme
   assert.match(sql, /action NOT IN \('transfer', 'release'\) OR btrim\(reason\) <> ''/);
   assert.match(sql, /BEFORE UPDATE OR DELETE ON email_thread_assignment_events/);
   assert.match(sql, /Email thread assignment events are append-only/);
+});
+
+test('opportunity technical plan migration stores the planned proposal submission date', async () => {
+  const sql = await readFile(opportunityTechnicalPlanSubmitDateMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE opportunities/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS technical_plan_submit_date date/);
 });
 
 test('customer code migration backfills stable immutable C000001-style codes', async () => {

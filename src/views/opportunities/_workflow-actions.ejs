@@ -1,40 +1,68 @@
 <% if (Array.isArray(forms) && forms.length > 0) { %>
   <div class="workflow-action-list stage-workflow-actions">
-    <% for (const workflowForm of forms) { %>
-      <section class="action-section workflow-action-row">
-        <h3><%= workflowForm.title %></h3>
-        <div class="section-body workflow-action-content">
-          <% if (workflowForm.missingRequirements && workflowForm.missingRequirements.length > 0) { %>
-            <ul class="inline-list">
-              <% for (const requirement of workflowForm.missingRequirements) { %>
-                <li><%= requirement %></li>
+    <% for (const workflowForm of forms) { const approveAction = workflowForm.action.startsWith('approve_'); const rejectAction = workflowForm.action.startsWith('reject_'); %>
+      <form
+        class="workflow-compact-row <%= approveAction ? 'workflow-approve-row' : rejectAction ? 'workflow-reject-row' : 'workflow-neutral-row' %>"
+        method="post"
+        action="/opportunities/<%= opportunity.id %>/workflow"
+      >
+        <%- csrfField() %>
+        <input type="hidden" name="action" value="<%= workflowForm.action %>">
+        <button
+          class="workflow-action-button <%= approveAction ? 'workflow-approve-button' : rejectAction ? 'workflow-reject-button' : '' %>"
+          type="submit"
+          <%= workflowForm.blocked ? 'disabled' : '' %>
+        ><%= workflowForm.button %></button>
+        <% for (const field of workflowForm.fields) { %>
+          <% if (field.type === 'multiUserSelect') { const selectedIds = [...new Set((field.values || []).map(Number).filter(Boolean))]; const selectedUsers = field.users.filter((user) => selectedIds.includes(Number(user.id))); %>
+            <div class="workflow-inline-field workflow-engineer-field">
+              <span><%= field.label %></span>
+              <details class="workflow-engineer-picker" data-engineer-picker data-selected-order="<%= selectedIds.join(',') %>">
+                <summary data-engineer-summary><%= selectedUsers.length > 0 ? selectedUsers.map((user) => user.displayName).join(', ') : field.label %></summary>
+                <input type="hidden" name="quotationEngineerLeadId" value="<%= selectedIds[0] || '' %>" data-engineer-lead>
+                <div class="workflow-engineer-options">
+                  <% for (const user of field.users) { %>
+                    <label>
+                      <input
+                        type="checkbox"
+                        name="<%= field.name %>"
+                        value="<%= user.id %>"
+                        data-engineer-option
+                        data-engineer-name="<%= user.displayName %>"
+                        <%= selectedIds.includes(Number(user.id)) ? 'checked' : '' %>
+                      >
+                      <span><%= user.displayName %></span>
+                    </label>
+                  <% } %>
+                </div>
+              </details>
+            </div>
+          <% } else { %>
+            <label class="workflow-inline-field">
+              <span><%= field.label %></span>
+              <% if (field.type === 'userSelect') { %>
+                <select name="<%= field.name %>" required>
+                  <option value=""></option>
+                  <% for (const user of field.users) { %>
+                    <option value="<%= user.id %>" <%= Number(field.value) === Number(user.id) ? 'selected' : '' %>><%= user.displayName %></option>
+                  <% } %>
+                </select>
+              <% } else if (field.type === 'textarea') { %>
+                <input name="<%= field.name %>" type="text" <%= field.required ? 'required' : '' %>>
+              <% } else { %>
+                <input name="<%= field.name %>" type="<%= field.inputType %>" value="<%= field.value || '' %>" <%= field.required ? 'required' : '' %>>
               <% } %>
-            </ul>
+            </label>
           <% } %>
-          <form class="form-panel workflow-action-form" method="post" action="/opportunities/<%= opportunity.id %>/workflow">
-            <%- csrfField() %>
-            <input type="hidden" name="action" value="<%= workflowForm.action %>">
-            <% for (const field of workflowForm.fields) { %>
-              <label>
-                <%= field.label %>
-                <% if (field.type === 'userSelect') { %>
-                  <select name="<%= field.name %>" required>
-                    <option value=""></option>
-                    <% for (const user of field.users) { %>
-                      <option value="<%= user.id %>" <%= Number(field.value) === Number(user.id) ? 'selected' : '' %>><%= user.displayName %></option>
-                    <% } %>
-                  </select>
-                <% } else if (field.type === 'textarea') { %>
-                  <textarea name="<%= field.name %>" <%= field.required ? 'required' : '' %>></textarea>
-                <% } else { %>
-                  <input name="<%= field.name %>" type="<%= field.inputType %>" <%= field.required ? 'required' : '' %>>
-                <% } %>
-              </label>
+        <% } %>
+        <% if (workflowForm.missingRequirements && workflowForm.missingRequirements.length > 0) { %>
+          <ul class="inline-list workflow-missing-requirements">
+            <% for (const requirement of workflowForm.missingRequirements) { %>
+              <li><%= requirement %></li>
             <% } %>
-            <button type="submit" <%= workflowForm.blocked ? 'disabled' : '' %>><%= workflowForm.button %></button>
-          </form>
-        </div>
-      </section>
+          </ul>
+        <% } %>
+      </form>
     <% } %>
   </div>
 <% } %>

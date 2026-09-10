@@ -135,7 +135,8 @@ test('todo repository creates and closes pending todos', async () => {
   });
   assert.equal(todo.id, 88);
   assert.match(queryTarget.queries[0].sql, /INSERT INTO todos/);
-  assert.deepEqual(queryTarget.queries[0].params, [10, 3, 'Prepare technical solution']);
+  assert.match(queryTarget.queries[0].sql, /due_at/);
+  assert.deepEqual(queryTarget.queries[0].params, [10, 3, 'Prepare technical solution', null]);
 
   await repository.closePendingForOpportunity(10, 'withdrawn');
   assert.match(queryTarget.queries[1].sql, /UPDATE todos/);

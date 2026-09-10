@@ -16,10 +16,10 @@ function extractCsrfToken(html) {
 }
 
 function extractBusinessSection(html, sectionName, nextSectionName) {
-  const startMarker = `class="content-section business-section business-section-${sectionName}"`;
+  const startMarker = `business-section-${sectionName}"`;
   const endMarker = nextSectionName === 'audit'
     ? 'class="content-section business-section-audit"'
-    : `class="content-section business-section business-section-${nextSectionName}`;
+    : `business-section-${nextSectionName}`;
   const start = html.indexOf(startMarker);
   const end = html.indexOf(endMarker, start + startMarker.length);
   assert.notEqual(start, -1, `Expected active ${sectionName} section`);
@@ -407,6 +407,7 @@ async function createWorkflowAgent({
   commercialQuotes = [],
   contractApprovals = [],
   approvalSettings = {},
+  opportunityResponsibilityRepository,
   opportunityTechnicalDraftRepository,
   workflowTransaction
 }) {
@@ -508,6 +509,7 @@ async function createWorkflowAgent({
         return { rowCount: 1 };
       }
     },
+    ...(opportunityResponsibilityRepository ? { opportunityResponsibilityRepository } : {}),
     ...(opportunityTechnicalDraftRepository ? { opportunityTechnicalDraftRepository } : {}),
     attachmentRepository: {
       async listByOpportunity() {
@@ -658,7 +660,7 @@ test('logged in salesperson can view opportunity list and is redirected to lead 
   assert.match(basicInfoHtml, /<th scope="row">Delivery Period<\/th>\s*<td>[\s\S]*?<th scope="row">Expected Bid Date<\/th>/);
   assert.doesNotMatch(basicInfoHtml, /<th scope="row">Delivery Cycle<\/th>/);
   assert.match(detail.text, /\.basic-info-table \.basic-info-label-column\s*\{[^}]*width:\s*190px;/s);
-  assert.match(detail.text, /\.business-section-basic > h2,[\s\S]*\.business-section-basic \.detail-table th,[\s\S]*font-weight:\s*400;/);
+  assert.match(detail.text, /\.business-section-basic > h2,[\s\S]*\.business-section-basic \.detail-table th\s*\{[\s\S]*font-weight:\s*400;/);
 });
 
 test('opportunity list supports active archived and all scopes', async () => {
@@ -778,10 +780,10 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.match(detail.text, />\u4e0a\u4f20<\/button>/);
   assert.match(detail.text, /<td>\u8349\u7a3f<\/td>/);
   assert.doesNotMatch(detail.text, /<h2>\u8d23\u4efb\u4eba<\/h2>/);
-  assert.match(detail.text, /\u9700\u6c42\u8d44\u6599/);
+  assert.match(detail.text, /\u5ba2\u6237\u9700\u6c42/);
   assert.match(detail.text, /\u6280\u672f\u65b9\u6848/);
-  assert.match(detail.text, /\u5546\u52a1\u62a5\u4ef7/);
-  assert.match(detail.text, /\u5546\u52a1\u5408\u540c/);
+  assert.match(detail.text, /\u5546\u52a1\u65b9\u6848/);
+  assert.match(detail.text, /\u5408\u540c/);
   assert.match(detail.text, /\u5c1a\u672a\u5f00\u59cb/);
   assert.match(detail.text, /\u65f6\u95f4\u8f74/);
   assert.match(detail.text, /\u63d0\u4ea4\u5546\u673a\u7acb\u9879/);
@@ -925,7 +927,7 @@ test('active team member can view opportunity detail without edit access', async
   assert.doesNotMatch(detail.text, /href="\/opportunities\/30\/edit"/);
 });
 
-test('Supporting Engineer can access technical working area and record own contribution', async () => {
+test('Supporting Engineer can access technical working area while contribution entry stays off the detail page', async () => {
   const contributions = [];
   let deleteCalled = false;
   const supportingMember = {
@@ -1002,12 +1004,10 @@ test('Supporting Engineer can access technical working area and record own contr
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Project Lead Engineer/);
-  assert.match(detail.text, /Lead Engineer/);
-  assert.match(detail.text, /Support Engineer/);
+  assert.doesNotMatch(detail.text, /Responsibility|Project lead engineer|Engineering contributions/);
   assert.match(detail.text, /action="\/opportunities\/30\/attachments"/);
   assert.match(detail.text, /value="technical_solution"/);
-  assert.match(detail.text, /action="\/opportunities\/30\/engineering-contributions"/);
+  assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/engineering-contributions"/);
   assert.doesNotMatch(detail.text, /name="action" value="submit_technical_solution"/);
 
   const response = await agent
@@ -1372,7 +1372,7 @@ test('opportunity detail keeps workflow todos out of the detail page and shows t
   assert.match(detail.text, /ready for review/);
 });
 
-test('opportunity detail shows lead supporting engineers and assignment history', async () => {
+test('opportunity detail omits the retired responsibility panel and its repeated history queries', async () => {
   const responsibilityCalls = [];
   const { agent } = await createLoggedInAgent({
     user: {
@@ -1466,42 +1466,11 @@ test('opportunity detail shows lead supporting engineers and assignment history'
 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /<th scope="row">Owner<\/th>[\s\S]*Sales One/);
-  assert.match(detail.text, /Responsibility/);
-  assert.match(detail.text, /class="responsibility-grid"/);
-  assert.equal((detail.text.match(/class="responsibility-column"/g) || []).length, 2);
-  assert.match(detail.text, /\.responsibility-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\);/);
-  assert.match(detail.text, /\.responsibility-grid\s*\{[\s\S]*gap:\s*0;/);
-  assert.match(detail.text, /\.responsibility-column\s*\{[^}]*display:\s*contents;/s);
-  assert.match(detail.text, /\.responsibility-block\s*\{[\s\S]*display:\s*grid;[\s\S]*grid-template-columns:\s*240px minmax\(0,\s*1fr\);/);
-  assert.match(detail.text, /\.responsibility-block-lead\s*\{\s*order:\s*1;\s*\}/);
-  assert.match(detail.text, /\.responsibility-block-owner-transfer\s*\{\s*order:\s*2;\s*\}/);
-  assert.match(detail.text, /\.responsibility-block-audit\s*\{[\s\S]*grid-column:\s*1 \/ -1;[\s\S]*order:\s*5;/);
-  assert.match(detail.text, /\.business-section-responsibility \.responsibility-block > h3,[\s\S]*font-weight:\s*400;/);
-  assert.match(detail.text, /\.responsibility-content\s*\{[\s\S]*padding:\s*6px 8px;/);
-  assert.match(detail.text, /\.responsibility-content \.list-table th,\s*\.responsibility-content \.list-table td\s*\{[\s\S]*padding:\s*5px 6px;/);
-  assert.doesNotMatch(detail.text, /Current Responsible/);
-  assert.doesNotMatch(detail.text, /Technical Manager/);
-  assert.doesNotMatch(detail.text, /Approve technical solution/);
-  assert.match(detail.text, /Project Lead Engineer/);
-  assert.match(detail.text, /Supporting Engineers/);
-  assert.match(detail.text, /Quote Engineer/);
-  assert.match(detail.text, /Agitator section/);
-  assert.match(detail.text, /Verify shaft sizing/);
-  assert.match(detail.text, /Draft only/);
-  assert.match(detail.text, /Engineering Assignment History/);
-  assert.match(detail.text, /Completed shaft calculation/);
-  assert.match(detail.text, /Owner Transfer History/);
-  assert.match(detail.text, /Old Sales/);
-  assert.match(detail.text, /Territory realignment/);
-  assert.deepEqual(responsibilityCalls, [
-    ['members', 30],
-    ['memberEvents', 30],
-    ['contributions', 30],
-    ['transfers', 30]
-  ]);
+  assert.doesNotMatch(detail.text, /Responsibility|responsibility-grid|Project lead engineer|Supporting engineers|Engineering assignment history|Engineering contributions|Owner transfer history/);
+  assert.deepEqual(responsibilityCalls, [['members', 30]]);
 });
 
-test('administrator sees Supporting Engineer and owner management forms', async () => {
+test('administrator does not see retired responsibility management forms on opportunity detail', async () => {
   const { agent } = await createLoggedInAgent({
     user: {
       id: 99,
@@ -1514,20 +1483,10 @@ test('administrator sees Supporting Engineer and owner management forms', async 
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /<details class="responsibility-disclosure">[\s\S]*<summary>Add \/ Update Supporting Engineer<\/summary>/);
-  assert.match(detail.text, /Add \/ Update Supporting Engineer/);
-  assert.match(detail.text, /name="userId"/);
-  assert.match(detail.text, /name="assignmentScope"/);
-  assert.match(detail.text, /name="taskDescription"/);
-  assert.match(detail.text, /name="dueDate" type="date" required/);
-  assert.match(detail.text, /name="canSendExternalEmail"/);
-  assert.match(detail.text, /<details class="responsibility-disclosure">[\s\S]*<summary>Transfer Owner<\/summary>/);
-  assert.match(detail.text, /Transfer Owner/);
-  assert.match(detail.text, /name="toOwnerUserId"/);
-  assert.match(detail.text, /name="keepPreviousOwnerAsMember"/);
+  assert.doesNotMatch(detail.text, /responsibility-disclosure|Add \/ update supporting engineer|Transfer owner|name="assignmentScope"|name="canSendExternalEmail"|name="keepPreviousOwnerAsMember"/);
 });
 
-test('Supporting Engineer form lists only active quotation engineers', async () => {
+test('retired Supporting Engineer form is not rendered', async () => {
   const { agent } = await createLoggedInAgent({
     user: {
       id: 99,
@@ -1540,11 +1499,7 @@ test('Supporting Engineer form lists only active quotation engineers', async () 
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  const supportingEngineerForm = detail.text.match(/<form class="form-panel responsibility-form" method="post" action="\/opportunities\/30\/team-members">[\s\S]*?<\/form>/)?.[0] || '';
-  assert.match(supportingEngineerForm, /<option value="3">Quotation Engineer \(quote01\)<\/option>/);
-  assert.doesNotMatch(supportingEngineerForm, /<option value="8">Team Member \(team01\)<\/option>/);
-  assert.doesNotMatch(supportingEngineerForm, /<option value="2">Sales Manager \(manager01\)<\/option>/);
-  assert.doesNotMatch(supportingEngineerForm, /name="roleCode"/);
+  assert.doesNotMatch(detail.text, /responsibility-form|action="\/opportunities\/30\/team-members"/);
 });
 
 test('administrator adds updates and removes Supporting Engineers', async () => {
@@ -1721,10 +1676,10 @@ test('opportunity detail shows attachment upload form and file links', async () 
 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /Basic Info/);
-  assert.match(detail.text, /Requirement Materials/);
-  assert.match(detail.text, /Technical Solution/);
-  assert.match(detail.text, /Commercial Quote/);
-  assert.match(detail.text, /Commercial Contract/);
+  assert.match(detail.text, /Customer Requirement/);
+  assert.match(detail.text, /Technical Proposal/);
+  assert.match(detail.text, /Commercial Proposal/);
+  assert.match(detail.text, /Contract/);
   assert.match(detail.text, /name="attachment"/);
   assert.match(detail.text, /name="category" value="requirement"/);
   assert.match(detail.text, /name="requirementText"[\s\S]*type="hidden" name="reason"/);
@@ -1738,7 +1693,7 @@ test('opportunity detail shows attachment upload form and file links', async () 
   assert.doesNotMatch(detail.text, /<th>Uploaded By<\/th>/);
 });
 
-test('opportunity detail shows technical solution text and files in one timeline with local submit action', async () => {
+test('opportunity detail shows technical proposal files in one timeline with local submit action', async () => {
   const { agent } = await createWorkflowAgent({
     user: {
       id: 3,
@@ -1785,8 +1740,8 @@ test('opportunity detail shows technical solution text and files in one timeline
 
   assert.equal(detail.status, 200);
   const technicalSection = extractBusinessSection(detail.text, 'technical', 'quote');
-  assert.match(technicalSection, /name="solutionSummary"[\s\S]*Submit to Technical Manager[\s\S]*technical-solution\.pdf/);
-  assert.match(technicalSection, /2026-06-05 19:30[\s\S]*1\. Use skid-mounted evaporation package\.[\s\S]*2\. Reserve PLC interface\./);
+  assert.match(technicalSection, /technical-solution\.pdf[\s\S]*Submit to Technical Manager/);
+  assert.doesNotMatch(technicalSection, /name="solutionSummary"|Use skid-mounted evaporation package|Reserve PLC interface/);
   assert.match(detail.text, /\.requirement-row-content\s*\{[\s\S]*white-space:\s*pre-wrap;/);
   assert.match(technicalSection, /2026-06-05 20:00[\s\S]*technical-solution\.pdf[\s\S]*Preview[\s\S]*Download[\s\S]*Delete/);
   assert.match(technicalSection, /Delete this technical solution file\?/);
@@ -1898,27 +1853,23 @@ test('opportunity detail renders attachments with date object timestamps', async
   assert.match(detail.text, /technical-addendum\.pdf/);
 });
 
-test('opportunity detail uses distinct business panel colors', async () => {
+test('opportunity workflow panels use the approved unified light-blue headers', async () => {
   const { agent } = await createLoggedInAgent();
 
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /class="content-section business-section business-section-basic"/);
-  assert.match(detail.text, /class="content-section business-section business-section-requirement"/);
-  assert.match(detail.text, /class="content-section business-section business-section-technical(?: business-section-future)?"/);
-  assert.match(detail.text, /class="content-section business-section business-section-quote(?: business-section-future)?"/);
-  assert.match(detail.text, /class="content-section business-section business-section-contract(?: business-section-future)?"/);
+  assert.match(detail.text, /class="content-section business-section opportunity-workflow-section business-section-requirement"/);
+  assert.match(detail.text, /class="content-section business-section opportunity-workflow-section business-section-technical(?: business-section-future)?"/);
+  assert.match(detail.text, /class="content-section business-section opportunity-workflow-section business-section-quote(?: business-section-future)?"/);
+  assert.match(detail.text, /class="content-section business-section opportunity-workflow-section business-section-contract(?: business-section-future)?"/);
   assert.match(detail.text, /\.business-section-basic\s*\{[\s\S]*background:\s*#f4f7fb;/);
   assert.match(detail.text, /\.business-section-basic > h2\s*\{[\s\S]*background:\s*#1e3a5f;/);
-  assert.match(detail.text, /\.business-section-requirement\s*\{[\s\S]*background:\s*#fffbeb;/);
-  assert.match(detail.text, /\.business-section-requirement > h2\s*\{[\s\S]*background:\s*#92400e;/);
-  assert.match(detail.text, /\.business-section-technical\s*\{[\s\S]*background:\s*#eff6ff;/);
-  assert.match(detail.text, /\.business-section-technical > h2\s*\{[\s\S]*background:\s*#1d4ed8;/);
-  assert.match(detail.text, /\.business-section-quote\s*\{[\s\S]*background:\s*#ecfdf5;/);
-  assert.match(detail.text, /\.business-section-quote > h2\s*\{[\s\S]*background:\s*#047857;/);
-  assert.match(detail.text, /\.business-section-contract\s*\{[\s\S]*background:\s*#f5f3ff;/);
-  assert.match(detail.text, /\.business-section-contract > h2\s*\{[\s\S]*background:\s*#6d28d9;/);
+  for (const section of ['requirement', 'technical', 'quote', 'contract']) {
+    assert.match(detail.text, new RegExp(`\\.business-section-${section}\\s*\\{[\\s\\S]*background:\\s*#fff;`));
+    assert.match(detail.text, new RegExp(`\\.business-section-${section} > h2\\s*\\{[\\s\\S]*background:\\s*#47739f;`));
+  }
 });
 
 test('opportunity detail groups business attachments into five business panels', async () => {
@@ -1982,16 +1933,16 @@ test('opportunity detail groups business attachments into five business panels',
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Requirement Materials[\s\S]*requirement-spec\.pdf/);
+  assert.match(detail.text, /Customer Requirement[\s\S]*requirement-spec\.pdf/);
   assert.match(detail.text, /requirement-row requirement-row-file[\s\S]*2026-06-05 \d{2}:00[\s\S]*requirement-spec\.pdf[\s\S]*Preview[\s\S]*Download/);
   assert.match(detail.text, /class="requirement-action-download"[^>]*href="\/opportunities\/30\/attachments\/51\/download"/);
   assert.doesNotMatch(detail.text, /class="requirement-action-download"[^>]*download=/);
   assert.doesNotMatch(detail.text, /class="requirement-action-download"[^>]*target="_blank"/);
-  assert.match(detail.text, /Commercial Quote[\s\S]*quote-v1\.xlsx/);
-  assert.match(detail.text, /Commercial Contract[\s\S]*contract-draft\.docx/);
+  assert.match(detail.text, /Commercial Proposal[\s\S]*quote-v1\.xlsx/);
+  assert.match(detail.text, /Contract[\s\S]*contract-draft\.docx/);
 });
 
-test('opportunity detail shows technical solution submission and review comments in timeline', async () => {
+test('opportunity detail omits legacy technical text versions from the file timeline', async () => {
   const { agent } = await createLoggedInAgent({
     opportunityRepository: {
       async getOpportunityDetail() {
@@ -2031,9 +1982,7 @@ test('opportunity detail shows technical solution submission and review comments
   assert.equal(detail.status, 200);
   const technicalSection = extractBusinessSection(detail.text, 'technical', 'quote');
   assert.doesNotMatch(technicalSection, /Version History/);
-  assert.match(technicalSection, /Updated cabinet control solution[\s\S]*V2/);
-  assert.match(technicalSection, /Updated cabinet control solution/);
-  assert.match(technicalSection, /approved/);
+  assert.doesNotMatch(technicalSection, /Updated cabinet control solution|V2|approved/);
   assert.doesNotMatch(technicalSection, /IP65, stainless cabinet/);
   assert.doesNotMatch(technicalSection, /Revise drawings and wiring plan/);
 });
@@ -2273,13 +2222,15 @@ test('opportunity detail shows upload forms in each business material panel', as
   assert.match(detail.text, /\.attachment-upload-panel button\s*\{[\s\S]*color:\s*#0B0F6E;/);
   assert.equal((detail.text.match(/<button type="submit">Upload<\/button>/g) || []).length, 4);
   assert.doesNotMatch(detail.text, />\s*File\s*<input type="file" name="attachment" required>/);
-  assert.doesNotMatch(detail.text, /Upload attachment|Upload technical solution|Upload commercial quote|Upload contract/);
+  assert.match(detail.text, /Upload file/);
+  assert.equal((detail.text.match(/Upload proposal/g) || []).length, 2);
+  assert.match(detail.text, /Upload contract/);
   const requirementSection = extractBusinessSection(detail.text, 'requirement', 'technical');
   assert.match(requirementSection, /name="category" value="requirement"/);
   assert.doesNotMatch(requirementSection, /<select name="category"/);
-  assert.match(detail.text, /Technical Solution[\s\S]*name="category" value="technical_solution"/);
-  assert.match(detail.text, /Commercial Quote[\s\S]*name="category" value="commercial_quote"/);
-  assert.match(detail.text, /Commercial Contract[\s\S]*name="category" value="contract"/);
+  assert.match(detail.text, /Technical Proposal[\s\S]*name="category" value="technical_solution"/);
+  assert.match(detail.text, /Commercial Proposal[\s\S]*name="category" value="commercial_quote"/);
+  assert.match(detail.text, /Contract[\s\S]*name="category" value="contract"/);
 });
 
 test('opportunity detail hides technical upload from users without category permission', async () => {
@@ -2288,11 +2239,11 @@ test('opportunity detail hides technical upload from users without category perm
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Requirement Materials[\s\S]*name="category" value="requirement"/);
-  assert.doesNotMatch(detail.text, /Technical Solution[\s\S]*name="category" value="technical_solution"/);
+  assert.match(detail.text, /Customer Requirement[\s\S]*name="category" value="requirement"/);
+  assert.doesNotMatch(detail.text, /Technical Proposal[\s\S]*name="category" value="technical_solution"/);
 });
 
-test('technical solution workflow form captures version details', async () => {
+test('technical proposal submission uses the uploaded file without duplicate text fields', async () => {
   const { agent } = await createWorkflowAgent({
     user: {
       id: 3,
@@ -2311,9 +2262,8 @@ test('technical solution workflow form captures version details', async () => {
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Technical Solution Description/);
   assert.match(detail.text, /Submit to Technical Manager/);
-  assert.match(detail.text, /name="solutionSummary"/);
+  assert.doesNotMatch(detail.text, /Technical Solution Description|name="solutionSummary"/);
   assert.doesNotMatch(detail.text, /name="solutionParameters"/);
   assert.doesNotMatch(detail.text, /name="implementationPlan"/);
 });
@@ -2339,8 +2289,8 @@ test('versioned technical approval directs the Project Lead to TS-D drafts', asy
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Technical approval is submitted from a validated TS-D project draft/);
   assert.match(detail.text, /href="\/opportunities\/30\/technical-drafts"/);
+  assert.doesNotMatch(detail.text, /Technical approval is submitted from a validated TS-D project draft/);
   assert.doesNotMatch(detail.text, /name="solutionSummary"/);
 });
 
@@ -2375,7 +2325,7 @@ test('approved opportunity shows supplemental requirement form and history', asy
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Requirement Materials[\s\S]*Initial Requirement[\s\S]*Upgrade production line/);
+  assert.match(detail.text, /Customer Requirement[\s\S]*Initial Requirement[\s\S]*Upgrade production line/);
   assert.match(detail.text, /name="requirementText"/);
   assert.match(detail.text, /type="hidden" name="reason"/);
   assert.doesNotMatch(detail.text, /Reason \/ Source/);
@@ -2519,9 +2469,9 @@ test('draft opportunity shows delete action for requirement material attachments
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Requirement Materials[\s\S]*requirement-spec\.pdf[\s\S]*\/opportunities\/30\/attachments\/55\/delete/);
+  assert.match(detail.text, /Customer Requirement[\s\S]*requirement-spec\.pdf[\s\S]*\/opportunities\/30\/attachments\/55\/delete/);
   assert.match(detail.text, /onsubmit="return confirm\('Delete this requirement file\?'\)"/);
-  assert.match(detail.text, /Requirement Materials[\s\S]*Delete/);
+  assert.match(detail.text, /Customer Requirement[\s\S]*Delete/);
 });
 
 test('submitted opportunity hides and blocks requirement material deletion', async () => {
@@ -2824,7 +2774,7 @@ test('customer negotiation keeps contract content fully collapsed until the oppo
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /business-section-contract business-section-future[\s\S]*4 · Commercial Contract[\s\S]*Not started/);
+  assert.match(detail.text, /business-section-contract business-section-future[\s\S]*Contract[\s\S]*Not started/);
   assert.doesNotMatch(detail.text, /contract-v1\.docx|submit_contract_approval|name="category" value="contract"/);
 });
 
@@ -2858,7 +2808,7 @@ test('contract attachment before negotiation remains hidden with the future cont
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /business-section-contract business-section-future[\s\S]*4 · Commercial Contract[\s\S]*Not started/);
+  assert.match(detail.text, /business-section-contract business-section-future[\s\S]*Contract[\s\S]*Not started/);
   assert.doesNotMatch(detail.text, /contract-v1\.docx|Submit Contract Approval|name="category" value="contract"/);
 });
 
@@ -2905,7 +2855,7 @@ test('rejected contract requires a revised attachment before resubmission', asyn
   assert.equal(detail.status, 200);
   const contractSection = extractBusinessSection(detail.text, 'contract', 'audit');
   assert.match(contractSection, /Revised Contract attachment is required after rejection/);
-  assert.match(contractSection, /<button type="submit" disabled>Submit Contract Approval<\/button>/);
+  assert.match(contractSection, /name="action" value="submit_contract_approval"[\s\S]*?<button[\s\S]*?disabled[\s\S]*?>Submit Contract Approval<\/button>/);
 });
 
 test('rejected contract history requires a revised attachment even after returning to won pending', async () => {
@@ -2951,7 +2901,7 @@ test('rejected contract history requires a revised attachment even after returni
   assert.equal(detail.status, 200);
   const contractSection = extractBusinessSection(detail.text, 'contract', 'audit');
   assert.match(contractSection, /Revised Contract attachment is required after rejection/);
-  assert.match(contractSection, /<button type="submit" disabled>Submit Contract Approval<\/button>/);
+  assert.match(contractSection, /name="action" value="submit_contract_approval"[\s\S]*?<button[\s\S]*?disabled[\s\S]*?>Submit Contract Approval<\/button>/);
 });
 
 test('rejected contract with revised attachment shows contract resubmission action', async () => {
@@ -2998,7 +2948,8 @@ test('rejected contract with revised attachment shows contract resubmission acti
   const contractSection = extractBusinessSection(detail.text, 'contract', 'audit');
   assert.doesNotMatch(contractSection, /Revised Contract attachment is required after rejection/);
   assert.match(contractSection, /submit_contract_approval/);
-  assert.match(contractSection, /<button type="submit" >Submit Contract Approval<\/button>/);
+  assert.match(contractSection, /name="action" value="submit_contract_approval"[\s\S]*?<button[\s\S]*?>Submit Contract Approval<\/button>/);
+  assert.doesNotMatch(contractSection.match(/name="action" value="submit_contract_approval"[\s\S]*?<\/button>/)?.[0] || '', /disabled/);
 });
 
 test('customer negotiation blocks contract attachment deletion before the contract stage', async () => {
@@ -3430,7 +3381,7 @@ test('salesperson submits initiation from opportunity detail page', async () => 
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /Requirement Materials[\s\S]*Submit to Sales Manager[\s\S]*Technical Solution/);
+  assert.match(detail.text, /Customer Requirement[\s\S]*Submit to Sales Manager[\s\S]*Technical Proposal/);
   assert.doesNotMatch(detail.text, /Workflow Actions[\s\S]*Submit to Sales Manager/);
   assert.match(detail.text, /submit_initiation/);
   assert.match(detail.text, /Sales Manager/);
@@ -3557,7 +3508,12 @@ test('Sales Manager approves initiation and assigns quotation engineer from deta
   const response = await agent
     .post('/opportunities/30/workflow')
     .type('form')
-    .send({ action: ACTIONS.APPROVE_INITIATION, quotationEngineerId: '3', comment: 'approved' });
+    .send({
+      action: ACTIONS.APPROVE_INITIATION,
+      quotationEngineerId: '3',
+      technicalPlanSubmitDate: '2026-09-16',
+      comment: 'approved'
+    });
 
   assert.equal(response.status, 302);
   assert.equal(response.headers.location, '/opportunities/30');
@@ -3565,7 +3521,7 @@ test('Sales Manager approves initiation and assigns quotation engineer from deta
   assert.equal(getOpportunity().quotationEngineerId, 3);
   assert.deepEqual(calls.filter((call) => call[0] !== 'listUsersByRole'), [
     ['findOpportunity', 30],
-    ['updateOpportunity', 30, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3 }],
+    ['updateOpportunity', 30, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3, technicalPlanSubmitDate: '2026-09-16' }],
     ['createEvent', {
       opportunityId: 30,
       eventType: ACTIONS.APPROVE_INITIATION,
@@ -3573,10 +3529,10 @@ test('Sales Manager approves initiation and assigns quotation engineer from deta
       toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
       actorUserId: 2,
       targetUserId: 3,
-      comment: 'approved'
+      comment: 'approved\nPlan to submit: 2026-09-16'
     }],
     ['closeTodos', 30, 'completed'],
-    ['createTodo', { opportunityId: 30, assigneeUserId: 3, title: 'Prepare technical solution' }]
+    ['createTodo', { opportunityId: 30, assigneeUserId: 3, title: 'Prepare technical solution', dueAt: '2026-09-16T23:59:59+08:00' }]
   ]);
 });
 
@@ -3796,7 +3752,91 @@ test('workflow route submits technical solution as a version for approval', asyn
   ]);
 });
 
-test('workflow actions use compact full-width label and content rows', async () => {
+test('Project Approval selects multiple engineers and stores the technical proposal deadline', async () => {
+  const assignmentCalls = [];
+  const opportunityResponsibilityRepository = {
+    async listTeamMembersByOpportunity(opportunityId) {
+      assignmentCalls.push(['listMembers', opportunityId]);
+      return [];
+    },
+    async addTeamMember(input) {
+      assignmentCalls.push(['addMember', input]);
+      return { id: 41, ...input };
+    },
+    async removeTeamMember(input) {
+      assignmentCalls.push(['removeMember', input]);
+      return { id: input.memberId };
+    }
+  };
+  const { agent, calls, getOpportunity } = await createWorkflowAgent({
+    user: {
+      id: 2,
+      username: 'manager01',
+      displayName: 'Sales Manager',
+      roles: [ROLES.SALES_MANAGER]
+    },
+    opportunity: {
+      status: STATUSES.INITIATION_PENDING,
+      salespersonId: 7,
+      salesManagerId: 2
+    },
+    roleUsers: {
+      [ROLES.QUOTATION_ENGINEER]: [
+        { id: 3, displayName: 'Quote Engineer One', username: 'quote01', roles: [ROLES.QUOTATION_ENGINEER] },
+        { id: 8, displayName: 'Quote Engineer Two', username: 'quote02', roles: [ROLES.QUOTATION_ENGINEER] }
+      ]
+    },
+    opportunityResponsibilityRepository
+  });
+
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  const approvalSection = extractBusinessSection(detail.text, 'project-approval', 'technical');
+  assert.match(approvalSection, /<h2>Project Approval<\/h2>/);
+  assert.equal((approvalSection.match(/name="quotationEngineerIds"/g) || []).length, 2);
+  assert.match(approvalSection, /Quote Engineer One/);
+  assert.match(approvalSection, /Quote Engineer Two/);
+  assert.match(approvalSection, /name="technicalPlanSubmitDate" type="date"[^>]*required/);
+  assert.match(approvalSection, /Approve/);
+  assert.match(approvalSection, /Reject[\s\S]*Reason/);
+
+  const response = await agent
+    .post('/opportunities/30/workflow')
+    .type('form')
+    .send({
+      action: ACTIONS.APPROVE_INITIATION,
+      quotationEngineerIds: ['3', '8'],
+      quotationEngineerLeadId: '3',
+      technicalPlanSubmitDate: '2026-09-16'
+    });
+
+  assert.equal(response.status, 302);
+  assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+  assert.equal(getOpportunity().quotationEngineerId, 3);
+  assert.equal(getOpportunity().technicalPlanSubmitDate, '2026-09-16');
+  assert.deepEqual(calls.filter((call) => call[0] === 'createTodo'), [
+    ['createTodo', { opportunityId: 30, assigneeUserId: 3, title: 'Prepare technical solution', dueAt: '2026-09-16T23:59:59+08:00' }],
+    ['createTodo', { opportunityId: 30, assigneeUserId: 8, title: 'Prepare technical solution', dueAt: '2026-09-16T23:59:59+08:00' }]
+  ]);
+  assert.deepEqual(assignmentCalls, [
+    ['listMembers', 30],
+    ['listMembers', 30],
+    ['addMember', {
+      opportunityId: 30,
+      userId: 8,
+      roleCode: ROLES.QUOTATION_ENGINEER,
+      permissionLevel: 'edit',
+      assignmentScope: 'Technical Proposal',
+      taskDescription: 'Prepare technical proposal',
+      dueDate: '2026-09-16',
+      canSendExternalEmail: false,
+      addedBy: 2
+    }]
+  ]);
+  assert.match(calls.find((call) => call[0] === 'createEvent')?.[1]?.comment || '', /Plan to submit: 2026-09-16/);
+});
+
+test('workflow actions use the approved compact single-row layout', async () => {
   const { agent } = await createWorkflowAgent({
     user: {
       id: 4,
@@ -3826,14 +3866,14 @@ test('workflow actions use compact full-width label and content rows', async () 
   assert.equal(detail.status, 200);
   assert.doesNotMatch(detail.text, /class="workflow-actions-section"/);
   assert.match(detail.text, /class="workflow-action-list stage-workflow-actions"/);
-  assert.equal((detail.text.match(/class="action-section workflow-action-row"/g) || []).length, 3);
+  assert.equal((detail.text.match(/class="workflow-compact-row /g) || []).length, 3);
   assert.match(detail.text, /Change Project Lead Engineer/);
-  assert.match(detail.text, /Approve Technical Solution/);
-  assert.match(detail.text, /Reject Technical Solution/);
-  assert.match(detail.text, /name="improvement" required/);
-  assert.match(detail.text, /\.workflow-action-row\s*\{[\s\S]*grid-template-columns:\s*280px minmax\(0,\s*1fr\);/);
-  assert.match(detail.text, /\.workflow-action-form\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(260px,\s*1fr\)\) auto;[\s\S]*max-width:\s*none;/);
-  assert.match(detail.text, /\.workflow-action-form textarea\s*\{[\s\S]*min-height:\s*48px;/);
+  assert.match(detail.text, /Approve Proposal/);
+  assert.match(detail.text, /Reject Proposal/);
+  assert.doesNotMatch(detail.text, /name="improvement"/);
+  assert.match(detail.text, /\.workflow-compact-row\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-wrap:\s*wrap;/);
+  assert.match(detail.text, /\.workflow-action-button\s*\{[\s\S]*flex:\s*0 0 190px;[\s\S]*width:\s*190px;/);
+  assert.match(detail.text, /\.workflow-inline-field\s*\{[\s\S]*grid-template-columns:\s*max-content minmax\(0, 1fr\);/);
 });
 
 test('legal reviewer can see contract approval records and approve from detail page', async () => {

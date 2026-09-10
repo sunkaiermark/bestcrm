@@ -352,7 +352,7 @@ test('release candidate completes lead-to-inquiry-to-engineering-to-QP-V2-email-
     const technical = createTechnicalRepositories(state);
     const workflow = createWorkflowRepositories(state, core, technical);
     await applyWorkflowAction({ actor: sales, opportunityId: opportunity.id, action: ACTIONS.SUBMIT_INITIATION, repositories: workflow });
-    await applyWorkflowAction({ actor: salesManager, opportunityId: opportunity.id, action: ACTIONS.APPROVE_INITIATION, payload: { quotationEngineerId: leadEngineer.id }, repositories: workflow });
+    await applyWorkflowAction({ actor: salesManager, opportunityId: opportunity.id, action: ACTIONS.APPROVE_INITIATION, payload: { quotationEngineerId: leadEngineer.id, technicalPlanSubmitDate: '2026-09-15' }, repositories: workflow });
     state.opportunity.teamMembers = [{ id: 1, userId: supportEngineer.id, roleCode: ROLES.QUOTATION_ENGINEER, isActive: true, canSendExternalEmail: false }];
     const draft = await generateOpportunityTechnicalDraft(technical, leadEngineer, state.opportunity, 51);
     await assignOpportunityTechnicalDraftSection(technical.opportunityTechnicalDraftRepository, leadEngineer, state.opportunity, draft, {

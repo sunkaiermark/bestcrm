@@ -138,12 +138,12 @@ test('Sales Manager approval creates todo and timeline event', () => {
     actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
     action: ACTIONS.APPROVE_INITIATION,
     before: { id: 10, status: STATUSES.INITIATION_PENDING, salespersonId: 1, salesManagerId: 2 },
-    after: { id: 10, status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3 },
-    payload: { quotationEngineerId: 3, comment: 'approved' }
+    after: { id: 10, status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3, technicalPlanSubmitDate: '2026-09-16' },
+    payload: { quotationEngineerId: 3, technicalPlanSubmitDate: '2026-09-16', comment: 'approved' }
   });
 
   assert.deepEqual(effects.todosToCreate, [
-    { opportunityId: 10, assigneeUserId: 3, title: 'Prepare technical solution' }
+    { opportunityId: 10, assigneeUserId: 3, title: 'Prepare technical solution', dueAt: '2026-09-16T23:59:59+08:00' }
   ]);
   assert.deepEqual(effects.todosToClose, [{ opportunityId: 10, status: 'completed' }]);
   assert.deepEqual(effects.event, {
@@ -153,8 +153,34 @@ test('Sales Manager approval creates todo and timeline event', () => {
     toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
     actorUserId: 2,
     targetUserId: 3,
-    comment: 'approved'
+    comment: 'approved\nPlan to submit: 2026-09-16'
   });
+});
+
+test('Project Approval creates dated technical todos for every selected engineer', () => {
+  const effects = buildWorkflowEffects({
+    actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
+    action: ACTIONS.APPROVE_INITIATION,
+    before: { id: 10, status: STATUSES.INITIATION_PENDING, salespersonId: 1, salesManagerId: 2 },
+    after: {
+      id: 10,
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      quotationEngineerId: 3,
+      technicalPlanSubmitDate: '2026-09-16'
+    },
+    payload: {
+      quotationEngineerId: 3,
+      quotationEngineerIds: [3, 8],
+      technicalPlanSubmitDate: '2026-09-16'
+    }
+  });
+
+  assert.deepEqual(effects.todosToCreate, [
+    { opportunityId: 10, assigneeUserId: 3, title: 'Prepare technical solution', dueAt: '2026-09-16T23:59:59+08:00' },
+    { opportunityId: 10, assigneeUserId: 8, title: 'Prepare technical solution', dueAt: '2026-09-16T23:59:59+08:00' }
+  ]);
+  assert.equal(effects.event.targetUserId, 3);
+  assert.equal(effects.event.comment, 'Plan to submit: 2026-09-16');
 });
 
 test('quotation engineer change reassigns active quotation engineer todo', () => {
@@ -288,7 +314,7 @@ test('applyWorkflowAction updates opportunity creates event and creates todos', 
     actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
     opportunityId: 10,
     action: ACTIONS.APPROVE_INITIATION,
-    payload: { quotationEngineerId: 3, comment: 'approved' },
+    payload: { quotationEngineerId: 3, technicalPlanSubmitDate: '2026-09-16', comment: 'approved' },
     repositories
   });
 
@@ -296,7 +322,7 @@ test('applyWorkflowAction updates opportunity creates event and creates todos', 
   assert.equal(result.quotationEngineerId, 3);
   assert.deepEqual(repositories.calls, [
     ['findOpportunity', 10],
-    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3 }],
+    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3, technicalPlanSubmitDate: '2026-09-16' }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.APPROVE_INITIATION,
@@ -304,10 +330,10 @@ test('applyWorkflowAction updates opportunity creates event and creates todos', 
       toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
       actorUserId: 2,
       targetUserId: 3,
-      comment: 'approved'
+      comment: 'approved\nPlan to submit: 2026-09-16'
     }],
     ['closeTodos', 10, 'completed'],
-    ['createTodo', { opportunityId: 10, assigneeUserId: 3, title: 'Prepare technical solution' }]
+    ['createTodo', { opportunityId: 10, assigneeUserId: 3, title: 'Prepare technical solution', dueAt: '2026-09-16T23:59:59+08:00' }]
   ]);
 });
 
@@ -347,6 +373,48 @@ test('applyWorkflowAction changes quotation engineer without changing workflow s
   ]);
 });
 
+test('Project Approval rejects an invalid technical proposal date before any update', async () => {
+  const repositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.INITIATION_PENDING,
+    salespersonId: 1,
+    salesManagerId: 2
+  });
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.APPROVE_INITIATION,
+    payload: {
+      quotationEngineerId: 3,
+      quotationEngineerIds: [3, 8],
+      technicalPlanSubmitDate: '2026-02-30'
+    },
+    repositories
+  }), /Plan to Submit must be a valid date/);
+
+  assert.deepEqual(repositories.calls, [['findOpportunity', 10]]);
+});
+
+test('Project Approval requires a technical proposal submission date before any update', async () => {
+  const repositories = createRecordingRepositories({
+    id: 10,
+    status: STATUSES.INITIATION_PENDING,
+    salespersonId: 1,
+    salesManagerId: 2
+  });
+
+  await assert.rejects(() => applyWorkflowAction({
+    actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.APPROVE_INITIATION,
+    payload: { quotationEngineerId: 3 },
+    repositories
+  }), /Plan to Submit is required/);
+
+  assert.deepEqual(repositories.calls, [['findOpportunity', 10]]);
+});
+
 test('applyWorkflowAction runs workflow side effects through transaction repositories when provided', async () => {
   const outerRepositories = createRecordingRepositories({
     id: 10,
@@ -371,7 +439,7 @@ test('applyWorkflowAction runs workflow side effects through transaction reposit
     actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
     opportunityId: 10,
     action: ACTIONS.APPROVE_INITIATION,
-    payload: { quotationEngineerId: 3, comment: 'approved' },
+    payload: { quotationEngineerId: 3, technicalPlanSubmitDate: '2026-09-16', comment: 'approved' },
     repositories: outerRepositories
   });
 
@@ -382,7 +450,7 @@ test('applyWorkflowAction runs workflow side effects through transaction reposit
   ]);
   assert.deepEqual(transactionRepositories.calls, [
     ['findOpportunity', 10],
-    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3 }],
+    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3, technicalPlanSubmitDate: '2026-09-16' }],
     ['createEvent', {
       opportunityId: 10,
       eventType: ACTIONS.APPROVE_INITIATION,
@@ -390,10 +458,10 @@ test('applyWorkflowAction runs workflow side effects through transaction reposit
       toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
       actorUserId: 2,
       targetUserId: 3,
-      comment: 'approved'
+      comment: 'approved\nPlan to submit: 2026-09-16'
     }],
     ['closeTodos', 10, 'completed'],
-    ['createTodo', { opportunityId: 10, assigneeUserId: 3, title: 'Prepare technical solution' }]
+    ['createTodo', { opportunityId: 10, assigneeUserId: 3, title: 'Prepare technical solution', dueAt: '2026-09-16T23:59:59+08:00' }]
   ]);
 });
 
@@ -428,7 +496,7 @@ test('applyWorkflowAction lets transaction wrapper rollback when a workflow side
     actor: { id: 2, roles: [ROLES.SALES_MANAGER] },
     opportunityId: 10,
     action: ACTIONS.APPROVE_INITIATION,
-    payload: { quotationEngineerId: 3, comment: 'approved' },
+    payload: { quotationEngineerId: 3, technicalPlanSubmitDate: '2026-09-16', comment: 'approved' },
     repositories: outerRepositories
   }), /timeline write failed/);
 
@@ -438,7 +506,7 @@ test('applyWorkflowAction lets transaction wrapper rollback when a workflow side
   ]);
   assert.deepEqual(transactionRepositories.calls.slice(0, 2), [
     ['findOpportunity', 10],
-    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3 }]
+    ['updateOpportunity', 10, { status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS, quotationEngineerId: 3, technicalPlanSubmitDate: '2026-09-16' }]
   ]);
 });
 

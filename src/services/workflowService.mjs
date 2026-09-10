@@ -1,4 +1,5 @@
 import { ACTIONS, transition } from '../domain/workflow.mjs';
+import { ROLES } from '../domain/roles.mjs';
 import { technicalDraftSubmissionSummary } from './opportunityTechnicalDraftService.mjs';
 
 export class WorkflowValidationError extends Error {
@@ -15,6 +16,7 @@ const workflowStateFields = [
   'quotationEngineerId',
   'technicalManagerId',
   'commercialManagerId',
+  'technicalPlanSubmitDate',
   'finalDealAmount',
   'lostReason',
   'wonDescription',
@@ -123,7 +125,12 @@ function timestampValue(value) {
 function commentFromPayload(payload) {
   const primary = payload.reason || payload.comment || '';
   const improvement = payload.improvement || '';
-  return [primary, improvement ? `Improvement required: ${improvement}` : '']
+  const technicalPlan = payload.technicalPlanSubmitDate || '';
+  return [
+    primary,
+    improvement ? `Improvement required: ${improvement}` : '',
+    technicalPlan ? `Plan to submit: ${technicalPlan}` : ''
+  ]
     .filter(Boolean)
     .join('\n') || null;
 }
@@ -179,7 +186,18 @@ function nextTodosForAction(action, after, payload) {
     case ACTIONS.SUBMIT_INITIATION:
       return [{ opportunityId: after.id, assigneeUserId: after.salesManagerId, title: 'Approve opportunity initiation' }];
     case ACTIONS.APPROVE_INITIATION:
-      return [{ opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Prepare technical solution' }];
+      return [...new Set(
+        Array.isArray(payload.quotationEngineerIds) && payload.quotationEngineerIds.length > 0
+          ? payload.quotationEngineerIds.map(Number)
+          : [Number(after.quotationEngineerId)]
+      )].filter(Number.isFinite).map((assigneeUserId) => ({
+        opportunityId: after.id,
+        assigneeUserId,
+        title: 'Prepare technical solution',
+        ...(payload.technicalPlanSubmitDate
+          ? { dueAt: `${payload.technicalPlanSubmitDate}T23:59:59+08:00` }
+          : {})
+      }));
     case ACTIONS.CHANGE_QUOTATION_ENGINEER: {
       const todo = quotationEngineerTodoForStatus(after);
       return todo ? [todo] : [];
@@ -230,6 +248,65 @@ function assertTechnicalSolutionPayload(payload, attachments) {
   const hasTechnicalAttachment = attachments.some((attachment) => attachment.category === 'technical_solution');
   if (!hasNonBlankValue(payload.solutionSummary) && !hasTechnicalAttachment) {
     throw new WorkflowValidationError('Technical solution description or attachment is required');
+  }
+}
+
+function assertTechnicalPlanSubmitDate(action, payload) {
+  if (action !== ACTIONS.APPROVE_INITIATION) {
+    return;
+  }
+  if (!hasValue(payload.technicalPlanSubmitDate)) {
+    throw new WorkflowValidationError('Plan to Submit is required');
+  }
+  const value = String(payload.technicalPlanSubmitDate);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new WorkflowValidationError('Plan to Submit must be a valid date');
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new WorkflowValidationError('Plan to Submit must be a valid date');
+  }
+}
+
+async function persistInitiationEngineeringAssignments({ action, actor, opportunityId, payload, repositories }) {
+  if (action !== ACTIONS.APPROVE_INITIATION || !Array.isArray(payload.quotationEngineerIds)) {
+    return;
+  }
+  const repository = repositories.opportunityResponsibilityRepository;
+  if (typeof repository?.listTeamMembersByOpportunity !== 'function'
+      || typeof repository?.addTeamMember !== 'function'
+      || typeof repository?.removeTeamMember !== 'function') {
+    return;
+  }
+
+  const leadEngineerId = Number(payload.quotationEngineerId);
+  const supportingEngineerIds = new Set(payload.quotationEngineerIds
+    .map(Number)
+    .filter((userId) => Number.isSafeInteger(userId) && userId > 0 && userId !== leadEngineerId));
+  const currentMembers = await repository.listTeamMembersByOpportunity(Number(opportunityId));
+  const currentSupportingEngineers = currentMembers.filter((member) => member.roleCode === ROLES.QUOTATION_ENGINEER);
+
+  for (const member of currentSupportingEngineers) {
+    if (!supportingEngineerIds.has(Number(member.userId))) {
+      await repository.removeTeamMember({
+        opportunityId: Number(opportunityId),
+        memberId: Number(member.id),
+        removedBy: actor.id
+      });
+    }
+  }
+  for (const userId of supportingEngineerIds) {
+    await repository.addTeamMember({
+      opportunityId: Number(opportunityId),
+      userId,
+      roleCode: ROLES.QUOTATION_ENGINEER,
+      permissionLevel: 'edit',
+      assignmentScope: 'Technical Proposal',
+      taskDescription: 'Prepare technical proposal',
+      dueDate: payload.technicalPlanSubmitDate || null,
+      canSendExternalEmail: false,
+      addedBy: actor.id
+    });
   }
 }
 
@@ -752,6 +829,7 @@ export async function applyWorkflowAction({
     payload: technicalPayload,
     repositories
   });
+  assertTechnicalPlanSubmitDate(action, effectivePayload);
 
   const after = transition({
     userId: actor.id,
@@ -774,6 +852,13 @@ export async function applyWorkflowAction({
   await persistTechnicalSolutionWithdrawal({ action, actor, opportunityId, repositories });
   await persistCommercialQuoteReviewData({ action, actor, opportunityId, payload: effectivePayload, repositories });
   await persistContractApprovalData({ action, actor, opportunityId, payload: effectivePayload, repositories, contractApproval });
+  await persistInitiationEngineeringAssignments({
+    action,
+    actor,
+    opportunityId,
+    payload: effectivePayload,
+    repositories
+  });
   const effects = buildWorkflowEffects({ actor, action, before, after: effectiveAfter, payload: effectivePayload });
 
   await repositories.workflowEventRepository.create(effects.event);
