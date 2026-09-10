@@ -46,9 +46,13 @@ export function csrfProtection({ enabled = true } = {}) {
     req.csrfProtectionEnabled = enabled;
     req.validateCsrf = () => validateCsrfToken(req);
     res.locals.csrfToken = token;
-    res.locals.csrfField = () => token
-      ? `<input type="hidden" name="_csrf" value="${escapeAttribute(token)}">`
-      : '';
+    res.locals.csrfField = () => {
+      const submissionToken = createToken();
+      const submissionField = `<input type="hidden" name="_submissionToken" value="${escapeAttribute(submissionToken)}">`;
+      return token
+        ? `<input type="hidden" name="_csrf" value="${escapeAttribute(token)}">${submissionField}`
+        : submissionField;
+    };
 
     if (!enabled || SAFE_METHODS.has(req.method) || isMultipartRequest(req)) {
       next();

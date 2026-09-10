@@ -52,6 +52,7 @@ const emailRawArchiveFoundationMigrationPath = new URL('../../src/db/migrations/
 const emailRawBackfillCheckpointMigrationPath = new URL('../../src/db/migrations/050_email_raw_backfill_checkpoint.sql', import.meta.url);
 const emailRawMalwareEventsMigrationPath = new URL('../../src/db/migrations/051_email_raw_malware_events.sql', import.meta.url);
 const opportunityTechnicalPlanSubmitDateMigrationPath = new URL('../../src/db/migrations/053_opportunity_technical_plan_submit_date.sql', import.meta.url);
+const formSubmissionIdempotencyMigrationPath = new URL('../../src/db/migrations/054_form_submission_idempotency.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -914,4 +915,15 @@ test('raw malware event migration stores metadata only and remains append-only',
   assert.match(sql, /email_raw_malware_events_no_change/);
   assert.match(sql, /raw bytes and CRM records are intentionally not stored/);
   assert.doesNotMatch(sql, /subject|from_address|to_recipients|text_body|html_body|stored_path|bytea/i);
+});
+
+test('form submission idempotency migration creates one actor-scoped processing record per action token', async () => {
+  const sql = await readFile(formSubmissionIdempotencyMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS form_submission_idempotency/);
+  assert.match(sql, /token text PRIMARY KEY/);
+  assert.match(sql, /actor_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CHECK \(state IN \('processing', 'completed', 'uncertain'\)\)/);
+  assert.match(sql, /CHECK \(request_method IN \('POST', 'PUT', 'PATCH', 'DELETE'\)\)/);
+  assert.match(sql, /form_submission_idempotency_expires_idx/);
 });

@@ -117,6 +117,10 @@ test('release builder creates a reproducible commit-only archive and checksum ma
     });
     const manifest = JSON.parse(await readFile(result.manifestPath, 'utf8'));
     const checksum = await readFile(result.checksumPath, 'utf8');
+    const archive = await JSZip.loadAsync(await readFile(result.archivePath));
+    const archivedMigrations = Object.keys(archive.files)
+      .filter((name) => name.startsWith('src/db/migrations/') && name.endsWith('.sql'))
+      .sort();
     assert.equal(manifest.commit, result.commit);
     assert.equal(manifest.sha256, result.sha256);
     assert.equal(manifest.reproducibleArchiveVerified, true);
@@ -126,7 +130,7 @@ test('release builder creates a reproducible commit-only archive and checksum ma
       productionCredentialsIncluded: false
     });
     assert.match(checksum, new RegExp(`^${result.sha256}  bestcrm-v2099\\.01\\.01-01-rc\\.1\\.zip`));
-    assert.match(manifest.latestMigration, /052_contact_code_l_prefix\.sql$/);
+    assert.equal(manifest.latestMigration, archivedMigrations.at(-1));
     assert.deepEqual(manifest.emailFeatureFlags, {
       CRM_EMAIL_CENTER_ENABLED: false,
       EMAIL_INTAKE_ENABLED: false,

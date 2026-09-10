@@ -9,6 +9,7 @@ import { createWorkflowTransaction } from './db/workflowTransaction.mjs';
 import { createEmailArchiveTransaction } from './db/emailArchiveTransaction.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
 import { csrfProtection } from './middleware/csrf.mjs';
+import { submissionGuard } from './middleware/submissionGuard.mjs';
 import { createTrustedDeviceIntegration } from './middleware/trustedDevice.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
 import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
@@ -22,6 +23,7 @@ import { createContractApprovalRepository } from './repositories/contractApprova
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
 import { createEmailArchiveRepository } from './repositories/emailArchiveRepository.mjs';
+import { createFormSubmissionRepository } from './repositories/formSubmissionRepository.mjs';
 import { createInquiryAttachmentRepository } from './repositories/inquiryAttachmentRepository.mjs';
 import { createInquiryCustomerApprovalRepository } from './repositories/inquiryCustomerApprovalRepository.mjs';
 import { createInquiryRepository } from './repositories/inquiryRepository.mjs';
@@ -684,6 +686,9 @@ export function createApp(options = {}) {
   const inquiryRepository = options.inquiryRepository || (pool ? createInquiryRepository(pool) : emptyInquiryRepository);
   const emailArchiveRepository = options.emailArchiveRepository
     || (pool ? createEmailArchiveRepository(pool) : emptyEmailArchiveRepository);
+  const formSubmissionRepository = 'formSubmissionRepository' in options
+    ? options.formSubmissionRepository
+    : pool ? createFormSubmissionRepository(pool) : null;
   const inquiryAttachmentRepository = options.inquiryAttachmentRepository || (pool
     ? createInquiryAttachmentRepository(pool)
     : emptyInquiryAttachmentRepository);
@@ -796,6 +801,10 @@ export function createApp(options = {}) {
     next();
   });
   app.use(attachCurrentUser(userRepository));
+  app.use(submissionGuard({
+    repository: formSubmissionRepository,
+    logger: options.logger || console
+  }));
   app.get('/', (req, res) => {
     res.redirect('/workbench');
   });
