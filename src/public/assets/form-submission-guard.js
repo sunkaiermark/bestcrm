@@ -23,10 +23,13 @@ function ensureSubmissionToken(form) {
     field.value = createToken();
     form.append(field);
   }
-  const action = new URL(form.action || globalThis.location.href, globalThis.location.href);
+  // Named controls are exposed as form properties. A control named "action"
+  // therefore shadows HTMLFormElement.action and can return a RadioNodeList.
+  const actionAttribute = form.getAttribute('action');
+  const action = new URL(actionAttribute || globalThis.location.href, globalThis.location.href);
   if (action.origin === globalThis.location.origin) {
     action.searchParams.set('_submissionToken', field.value);
-    form.action = `${action.pathname}${action.search}${action.hash}`;
+    form.setAttribute('action', `${action.pathname}${action.search}${action.hash}`);
   }
   return field.value;
 }
@@ -74,7 +77,7 @@ function resetForm(form) {
 }
 
 for (const form of document.forms) {
-  const method = String(form.method || 'get').toLowerCase();
+  const method = String(form.getAttribute('method') || 'get').toLowerCase();
   if (!MUTATING_METHODS.has(method)) continue;
   ensureSubmissionToken(form);
   form.addEventListener('submit', (event) => {
