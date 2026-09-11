@@ -53,6 +53,7 @@ const emailRawBackfillCheckpointMigrationPath = new URL('../../src/db/migrations
 const emailRawMalwareEventsMigrationPath = new URL('../../src/db/migrations/051_email_raw_malware_events.sql', import.meta.url);
 const opportunityTechnicalPlanSubmitDateMigrationPath = new URL('../../src/db/migrations/053_opportunity_technical_plan_submit_date.sql', import.meta.url);
 const formSubmissionIdempotencyMigrationPath = new URL('../../src/db/migrations/054_form_submission_idempotency.sql', import.meta.url);
+const userPersonalMailboxAssignmentsMigrationPath = new URL('../../src/db/migrations/055_user_personal_mailbox_assignments.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -926,4 +927,19 @@ test('form submission idempotency migration creates one actor-scoped processing 
   assert.match(sql, /CHECK \(state IN \('processing', 'completed', 'uncertain'\)\)/);
   assert.match(sql, /CHECK \(request_method IN \('POST', 'PUT', 'PATCH', 'DELETE'\)\)/);
   assert.match(sql, /form_submission_idempotency_expires_idx/);
+});
+
+test('personal mailbox assignment migration links one active company mailbox to one user with immutable history', async () => {
+  const sql = await readFile(userPersonalMailboxAssignmentsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS user_personal_mailbox_assignments/);
+  assert.match(sql, /user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /mailbox_address ~ '\^\[\^\[:space:\]@<>\]\+@sunkaier\[\.\]com\$'/);
+  assert.match(sql, /mailbox_address <> 'sales@sunkaier\.com'/);
+  assert.match(sql, /user_personal_mailbox_active_user_idx/);
+  assert.match(sql, /user_personal_mailbox_active_address_idx/);
+  assert.match(sql, /WHERE unassigned_at IS NULL/);
+  assert.match(sql, /Personal mailbox assignments cannot be deleted/);
+  assert.match(sql, /Personal mailbox assignment history is immutable/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
 });

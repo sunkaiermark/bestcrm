@@ -406,7 +406,12 @@ async function opportunityForThread(dependencies, thread) {
 
 export async function canViewEmailThread(dependencies, actor, thread) {
   if (hasRole(actor, ROLES.ADMINISTRATOR)) return true;
-  if (!thread?.opportunityId) return canAccessInquiryInbox(actor);
+  const mailboxOwnerUserId = Number(thread?.mailboxOwnerUserId || 0);
+  const isPersonalMailbox = mailboxOwnerUserId > 0;
+  if (isPersonalMailbox && Number(actor?.id) === mailboxOwnerUserId) return true;
+  if (!thread?.opportunityId) {
+    return isPersonalMailbox ? false : canAccessInquiryInbox(actor);
+  }
   const opportunity = await opportunityForThread(dependencies, thread);
   return Boolean(opportunity && canViewOpportunity(actor, opportunity));
 }

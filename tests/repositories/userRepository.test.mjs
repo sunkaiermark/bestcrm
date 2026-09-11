@@ -46,6 +46,7 @@ test('findByUsernameWithRoles returns camelCase user with roles', async () => {
     passwordHash: 'hashed',
     displayName: 'Sales One',
     email: 'sales01@example.com',
+    personalMailboxAddress: '',
     phone: '123',
     emailSignatureName: '',
     emailSignatureTitle: '',
@@ -89,6 +90,7 @@ test('listUsersByRole returns active users for assignment selects', async () => 
     passwordHash: 'hashed',
     displayName: 'Sales Manager',
     email: 'manager@example.com',
+    personalMailboxAddress: '',
     phone: '456',
     emailSignatureName: '',
     emailSignatureTitle: '',
@@ -107,6 +109,7 @@ test('listUsersWithRoles returns all users for system user detail page', async (
     password_hash: 'hashed',
     display_name: 'Technical Manager',
     email: 'technical.manager01@bestcrm.local',
+    personal_mailbox_address: 'technical.manager@sunkaier.com',
     phone: '789',
     is_active: true,
     roles: ['technical_manager']
@@ -121,6 +124,7 @@ test('listUsersWithRoles returns all users for system user detail page', async (
     passwordHash: 'hashed',
     displayName: 'Technical Manager',
     email: 'technical.manager01@bestcrm.local',
+    personalMailboxAddress: 'technical.manager@sunkaier.com',
     phone: '789',
     emailSignatureName: '',
     emailSignatureTitle: '',
@@ -164,6 +168,58 @@ test('createUser inserts user and assigns roles in one transaction', async () =>
   assert.match(pool.queries[3].sql, /AND is_active = true/);
   assert.deepEqual(pool.queries[3].params, [12, ['salesperson']]);
   assert.match(pool.queries[4].sql, /COMMIT/);
+});
+
+test('createUser assigns an optional personal mailbox in the same transaction', async () => {
+  const pool = createFakePoolSequence([[{ id: 13 }], [], [], []]);
+  const repository = createUserRepository(pool);
+
+  const user = await repository.createUser({
+    username: 'mark',
+    passwordHash: 'hashed-password',
+    displayName: 'Mark Yang',
+    email: 'markyang@sunkaier.com',
+    personalMailboxAddress: 'markyang@sunkaier.com',
+    mailboxAssignedBy: 7,
+    phone: '',
+    isActive: true,
+    roles: ['salesperson']
+  });
+
+  assert.deepEqual(user, { id: 13 });
+  assert.match(pool.queries[4].sql, /INSERT INTO user_personal_mailbox_assignments/);
+  assert.deepEqual(pool.queries[4].params, [13, 'markyang@sunkaier.com', 7]);
+  assert.match(pool.queries[5].sql, /COMMIT/);
+});
+
+test('updateUser closes the previous mailbox assignment before assigning the replacement', async () => {
+  const pool = createFakePoolSequence([
+    [{ id: 12 }],
+    [],
+    [],
+    [{ id: 91, mailbox_address: 'old@sunkaier.com' }],
+    [],
+    []
+  ]);
+  const repository = createUserRepository(pool);
+
+  await repository.updateUser(12, {
+    displayName: 'Mark Yang',
+    email: 'markyang@sunkaier.com',
+    personalMailboxAddress: 'markyang@sunkaier.com',
+    mailboxAssignedBy: 7,
+    phone: '',
+    isActive: true,
+    roles: ['salesperson']
+  });
+
+  assert.match(pool.queries[4].sql, /FROM user_personal_mailbox_assignments/);
+  assert.deepEqual(pool.queries[4].params, [12]);
+  assert.match(pool.queries[5].sql, /SET unassigned_by = \$2, unassigned_at = now\(\)/);
+  assert.deepEqual(pool.queries[5].params, [91, 7]);
+  assert.match(pool.queries[6].sql, /INSERT INTO user_personal_mailbox_assignments/);
+  assert.deepEqual(pool.queries[6].params, [12, 'markyang@sunkaier.com', 7]);
+  assert.match(pool.queries[7].sql, /COMMIT/);
 });
 
 test('updateUser updates profile fields, replaces roles, and revokes access when deactivated', async () => {

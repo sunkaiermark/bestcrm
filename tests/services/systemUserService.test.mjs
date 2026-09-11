@@ -3,10 +3,25 @@ import assert from 'node:assert/strict';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
   SystemMfaAdministrationError,
+  SystemUserValidationError,
+  normalizePersonalMailboxAddress,
   resetSystemUserMfaEnrollment,
   revokeSystemUserTrustedDevices,
   updateSystemUserMfaRequirement
 } from '../../src/services/systemUserService.mjs';
+
+test('personal mailbox normalization accepts one company address and reserves the shared mailbox', () => {
+  assert.equal(normalizePersonalMailboxAddress(' MarkYang@SUNKAIER.COM '), 'markyang@sunkaier.com');
+  assert.equal(normalizePersonalMailboxAddress(''), '');
+  assert.throws(
+    () => normalizePersonalMailboxAddress('mark@gmail.com'),
+    (error) => error instanceof SystemUserValidationError && error.statusCode === 400
+  );
+  assert.throws(
+    () => normalizePersonalMailboxAddress('sales@sunkaier.com'),
+    /shared sales mailbox/
+  );
+});
 
 function buildHarness() {
   const admin = { id: 7, username: 'admin01', roles: [ROLES.ADMINISTRATOR] };

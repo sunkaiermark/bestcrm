@@ -8,6 +8,7 @@ function mapUserRow(row) {
     passwordHash: row.password_hash,
     displayName: row.display_name,
     email: row.email,
+    personalMailboxAddress: row.personal_mailbox_address || '',
     phone: row.phone,
     emailSignatureName: row.email_signature_name || '',
     emailSignatureTitle: row.email_signature_title || '',
@@ -23,6 +24,14 @@ const userWithRolesSelect = `
     u.password_hash,
     u.display_name,
     u.email,
+    (
+      SELECT assignment.mailbox_address
+      FROM user_personal_mailbox_assignments assignment
+      WHERE assignment.user_id = u.id
+        AND assignment.unassigned_at IS NULL
+      ORDER BY assignment.assigned_at DESC, assignment.id DESC
+      LIMIT 1
+    ) AS personal_mailbox_address,
     u.phone,
     u.email_signature_name,
     u.email_signature_title,
@@ -47,6 +56,54 @@ async function replaceUserRoles(pool, userId, roles) {
       AND is_active = true
     ON CONFLICT (user_id, role_id) DO NOTHING
   `, [userId, roles]);
+}
+
+function hasPersonalMailboxInput(user) {
+  return Object.prototype.hasOwnProperty.call(user, 'personalMailboxAddress');
+}
+
+async function createPersonalMailboxAssignment(pool, userId, mailboxAddress, assignedBy) {
+  if (!mailboxAddress) return;
+  await pool.query(`
+    INSERT INTO user_personal_mailbox_assignments (
+      user_id,
+      mailbox_address,
+      assigned_by
+    )
+    VALUES ($1, $2, $3)
+  `, [userId, mailboxAddress, assignedBy]);
+}
+
+async function replacePersonalMailboxAssignment(pool, userId, mailboxAddress, assignedBy) {
+  const currentResult = await pool.query(`
+    SELECT id, mailbox_address
+    FROM user_personal_mailbox_assignments
+    WHERE user_id = $1
+      AND unassigned_at IS NULL
+    ORDER BY assigned_at DESC, id DESC
+    LIMIT 1
+    FOR UPDATE
+  `, [userId]);
+  const current = currentResult.rows[0] || null;
+  if ((current?.mailbox_address || '') === mailboxAddress) return;
+
+  if (current) {
+    await pool.query(`
+      UPDATE user_personal_mailbox_assignments
+      SET unassigned_by = $2, unassigned_at = now()
+      WHERE id = $1
+        AND unassigned_at IS NULL
+    `, [current.id, assignedBy]);
+  }
+  await createPersonalMailboxAssignment(pool, userId, mailboxAddress, assignedBy);
+}
+
+function personalizeMailboxConflict(error) {
+  if (error?.code === '23505' && String(error.constraint || '').startsWith('user_personal_mailbox_active_')) {
+    error.statusCode = 409;
+    error.message = 'Personal mailbox is already assigned to another active user';
+  }
+  return error;
 }
 
 export function createUserRepository(pool) {
@@ -96,11 +153,19 @@ export function createUserRepository(pool) {
         ]);
         const userId = Number(result.rows[0].id);
         await replaceUserRoles(pool, userId, user.roles);
+        if (hasPersonalMailboxInput(user)) {
+          await createPersonalMailboxAssignment(
+            pool,
+            userId,
+            user.personalMailboxAddress,
+            user.mailboxAssignedBy
+          );
+        }
         await pool.query('COMMIT');
         return { id: userId };
       } catch (error) {
         await pool.query('ROLLBACK');
-        throw error;
+        throw personalizeMailboxConflict(error);
       }
     },
 
@@ -140,6 +205,14 @@ export function createUserRepository(pool) {
         }
         const userId = Number(result.rows[0].id);
         await replaceUserRoles(pool, userId, user.roles);
+        if (hasPersonalMailboxInput(user)) {
+          await replacePersonalMailboxAssignment(
+            pool,
+            userId,
+            user.personalMailboxAddress,
+            user.mailboxAssignedBy
+          );
+        }
         if (user.passwordHash || user.isActive === false) {
           await pool.query(`
             UPDATE user_trusted_devices
@@ -156,7 +229,7 @@ export function createUserRepository(pool) {
         return { id: userId };
       } catch (error) {
         await pool.query('ROLLBACK');
-        throw error;
+        throw personalizeMailboxConflict(error);
       }
     },
 

@@ -23,6 +23,7 @@ async function createSystemAgent(options = {}) {
     username: 'sales_manager01',
     displayName: 'Sales Manager',
     email: 'sales.manager01@bestcrm.local',
+    personalMailboxAddress: 'helena@sunkaier.com',
     phone: '',
     isActive: true,
     roles: [ROLES.SALES_MANAGER]
@@ -323,6 +324,7 @@ test('logged in users can view system user role and approval setting details', a
   assert.match(users.text, /sales_manager01/);
   assert.match(users.text, /Sales Manager/);
   assert.match(users.text, /sales_manager/);
+  assert.match(users.text, /helena@sunkaier\.com/);
   assert.match(users.text, /class="role-list"[\s\S]*class="role-list-item"[\s\S]*sales_manager/);
   assert.doesNotMatch(users.text, /administrator, sales_manager/);
   assert.match(users.text, /<table class="list-table content-fit-table">/);
@@ -416,6 +418,8 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.match(newForm.text, /New User/);
   assert.match(newForm.text, /name="username"/);
   assert.match(newForm.text, /name="password"/);
+  assert.match(newForm.text, /name="personalMailboxAddress"/);
+  assert.match(newForm.text, /name@sunkaier\.com/);
   assert.match(newForm.text, /Use exactly 6 digits/);
   assert.match(newForm.text, /value="service_manager"/);
 
@@ -433,6 +437,7 @@ test('administrator can add edit and deactivate system users', async () => {
     username: 'new_user',
     displayName: 'New User',
     email: 'new.user@bestcrm.local',
+    personalMailboxAddress: 'New.User@SUNKAIER.COM',
     phone: '555',
     emailSignatureName: 'New User',
     emailSignatureTitle: 'Sales Engineer',
@@ -447,6 +452,8 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.equal(calls[0].input.displayName, 'New User');
   assert.equal(calls[0].input.emailSignatureName, 'New User');
   assert.equal(calls[0].input.emailSignatureTitle, 'Sales Engineer');
+  assert.equal(calls[0].input.personalMailboxAddress, 'new.user@sunkaier.com');
+  assert.equal(calls[0].input.mailboxAssignedBy, 7);
   assert.deepEqual(calls[0].input.roles, [ROLES.SALESPERSON]);
   assert.equal(calls[0].input.isActive, true);
   assert.notEqual(calls[0].input.passwordHash, '482951');
@@ -460,10 +467,12 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.match(editForm.text, /name="displayName"/);
   assert.match(editForm.text, /New login password/);
   assert.match(editForm.text, /name="password"/);
+  assert.match(editForm.text, /value="helena@sunkaier\.com"/);
 
   const updated = await agent.post('/system/users/11').type('form').send({
     displayName: 'Updated Manager',
     email: 'updated.manager@bestcrm.local',
+    personalMailboxAddress: 'updated.manager@sunkaier.com',
     phone: '777',
     emailSignatureName: 'Updated Manager',
     emailSignatureTitle: 'Technical Manager',
@@ -476,6 +485,8 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.deepEqual(calls[1].input, {
     displayName: 'Updated Manager',
     email: 'updated.manager@bestcrm.local',
+    personalMailboxAddress: 'updated.manager@sunkaier.com',
+    mailboxAssignedBy: 7,
     phone: '777',
     emailSignatureName: 'Updated Manager',
     emailSignatureTitle: 'Technical Manager',
@@ -486,6 +497,7 @@ test('administrator can add edit and deactivate system users', async () => {
   const passwordUpdated = await agent.post('/system/users/11').type('form').send({
     displayName: 'Updated Manager',
     email: 'updated.manager@bestcrm.local',
+    personalMailboxAddress: 'updated.manager@sunkaier.com',
     phone: '777',
     emailSignatureName: 'Updated Manager',
     emailSignatureTitle: 'Technical Manager',
@@ -501,6 +513,14 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.equal(calls[2].input.isActive, true);
   assert.notEqual(calls[2].input.passwordHash, '730846');
   assert.equal(await verifyPassword('730846', calls[2].input.passwordHash), true);
+
+  const invalidMailbox = await agent.post('/system/users/11').type('form').send({
+    displayName: 'Updated Manager',
+    personalMailboxAddress: 'updated.manager@gmail.com',
+    roles: ROLES.TECHNICAL_MANAGER
+  });
+  assert.equal(invalidMailbox.status, 400);
+  assert.match(invalidMailbox.text, /@sunkaier\.com/);
 
   const deleted = await agent.post('/system/users/11/delete').type('form').send();
   assert.equal(deleted.status, 302);

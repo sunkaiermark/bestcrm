@@ -18,6 +18,7 @@
                   <th><%= t('username') %></th>
                   <th><%= t('roles') %></th>
                   <th><%= t('email') %></th>
+                  <th><%= t('personalCrmMailbox') %></th>
                   <th><%= t('phone') %></th>
                   <th><%= t('status') %></th>
                   <th><%= t('multiFactorAuthentication') %></th>
@@ -39,6 +40,7 @@
                       </div>
                     </td>
                     <td><%= user.email || '-' %></td>
+                    <td><%= user.personalMailboxAddress || '-' %></td>
                     <td><%= user.phone || '-' %></td>
                     <td><span class="status"><%= user.isActive ? t('active') : t('inactive') %></span></td>
                     <td>

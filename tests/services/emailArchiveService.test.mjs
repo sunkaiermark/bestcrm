@@ -293,14 +293,20 @@ test('attachment file remains recoverable when scan evidence insert fails after 
   }
 });
 
-test('thread visibility keeps unlinked mail manager-only and uses opportunity membership when linked', async () => {
+test('thread visibility keeps shared unlinked mail manager-only and personal unlinked mail owner-only', async () => {
   const unlinked = { id: 1, inquiryId: 8, opportunityId: null };
   const linked = { id: 2, inquiryId: 9, opportunityId: 20 };
+  const personal = { id: 3, mailboxOwnerUserId: 7, inquiryId: null, opportunityId: null };
   const dependencies = {
     emailArchiveRepository: {
-      async listThreads() { return [unlinked, linked]; },
-      async findThreadById(id) { return Number(id) === 2 ? linked : unlinked; },
-      async getThreadDetail(id) { return { ...(Number(id) === 2 ? linked : unlinked), messages: [] }; }
+      async listThreads() { return [unlinked, linked, personal]; },
+      async findThreadById(id) {
+        return Number(id) === 3 ? personal : Number(id) === 2 ? linked : unlinked;
+      },
+      async getThreadDetail(id) {
+        const selected = Number(id) === 3 ? personal : Number(id) === 2 ? linked : unlinked;
+        return { ...selected, messages: [] };
+      }
     },
     opportunityRepository: {
       async getOpportunityDetail() {
@@ -311,11 +317,15 @@ test('thread visibility keeps unlinked mail manager-only and uses opportunity me
   };
 
   const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
+  const otherSalesperson = { id: 8, roles: [ROLES.SALESPERSON] };
   const manager = { id: 2, roles: [ROLES.SALES_MANAGER] };
-  assert.deepEqual((await listVisibleEmailThreads(dependencies, salesperson)).map((item) => item.id), [2]);
+  assert.deepEqual((await listVisibleEmailThreads(dependencies, salesperson)).map((item) => item.id), [2, 3]);
+  assert.deepEqual((await listVisibleEmailThreads(dependencies, otherSalesperson)).map((item) => item.id), []);
   assert.deepEqual((await listVisibleEmailThreads(dependencies, manager)).map((item) => item.id), [1, 2]);
   await assert.rejects(() => getVisibleEmailThread(dependencies, salesperson, 1), /Forbidden/);
   assert.equal((await getVisibleEmailThread(dependencies, salesperson, 2)).id, 2);
+  assert.equal((await getVisibleEmailThread(dependencies, salesperson, 3)).id, 3);
+  await assert.rejects(() => getVisibleEmailThread(dependencies, manager, 3), /Forbidden/);
 });
 
 test('thread visibility forwards the requested archive folder without changing RBAC checks', async () => {

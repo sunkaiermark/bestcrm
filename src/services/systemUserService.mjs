@@ -9,6 +9,29 @@ function text(value) {
   return String(value || '').trim();
 }
 
+const PERSONAL_MAILBOX_PATTERN = /^[^\s@<>]+@sunkaier[.]com$/i;
+const SHARED_MAILBOX_ADDRESS = 'sales@sunkaier.com';
+
+export class SystemUserValidationError extends Error {
+  constructor(message, statusCode = 400) {
+    super(message);
+    this.name = 'SystemUserValidationError';
+    this.statusCode = statusCode;
+  }
+}
+
+export function normalizePersonalMailboxAddress(value) {
+  const mailboxAddress = text(value).toLowerCase();
+  if (!mailboxAddress) return '';
+  if (!PERSONAL_MAILBOX_PATTERN.test(mailboxAddress)) {
+    throw new SystemUserValidationError('Personal mailbox must use the @sunkaier.com company domain');
+  }
+  if (mailboxAddress === SHARED_MAILBOX_ADDRESS) {
+    throw new SystemUserValidationError('The shared sales mailbox cannot be assigned to one user');
+  }
+  return mailboxAddress;
+}
+
 function checkbox(value) {
   return value === true || value === 'true' || value === 'on' || value === '1';
 }
@@ -64,6 +87,7 @@ export function normalizeSystemUserInput(input, options = {}) {
   return {
     displayName: text(input.displayName),
     email: text(input.email),
+    personalMailboxAddress: normalizePersonalMailboxAddress(input.personalMailboxAddress),
     phone: text(input.phone),
     emailSignatureName: text(input.emailSignatureName),
     emailSignatureTitle: text(input.emailSignatureTitle),
@@ -84,7 +108,8 @@ export async function createSystemUser(userRepository, actor, input, options = {
   return userRepository.createUser({
     ...base,
     username,
-    passwordHash: await hashPassword(password)
+    passwordHash: await hashPassword(password),
+    mailboxAssignedBy: Number(actor.id)
   });
 }
 
@@ -99,6 +124,7 @@ export async function updateSystemUser(userRepository, actor, userId, input, opt
     assertPasswordPolicy(password);
     base.passwordHash = await hashPassword(password);
   }
+  base.mailboxAssignedBy = Number(actor.id);
   return userRepository.updateUser(userId, base);
 }
 
@@ -116,6 +142,8 @@ export async function resetSystemUserPassword(userRepository, actor, userId, pas
   return userRepository.updateUser(userId, {
     displayName: user.displayName,
     email: user.email,
+    personalMailboxAddress: user.personalMailboxAddress,
+    mailboxAssignedBy: Number(actor.id),
     phone: user.phone,
     emailSignatureName: user.emailSignatureName,
     emailSignatureTitle: user.emailSignatureTitle,

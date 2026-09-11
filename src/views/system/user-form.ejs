@@ -36,6 +36,16 @@
             <input name="email" type="email" value="<%= user.email || '' %>">
           </label>
           <label>
+            <%= t('personalCrmMailbox') %>
+            <input
+              name="personalMailboxAddress"
+              type="email"
+              value="<%= user.personalMailboxAddress || '' %>"
+              placeholder="name@sunkaier.com"
+            >
+            <span class="muted"><%= t('personalCrmMailboxHelp') %></span>
+          </label>
+          <label>
             <%= t('phone') %>
             <input name="phone" value="<%= user.phone || '' %>">
           </label>

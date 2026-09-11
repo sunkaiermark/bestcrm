@@ -102,6 +102,21 @@ test('email archive repository maps the linked contact code', async () => {
   assert.equal(thread.contactCode, 'CT000020');
 });
 
+test('email archive repository resolves the active personal mailbox owner', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [threadRow({ mailbox_key: 'markyang@sunkaier.com', mailbox_owner_user_id: '7' })] };
+    }
+  });
+
+  const [thread] = await repository.listThreads();
+  assert.equal(thread.mailboxOwnerUserId, 7);
+  assert.match(calls[0].sql, /LEFT JOIN user_personal_mailbox_assignments mailbox_assignment/);
+  assert.match(calls[0].sql, /mailbox_assignment\.unassigned_at IS NULL/);
+});
+
 test('email archive repository builds message detail with immutable attachment checksums', async () => {
   const repository = createEmailArchiveRepository({
     async query(sql) {

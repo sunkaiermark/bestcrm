@@ -17,6 +17,7 @@ function mapThreadRow(row) {
   return {
     id: Number(row.id),
     mailboxKey: row.mailbox_key,
+    mailboxOwnerUserId: numberOrNull(row.mailbox_owner_user_id),
     subject: text(row.subject),
     normalizedSubject: text(row.normalized_subject),
     inquiryId: numberOrNull(row.inquiry_id),
@@ -208,6 +209,7 @@ const threadSelect = `
   SELECT
     thread.id,
     thread.mailbox_key,
+    mailbox_assignment.user_id AS mailbox_owner_user_id,
     thread.subject,
     thread.normalized_subject,
     thread.inquiry_id,
@@ -233,6 +235,9 @@ const threadSelect = `
     last_message.from_address AS last_from_address,
     left(last_message.text_body, 240) AS last_text_preview
   FROM email_threads thread
+  LEFT JOIN user_personal_mailbox_assignments mailbox_assignment
+    ON mailbox_assignment.mailbox_address = lower(btrim(thread.mailbox_key))
+    AND mailbox_assignment.unassigned_at IS NULL
   LEFT JOIN inquiries inquiry ON inquiry.id = thread.inquiry_id
   LEFT JOIN opportunities opportunity ON opportunity.id = thread.opportunity_id
   LEFT JOIN customers customer ON customer.id = thread.customer_id

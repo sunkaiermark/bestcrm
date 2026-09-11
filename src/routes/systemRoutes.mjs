@@ -7,6 +7,7 @@ import { createSystemRole, deactivateSystemRole, updateSystemRole } from '../ser
 import { PasswordPolicyError } from '../services/passwordPolicy.mjs';
 import {
   SystemMfaAdministrationError,
+  SystemUserValidationError,
   createSystemUser,
   deactivateSystemUser,
   resetSystemUserMfaEnrollment,
@@ -141,6 +142,18 @@ export function systemRoutes({
       return;
     }
     res.status(400).send(res.locals.t(error.code));
+  }
+
+  function handleSystemUserMutationError(error, res, next) {
+    if (error instanceof PasswordPolicyError) {
+      handlePasswordPolicyError(error, res, next);
+      return;
+    }
+    if (error instanceof SystemUserValidationError || Number.isInteger(error?.statusCode)) {
+      res.status(error.statusCode || 400).send(error.message);
+      return;
+    }
+    next(error);
   }
 
   router.use('/system', requireLogin, (req, res, next) => {
@@ -306,6 +319,7 @@ export function systemRoutes({
         user: {
           displayName: '',
           email: '',
+          personalMailboxAddress: '',
           phone: '',
           emailSignatureName: '',
           emailSignatureTitle: '',
@@ -328,7 +342,7 @@ export function systemRoutes({
       await createSystemUser(userRepository, req.currentUser, req.body, { allowedRoleCodes: activeRoleCodes(roles) });
       res.redirect('/system/users');
     } catch (error) {
-      handlePasswordPolicyError(error, res, next);
+      handleSystemUserMutationError(error, res, next);
     }
   });
 
@@ -367,7 +381,7 @@ export function systemRoutes({
       }
       res.redirect('/system/users');
     } catch (error) {
-      handlePasswordPolicyError(error, res, next);
+      handleSystemUserMutationError(error, res, next);
     }
   });
 
