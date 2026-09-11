@@ -105,6 +105,18 @@ function rawReplyEmail(id, inReplyTo) {
   ].join('\r\n'));
 }
 
+function rawSentEmail(id) {
+  return Buffer.from([
+    `Message-ID: <${id}@sunkaier.com>`,
+    'Date: Sat, 01 Aug 2026 08:00:00 +0000',
+    'From: Mark Yang <markyang@sunkaier.com>',
+    'To: Alice <alice@example.com>',
+    'Subject: Re: RFQ',
+    '',
+    'Please find our response.'
+  ].join('\r\n'));
+}
+
 function enableRawArchiveMemory(archive) {
   const rawMessages = [];
   const rawScans = [];
@@ -169,10 +181,12 @@ function createMemoryArchive() {
   const threads = [];
   const messages = [];
   const attachments = [];
+  const deliveries = [];
   return {
     threads,
     messages,
     attachments,
+    deliveries,
     repository: {
       async findMessageIdentity(identity) {
         return messages.find((message) => (
@@ -197,6 +211,22 @@ function createMemoryArchive() {
         const message = { id: messages.length + 1, ...input };
         messages.push(message);
         return message;
+      },
+      async createImportedOutboundMessage(input) {
+        if (messages.some((message) => message.messageId === input.messageId)) return null;
+        const message = { id: messages.length + 1, direction: 'outbound', ...input };
+        messages.push(message);
+        return message;
+      },
+      async createMailboxDelivery(input) {
+        const existing = deliveries.find((delivery) => delivery.mailboxKey === input.mailboxKey
+          && delivery.providerMailbox === input.providerMailbox
+          && delivery.providerUidValidity === input.providerUidValidity
+          && Number(delivery.providerUid) === Number(input.providerUid));
+        if (existing) return existing;
+        const delivery = { id: deliveries.length + 1, ...input };
+        deliveries.push(delivery);
+        return delivery;
       },
       async touchThread(id, at) {
         const thread = threads.find((item) => item.id === Number(id));
@@ -516,6 +546,48 @@ test('attachment archive failure leaves mail unseen and a retry completes the sa
   }
 });
 
+test('pollEmailInquiries imports a personal Sent folder as outbound without creating an inquiry', async () => {
+  const archive = createMemoryArchive();
+  const client = {
+    mailbox: { uidValidity: 66n, uidNext: 202n },
+    async connect() {},
+    async mailboxOpen(mailbox) { assert.equal(mailbox, 'Sent Messages'); },
+    async search() { return [201]; },
+    async fetchOne() { return { uid: 201, source: rawSentEmail('sent-201') }; },
+    async messageFlagsAdd() { assert.fail('sent import must not change message flags'); },
+    async logout() {}
+  };
+  const inquiryRepository = {
+    async createInquiry() { assert.fail('sent mail must not create an inquiry'); }
+  };
+  const contactRepository = { async findUniqueByEmail() { return null; } };
+
+  const result = await pollEmailInquiries({
+    config: config({
+      user: 'markyang@sunkaier.com',
+      mailboxKey: 'markyang@sunkaier.com',
+      mailbox: 'Sent Messages',
+      direction: 'outbound',
+      markSeen: false
+    }),
+    inquiryRepository,
+    emailArchiveRepository: archive.repository,
+    contactRepository,
+    emailArchiveTransaction: (callback) => callback({
+      emailArchiveRepository: archive.repository,
+      inquiryRepository,
+      contactRepository
+    }),
+    imapClientFactory: () => client
+  });
+
+  assert.equal(result.imported.length, 1);
+  assert.equal(archive.messages.length, 1);
+  assert.equal(archive.messages[0].direction, 'outbound');
+  assert.equal(archive.messages[0].fromAddress, 'markyang@sunkaier.com');
+  assert.equal(archive.deliveries[0].direction, 'outbound');
+});
+
 test('high-confidence spam advances the checkpoint without writing any CRM record', async () => {
   const archive = createMemoryArchive();
   const checkpoints = [];
@@ -663,7 +735,10 @@ test('historical backfill walks UIDs newest-first and marks the cursor complete'
     mailbox: { uidValidity: 99n, uidNext: 121n },
     async connect() {}, async mailboxOpen() {},
     async search(query, options) {
-      assert.deepEqual({ query, options }, { query: { uid: '1:100' }, options: { uid: true } });
+      assert.deepEqual({ query, options }, {
+        query: { uid: '1:100', since: new Date('2026-01-01T00:00:00Z') },
+        options: { uid: true }
+      });
       return [50, 100, 75];
     },
     async fetchOne(uid) { return { uid: Number(uid), source: rawEmail(`history-${uid}`) }; },
@@ -671,7 +746,7 @@ test('historical backfill walks UIDs newest-first and marks the cursor complete'
   };
 
   const result = await pollEmailInquiries({
-    config: config({ maxMessages: 5, markSeen: false }),
+    config: config({ maxMessages: 5, markSeen: false, historicalSince: '2026-01-01' }),
     inquiryRepository: { async createInquiry(input) { return { id: Number(input.rawPayload.uid), ...input }; } },
     emailArchiveRepository: archive.repository,
     imapClientFactory: () => client,
@@ -883,7 +958,7 @@ test('raw-enabled polling scans source and attachments before binding one immuta
   }
 });
 
-test('raw-enabled polling indexes divergent duplicate Message-ID for manual review without changing the existing message', async () => {
+test('raw-enabled polling deduplicates divergent duplicate Message-ID while retaining each delivery as evidence', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-conflict-'));
   const archive = createMemoryArchive();
   const evidence = enableRawArchiveMemory(archive);
@@ -946,19 +1021,14 @@ test('raw-enabled polling indexes divergent duplicate Message-ID for manual revi
 
     const rawFiles = (await readdir(path.join(uploadDir, 'email-raw'), { recursive: true }))
       .filter((entry) => entry.endsWith('.eml'));
-    assert.deepEqual(conflict.skipped, [{
-      uid: 702,
-      reason: 'raw_identity_conflict',
-      rawMessageId: 2
-    }]);
+    assert.equal(conflict.imported[0].duplicate, true);
+    assert.deepEqual(conflict.skipped, []);
     assert.equal(evidence.rawMessages.length, 2);
     assert.equal(archive.messages.length, 1);
+    assert.equal(archive.deliveries.length, 2);
+    assert.deepEqual(archive.deliveries.map((delivery) => delivery.rawMessageId), [1, 2]);
     assert.equal(rawFiles.length, 2);
-    assert.equal(evidence.processingAttempts.at(-1).outcome, 'permanent_error');
-    assert.equal(
-      evidence.processingAttempts.at(-1).safeErrorCode,
-      'duplicate_email_identity_conflict'
-    );
+    assert.equal(evidence.processingAttempts.at(-1).outcome, 'succeeded');
     assert.deepEqual(checkpoints, [701, 702]);
     assert.deepEqual(await readdir(path.join(uploadDir, 'email-raw', '.staging')), []);
   } finally {
@@ -966,7 +1036,7 @@ test('raw-enabled polling indexes divergent duplicate Message-ID for manual revi
   }
 });
 
-test('raw-enabled polling reuses matching duplicate Message-ID without a second EML file', async () => {
+test('raw-enabled polling deduplicates matching Message-ID while retaining both raw delivery records', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-duplicate-'));
   const archive = createMemoryArchive();
   const evidence = enableRawArchiveMemory(archive);
@@ -1026,9 +1096,10 @@ test('raw-enabled polling reuses matching duplicate Message-ID without a second 
 
     assert.equal(first.imported[0].duplicate, false);
     assert.equal(duplicate.imported[0].duplicate, true);
-    assert.equal(evidence.rawMessages.length, 1);
+    assert.equal(evidence.rawMessages.length, 2);
     assert.equal(archive.messages.length, 1);
-    assert.equal(rawFiles.length, 1);
+    assert.equal(archive.deliveries.length, 2);
+    assert.equal(rawFiles.length, 2);
     assert.deepEqual(checkpoints, [701, 702]);
     assert.deepEqual(await readdir(path.join(uploadDir, 'email-raw', '.staging')), []);
   } finally {

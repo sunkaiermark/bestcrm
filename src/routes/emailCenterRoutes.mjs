@@ -7,6 +7,8 @@ import {
   EmailArchiveError,
   getVisibleEmailAttachment,
   getVisibleEmailThread,
+  linkEmailThreadToOpportunity,
+  listEmailLinkableOpportunities,
   listVisibleEmailThreads
 } from '../services/emailArchiveService.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
@@ -116,7 +118,32 @@ export function emailCenterRoutes({
     try {
       const thread = await getVisibleEmailThread(dependencies, req.currentUser, req.params.threadId);
       const backFolder = archiveFolder(String(req.query.from || 'active'));
-      res.render('email-center/detail', { thread, formatEmailListDate, backFolder });
+      const linkableOpportunities = thread.opportunityId
+        ? []
+        : await listEmailLinkableOpportunities(dependencies, req.currentUser);
+      res.render('email-center/detail', {
+        thread,
+        formatEmailListDate,
+        backFolder,
+        linkableOpportunities
+      });
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/email-center/threads/:threadId/opportunity', async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        return res.status(403).send('Invalid CSRF token');
+      }
+      await linkEmailThreadToOpportunity(
+        dependencies,
+        req.currentUser,
+        req.params.threadId,
+        req.body.opportunityId
+      );
+      res.redirect(`/email-center/threads/${req.params.threadId}`);
     } catch (error) {
       handleError(error, res, next);
     }

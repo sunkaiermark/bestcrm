@@ -54,6 +54,7 @@ const emailRawMalwareEventsMigrationPath = new URL('../../src/db/migrations/051_
 const opportunityTechnicalPlanSubmitDateMigrationPath = new URL('../../src/db/migrations/053_opportunity_technical_plan_submit_date.sql', import.meta.url);
 const formSubmissionIdempotencyMigrationPath = new URL('../../src/db/migrations/054_form_submission_idempotency.sql', import.meta.url);
 const userPersonalMailboxAssignmentsMigrationPath = new URL('../../src/db/migrations/055_user_personal_mailbox_assignments.sql', import.meta.url);
+const emailMailboxDeliveriesMigrationPath = new URL('../../src/db/migrations/056_email_mailbox_deliveries.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -941,5 +942,19 @@ test('personal mailbox assignment migration links one active company mailbox to 
   assert.match(sql, /WHERE unassigned_at IS NULL/);
   assert.match(sql, /Personal mailbox assignments cannot be deleted/);
   assert.match(sql, /Personal mailbox assignment history is immutable/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
+});
+
+test('mailbox delivery migration deduplicates messages while retaining each mailbox observation', async () => {
+  const sql = await readFile(emailMailboxDeliveriesMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_message_mailbox_deliveries/);
+  assert.match(sql, /UNIQUE \(mailbox_key, provider_mailbox, provider_uid_validity, provider_uid\)/);
+  assert.match(sql, /message_id bigint NOT NULL REFERENCES email_messages\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /raw_message_id bigint REFERENCES email_raw_messages\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CHECK \(direction IN \('inbound', 'outbound'\)\)/);
+  assert.match(sql, /INSERT INTO email_message_mailbox_deliveries/);
+  assert.match(sql, /DROP INDEX IF EXISTS email_messages_provider_uid_idx/);
+  assert.match(sql, /Email mailbox delivery records are immutable/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
 });

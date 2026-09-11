@@ -178,6 +178,49 @@ client authorization code with the read-only classification preview, and set
 imported separately with `npm run email:backfill`; ordinary incremental intake
 must not be treated as a history migration.
 
+For the shared mailbox plus personal mailboxes, copy
+`docs/deployment/templates/email-intake-accounts.example.json` to
+`/etc/bestcrm/email-intake-accounts.json`, replace every Sent-folder name, then
+set `EMAIL_INTAKE_ACCOUNTS_FILE` to that absolute path. The approved default
+omits `historicalSince`, which imports all history still retained by each mail
+server and therefore begins at that mailbox's earliest available message.
+Keep authorization codes only in the named variables in
+`/etc/bestcrm/bestcrm.env`; do not put them in source control or chat. Install
+the accounts file as `root:ubuntu` mode `0640`. The accounts file replaces the
+single-mailbox source list, so it must retain `sales@sunkaier.com` as well as
+the five personal mailboxes. Every personal address must already have one
+active CRM user assignment or the worker stops before connecting.
+
+With the production environment loaded, run `npm run email:accounts:verify`
+before starting either worker. It logs in read-only and opens every configured
+folder without fetching message bodies or changing read state. Then run
+`npm run email:preview -- --limit=5` to review the inbound classification sample
+for every configured account.
+
+If the exact Sent folder is unknown, first run `npm run email:folders:list`.
+This reads folder metadata only. Use the exact `path` whose `specialUse` is
+`\\Sent`, update the account JSON, and then run the account verification.
+
+Import only `INBOX` and the provider's exact Sent folder. Spam, Junk, Trash,
+Deleted and their Chinese equivalents are rejected by configuration. Exact
+Message-ID duplicates are represented once in the CRM conversation while an
+immutable delivery record is retained for each mailbox and provider UID. A
+high-confidence junk message is rejected before CRM archive creation;
+suspected junk remains in the quarantine view for human review. Existing
+contacts and replies to an existing CRM conversation are protected from the
+automatic junk rejection rule.
+
+Multi-mailbox intake always preserves provider read/unread state. Do not add
+`"markSeen": true` to an account; the configuration rejects it. UID cursors,
+not the Seen flag, control incremental deduplication.
+
+Keep `historicalSince` omitted to import each mailbox from its earliest message
+still retained by the provider. Add an account- or folder-level `YYYY-MM-DD`
+value only when the business explicitly approves a later cutoff. Keep
+`EMAIL_RAW_BACKFILL_ENABLED=false` until the Sent folder names, backup
+integrity, free disk space, and a small classification sample are all verified.
+Never enable historical backfill merely to start ordinary new-mail intake.
+
 For a resumable historical import, install the separate backfill unit:
 
 ```bash

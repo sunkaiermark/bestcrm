@@ -14,10 +14,21 @@ function jsonArray(value) {
 
 function mapThreadRow(row) {
   if (!row) return null;
+  const mailboxOwnerUserIds = jsonArray(row.mailbox_owner_user_ids)
+    .map((value) => Number(value))
+    .filter((value) => Number.isInteger(value) && value > 0);
+  const primaryMailboxOwnerUserId = numberOrNull(row.mailbox_owner_user_id);
+  if (primaryMailboxOwnerUserId && !mailboxOwnerUserIds.includes(primaryMailboxOwnerUserId)) {
+    mailboxOwnerUserIds.push(primaryMailboxOwnerUserId);
+  }
   return {
     id: Number(row.id),
     mailboxKey: row.mailbox_key,
-    mailboxOwnerUserId: numberOrNull(row.mailbox_owner_user_id),
+    mailboxOwnerUserId: primaryMailboxOwnerUserId,
+    mailboxOwnerUserIds,
+    hasSharedMailboxDelivery: row.has_shared_mailbox_delivery === undefined
+      ? text(row.mailbox_key).trim().toLowerCase() === 'sales@sunkaier.com'
+      : Boolean(row.has_shared_mailbox_delivery),
     subject: text(row.subject),
     normalizedSubject: text(row.normalized_subject),
     inquiryId: numberOrNull(row.inquiry_id),
@@ -210,6 +221,11 @@ const threadSelect = `
     thread.id,
     thread.mailbox_key,
     mailbox_assignment.user_id AS mailbox_owner_user_id,
+    COALESCE(mailbox_owners.user_ids, '[]'::jsonb) AS mailbox_owner_user_ids,
+    COALESCE(
+      mailbox_owners.has_shared_mailbox_delivery,
+      lower(btrim(thread.mailbox_key)) = 'sales@sunkaier.com'
+    ) AS has_shared_mailbox_delivery,
     thread.subject,
     thread.normalized_subject,
     thread.inquiry_id,
@@ -238,6 +254,19 @@ const threadSelect = `
   LEFT JOIN user_personal_mailbox_assignments mailbox_assignment
     ON mailbox_assignment.mailbox_address = lower(btrim(thread.mailbox_key))
     AND mailbox_assignment.unassigned_at IS NULL
+  LEFT JOIN LATERAL (
+    SELECT
+      jsonb_agg(DISTINCT delivery_assignment.user_id ORDER BY delivery_assignment.user_id)
+        FILTER (WHERE delivery_assignment.user_id IS NOT NULL) AS user_ids,
+      bool_or(lower(btrim(delivery.mailbox_key)) = 'sales@sunkaier.com') AS has_shared_mailbox_delivery
+    FROM email_messages delivery_message
+    JOIN email_message_mailbox_deliveries delivery
+      ON delivery.message_id = delivery_message.id
+    LEFT JOIN user_personal_mailbox_assignments delivery_assignment
+      ON delivery_assignment.mailbox_address = lower(btrim(delivery.mailbox_key))
+      AND delivery_assignment.unassigned_at IS NULL
+    WHERE delivery_message.thread_id = thread.id
+  ) mailbox_owners ON true
   LEFT JOIN inquiries inquiry ON inquiry.id = thread.inquiry_id
   LEFT JOIN opportunities opportunity ON opportunity.id = thread.opportunity_id
   LEFT JOIN customers customer ON customer.id = thread.customer_id
@@ -605,21 +634,84 @@ export function createEmailArchiveRepository(queryTarget) {
       return mapMessageRow(result.rows[0]);
     },
 
-    async findMessageIdentity({ messageId = '', providerMailbox = '', providerUidValidity = '', providerUid = null }) {
+    async findMessageIdentity({
+      messageId = '',
+      mailboxKey = '',
+      providerMailbox = '',
+      providerUidValidity = '',
+      providerUid = null
+    }) {
       const result = await queryTarget.query(`
         ${messageSelect}
         WHERE
           ($1 <> '' AND lower(message.message_id) = lower($1))
-          OR (
-            $2 <> ''
-            AND message.provider_mailbox = $2
-            AND message.provider_uid_validity = $3
-            AND message.provider_uid = $4
+          OR EXISTS (
+            SELECT 1
+            FROM email_message_mailbox_deliveries delivery
+            WHERE delivery.message_id = message.id
+              AND delivery.mailbox_key = $2
+              AND delivery.provider_mailbox = $3
+              AND delivery.provider_uid_validity = $4
+              AND delivery.provider_uid = $5
           )
         ORDER BY message.id
         LIMIT 1
-      `, [messageId, providerMailbox, providerUidValidity, providerUid]);
+      `, [messageId, mailboxKey, providerMailbox, providerUidValidity, providerUid]);
       return mapMessageRow(result.rows[0]);
+    },
+
+    async createMailboxDelivery(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO email_message_mailbox_deliveries (
+          message_id,
+          raw_message_id,
+          mailbox_key,
+          provider_name,
+          provider_mailbox,
+          provider_uid_validity,
+          provider_uid,
+          direction,
+          first_observed_at
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        ON CONFLICT (mailbox_key, provider_mailbox, provider_uid_validity, provider_uid)
+        DO NOTHING
+        RETURNING *
+      `, [
+        input.messageId,
+        input.rawMessageId || null,
+        input.mailboxKey,
+        input.providerName || 'imap',
+        input.providerMailbox,
+        input.providerUidValidity,
+        input.providerUid,
+        input.direction,
+        input.firstObservedAt || new Date().toISOString()
+      ]);
+      if (result.rows[0]) return result.rows[0];
+      const existing = await queryTarget.query(`
+        SELECT *
+        FROM email_message_mailbox_deliveries
+        WHERE mailbox_key = $1
+          AND provider_mailbox = $2
+          AND provider_uid_validity = $3
+          AND provider_uid = $4
+        LIMIT 1
+      `, [input.mailboxKey, input.providerMailbox, input.providerUidValidity, input.providerUid]);
+      return existing.rows[0] || null;
+    },
+
+    async findActivePersonalMailboxOwner(mailboxKey) {
+      const result = await queryTarget.query(`
+        SELECT assignment.user_id
+        FROM user_personal_mailbox_assignments assignment
+        JOIN users mailbox_owner ON mailbox_owner.id = assignment.user_id
+        WHERE assignment.mailbox_address = lower(btrim($1))
+          AND assignment.unassigned_at IS NULL
+          AND mailbox_owner.is_active = true
+        LIMIT 1
+      `, [mailboxKey]);
+      return result.rows[0]?.user_id ? Number(result.rows[0].user_id) : null;
     },
 
     async findThreadByReferences(referenceIds = []) {
@@ -685,6 +777,17 @@ export function createEmailArchiveRepository(queryTarget) {
         input.classificationReason || 'manual_review',
         input.lastMessageAt
       ]);
+      return mapThreadRow(result.rows[0]);
+    },
+
+    async linkThreadToOpportunity(threadId, opportunityId) {
+      const result = await queryTarget.query(`
+        UPDATE email_threads
+        SET opportunity_id = $2, updated_at = now()
+        WHERE id = $1
+          AND opportunity_id IS NULL
+        RETURNING *
+      `, [threadId, opportunityId]);
       return mapThreadRow(result.rows[0]);
     },
 
@@ -818,6 +921,73 @@ export function createEmailArchiveRepository(queryTarget) {
         JSON.stringify(input.safeHeaders || {}),
         input.deliveryStatus,
         input.authoredBy
+      ]);
+      return mapMessageRow(result.rows[0]);
+    },
+
+    async createImportedOutboundMessage(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO email_messages (
+          thread_id,
+          direction,
+          message_id,
+          in_reply_to,
+          reference_ids,
+          provider_mailbox,
+          provider_uid_validity,
+          provider_uid,
+          raw_message_id,
+          raw_eml_stored_path,
+          raw_eml_file_size,
+          raw_eml_sha256,
+          imported_at,
+          from_address,
+          from_name,
+          to_recipients,
+          cc_recipients,
+          subject,
+          text_body,
+          html_body,
+          safe_headers,
+          archive_disposition,
+          classification_category,
+          classification_reason,
+          delivery_status,
+          provider_message_id,
+          authored_by,
+          sent_at
+        )
+        VALUES (
+          $1, 'outbound', $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10, $11,
+          $12, $13, $14, $15::jsonb, $16::jsonb, $17, $18, $19, $20::jsonb,
+          'active', 'conversation', 'imported_sent_mail', 'sent', $21, $22, $23
+        )
+        ON CONFLICT DO NOTHING
+        RETURNING *
+      `, [
+        input.threadId,
+        input.messageId || '',
+        input.inReplyTo || '',
+        JSON.stringify(input.referenceIds || []),
+        input.providerMailbox,
+        input.providerUidValidity,
+        input.providerUid,
+        input.rawMessageId || null,
+        input.rawEmlStoredPath || null,
+        input.rawEmlFileSize || null,
+        input.rawEmlSha256 || null,
+        input.importedAt || null,
+        input.fromAddress,
+        input.fromName || '',
+        JSON.stringify(input.toRecipients || []),
+        JSON.stringify(input.ccRecipients || []),
+        input.subject || '',
+        input.textBody || '',
+        input.htmlBody || '',
+        JSON.stringify(input.safeHeaders || {}),
+        input.providerMessageId || '',
+        input.authoredBy || null,
+        input.sentAt
       ]);
       return mapMessageRow(result.rows[0]);
     },

@@ -34,7 +34,9 @@ async function createAgent({
   language = 'en',
   uploadDir = './var/uploads',
   sendingEnabled = false,
-  teamMembers = []
+  teamMembers = [],
+  linkableOpportunities = [],
+  onLinkOpportunity = null
 }) {
   const passwordHash = await hashPassword('ChangeMe123!');
   const user = {
@@ -78,6 +80,14 @@ async function createAgent({
     async findLatestThreadByOpportunity() { return linked; },
     async findLatestThreadByInquiry() { return unlinked; },
     async getThreadDetail(id) { return Number(id) === 2 ? linked : Number(id) === 1 ? unlinked : null; },
+    async linkThreadToOpportunity(id, opportunityId) {
+      if (Number(id) !== 1 || unlinked.opportunityId) return null;
+      unlinked.opportunityId = Number(opportunityId);
+      unlinked.opportunityNo = '800020';
+      unlinked.opportunityTitle = 'Mixer Project';
+      onLinkOpportunity?.(Number(id), Number(opportunityId));
+      return unlinked;
+    },
     async findAttachmentById(id) { return Number(id) === 21 ? unlinked.messages[0].attachments[0] : null; },
     async findMessageById(id) { return Number(id) === 11 ? unlinked.messages[0] : null; }
   };
@@ -97,7 +107,7 @@ async function createAgent({
           technicalManagerId: 6, commercialManagerId: 9, opportunityNo: '800020', title: 'Mixer Project'
         } : null;
       },
-      async listOpportunities() { return []; }
+      async listOpportunities() { return linkableOpportunities; }
     },
     opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return teamMembers; } },
     quotationPackageRepository: { async listByOpportunity() { return []; }, async getPackageDetail() { return null; } }
@@ -164,6 +174,28 @@ test('email thread back action preserves its source folder', async () => {
 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /href="\/email-center\?folder=all">← 返回邮件列表<\/a>/);
+});
+
+test('an authorized user can link an unlinked personal conversation to one visible opportunity', async () => {
+  const linkedCalls = [];
+  const agent = await createAgent({
+    userId: 2,
+    roles: [ROLES.SALES_MANAGER],
+    linkableOpportunities: [{ id: 20, opportunityNo: '800020', title: 'Mixer Project' }],
+    onLinkOpportunity: (...args) => linkedCalls.push(args)
+  });
+  const detail = await agent.get('/email-center/threads/1');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /name="opportunityId"/);
+  assert.match(detail.text, /800020 · Mixer Project/);
+
+  const linked = await agent.post('/email-center/threads/1/opportunity').type('form').send({ opportunityId: 20 });
+  assert.equal(linked.status, 302);
+  assert.equal(linked.headers.location, '/email-center/threads/1');
+  assert.deepEqual(linkedCalls, [[1, 20]]);
+
+  const relink = await agent.post('/email-center/threads/1/opportunity').type('form').send({ opportunityId: 21 });
+  assert.equal(relink.status, 409);
 });
 
 test('email conversation opens the newest message without reply actions in the archive view', async () => {

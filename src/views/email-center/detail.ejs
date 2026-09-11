@@ -15,6 +15,22 @@
           <% if (thread.contactId) { %><a class="secondary-action" href="/contacts/<%= thread.contactId %>"><%= t('contact') %> <%= thread.contactCode ? `${thread.contactCode} · ` : '' %><%= thread.contactName %></a><% } %>
         </nav>
 
+        <% if (!thread.opportunityId && linkableOpportunities.length) { %>
+          <form class="inline-form email-opportunity-link" method="post" action="/email-center/threads/<%= thread.id %>/opportunity">
+            <%- csrfField() %>
+            <label>
+              <span><%= t('linkOpportunity') %></span>
+              <select name="opportunityId" required>
+                <option value=""><%= t('selectOpportunity') %></option>
+                <% for (const opportunity of linkableOpportunities) { %>
+                  <option value="<%= opportunity.id %>"><%= opportunity.opportunityNo || `#${opportunity.id}` %> · <%= opportunity.title %></option>
+                <% } %>
+              </select>
+            </label>
+            <button type="submit"><%= t('linkOpportunity') %></button>
+          </form>
+        <% } %>
+
         <section class="email-conversation-list" aria-label="<%= t('emailConversation') %>">
           <% for (const [messageIndex, message] of thread.messages.entries()) { const recipients = (items) => items.map((item) => item.name ? `${item.name} <${item.address}>` : item.address).join(', '); const messageDate = message.receivedAt || message.sentAt || message.createdAt; const avatarText = (message.fromName || message.fromAddress || '?').trim().slice(0, 1).toUpperCase(); %>
             <details class="email-conversation-item email-message-<%= message.direction %>"<% if (messageIndex === thread.messages.length - 1) { %> open<% } %>>

@@ -165,6 +165,65 @@ test('email archive repository writes RFC and provider identities with conflict 
   assert.equal(calls[0].params[22], 'seo_outreach');
 });
 
+test('email archive repository scopes provider delivery identity by company mailbox', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [messageRow()] };
+    }
+  });
+
+  await repository.findMessageIdentity({
+    messageId: 'rfq@example.com',
+    mailboxKey: 'markyang@sunkaier.com',
+    providerMailbox: 'INBOX',
+    providerUidValidity: '44',
+    providerUid: 7
+  });
+
+  assert.match(calls[0].sql, /FROM email_message_mailbox_deliveries delivery/);
+  assert.match(calls[0].sql, /delivery\.mailbox_key = \$2/);
+  assert.deepEqual(calls[0].params, [
+    'rfq@example.com', 'markyang@sunkaier.com', 'INBOX', '44', 7
+  ]);
+});
+
+test('email archive repository records an immutable mailbox delivery and active owner', async () => {
+  const calls = [];
+  const delivery = {
+    id: '1', message_id: '11', raw_message_id: '81', mailbox_key: 'markyang@sunkaier.com',
+    provider_mailbox: 'INBOX', provider_uid_validity: '44', provider_uid: '7', direction: 'inbound'
+  };
+  const rows = [[delivery], [{ user_id: '7' }]];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: rows.shift() || [] };
+    }
+  });
+
+  const created = await repository.createMailboxDelivery({
+    messageId: 11,
+    rawMessageId: 81,
+    mailboxKey: 'markyang@sunkaier.com',
+    providerName: 'imap',
+    providerMailbox: 'INBOX',
+    providerUidValidity: '44',
+    providerUid: 7,
+    direction: 'inbound',
+    firstObservedAt: '2026-09-11T00:00:00Z'
+  });
+  const ownerId = await repository.findActivePersonalMailboxOwner('markyang@sunkaier.com');
+
+  assert.equal(created.mailbox_key, 'markyang@sunkaier.com');
+  assert.equal(ownerId, 7);
+  assert.match(calls[0].sql, /INSERT INTO email_message_mailbox_deliveries/);
+  assert.match(calls[0].sql, /ON CONFLICT \(mailbox_key, provider_mailbox, provider_uid_validity, provider_uid\)/);
+  assert.match(calls[1].sql, /JOIN users mailbox_owner/);
+  assert.match(calls[1].sql, /mailbox_owner\.is_active = true/);
+});
+
 test('email archive repository creates immutable raw evidence and reuses provider identity', async () => {
   const calls = [];
   const rawRow = {

@@ -1,0 +1,52 @@
+{
+  "accounts": [
+    {
+      "address": "sales@sunkaier.com",
+      "passwordEnv": "EMAIL_INTAKE_PASSWORD",
+      "folders": [
+        { "name": "INBOX", "direction": "inbound" },
+        { "name": "REPLACE_WITH_EXACT_SENT_FOLDER", "direction": "outbound" }
+      ]
+    },
+    {
+      "address": "markyang@sunkaier.com",
+      "passwordEnv": "EMAIL_INTAKE_PASSWORD_MARKYANG",
+      "folders": [
+        { "name": "INBOX", "direction": "inbound" },
+        { "name": "REPLACE_WITH_EXACT_SENT_FOLDER", "direction": "outbound" }
+      ]
+    },
+    {
+      "address": "helena@sunkaier.com",
+      "passwordEnv": "EMAIL_INTAKE_PASSWORD_HELENA",
+      "folders": [
+        { "name": "INBOX", "direction": "inbound" },
+        { "name": "REPLACE_WITH_EXACT_SENT_FOLDER", "direction": "outbound" }
+      ]
+    },
+    {
+      "address": "shelly@sunkaier.com",
+      "passwordEnv": "EMAIL_INTAKE_PASSWORD_SHELLY",
+      "folders": [
+        { "name": "INBOX", "direction": "inbound" },
+        { "name": "REPLACE_WITH_EXACT_SENT_FOLDER", "direction": "outbound" }
+      ]
+    },
+    {
+      "address": "amber@sunkaier.com",
+      "passwordEnv": "EMAIL_INTAKE_PASSWORD_AMBER",
+      "folders": [
+        { "name": "INBOX", "direction": "inbound" },
+        { "name": "REPLACE_WITH_EXACT_SENT_FOLDER", "direction": "outbound" }
+      ]
+    },
+    {
+      "address": "john@sunkaier.com",
+      "passwordEnv": "EMAIL_INTAKE_PASSWORD_JOHN",
+      "folders": [
+        { "name": "INBOX", "direction": "inbound" },
+        { "name": "REPLACE_WITH_EXACT_SENT_FOLDER", "direction": "outbound" }
+      ]
+    }
+  ]
+}

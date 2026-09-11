@@ -2609,6 +2609,26 @@
         margin-bottom: 16px;
       }
 
+      .email-opportunity-link {
+        align-items: end;
+        background: #ffffff;
+        border: 1px solid var(--line);
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(260px, 520px) auto;
+        margin-bottom: 16px;
+        padding: 12px;
+      }
+
+      .email-opportunity-link label {
+        display: grid;
+        gap: 6px;
+      }
+
+      .email-opportunity-link select {
+        width: 100%;
+      }
+
       .email-conversation-list {
         background: #ffffff;
         border: 1px solid var(--line);
@@ -3250,6 +3270,10 @@
 
         .email-conversation-body {
           padding: 14px 14px 18px 60px;
+        }
+
+        .email-opportunity-link {
+          grid-template-columns: 1fr;
         }
 
         .app-main.opportunity-email-page {

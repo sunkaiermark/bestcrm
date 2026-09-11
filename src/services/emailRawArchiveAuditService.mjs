@@ -45,12 +45,13 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
       raw.provider_mailbox,
       raw.provider_uid_validity,
       raw.provider_uid,
-      message.id AS message_id,
+      COALESCE(message.id, delivery.message_id) AS message_id,
       latest_scan.verdict AS latest_scan_verdict,
       latest_processing.outcome AS latest_processing_outcome,
       latest_processing.safe_error_code AS latest_processing_error_code
     FROM email_raw_messages raw
     LEFT JOIN email_messages message ON message.raw_message_id = raw.id
+    LEFT JOIN email_message_mailbox_deliveries delivery ON delivery.raw_message_id = raw.id
     LEFT JOIN LATERAL (
       SELECT scan.verdict
       FROM email_raw_scan_attempts scan

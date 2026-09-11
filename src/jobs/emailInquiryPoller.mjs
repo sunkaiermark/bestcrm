@@ -2,6 +2,7 @@ import { ImapFlow } from 'imapflow';
 import {
   EmailArchiveDuplicateRaceError,
   archiveInboundEmailRecord,
+  archiveImportedOutboundEmailRecord,
   persistRawEmailCaptureOnly,
   resolveInboundEmailClassification,
   storeEmailArchiveAttachments
@@ -95,6 +96,13 @@ function supportsUidCheckpointing(repository) {
 function normalizeSyncMode(value) {
   if (value === 'raw-backfill') return 'raw-backfill';
   return value === 'backfill' ? 'backfill' : 'incremental';
+}
+
+function historicalSearchQuery(uidRange, historicalSince) {
+  const query = { uid: uidRange };
+  const since = requiredText(historicalSince);
+  if (since) query.since = new Date(`${since}T00:00:00Z`);
+  return query;
 }
 
 function classificationSummary(items) {
@@ -243,7 +251,10 @@ async function selectMessagesForSync({
     if (endUid < 1) {
       return { mode: syncMode, state, selectedUids: [], batchComplete: true };
     }
-    const uids = await client.search({ uid: `1:${endUid}` }, { uid: true }) || [];
+    const uids = await client.search(
+      historicalSearchQuery(`1:${endUid}`, emailIntake.historicalSince),
+      { uid: true }
+    ) || [];
     const selectedUids = uids
       .map((uid) => uidNumber(uid))
       .filter((uid) => uid > 0 && uid < beforeUid)
@@ -261,7 +272,10 @@ async function selectMessagesForSync({
     if (endUid < 1) {
       return { mode: syncMode, state, selectedUids: [], batchComplete: true };
     }
-    const uids = await client.search({ uid: `1:${endUid}` }, { uid: true }) || [];
+    const uids = await client.search(
+      historicalSearchQuery(`1:${endUid}`, emailIntake.historicalSince),
+      { uid: true }
+    ) || [];
     const selectedUids = uids
       .map((uid) => uidNumber(uid))
       .filter((uid) => uid > 0 && uid < beforeUid)
@@ -308,6 +322,9 @@ export async function pollEmailInquiries({
   const mailbox = requiredText(emailIntake.mailbox) || 'INBOX';
   const maxMessages = Number(emailIntake.maxMessages || 20);
   const markSeen = emailIntake.markSeen !== false;
+  const direction = requiredText(emailIntake.direction).toLowerCase() === 'outbound'
+    ? 'outbound'
+    : 'inbound';
   const rawArchiveConfig = config.emailRawArchive || {};
   const rawArchiveEnabled = rawArchiveConfig.enabled === true;
   if (rawArchiveEnabled && (!emailArchiveRepository || !emailArchiveTransaction || !malwareScanner)) {
@@ -386,7 +403,8 @@ export async function pollEmailInquiries({
         mailbox,
         mailboxKey: emailIntake.mailboxKey || emailIntake.user || mailbox,
         uidValidity,
-        internalDate: message.internalDate
+        internalDate: message.internalDate,
+        direction
       };
       let rawCandidate = null;
       if (rawArchiveEnabled) {
@@ -470,11 +488,11 @@ export async function pollEmailInquiries({
         continue;
       }
       const normalized = parsedEmail.inquiry;
-      if (!normalized.sourceReference || !normalized.requirementText) {
+      if (!normalized.sourceReference || (direction === 'inbound' && !normalized.requirementText)) {
         if (rawCandidate) {
           const rawCapture = await rawCandidate.commit({
             rfcMessageIdHint: parsedEmail.message?.messageId || '',
-            sourceReceivedAt: parsedEmail.message?.receivedAt || null
+            sourceReceivedAt: parsedEmail.message?.receivedAt || parsedEmail.message?.sentAt || null
           });
           rawCandidate = null;
           const rawMessage = await emailArchiveTransaction((repositories) => persistRawEmailCaptureOnly(
@@ -519,13 +537,14 @@ export async function pollEmailInquiries({
         if (rawCandidate) {
           try {
             const existing = await emailArchiveRepository.findMessageIdentity(parsedEmail.message);
-            resolvedClassification = existing
+            resolvedClassification = (existing || direction === 'outbound')
               ? null
               : await resolveInboundEmailClassification({
                 emailArchiveRepository,
                 contactRepository
               }, parsedEmail);
-            if (resolvedClassification?.classification.entryDecision === 'reject_spam') {
+            if (direction === 'inbound'
+              && resolvedClassification?.classification.entryDecision === 'reject_spam') {
               await rawCandidate.discard();
               rawCandidate = null;
               filtered.push({
@@ -541,68 +560,32 @@ export async function pollEmailInquiries({
               continue;
             }
             attachmentScans = await scanEmailAttachments(malwareScanner, parsedEmail.attachments);
-            if (existing?.rawMessageId) {
-              const sameRawEvidence = existing.rawEmlSha256 === rawCandidate.sha256
-                && Number(existing.rawEmlFileSize) === Number(rawCandidate.fileSize);
-              if (!sameRawEvidence) {
-                const conflictingCapture = await rawCandidate.commit({
-                  rfcMessageIdHint: parsedEmail.message.messageId,
-                  sourceReceivedAt: parsedEmail.message.receivedAt
-                });
-                rawCandidate = null;
-                const conflictingRawMessage = await emailArchiveTransaction((repositories) => (
-                  persistRawEmailCaptureOnly(repositories, conflictingCapture, {
-                    stage: 'archive',
-                    outcome: 'permanent_error',
-                    safeErrorCode: 'duplicate_email_identity_conflict',
-                    safeDetail: `Existing message ${existing.id} is bound to raw evidence ${existing.rawMessageId}`
-                  })
-                ));
-                logger.error?.(
-                  `Deferred email UID ${uid}: raw evidence ${conflictingRawMessage.id} requires identity review`
-                );
-                skipped.push({
-                  uid,
-                  reason: 'raw_identity_conflict',
-                  rawMessageId: conflictingRawMessage.id
-                });
-                await checkpoint(uid);
-                continue;
-              }
-              await rawCandidate.discard();
-              rawCandidate = null;
-            } else {
-              rawCapture = await rawCandidate.commit({
-                rfcMessageIdHint: parsedEmail.message.messageId,
-                sourceReceivedAt: parsedEmail.message.receivedAt
-              });
-              rawCandidate = null;
-            }
+            rawCapture = await rawCandidate.commit({
+              rfcMessageIdHint: parsedEmail.message.messageId,
+              sourceReceivedAt: parsedEmail.message.receivedAt || parsedEmail.message.sentAt
+            });
+            rawCandidate = null;
           } catch (error) {
             if (rawCandidate) await rawCandidate.discard().catch(() => {});
             throw error;
           }
         }
-        const archiveCallback = (repositories) => archiveInboundEmailRecord(repositories, parsedEmail, {
-          rawCapture,
-          resolvedClassification
-        });
+        const archiveCallback = (repositories) => direction === 'outbound'
+          ? archiveImportedOutboundEmailRecord(repositories, parsedEmail, { rawCapture })
+          : archiveInboundEmailRecord(repositories, parsedEmail, {
+              rawCapture,
+              resolvedClassification
+            });
+        const runArchive = () => emailArchiveTransaction
+          ? emailArchiveTransaction(archiveCallback)
+          : archiveCallback({ emailArchiveRepository, inquiryRepository, contactRepository });
         try {
-          archiveResult = emailArchiveTransaction
-            ? await emailArchiveTransaction(archiveCallback)
-            : await archiveCallback({ emailArchiveRepository, inquiryRepository, contactRepository });
+          archiveResult = await runArchive();
         } catch (error) {
           if (!(error instanceof EmailArchiveDuplicateRaceError)) throw error;
-          const existing = await emailArchiveRepository.findMessageIdentity(parsedEmail.message);
-          if (!existing) throw error;
-          archiveResult = {
-            duplicate: true,
-            message: existing,
-            thread: await emailArchiveRepository.findThreadById(existing.threadId),
-            inquiry: null
-          };
+          archiveResult = await runArchive();
         }
-        if (archiveResult.rejectedSpam) {
+        if (direction === 'inbound' && archiveResult.rejectedSpam) {
           filtered.push({
             uid,
             reason: 'reject_spam',

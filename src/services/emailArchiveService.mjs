@@ -197,6 +197,34 @@ async function recordSuccessfulRawProcessing(emailArchiveRepository, rawMessageI
   });
 }
 
+async function recordMailboxDelivery(emailArchiveRepository, message, archivedMessage, rawMessage, direction) {
+  if (typeof emailArchiveRepository.createMailboxDelivery !== 'function') return null;
+  if (!text(message.mailboxKey)
+    || !text(message.providerMailbox)
+    || !text(message.providerUidValidity)
+    || !message.providerUid) {
+    return null;
+  }
+  const delivery = await emailArchiveRepository.createMailboxDelivery({
+    messageId: archivedMessage.id,
+    rawMessageId: rawMessage?.id || null,
+    mailboxKey: message.mailboxKey,
+    providerName: 'imap',
+    providerMailbox: message.providerMailbox,
+    providerUidValidity: message.providerUidValidity,
+    providerUid: message.providerUid,
+    direction,
+    firstObservedAt: message.receivedAt || message.sentAt || new Date().toISOString()
+  });
+  const linkedMessageId = Number(delivery?.message_id ?? delivery?.messageId);
+  const linkedRawMessageId = Number(delivery?.raw_message_id ?? delivery?.rawMessageId ?? 0);
+  if (!delivery || linkedMessageId !== Number(archivedMessage.id)
+    || (rawMessage?.id && linkedRawMessageId !== Number(rawMessage.id))) {
+    throw new EmailRawIdentityConflictError('Mailbox delivery identity conflicts with archived evidence');
+  }
+  return delivery;
+}
+
 export async function archiveInboundEmailRecord(repositories, parsed, options = {}) {
   const { emailArchiveRepository, inquiryRepository } = repositories;
   const { message, inquiry } = parsed;
@@ -207,9 +235,6 @@ export async function archiveInboundEmailRecord(repositories, parsed, options = 
     let rawMessage = null;
     if (options.rawCapture) {
       rawMessage = await persistRawEmailCapture(emailArchiveRepository, options.rawCapture);
-      if (existing.rawMessageId && existing.rawMessageId !== rawMessage.id) {
-        throw new EmailRawIdentityConflictError();
-      }
       if (!existing.rawMessageId) {
         const linked = await emailArchiveRepository.linkInboundMessageRawArchive({
           messageId: existing.id,
@@ -224,6 +249,7 @@ export async function archiveInboundEmailRecord(repositories, parsed, options = 
       }
       await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage.id);
     }
+    await recordMailboxDelivery(emailArchiveRepository, message, existing, rawMessage, 'inbound');
     const thread = await emailArchiveRepository.findThreadById(existing.threadId);
     return { duplicate: true, message: existing, thread, inquiry: null, rawMessage };
   }
@@ -274,6 +300,7 @@ export async function archiveInboundEmailRecord(repositories, parsed, options = 
   if (!archivedMessage) {
     throw new EmailArchiveDuplicateRaceError();
   }
+  await recordMailboxDelivery(emailArchiveRepository, message, archivedMessage, rawMessage, 'inbound');
   if (thread.lastMessageAt !== message.receivedAt) {
     await emailArchiveRepository.touchThread(thread.id, message.receivedAt);
   }
@@ -301,6 +328,89 @@ export async function archiveInboundEmailRecord(repositories, parsed, options = 
     thread,
     inquiry: inquiryRecord,
     classification,
+    rawMessage
+  };
+}
+
+async function outboundContact(contactRepository, recipients = []) {
+  if (typeof contactRepository?.findUniqueByEmail !== 'function') return null;
+  for (const recipient of recipients) {
+    const address = text(recipient?.address).toLowerCase();
+    if (!address || address.endsWith('@sunkaier.com')) continue;
+    const contact = await contactRepository.findUniqueByEmail(address);
+    if (contact) return contact;
+  }
+  return null;
+}
+
+export async function archiveImportedOutboundEmailRecord(repositories, parsed, options = {}) {
+  const { emailArchiveRepository, contactRepository } = repositories;
+  const { message } = parsed;
+  assertInboundIdentity(message);
+
+  const existing = await emailArchiveRepository.findMessageIdentity(message);
+  if (existing) {
+    const rawMessage = options.rawCapture
+      ? await persistRawEmailCapture(emailArchiveRepository, options.rawCapture)
+      : null;
+    await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage?.id);
+    await recordMailboxDelivery(emailArchiveRepository, message, existing, rawMessage, 'outbound');
+    return {
+      duplicate: true,
+      message: existing,
+      thread: await emailArchiveRepository.findThreadById(existing.threadId),
+      inquiry: null,
+      rawMessage
+    };
+  }
+
+  const rawMessage = options.rawCapture
+    ? await persistRawEmailCapture(emailArchiveRepository, options.rawCapture)
+    : null;
+  let thread = typeof emailArchiveRepository.findThreadByReferences === 'function'
+    ? await emailArchiveRepository.findThreadByReferences(message.replyReferenceIds)
+    : null;
+  if (!thread) {
+    const contact = await outboundContact(contactRepository, [
+      ...(message.toRecipients || []),
+      ...(message.ccRecipients || [])
+    ]);
+    thread = await emailArchiveRepository.createThread({
+      mailboxKey: message.mailboxKey,
+      subject: message.subject,
+      normalizedSubject: message.normalizedSubject,
+      customerId: contact?.customerId || null,
+      contactId: contact?.id || null,
+      archiveDisposition: 'active',
+      classificationCategory: 'conversation',
+      classificationReason: 'imported_sent_mail',
+      lastMessageAt: message.sentAt
+    });
+  }
+  const authoredBy = typeof emailArchiveRepository.findActivePersonalMailboxOwner === 'function'
+    ? await emailArchiveRepository.findActivePersonalMailboxOwner(message.mailboxKey)
+    : null;
+  const archivedMessage = await emailArchiveRepository.createImportedOutboundMessage({
+    ...message,
+    rawMessageId: rawMessage?.id || null,
+    rawEmlStoredPath: rawMessage?.storedPath || null,
+    rawEmlFileSize: rawMessage?.fileSize || null,
+    rawEmlSha256: rawMessage?.sha256 || null,
+    importedAt: rawMessage ? new Date().toISOString() : null,
+    threadId: thread.id,
+    authoredBy
+  });
+  if (!archivedMessage) throw new EmailArchiveDuplicateRaceError();
+  await recordMailboxDelivery(emailArchiveRepository, message, archivedMessage, rawMessage, 'outbound');
+  if (thread.lastMessageAt !== message.sentAt) {
+    await emailArchiveRepository.touchThread(thread.id, message.sentAt);
+  }
+  await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage?.id);
+  return {
+    duplicate: false,
+    message: archivedMessage,
+    thread,
+    inquiry: null,
     rawMessage
   };
 }
@@ -406,11 +516,15 @@ async function opportunityForThread(dependencies, thread) {
 
 export async function canViewEmailThread(dependencies, actor, thread) {
   if (hasRole(actor, ROLES.ADMINISTRATOR)) return true;
-  const mailboxOwnerUserId = Number(thread?.mailboxOwnerUserId || 0);
-  const isPersonalMailbox = mailboxOwnerUserId > 0;
-  if (isPersonalMailbox && Number(actor?.id) === mailboxOwnerUserId) return true;
+  const mailboxOwnerUserIds = Array.isArray(thread?.mailboxOwnerUserIds)
+    ? thread.mailboxOwnerUserIds.map(Number).filter((value) => value > 0)
+    : [Number(thread?.mailboxOwnerUserId || 0)].filter((value) => value > 0);
+  const isPersonalMailbox = mailboxOwnerUserIds.length > 0;
+  const hasSharedMailboxDelivery = thread?.hasSharedMailboxDelivery === true
+    || text(thread?.mailboxKey).toLowerCase() === 'sales@sunkaier.com';
+  if (mailboxOwnerUserIds.includes(Number(actor?.id))) return true;
   if (!thread?.opportunityId) {
-    return isPersonalMailbox ? false : canAccessInquiryInbox(actor);
+    return hasSharedMailboxDelivery || !isPersonalMailbox ? canAccessInquiryInbox(actor) : false;
   }
   const opportunity = await opportunityForThread(dependencies, thread);
   return Boolean(opportunity && canViewOpportunity(actor, opportunity));
@@ -433,6 +547,41 @@ export async function getVisibleEmailThread(dependencies, actor, threadId) {
   if (!(await canViewEmailThread(dependencies, actor, thread))) {
     throw new EmailArchiveError('Forbidden', 403);
   }
+  return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
+}
+
+export async function listEmailLinkableOpportunities(dependencies, actor) {
+  if (typeof dependencies.opportunityRepository?.listOpportunities !== 'function') return [];
+  const filter = hasRole(actor, ROLES.ADMINISTRATOR)
+    ? { archiveScope: 'active' }
+    : { archiveScope: 'active', visibleToUserId: actor.id };
+  return dependencies.opportunityRepository.listOpportunities(filter);
+}
+
+export async function linkEmailThreadToOpportunity(dependencies, actor, threadId, opportunityId) {
+  const targetOpportunityId = Number(opportunityId);
+  if (!Number.isInteger(targetOpportunityId) || targetOpportunityId <= 0) {
+    throw new EmailArchiveError('Opportunity is required', 400);
+  }
+  const thread = await dependencies.emailArchiveRepository.findThreadById(threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) {
+    throw new EmailArchiveError('Forbidden', 403);
+  }
+  if (thread.opportunityId) {
+    if (Number(thread.opportunityId) === targetOpportunityId) return thread;
+    throw new EmailArchiveError('Email thread is already linked to an opportunity', 409);
+  }
+  const opportunity = await dependencies.opportunityRepository.getOpportunityDetail(targetOpportunityId);
+  if (!opportunity) throw new EmailArchiveError('Opportunity not found', 404);
+  const teamMembers = typeof dependencies.opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
+    ? await dependencies.opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
+    : [];
+  if (!canViewOpportunity(actor, { ...opportunity, teamMembers })) {
+    throw new EmailArchiveError('Forbidden', 403);
+  }
+  const linked = await dependencies.emailArchiveRepository.linkThreadToOpportunity(thread.id, targetOpportunityId);
+  if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
   return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
 }
 

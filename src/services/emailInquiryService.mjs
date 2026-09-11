@@ -188,7 +188,8 @@ export function normalizeEmailArchivePayload(parsed = {}, meta = {}) {
   const subject = text(parsed.subject);
   const inReplyTo = normalizeMessageId(parsed.inReplyTo);
   const references = normalizeReferenceIds(parsed.references);
-  const receivedAt = dateToIso(parsed.date || meta.internalDate) || new Date().toISOString();
+  const observedAt = dateToIso(parsed.date || meta.internalDate) || new Date().toISOString();
+  const direction = text(meta.direction).toLowerCase() === 'outbound' ? 'outbound' : 'inbound';
   return {
     mailboxKey: text(meta.mailboxKey || meta.mailbox || 'INBOX'),
     normalizedSubject: normalizedThreadSubject(subject),
@@ -207,7 +208,8 @@ export function normalizeEmailArchivePayload(parsed = {}, meta = {}) {
     textBody: bodyText(parsed),
     htmlBody: htmlBody(parsed),
     safeHeaders: safeHeaders(parsed),
-    receivedAt
+    receivedAt: direction === 'inbound' ? observedAt : null,
+    sentAt: direction === 'outbound' ? observedAt : null
   };
 }
 

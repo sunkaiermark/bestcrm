@@ -217,6 +217,7 @@ export function loadConfig(env = process.env) {
     },
     emailIntake: {
       enabled: booleanEnv(env.EMAIL_INTAKE_ENABLED, false),
+      accountsFile: String(env.EMAIL_INTAKE_ACCOUNTS_FILE || '').trim(),
       host: env.EMAIL_INTAKE_HOST || '',
       port: numberEnv(env.EMAIL_INTAKE_PORT, booleanEnv(env.EMAIL_INTAKE_SECURE, true) ? 993 : 143),
       secure: booleanEnv(env.EMAIL_INTAKE_SECURE, true),

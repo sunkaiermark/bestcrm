@@ -6,7 +6,10 @@ import path from 'node:path';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
   archiveInboundEmailRecord,
+  archiveImportedOutboundEmailRecord,
   getVisibleEmailThread,
+  linkEmailThreadToOpportunity,
+  listEmailLinkableOpportunities,
   listVisibleEmailThreads,
   storeEmailArchiveAttachments
 } from '../../src/services/emailArchiveService.mjs';
@@ -194,6 +197,44 @@ test('duplicate Message-ID returns the existing archive without creating records
   assert.equal(result.message.id, 10);
 });
 
+test('imported sent mail joins the referenced opportunity thread and records its mailbox owner', async () => {
+  const thread = { id: 4, inquiryId: 8, opportunityId: 20, lastMessageAt: '2026-09-03T01:00:00Z' };
+  const captured = {};
+  const candidate = parsed({
+    mailboxKey: 'markyang@sunkaier.com',
+    messageId: 'sent@example.com',
+    inReplyTo: 'rfq@example.com',
+    replyReferenceIds: ['rfq@example.com'],
+    providerMailbox: 'Sent Messages',
+    providerUid: 12,
+    fromAddress: 'markyang@sunkaier.com',
+    toRecipients: [{ address: 'buyer@example.com' }],
+    receivedAt: null,
+    sentAt: '2026-09-03T02:00:00Z'
+  });
+  const result = await archiveImportedOutboundEmailRecord({
+    contactRepository: { async findUniqueByEmail() { return null; } },
+    emailArchiveRepository: {
+      async findMessageIdentity() { return null; },
+      async findThreadByReferences(ids) { assert.deepEqual(ids, ['rfq@example.com']); return thread; },
+      async findActivePersonalMailboxOwner(address) { assert.equal(address, 'markyang@sunkaier.com'); return 7; },
+      async createImportedOutboundMessage(input) {
+        captured.message = input;
+        return { id: 13, ...input, direction: 'outbound' };
+      },
+      async createMailboxDelivery(input) { captured.delivery = input; return input; },
+      async touchThread(id, at) { captured.touch = [id, at]; }
+    }
+  }, candidate);
+
+  assert.equal(result.duplicate, false);
+  assert.equal(captured.message.threadId, 4);
+  assert.equal(captured.message.authoredBy, 7);
+  assert.equal(captured.delivery.direction, 'outbound');
+  assert.equal(captured.delivery.mailboxKey, 'markyang@sunkaier.com');
+  assert.deepEqual(captured.touch, [4, '2026-09-03T02:00:00Z']);
+});
+
 test('archived attachments retain checksum and independent email-archive file', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-archive-'));
   const records = [];
@@ -326,6 +367,80 @@ test('thread visibility keeps shared unlinked mail manager-only and personal unl
   assert.equal((await getVisibleEmailThread(dependencies, salesperson, 2)).id, 2);
   assert.equal((await getVisibleEmailThread(dependencies, salesperson, 3)).id, 3);
   await assert.rejects(() => getVisibleEmailThread(dependencies, manager, 3), /Forbidden/);
+});
+
+test('one deduplicated thread remains visible to every personal mailbox that received it', async () => {
+  const sharedDelivery = {
+    id: 3,
+    mailboxOwnerUserIds: [7, 8],
+    inquiryId: null,
+    opportunityId: null
+  };
+  const dependencies = {
+    emailArchiveRepository: { async listThreads() { return [sharedDelivery]; } }
+  };
+
+  assert.equal((await listVisibleEmailThreads(dependencies, { id: 7, roles: [ROLES.SALESPERSON] })).length, 1);
+  assert.equal((await listVisibleEmailThreads(dependencies, { id: 8, roles: [ROLES.SALESPERSON] })).length, 1);
+  assert.equal((await listVisibleEmailThreads(dependencies, { id: 9, roles: [ROLES.SALESPERSON] })).length, 0);
+});
+
+test('a shared mailbox delivery keeps manager visibility after the message is deduplicated with personal mail', async () => {
+  const sharedDelivery = {
+    id: 4,
+    mailboxKey: 'markyang@sunkaier.com',
+    mailboxOwnerUserIds: [7],
+    hasSharedMailboxDelivery: true,
+    inquiryId: 8,
+    opportunityId: null
+  };
+  const dependencies = {
+    emailArchiveRepository: { async listThreads() { return [sharedDelivery]; } }
+  };
+
+  assert.equal((await listVisibleEmailThreads(dependencies, { id: 7, roles: [ROLES.SALESPERSON] })).length, 1);
+  assert.equal((await listVisibleEmailThreads(dependencies, { id: 2, roles: [ROLES.SALES_MANAGER] })).length, 1);
+  assert.equal((await listVisibleEmailThreads(dependencies, { id: 8, roles: [ROLES.SALESPERSON] })).length, 0);
+});
+
+test('manual opportunity linking is limited to visible active opportunities and cannot be changed', async () => {
+  const actor = { id: 7, roles: [ROLES.SALESPERSON] };
+  const thread = { id: 3, mailboxOwnerUserId: 7, inquiryId: null, opportunityId: null };
+  const opportunity = {
+    id: 20,
+    salespersonId: 7,
+    salesManagerId: 2,
+    quotationEngineerId: 3,
+    technicalManagerId: 6,
+    commercialManagerId: 9
+  };
+  let listFilter;
+  let linked;
+  const dependencies = {
+    emailArchiveRepository: {
+      async findThreadById() { return thread; },
+      async linkThreadToOpportunity(threadId, opportunityId) {
+        linked = [threadId, opportunityId];
+        thread.opportunityId = Number(opportunityId);
+        return thread;
+      },
+      async getThreadDetail() { return { ...thread, messages: [] }; }
+    },
+    opportunityRepository: {
+      async listOpportunities(filter) { listFilter = filter; return [opportunity]; },
+      async getOpportunityDetail(id) { return Number(id) === 20 ? opportunity : null; }
+    },
+    opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return []; } }
+  };
+
+  assert.equal((await listEmailLinkableOpportunities(dependencies, actor)).length, 1);
+  assert.deepEqual(listFilter, { archiveScope: 'active', visibleToUserId: 7 });
+  assert.equal((await linkEmailThreadToOpportunity(dependencies, actor, 3, 20)).opportunityId, 20);
+  assert.deepEqual(linked, [3, 20]);
+  await assert.rejects(
+    () => linkEmailThreadToOpportunity(dependencies, actor, 3, 21),
+    (error) => error.statusCode === 409
+  );
 });
 
 test('thread visibility forwards the requested archive folder without changing RBAC checks', async () => {

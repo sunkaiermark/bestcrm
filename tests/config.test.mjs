@@ -161,6 +161,7 @@ test('config reads optional inquiry intake secret', () => {
   assert.equal(config.chatwootInquiryIntakeSecret, 'chatwoot-intake-secret');
   assert.deepEqual(config.emailIntake, {
     enabled: true,
+    accountsFile: '',
     host: 'imap.example.com',
     port: 993,
     secure: true,
