@@ -12,6 +12,17 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_PATH="$BACKUP_DIR/$STAMP"
 RAW_EMAIL_DIR="$UPLOAD_DIR/email-raw"
 RAW_EMAIL_INVENTORY="$BACKUP_PATH/email-raw-files.sha256"
+BACKUP_STARTED=false
+BACKUP_COMPLETE=false
+
+cleanup_incomplete_backup() {
+  if [ "$BACKUP_STARTED" = "true" ] && [ "$BACKUP_COMPLETE" != "true" ] && [ -d "$BACKUP_PATH" ] && [ ! -f "$BACKUP_PATH/manifest.txt" ]; then
+    echo "Removing incomplete backup: $BACKUP_PATH" >&2
+    rm -rf -- "$BACKUP_PATH"
+  fi
+}
+
+trap cleanup_incomplete_backup EXIT
 
 if [ ! -f "$ENV_FILE" ]; then
   echo "Missing environment file: $ENV_FILE" >&2
@@ -44,7 +55,9 @@ if [ "$RAW_ARCHIVE_ENABLED" = "true" ]; then
   fi
 fi
 
-mkdir -p "$BACKUP_PATH"
+mkdir -p "$BACKUP_DIR"
+mkdir "$BACKUP_PATH"
+BACKUP_STARTED=true
 
 pg_dump "$DATABASE_URL" > "$BACKUP_PATH/database.sql"
 
@@ -108,6 +121,7 @@ raw_email_size_bytes=$RAW_EMAIL_SIZE_BYTES
 env_sha256=$ENV_SHA256
 MANIFEST
 
-find "$BACKUP_DIR" -mindepth 1 -maxdepth 1 -type d -mtime +"$KEEP_DAYS" -print -exec rm -rf {} +
+BACKUP_COMPLETE=true
+node "$SCRIPT_DIR/prune-production-backups.mjs" "$BACKUP_DIR" "$KEEP_DAYS"
 
 echo "BESTCRM backup completed: $BACKUP_PATH"

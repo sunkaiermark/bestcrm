@@ -73,14 +73,23 @@ test('backup verifier checks database and upload hashes before isolated extracti
 test('production backup and rollback scripts record and enforce artifact checksums', async () => {
   const root = path.resolve(import.meta.dirname, '..', '..');
   const backupScript = await readFile(path.join(root, 'scripts', 'backup-production.sh'), 'utf8');
+  const retentionScript = await readFile(path.join(root, 'scripts', 'prune-production-backups.mjs'), 'utf8');
   const rollbackScript = await readFile(path.join(root, 'scripts', 'rollback-production.sh'), 'utf8');
   assert.match(backupScript, /KEEP_DAYS="\$\{BESTCRM_BACKUP_KEEP_DAYS:-7\}"/);
+  assert.match(backupScript, /BACKUP_STARTED=false/);
+  assert.match(backupScript, /mkdir "\$BACKUP_PATH"/);
+  assert.match(backupScript, /trap cleanup_incomplete_backup EXIT/);
+  assert.match(backupScript, /prune-production-backups\.mjs" "\$BACKUP_DIR" "\$KEEP_DAYS"/);
   assert.match(backupScript, /database_sha256=\$DATABASE_SHA256/);
   assert.match(backupScript, /uploads_sha256=\$UPLOADS_SHA256/);
   assert.match(backupScript, /raw_email_inventory_sha256=\$RAW_EMAIL_INVENTORY_SHA256/);
   assert.match(backupScript, /email-raw-files\.sha256/);
   assert.match(backupScript, /systemctl is-active --quiet bestcrm-email-backfill\.service/);
   assert.match(backupScript, /stop BESTCRM and email intake before creating a consistent database\/file backup/);
+  assert.doesNotMatch(backupScript, /find "\$BACKUP_DIR"[^\n]+-exec rm -rf/);
+  assert.doesNotMatch(retentionScript, /\.\.\/src\//);
+  assert.match(retentionScript, /manifest\.txt/);
+  assert.match(retentionScript, /entry\.isDirectory\(\)/);
   assert.match(rollbackScript, /verify_backup_checksum "\$DB_BACKUP"/);
   assert.match(rollbackScript, /verify_backup_checksum "\$UPLOAD_BACKUP"/);
   assert.match(rollbackScript, /verify_backup_checksum "\$RAW_EMAIL_INVENTORY"/);
