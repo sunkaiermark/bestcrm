@@ -5,8 +5,11 @@ import { requireLogin } from '../middleware/auth.mjs';
 import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
 import {
   assignEmailThreadTriage,
+  canPurgeEmailThread,
+  canPurgeEmailSpam,
   convertEmailThreadToInquiry,
   EmailArchiveError,
+  getEmailSpamCleanupSummary,
   getVisibleEmailAttachment,
   getVisibleEmailThread,
   linkEmailThreadToInquiry,
@@ -14,6 +17,8 @@ import {
   listEmailLinkableInquiries,
   listEmailLinkableOpportunities,
   listEmailTriageAssignees,
+  purgeEmailThread,
+  purgeEligibleEmailSpam,
   resolveVisibleEmailMailbox,
   setEmailThreadDisposition,
   listVisibleEmailThreads
@@ -143,11 +148,21 @@ export function emailCenterRoutes({
             emailFolderFilter(folder, mailbox.key)
           )
         : [];
+      const spamCleanup = folder === 'spam' && mailbox && canPurgeEmailSpam(req.currentUser)
+        ? await getEmailSpamCleanupSummary(dependencies, req.currentUser, mailbox.key)
+        : null;
       res.render('email-center/index', {
         threads,
         folder,
         mailbox,
         mailboxes,
+        spamCleanup,
+        spamCleanupResult: {
+          purgedThreads: Number(req.query.purgedThreads || 0),
+          purgedMessages: Number(req.query.purgedMessages || 0),
+          purgedBytes: Number(req.query.purgedBytes || 0),
+          fileFailures: Number(req.query.fileFailures || 0)
+        },
         formatEmailListDate
       });
     } catch (error) {
@@ -170,12 +185,18 @@ export function emailCenterRoutes({
       const triageAssignees = (thread.triageStatus || 'pending') === 'pending'
         ? await listEmailTriageAssignees(dependencies, req.currentUser, thread)
         : [];
+      const canDeleteThread = await canPurgeEmailThread(
+        dependencies,
+        req.currentUser,
+        thread.id
+      );
       res.render('email-center/detail', {
         thread,
         formatEmailListDate,
         backFolder,
         backMailbox,
         canTriage,
+        canDeleteThread,
         canTriageInquiry: canAccessInquiryInbox(req.currentUser),
         linkableOpportunities,
         linkableInquiries,
@@ -266,6 +287,48 @@ export function emailCenterRoutes({
         req.body.assignedUserId
       );
       res.redirect(threadRedirect(req.params.threadId, req.body));
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/email-center/spam/purge', async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        return res.status(403).send('Invalid CSRF token');
+      }
+      const mailboxKey = String(req.body.mailbox || '').trim().toLowerCase();
+      const result = await purgeEligibleEmailSpam(dependencies, req.currentUser, {
+        mailboxKey,
+        confirmation: req.body.confirmation
+      });
+      const query = new URLSearchParams({
+        mailbox: mailboxKey,
+        folder: 'spam',
+        purgedThreads: String(result.purgedThreads),
+        purgedMessages: String(result.purgedMessages),
+        purgedBytes: String(result.purgedBytes),
+        fileFailures: String(result.fileFailures.length)
+      });
+      res.redirect(`/email-center?${query.toString()}`);
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/email-center/threads/:threadId/purge', async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        return res.status(403).send('Invalid CSRF token');
+      }
+      await purgeEmailThread(dependencies, req.currentUser, req.params.threadId, {
+        confirmation: req.body.confirmation
+      });
+      const query = new URLSearchParams();
+      const mailboxKey = String(req.body.mailbox || '').trim().toLowerCase();
+      if (mailboxKey) query.set('mailbox', mailboxKey);
+      query.set('folder', emailFolder(String(req.body.from || 'pending')));
+      res.redirect(`/email-center?${query.toString()}`);
     } catch (error) {
       handleError(error, res, next);
     }

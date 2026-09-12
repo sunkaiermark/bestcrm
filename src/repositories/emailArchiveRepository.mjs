@@ -243,6 +243,80 @@ function mapDeliveryAttemptRow(row) {
   };
 }
 
+function mapSpamCleanupSummary(row = {}) {
+  return {
+    eligibleThreads: Number(row.eligible_threads || 0),
+    messages: Number(row.message_count || 0),
+    attachments: Number(row.attachment_count || 0),
+    attachmentBytes: Number(row.attachment_bytes || 0),
+    rawMessages: Number(row.raw_message_count || 0),
+    rawMessageBytes: Number(row.raw_message_bytes || 0)
+  };
+}
+
+function mapEmailPurgeCandidate(row) {
+  if (!row) return null;
+  return {
+    threadId: Number(row.thread_id),
+    mailboxKey: text(row.mailbox_key),
+    subject: text(row.subject),
+    triageStatus: text(row.triage_status),
+    archiveDisposition: text(row.archive_disposition),
+    lastMessageAt: row.last_message_at,
+    messageCount: Number(row.message_count || 0),
+    attachmentCount: Number(row.attachment_count || 0),
+    attachmentBytes: Number(row.attachment_bytes || 0),
+    rawMessageCount: Number(row.raw_message_count || 0),
+    rawMessageBytes: Number(row.raw_message_bytes || 0),
+    triageEventCount: Number(row.triage_event_count || 0),
+    assignmentEventCount: Number(row.assignment_event_count || 0),
+    attachmentPaths: jsonArray(row.attachment_paths).map(text).filter(Boolean),
+    rawMessagePaths: jsonArray(row.raw_message_paths).map(text).filter(Boolean),
+    rawMessageIds: jsonArray(row.raw_message_ids).map(Number).filter((value) => Number.isInteger(value) && value > 0)
+  };
+}
+
+const emailPurgeBusinessEligibility = `
+  thread.inquiry_id IS NULL
+  AND thread.opportunity_id IS NULL
+  AND thread.customer_id IS NULL
+  AND thread.contact_id IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM email_messages outbound
+    WHERE outbound.thread_id = thread.id AND outbound.direction = 'outbound'
+  )
+  AND NOT EXISTS (
+    SELECT 1 FROM email_thread_triage_events business_event
+    WHERE business_event.thread_id = thread.id
+      AND business_event.event_type IN ('linked_opportunity', 'linked_inquiry', 'converted_inquiry')
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM opportunity_activity_links activity_link
+    JOIN email_messages activity_message ON activity_message.id = activity_link.email_message_id
+    WHERE activity_message.thread_id = thread.id
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM quotation_package_versions package_version
+    JOIN email_messages package_message ON package_message.id = package_version.sent_email_message_id
+    WHERE package_message.thread_id = thread.id
+  )
+  AND NOT EXISTS (
+    SELECT 1
+    FROM email_messages referenced_message
+    JOIN email_messages external_reply ON external_reply.reply_to_message_id = referenced_message.id
+    WHERE referenced_message.thread_id = thread.id
+      AND external_reply.thread_id <> thread.id
+  )
+`;
+
+const spamPurgeEligibility = `
+  thread.archive_disposition = 'spam'
+  AND thread.triage_status = 'spam'
+  AND ${emailPurgeBusinessEligibility}
+`;
+
 const threadSelect = `
   SELECT
     thread.id,
@@ -1002,6 +1076,264 @@ export function createEmailArchiveRepository(queryTarget) {
         input.note || ''
       ]);
       return mapThreadRow(result.rows[0]);
+    },
+
+    async getSpamCleanupSummary({ mailboxKey = '' }) {
+      const result = await queryTarget.query(`
+        WITH eligible AS (
+          SELECT thread.id
+          FROM email_threads thread
+          WHERE ${spamPurgeEligibility}
+            AND (
+              $1 = ''
+              OR lower(btrim(thread.mailbox_key)) = $1
+              OR EXISTS (
+                SELECT 1
+                FROM email_messages mailbox_message
+                JOIN email_message_mailbox_deliveries mailbox_delivery
+                  ON mailbox_delivery.message_id = mailbox_message.id
+                WHERE mailbox_message.thread_id = thread.id
+                  AND lower(btrim(mailbox_delivery.mailbox_key)) = $1
+              )
+            )
+        ),
+        eligible_messages AS (
+          SELECT message.*
+          FROM email_messages message
+          JOIN eligible ON eligible.id = message.thread_id
+        ),
+        eligible_raw_files AS (
+          SELECT 'raw:' || raw.id::text AS file_key, raw.file_size
+          FROM email_raw_messages raw
+          JOIN eligible_messages message ON message.raw_message_id = raw.id
+          UNION ALL
+          SELECT 'legacy:' || message.id::text AS file_key, message.raw_eml_file_size
+          FROM eligible_messages message
+          WHERE message.raw_message_id IS NULL
+            AND message.raw_eml_stored_path IS NOT NULL
+            AND message.raw_eml_file_size IS NOT NULL
+        )
+        SELECT
+          (SELECT count(*) FROM eligible) AS eligible_threads,
+          (SELECT count(*) FROM eligible_messages) AS message_count,
+          (
+            SELECT count(*)
+            FROM email_attachments attachment
+            JOIN eligible_messages message ON message.id = attachment.message_id
+          ) AS attachment_count,
+          COALESCE((
+            SELECT sum(attachment.file_size)
+            FROM email_attachments attachment
+            JOIN eligible_messages message ON message.id = attachment.message_id
+          ), 0) AS attachment_bytes,
+          (SELECT count(*) FROM eligible_raw_files) AS raw_message_count,
+          COALESCE((SELECT sum(file_size) FROM eligible_raw_files), 0) AS raw_message_bytes
+      `, [text(mailboxKey).trim().toLowerCase()]);
+      return mapSpamCleanupSummary(result.rows[0]);
+    },
+
+    async listSpamPurgeCandidates({ mailboxKey = '', limit = 100 }) {
+      const result = await queryTarget.query(`
+        SELECT
+          thread.id AS thread_id,
+          thread.mailbox_key,
+          thread.subject,
+          thread.triage_status,
+          thread.archive_disposition,
+          thread.last_message_at
+        FROM email_threads thread
+        WHERE ${spamPurgeEligibility}
+          AND (
+            $1 = ''
+            OR lower(btrim(thread.mailbox_key)) = $1
+            OR EXISTS (
+              SELECT 1
+              FROM email_messages mailbox_message
+              JOIN email_message_mailbox_deliveries mailbox_delivery
+                ON mailbox_delivery.message_id = mailbox_message.id
+              WHERE mailbox_message.thread_id = thread.id
+                AND lower(btrim(mailbox_delivery.mailbox_key)) = $1
+            )
+          )
+        ORDER BY thread.triaged_at NULLS FIRST, thread.id
+        LIMIT $2
+      `, [text(mailboxKey).trim().toLowerCase(), Math.max(1, Math.min(Number(limit) || 100, 100))]);
+      return result.rows.map(mapEmailPurgeCandidate);
+    },
+
+    async isThreadPurgeEligible(threadId) {
+      const result = await queryTarget.query(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM email_threads thread
+          WHERE thread.id = $1
+            AND ${emailPurgeBusinessEligibility}
+        ) AS eligible
+      `, [threadId]);
+      return Boolean(result.rows[0]?.eligible);
+    },
+
+    async purgeEmailThread(input) {
+      const candidateResult = await queryTarget.query(`
+        SELECT
+          thread.id AS thread_id,
+          thread.mailbox_key,
+          thread.subject,
+          thread.triage_status,
+          thread.archive_disposition,
+          thread.last_message_at,
+          (SELECT count(*) FROM email_messages message WHERE message.thread_id = thread.id) AS message_count,
+          (
+            SELECT count(*)
+            FROM email_attachments attachment
+            JOIN email_messages message ON message.id = attachment.message_id
+            WHERE message.thread_id = thread.id
+          ) AS attachment_count,
+          COALESCE((
+            SELECT sum(attachment.file_size)
+            FROM email_attachments attachment
+            JOIN email_messages message ON message.id = attachment.message_id
+            WHERE message.thread_id = thread.id
+          ), 0) AS attachment_bytes,
+          COALESCE((
+            SELECT jsonb_agg(attachment.stored_path ORDER BY attachment.id)
+            FROM email_attachments attachment
+            JOIN email_messages message ON message.id = attachment.message_id
+            WHERE message.thread_id = thread.id
+          ), '[]'::jsonb) AS attachment_paths,
+          COALESCE((
+            SELECT jsonb_agg(raw.id ORDER BY raw.id)
+            FROM email_raw_messages raw
+            JOIN email_messages message ON message.raw_message_id = raw.id
+            WHERE message.thread_id = thread.id
+          ), '[]'::jsonb) AS raw_message_ids,
+          COALESCE((
+            SELECT jsonb_agg(raw_file.stored_path ORDER BY raw_file.sort_id)
+            FROM (
+              SELECT raw.id * 2 AS sort_id, raw.stored_path
+              FROM email_raw_messages raw
+              JOIN email_messages message ON message.raw_message_id = raw.id
+              WHERE message.thread_id = thread.id
+              UNION ALL
+              SELECT message.id * 2 + 1 AS sort_id, message.raw_eml_stored_path AS stored_path
+              FROM email_messages message
+              WHERE message.thread_id = thread.id
+                AND message.raw_message_id IS NULL
+                AND message.raw_eml_stored_path IS NOT NULL
+            ) raw_file
+          ), '[]'::jsonb) AS raw_message_paths,
+          (
+            SELECT count(*)
+            FROM (
+              SELECT raw.id
+              FROM email_raw_messages raw
+              JOIN email_messages message ON message.raw_message_id = raw.id
+              WHERE message.thread_id = thread.id
+              UNION ALL
+              SELECT -message.id
+              FROM email_messages message
+              WHERE message.thread_id = thread.id
+                AND message.raw_message_id IS NULL
+                AND message.raw_eml_stored_path IS NOT NULL
+            ) raw_file
+          ) AS raw_message_count,
+          COALESCE((
+            SELECT sum(raw_file.file_size)
+            FROM (
+              SELECT raw.file_size
+              FROM email_raw_messages raw
+              JOIN email_messages message ON message.raw_message_id = raw.id
+              WHERE message.thread_id = thread.id
+              UNION ALL
+              SELECT message.raw_eml_file_size AS file_size
+              FROM email_messages message
+              WHERE message.thread_id = thread.id
+                AND message.raw_message_id IS NULL
+                AND message.raw_eml_stored_path IS NOT NULL
+            ) raw_file
+          ), 0) AS raw_message_bytes,
+          (SELECT count(*) FROM email_thread_triage_events event WHERE event.thread_id = thread.id) AS triage_event_count,
+          (SELECT count(*) FROM email_thread_assignment_events event WHERE event.thread_id = thread.id) AS assignment_event_count
+        FROM email_threads thread
+        WHERE thread.id = $1
+          AND ${emailPurgeBusinessEligibility}
+        FOR UPDATE OF thread
+      `, [input.threadId]);
+      const candidate = mapEmailPurgeCandidate(candidateResult.rows[0]);
+      if (!candidate) return null;
+
+      await queryTarget.query(`SELECT set_config('bestcrm.email_purge', 'enabled', true)`);
+      await queryTarget.query(`
+        INSERT INTO email_purge_audits (
+          thread_id,
+          mailbox_key,
+          subject_sha256,
+          message_count,
+          attachment_count,
+          attachment_bytes,
+          raw_message_count,
+          raw_message_bytes,
+          triage_event_count,
+          assignment_event_count,
+          triage_status,
+          archive_disposition,
+          last_message_at,
+          purged_by,
+          purge_reason
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+      `, [
+        candidate.threadId,
+        candidate.mailboxKey,
+        input.subjectSha256,
+        candidate.messageCount,
+        candidate.attachmentCount,
+        candidate.attachmentBytes,
+        candidate.rawMessageCount,
+        candidate.rawMessageBytes,
+        candidate.triageEventCount,
+        candidate.assignmentEventCount,
+        candidate.triageStatus,
+        candidate.archiveDisposition,
+        candidate.lastMessageAt,
+        input.actorUserId,
+        input.reason
+      ]);
+
+      await queryTarget.query(`
+        DELETE FROM email_attachment_scan_attempts
+        WHERE attachment_id IN (
+          SELECT attachment.id
+          FROM email_attachments attachment
+          JOIN email_messages message ON message.id = attachment.message_id
+          WHERE message.thread_id = $1
+        )
+      `, [candidate.threadId]);
+      await queryTarget.query(`
+        DELETE FROM email_attachments
+        WHERE message_id IN (SELECT id FROM email_messages WHERE thread_id = $1)
+      `, [candidate.threadId]);
+      await queryTarget.query(`
+        DELETE FROM email_delivery_attempts
+        WHERE message_id IN (SELECT id FROM email_messages WHERE thread_id = $1)
+      `, [candidate.threadId]);
+      await queryTarget.query(`
+        DELETE FROM email_classification_events WHERE thread_id = $1
+      `, [candidate.threadId]);
+      await queryTarget.query(`
+        DELETE FROM email_message_mailbox_deliveries
+        WHERE message_id IN (SELECT id FROM email_messages WHERE thread_id = $1)
+      `, [candidate.threadId]);
+      await queryTarget.query(`DELETE FROM email_thread_assignment_events WHERE thread_id = $1`, [candidate.threadId]);
+      await queryTarget.query(`DELETE FROM email_thread_triage_events WHERE thread_id = $1`, [candidate.threadId]);
+      await queryTarget.query(`DELETE FROM email_messages WHERE thread_id = $1`, [candidate.threadId]);
+      await queryTarget.query(`DELETE FROM email_threads WHERE id = $1`, [candidate.threadId]);
+      if (candidate.rawMessageIds.length) {
+        await queryTarget.query(`DELETE FROM email_raw_scan_attempts WHERE raw_message_id = ANY($1::bigint[])`, [candidate.rawMessageIds]);
+        await queryTarget.query(`DELETE FROM email_raw_processing_attempts WHERE raw_message_id = ANY($1::bigint[])`, [candidate.rawMessageIds]);
+        await queryTarget.query(`DELETE FROM email_raw_messages WHERE id = ANY($1::bigint[])`, [candidate.rawMessageIds]);
+      }
+      return candidate;
     },
 
     async createTriageEvent(input) {

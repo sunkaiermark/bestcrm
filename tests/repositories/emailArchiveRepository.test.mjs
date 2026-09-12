@@ -66,6 +66,99 @@ test('email archive repository supports explicit archived, spam, and all-mail vi
   assert.deepEqual(calls[1].params, []);
 });
 
+test('email purge eligibility excludes every business relationship and outbound conversation', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [{
+        eligible_threads: '2', message_count: '3', attachment_count: '1', attachment_bytes: '50',
+        raw_message_count: '3', raw_message_bytes: '70'
+      }] };
+    }
+  });
+
+  const summary = await repository.getSpamCleanupSummary({ mailboxKey: 'Sales@Sunkaier.com' });
+
+  assert.deepEqual(summary, {
+    eligibleThreads: 2,
+    messages: 3,
+    attachments: 1,
+    attachmentBytes: 50,
+    rawMessages: 3,
+    rawMessageBytes: 70
+  });
+  assert.deepEqual(calls[0].params, ['sales@sunkaier.com']);
+  assert.match(calls[0].sql, /thread\.triage_status = 'spam'/);
+  assert.match(calls[0].sql, /thread\.inquiry_id IS NULL/);
+  assert.match(calls[0].sql, /thread\.opportunity_id IS NULL/);
+  assert.match(calls[0].sql, /thread\.customer_id IS NULL/);
+  assert.match(calls[0].sql, /thread\.contact_id IS NULL/);
+  assert.match(calls[0].sql, /outbound\.direction = 'outbound'/);
+  assert.match(calls[0].sql, /business_event\.event_type IN \('linked_opportunity', 'linked_inquiry', 'converted_inquiry'\)/);
+  assert.match(calls[0].sql, /opportunity_activity_links/);
+  assert.match(calls[0].sql, /quotation_package_versions/);
+});
+
+test('individual email deletion uses the same permanent business-history guard', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [{ eligible: true }] };
+    }
+  });
+
+  assert.equal(await repository.isThreadPurgeEligible(88), true);
+  assert.deepEqual(calls[0].params, [88]);
+  assert.match(calls[0].sql, /thread\.inquiry_id IS NULL/);
+  assert.match(calls[0].sql, /thread\.opportunity_id IS NULL/);
+  assert.match(calls[0].sql, /business_event\.event_type IN \('linked_opportunity', 'linked_inquiry', 'converted_inquiry'\)/);
+  assert.match(calls[0].sql, /outbound\.direction = 'outbound'/);
+});
+
+test('email purge repository writes the audit before deleting the isolated email graph', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      const statement = String(sql);
+      calls.push({ sql: statement, params });
+      if (statement.includes('FOR UPDATE OF thread')) {
+        return { rows: [{
+          thread_id: '8', mailbox_key: 'sales@sunkaier.com', subject: 'SEO spam',
+          triage_status: 'pending', archive_disposition: 'active', last_message_at: '2026-08-01T00:00:00Z',
+          message_count: '1', attachment_count: '1',
+          attachment_bytes: '50', attachment_paths: ['email-archive/spam.pdf'],
+          raw_message_ids: [81], raw_message_paths: ['email-raw/spam.eml'], raw_message_count: '1',
+          raw_message_bytes: '70', triage_event_count: '1', assignment_event_count: '0'
+        }] };
+      }
+      return { rows: [], rowCount: 1 };
+    }
+  });
+
+  const purged = await repository.purgeEmailThread({
+    threadId: 8,
+    actorUserId: 1,
+    subjectSha256: 'a'.repeat(64),
+    reason: 'administrator-confirmed unlinked email'
+  });
+
+  assert.equal(purged.threadId, 8);
+  assert.deepEqual(purged.attachmentPaths, ['email-archive/spam.pdf']);
+  assert.deepEqual(purged.rawMessagePaths, ['email-raw/spam.eml']);
+  const statements = calls.map((call) => call.sql);
+  const auditIndex = statements.findIndex((sql) => sql.includes('INSERT INTO email_purge_audits'));
+  const messageDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_messages WHERE'));
+  const threadDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_threads WHERE'));
+  const rawDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_raw_messages WHERE'));
+  assert.ok(auditIndex > 0);
+  assert.ok(messageDeleteIndex > auditIndex);
+  assert.ok(threadDeleteIndex > messageDeleteIndex);
+  assert.ok(rawDeleteIndex > threadDeleteIndex);
+  assert.match(statements[1], /set_config\('bestcrm\.email_purge', 'enabled', true\)/);
+});
+
 test('email archive repository separates mailbox folders and includes CRM-native sent mail', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({

@@ -83,6 +83,33 @@
           </section>
         <% } %>
 
+        <% if (thread.triageStatus === 'spam') { %>
+          <section class="form-panel email-spam-restore">
+            <p><%= t('emailSpamRestoreHelp') %></p>
+            <form method="post" action="/email-center/threads/<%= thread.id %>/disposition">
+              <%- csrfField() %>
+              <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+              <input type="hidden" name="from" value="spam">
+              <input type="hidden" name="action" value="restore">
+              <button type="submit"><%= t('emailSpamRestoreAction') %></button>
+            </form>
+          </section>
+        <% } %>
+
+        <% if (canDeleteThread) { %>
+          <section class="form-panel email-thread-delete" aria-label="<%= t('emailDeleteAction') %>">
+            <h2><%= t('emailDeleteAction') %></h2>
+            <p><%= t('emailDeleteRule') %></p>
+            <form class="inline-form" method="post" action="/email-center/threads/<%= thread.id %>/purge" onsubmit="return confirm('<%= t('emailDeleteConfirm') %>')">
+              <%- csrfField() %>
+              <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+              <input type="hidden" name="from" value="<%= backFolder %>">
+              <label><span><%= t('emailSpamCleanupTypeDelete') %></span><input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label>
+              <button class="danger-action" type="submit"><%= t('emailDeleteAction') %></button>
+            </form>
+          </section>
+        <% } %>
+
         <section class="email-conversation-list" aria-label="<%= t('emailConversation') %>">
           <% for (const [messageIndex, message] of thread.messages.entries()) { const recipients = (items) => items.map((item) => item.name ? `${item.name} <${item.address}>` : item.address).join(', '); const messageDate = message.receivedAt || message.sentAt || message.createdAt; const avatarText = (message.fromName || message.fromAddress || '?').trim().slice(0, 1).toUpperCase(); %>
             <details class="email-conversation-item email-message-<%= message.direction %>"<% if (messageIndex === thread.messages.length - 1) { %> open<% } %>>

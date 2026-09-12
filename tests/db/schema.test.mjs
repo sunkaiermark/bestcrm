@@ -56,6 +56,7 @@ const formSubmissionIdempotencyMigrationPath = new URL('../../src/db/migrations/
 const userPersonalMailboxAssignmentsMigrationPath = new URL('../../src/db/migrations/055_user_personal_mailbox_assignments.sql', import.meta.url);
 const emailMailboxDeliveriesMigrationPath = new URL('../../src/db/migrations/056_email_mailbox_deliveries.sql', import.meta.url);
 const emailCenterTriageWorkflowMigrationPath = new URL('../../src/db/migrations/057_email_center_triage_workflow.sql', import.meta.url);
+const emailSpamRetentionAndPurgeMigrationPath = new URL('../../src/db/migrations/058_email_spam_retention_and_purge.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -979,4 +980,18 @@ test('email center triage migration adds frozen pending workflow and immutable a
   }
   assert.match(sql, /Email triage events are immutable/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
+});
+
+test('email purge migration keeps a permanent non-content audit and narrow delete guard', async () => {
+  const sql = await readFile(emailSpamRetentionAndPurgeMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_purge_audits/);
+  assert.match(sql, /subject_sha256 char\(64\)/);
+  assert.match(sql, /triage_status text NOT NULL/);
+  assert.match(sql, /archive_disposition text NOT NULL/);
+  assert.match(sql, /last_message_at timestamptz NOT NULL/);
+  assert.match(sql, /purged_by bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /Email purge audit records are immutable/);
+  assert.match(sql, /current_setting\('bestcrm\.email_purge', true\) = 'enabled'/);
+  assert.doesNotMatch(sql, /subject text|text_body|html_body/);
 });

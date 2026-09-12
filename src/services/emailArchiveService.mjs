@@ -3,7 +3,7 @@ import { ROLES, hasRole } from '../domain/roles.mjs';
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import { canAccessInquiryInbox } from './inquiryService.mjs';
 import { canViewOpportunity } from './opportunityService.mjs';
-import { removeStoredAttachmentFile, storeAttachmentBuffer } from './attachmentFileService.mjs';
+import { removeStoredAttachmentFile, resolveStoredPath, storeAttachmentBuffer } from './attachmentFileService.mjs';
 import {
   EmailRawIdentityConflictError,
   EmailRawMalwareError,
@@ -29,6 +29,10 @@ export class EmailArchiveError extends Error {
     this.name = 'EmailArchiveError';
     this.statusCode = statusCode;
   }
+}
+
+export function canPurgeEmailSpam(actor) {
+  return hasRole(actor, ROLES.ADMINISTRATOR);
 }
 
 export class EmailArchiveDuplicateRaceError extends Error {
@@ -622,13 +626,17 @@ async function recordTriageEvent(repository, input) {
 }
 
 async function transitionTriage(repository, thread, actor, input) {
-  if (!triageTransitionAllowed(thread)) {
+  const fromStatus = thread?.triageStatus || 'pending';
+  const allowedFromStatuses = Array.isArray(input.allowedFromStatuses)
+    ? input.allowedFromStatuses
+    : ['pending', 'outbound_only'];
+  if (!allowedFromStatuses.includes(fromStatus)) {
     if (thread.triageStatus === input.triageStatus) return thread;
     throw new EmailArchiveError('Email thread has already been triaged', 409);
   }
   const transitioned = await repository.transitionThreadTriage({
     threadId: thread.id,
-    expectedStatus: thread.triageStatus || 'pending',
+    expectedStatus: fromStatus,
     triageStatus: input.triageStatus,
     archiveDisposition: input.archiveDisposition || 'active',
     actorUserId: actor.id,
@@ -639,7 +647,7 @@ async function transitionTriage(repository, thread, actor, input) {
   await recordTriageEvent(repository, {
     threadId: thread.id,
     eventType: input.eventType,
-    fromStatus: thread.triageStatus || 'pending',
+    fromStatus,
     toStatus: input.triageStatus,
     actorUserId: actor.id,
     assignedUserId: input.assignedUserId || null,
@@ -797,6 +805,13 @@ export async function setEmailThreadDisposition(dependencies, actor, threadId, a
     ? { eventType: 'archived', triageStatus: 'archived', archiveDisposition: 'archived' }
     : action === 'spam'
       ? { eventType: 'spam', triageStatus: 'spam', archiveDisposition: 'spam' }
+      : action === 'restore'
+        ? {
+            eventType: 'reopened',
+            triageStatus: 'pending',
+            archiveDisposition: 'active',
+            allowedFromStatuses: ['spam']
+          }
       : null;
   if (!target) throw new EmailArchiveError('Invalid email triage action', 400);
   const thread = await dependencies.emailArchiveRepository.findThreadById(threadId);
@@ -812,6 +827,127 @@ export async function setEmailThreadDisposition(dependencies, actor, threadId, a
     });
   });
   return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
+}
+
+export async function getEmailSpamCleanupSummary(dependencies, actor, mailboxKey = '') {
+  if (!canPurgeEmailSpam(actor)) throw new EmailArchiveError('Forbidden', 403);
+  if (typeof dependencies.emailArchiveRepository?.getSpamCleanupSummary !== 'function') {
+    return {
+      eligibleThreads: 0,
+      messages: 0,
+      attachments: 0,
+      attachmentBytes: 0,
+      rawMessages: 0,
+      rawMessageBytes: 0
+    };
+  }
+  const summary = await dependencies.emailArchiveRepository.getSpamCleanupSummary({
+    mailboxKey: text(mailboxKey).toLowerCase()
+  });
+  return summary;
+}
+
+async function removePurgedEmailFiles(uploadDir, candidate) {
+  const failures = [];
+  for (const storedPath of [...new Set([
+    ...(candidate.attachmentPaths || []),
+    ...(candidate.rawMessagePaths || [])
+  ])]) {
+    const filePath = resolveStoredPath(uploadDir, storedPath);
+    if (!filePath) {
+      failures.push({ storedPath, reason: 'invalid_path' });
+      continue;
+    }
+    try {
+      await removeStoredAttachmentFile(filePath);
+    } catch (error) {
+      failures.push({ storedPath, reason: text(error?.message) || 'delete_failed' });
+    }
+  }
+  return failures;
+}
+
+export async function purgeEligibleEmailSpam(dependencies, actor, input = {}) {
+  if (!canPurgeEmailSpam(actor)) throw new EmailArchiveError('Forbidden', 403);
+  if (text(input.confirmation) !== 'DELETE') {
+    throw new EmailArchiveError('Type DELETE to confirm permanent spam cleanup', 400);
+  }
+  if (typeof dependencies.emailArchiveRepository?.listSpamPurgeCandidates !== 'function') {
+    throw new EmailArchiveError('Spam cleanup is unavailable', 503);
+  }
+  const mailboxKey = text(input.mailboxKey).toLowerCase();
+  const candidates = await dependencies.emailArchiveRepository.listSpamPurgeCandidates({
+    mailboxKey,
+    limit: 100
+  });
+  const purged = [];
+  const fileFailures = [];
+  for (const listedCandidate of candidates) {
+    const subjectSha256 = createHash('sha256').update(listedCandidate.subject || '', 'utf8').digest('hex');
+    const candidate = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => (
+      transactionDependencies.emailArchiveRepository.purgeEmailThread({
+        threadId: listedCandidate.threadId,
+        actorUserId: actor.id,
+        subjectSha256,
+        reason: 'administrator-confirmed spam; no current or historical business links and no outbound messages'
+      })
+    ));
+    if (!candidate) continue;
+    purged.push(candidate);
+    const failures = await removePurgedEmailFiles(dependencies.uploadDir || './var/uploads', candidate);
+    fileFailures.push(...failures.map((failure) => ({ threadId: candidate.threadId, ...failure })));
+  }
+  return {
+    candidates: candidates.length,
+    purgedThreads: purged.length,
+    purgedMessages: purged.reduce((total, candidate) => total + candidate.messageCount, 0),
+    purgedBytes: purged.reduce(
+      (total, candidate) => total + candidate.attachmentBytes + candidate.rawMessageBytes,
+      0
+    ),
+    fileFailures
+  };
+}
+
+export async function canPurgeEmailThread(dependencies, actor, threadId) {
+  if (!canPurgeEmailSpam(actor)) return false;
+  if (typeof dependencies.emailArchiveRepository?.isThreadPurgeEligible !== 'function') return false;
+  return dependencies.emailArchiveRepository.isThreadPurgeEligible(threadId);
+}
+
+export async function purgeEmailThread(dependencies, actor, threadId, input = {}) {
+  if (!canPurgeEmailSpam(actor)) throw new EmailArchiveError('Forbidden', 403);
+  if (text(input.confirmation) !== 'DELETE') {
+    throw new EmailArchiveError('Type DELETE to confirm permanent email deletion', 400);
+  }
+  if (typeof dependencies.emailArchiveRepository?.purgeEmailThread !== 'function') {
+    throw new EmailArchiveError('Email deletion is unavailable', 503);
+  }
+  const thread = await dependencies.emailArchiveRepository.findThreadById(threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) throw new EmailArchiveError('Forbidden', 403);
+  const subjectSha256 = createHash('sha256').update(thread.subject || '', 'utf8').digest('hex');
+  const candidate = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => (
+    transactionDependencies.emailArchiveRepository.purgeEmailThread({
+      threadId: thread.id,
+      actorUserId: actor.id,
+      subjectSha256,
+      reason: 'administrator-confirmed unlinked email; no current or historical business links and no outbound messages'
+    })
+  ));
+  if (!candidate) {
+    throw new EmailArchiveError(
+      'Email is protected because it has a business relationship, outbound message, or historical business link',
+      409
+    );
+  }
+  const fileFailures = await removePurgedEmailFiles(dependencies.uploadDir || './var/uploads', candidate);
+  return {
+    purgedThreads: 1,
+    purgedMessages: candidate.messageCount,
+    purgedBytes: candidate.attachmentBytes + candidate.rawMessageBytes,
+    fileFailures
+  };
 }
 
 export async function listEmailTriageAssignees(dependencies, actor, thread) {

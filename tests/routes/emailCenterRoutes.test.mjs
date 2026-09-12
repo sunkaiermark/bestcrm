@@ -38,7 +38,11 @@ async function createAgent({
   teamMembers = [],
   linkableOpportunities = [],
   linkableInquiries = [],
-  onLinkOpportunity = null
+  onLinkOpportunity = null,
+  onPurgeThread = null,
+  purgeEligibleThreadIds = [1],
+  spamCleanupSummary = { eligibleThreads: 0, messages: 0, attachments: 0, attachmentBytes: 0, rawMessages: 0, rawMessageBytes: 0 },
+  spamPurgeCandidates = []
 }) {
   const passwordHash = await hashPassword('ChangeMe123!');
   const user = {
@@ -102,6 +106,21 @@ async function createAgent({
     async createTriageEvent(input) {
       unlinked.triageEvents.push(input);
       return input;
+    },
+    async getSpamCleanupSummary() { return spamCleanupSummary; },
+    async listSpamPurgeCandidates() { return spamPurgeCandidates; },
+    async isThreadPurgeEligible(id) { return purgeEligibleThreadIds.includes(Number(id)); },
+    async purgeEmailThread(input) {
+      if (!purgeEligibleThreadIds.includes(Number(input.threadId))) return null;
+      onPurgeThread?.(input);
+      return {
+        threadId: Number(input.threadId),
+        messageCount: 1,
+        attachmentBytes: 0,
+        rawMessageBytes: 0,
+        attachmentPaths: [],
+        rawMessagePaths: []
+      };
     },
     async findAttachmentById(id) { return Number(id) === 21 ? unlinked.messages[0].attachments[0] : null; },
     async findMessageById(id) { return Number(id) === 11 ? unlinked.messages[0] : null; }
@@ -203,6 +222,85 @@ test('email thread back action preserves its source folder', async () => {
 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /href="\/email-center\?mailbox=sales%40sunkaier\.com&folder=sent">← 返回邮件列表<\/a>/);
+});
+
+test('only an administrator sees and can invoke immediate permanent spam cleanup', async () => {
+  const manager = await createAgent({ userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh' });
+  const managerSpam = await manager.get('/email-center?mailbox=sales%40sunkaier.com&folder=spam');
+  assert.equal(managerSpam.status, 200);
+  assert.doesNotMatch(managerSpam.text, /垃圾邮件清理/);
+
+  const administrator = await createAgent({
+    userId: 1,
+    roles: [ROLES.ADMINISTRATOR],
+    language: 'zh',
+    spamCleanupSummary: {
+      eligibleThreads: 3,
+      messages: 4,
+      attachments: 2,
+      attachmentBytes: 1048576,
+      rawMessages: 4,
+      rawMessageBytes: 2097152
+    }
+  });
+  const adminSpam = await administrator.get('/email-center?mailbox=sales%40sunkaier.com&folder=spam');
+  assert.equal(adminSpam.status, 200);
+  assert.match(adminSpam.text, /垃圾邮件清理/);
+  assert.match(adminSpam.text, /可清理会话[^]*?<strong>3<\/strong>/);
+  assert.match(adminSpam.text, /3\.0 MB/);
+  assert.match(adminSpam.text, /name="confirmation"[^>]*pattern="DELETE"/);
+
+  const rejected = await administrator.post('/email-center/spam/purge').type('form').send({
+    mailbox: 'sales@sunkaier.com',
+    confirmation: 'delete'
+  });
+  assert.equal(rejected.status, 400);
+
+  const accepted = await administrator.post('/email-center/spam/purge').type('form').send({
+    mailbox: 'sales@sunkaier.com',
+    confirmation: 'DELETE'
+  });
+  assert.equal(accepted.status, 302);
+  assert.match(accepted.headers.location, /folder=spam/);
+});
+
+test('administrator can delete an eligible unlinked thread but linked mail stays protected', async () => {
+  const manager = await createAgent({ userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh' });
+  const managerDetail = await manager.get('/email-center/threads/1');
+  assert.equal(managerDetail.status, 200);
+  assert.doesNotMatch(managerDetail.text, /彻底删除邮件/);
+
+  const purgeCalls = [];
+  const administrator = await createAgent({
+    userId: 1,
+    roles: [ROLES.ADMINISTRATOR],
+    language: 'zh',
+    onPurgeThread: (input) => purgeCalls.push(input)
+  });
+  const unlinkedDetail = await administrator.get('/email-center/threads/1');
+  assert.equal(unlinkedDetail.status, 200);
+  assert.match(unlinkedDetail.text, /彻底删除邮件/);
+  assert.match(unlinkedDetail.text, /action="\/email-center\/threads\/1\/purge"/);
+
+  const linkedDetail = await administrator.get('/email-center/threads/2');
+  assert.equal(linkedDetail.status, 200);
+  assert.doesNotMatch(linkedDetail.text, /action="\/email-center\/threads\/2\/purge"/);
+
+  const rejected = await administrator.post('/email-center/threads/1/purge').type('form').send({
+    mailbox: 'sales@sunkaier.com',
+    from: 'pending',
+    confirmation: 'delete'
+  });
+  assert.equal(rejected.status, 400);
+
+  const accepted = await administrator.post('/email-center/threads/1/purge').type('form').send({
+    mailbox: 'sales@sunkaier.com',
+    from: 'pending',
+    confirmation: 'DELETE'
+  });
+  assert.equal(accepted.status, 302);
+  assert.equal(accepted.headers.location, '/email-center?mailbox=sales%40sunkaier.com&folder=pending');
+  assert.equal(purgeCalls.length, 1);
 });
 
 test('an authorized user can link an unlinked personal conversation to one visible opportunity', async () => {

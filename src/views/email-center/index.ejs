@@ -24,6 +24,22 @@
           </nav>
 
           <% if (folder === 'pending') { %><p class="email-pending-definition"><%= t('emailPendingDefinition') %></p><% } %>
+          <% if (folder === 'spam' && spamCleanup) { %>
+            <section class="form-panel email-spam-cleanup" aria-label="<%= t('emailSpamCleanup') %>">
+              <h2><%= t('emailSpamCleanup') %></h2>
+              <p><%= t('emailSpamCleanupRule') %></p>
+              <p class="muted"><%= t('emailSpamCleanupEligible') %>: <strong><%= spamCleanup.eligibleThreads %></strong> · <%= t('messages') %>: <%= spamCleanup.messages %> · <%= t('attachments') %>: <%= spamCleanup.attachments %> · <%= t('emailSpamCleanupStorage') %>: <%= ((spamCleanup.attachmentBytes + spamCleanup.rawMessageBytes) / 1024 / 1024).toFixed(1) %> MB</p>
+              <% if (spamCleanupResult.purgedThreads || spamCleanupResult.fileFailures) { %><p class="status"><%= t('emailSpamCleanupCompleted') %>: <%= spamCleanupResult.purgedThreads %> · <%= t('messages') %>: <%= spamCleanupResult.purgedMessages %> · <%= (spamCleanupResult.purgedBytes / 1024 / 1024).toFixed(1) %> MB<% if (spamCleanupResult.fileFailures) { %> · <%= t('emailSpamCleanupFileFailures') %>: <%= spamCleanupResult.fileFailures %><% } %></p><% } %>
+              <% if (spamCleanup.eligibleThreads) { %>
+                <form class="inline-form" method="post" action="/email-center/spam/purge" onsubmit="return confirm('<%= t('emailSpamCleanupConfirm') %>')">
+                  <%- csrfField() %>
+                  <input type="hidden" name="mailbox" value="<%= mailbox.key %>">
+                  <label><span><%= t('emailSpamCleanupTypeDelete') %></span><input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label>
+                  <button class="danger-action" type="submit"><%= t('emailSpamCleanupAction') %></button>
+                </form>
+              <% } %>
+            </section>
+          <% } %>
         <% } %>
 
         <section class="email-inbox-list" aria-label="<%= t('emailCenter') %>">

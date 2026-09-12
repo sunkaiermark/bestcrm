@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ROLES } from '../../src/domain/roles.mjs';
@@ -8,13 +8,17 @@ import {
   assignEmailThreadTriage,
   archiveInboundEmailRecord,
   archiveImportedOutboundEmailRecord,
+  canPurgeEmailThread,
   convertEmailThreadToInquiry,
+  getEmailSpamCleanupSummary,
   getVisibleEmailThread,
   linkEmailThreadToInquiry,
   linkEmailThreadToOpportunity,
   listEmailLinkableOpportunities,
   listVisibleEmailMailboxes,
   listVisibleEmailThreads,
+  purgeEmailThread,
+  purgeEligibleEmailSpam,
   resolveVisibleEmailMailbox,
   setEmailThreadDisposition,
   storeEmailArchiveAttachments
@@ -636,4 +640,160 @@ test('assignment and archive actions are idempotent and append audit events once
   assert.equal(memory.thread.archiveDisposition, 'archived');
   assert.deepEqual(memory.events.map((event) => event.eventType), ['assigned', 'archived']);
   assert.equal(memory.events[1].note, 'not actionable');
+});
+
+test('misclassified spam can be restored to pending with an immutable reopen event', async () => {
+  const memory = triageMemory({ triageStatus: 'spam', archiveDisposition: 'spam' });
+  const actor = { id: 2, roles: [ROLES.SALES_MANAGER] };
+
+  await setEmailThreadDisposition({
+    emailArchiveRepository: memory.repository,
+    now: () => '2026-10-12T02:00:00Z'
+  }, actor, 30, 'restore');
+
+  assert.equal(memory.thread.triageStatus, 'pending');
+  assert.equal(memory.thread.archiveDisposition, 'active');
+  assert.equal(memory.events[0].eventType, 'reopened');
+  assert.equal(memory.events[0].fromStatus, 'spam');
+  assert.equal(memory.events[0].toStatus, 'pending');
+});
+
+test('spam cleanup summary is administrator-only and immediate during system debugging', async () => {
+  const calls = [];
+  const dependencies = {
+    emailArchiveRepository: {
+      async getSpamCleanupSummary(input) {
+        calls.push(input);
+        return { eligibleThreads: 4, messages: 5, attachments: 2, attachmentBytes: 100, rawMessages: 5, rawMessageBytes: 200 };
+      }
+    }
+  };
+  await assert.rejects(
+    () => getEmailSpamCleanupSummary(dependencies, { id: 2, roles: [ROLES.SALES_MANAGER] }),
+    (error) => error.statusCode === 403
+  );
+
+  const summary = await getEmailSpamCleanupSummary(
+    dependencies,
+    { id: 1, roles: [ROLES.ADMINISTRATOR] },
+    'Sales@Sunkaier.com'
+  );
+  assert.equal(summary.eligibleThreads, 4);
+  assert.deepEqual(calls[0], {
+    mailboxKey: 'sales@sunkaier.com'
+  });
+});
+
+test('administrator spam purge requires typed confirmation and removes only repository-approved files', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-spam-purge-'));
+  const attachmentPath = 'email-archive/spam.pdf';
+  const rawPath = 'email-raw/spam.eml';
+  await mkdir(path.join(uploadDir, 'email-archive'), { recursive: true });
+  await mkdir(path.join(uploadDir, 'email-raw'), { recursive: true });
+  await writeFile(path.join(uploadDir, attachmentPath), 'spam attachment');
+  await writeFile(path.join(uploadDir, rawPath), 'raw spam');
+  const administrator = { id: 1, roles: [ROLES.ADMINISTRATOR] };
+  const purgeCalls = [];
+  const repository = {
+    async listSpamPurgeCandidates(input) {
+      assert.equal(input.mailboxKey, 'sales@sunkaier.com');
+      return [{ threadId: 8, subject: 'SEO spam' }];
+    },
+    async purgeEmailThread(input) {
+      purgeCalls.push(input);
+      return {
+        threadId: 8,
+        messageCount: 1,
+        attachmentCount: 1,
+        attachmentBytes: 15,
+        rawMessageCount: 1,
+        rawMessageBytes: 8,
+        attachmentPaths: [attachmentPath],
+        rawMessagePaths: [rawPath]
+      };
+    }
+  };
+  const dependencies = {
+    uploadDir,
+    emailArchiveRepository: repository,
+    emailArchiveTransaction: (callback) => callback({ emailArchiveRepository: repository })
+  };
+  try {
+    await assert.rejects(
+      () => purgeEligibleEmailSpam(dependencies, administrator, { confirmation: 'delete' }),
+      (error) => error.statusCode === 400
+    );
+    const result = await purgeEligibleEmailSpam(dependencies, administrator, {
+      confirmation: 'DELETE',
+      mailboxKey: 'sales@sunkaier.com'
+    });
+    assert.equal(result.purgedThreads, 1);
+    assert.equal(result.purgedMessages, 1);
+    assert.equal(result.purgedBytes, 23);
+    assert.deepEqual(result.fileFailures, []);
+    assert.equal(purgeCalls[0].actorUserId, 1);
+    assert.match(purgeCalls[0].subjectSha256, /^[0-9a-f]{64}$/);
+    await assert.rejects(() => readFile(path.join(uploadDir, attachmentPath)), /ENOENT/);
+    await assert.rejects(() => readFile(path.join(uploadDir, rawPath)), /ENOENT/);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('administrator may immediately delete only a repository-approved unlinked inbound thread', async () => {
+  const administrator = { id: 1, roles: [ROLES.ADMINISTRATOR] };
+  const manager = { id: 2, roles: [ROLES.SALES_MANAGER] };
+  const unlinked = {
+    id: 8,
+    subject: 'test message',
+    mailboxKey: 'sales@sunkaier.com',
+    inquiryId: null,
+    opportunityId: null,
+    customerId: null,
+    contactId: null
+  };
+  let eligible = true;
+  const repository = {
+    async findThreadById(id) { return Number(id) === 8 ? unlinked : null; },
+    async isThreadPurgeEligible(id) { return Number(id) === 8 && eligible; },
+    async purgeEmailThread(input) {
+      if (!eligible) return null;
+      assert.equal(input.threadId, 8);
+      assert.equal(input.actorUserId, 1);
+      assert.match(input.subjectSha256, /^[0-9a-f]{64}$/);
+      return {
+        threadId: 8,
+        messageCount: 1,
+        attachmentBytes: 0,
+        rawMessageBytes: 0,
+        attachmentPaths: [],
+        rawMessagePaths: []
+      };
+    }
+  };
+  const dependencies = {
+    emailArchiveRepository: repository,
+    emailArchiveTransaction: (callback) => callback({ emailArchiveRepository: repository })
+  };
+
+  assert.equal(await canPurgeEmailThread(dependencies, manager, 8), false);
+  assert.equal(await canPurgeEmailThread(dependencies, administrator, 8), true);
+  await assert.rejects(
+    () => purgeEmailThread(dependencies, manager, 8, { confirmation: 'DELETE' }),
+    (error) => error.statusCode === 403
+  );
+  await assert.rejects(
+    () => purgeEmailThread(dependencies, administrator, 8, { confirmation: 'delete' }),
+    (error) => error.statusCode === 400
+  );
+  const result = await purgeEmailThread(dependencies, administrator, 8, { confirmation: 'DELETE' });
+  assert.equal(result.purgedThreads, 1);
+  assert.equal(result.purgedMessages, 1);
+
+  eligible = false;
+  assert.equal(await canPurgeEmailThread(dependencies, administrator, 8), false);
+  await assert.rejects(
+    () => purgeEmailThread(dependencies, administrator, 8, { confirmation: 'DELETE' }),
+    (error) => error.statusCode === 409
+  );
 });
