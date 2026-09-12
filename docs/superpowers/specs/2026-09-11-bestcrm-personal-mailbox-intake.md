@@ -1,5 +1,11 @@
 # BESTCRM personal mailbox intake
 
+> Superseded for inbound business disposition by
+> `2026-09-12-bestcrm-email-triage-framework.md`. Mailbox connection,
+> deduplication, provider-folder exclusion, and ownership rules in this document
+> remain valid; a new inbound message no longer creates an Inquiry before human
+> triage.
+
 ## Frozen scope
 
 - Preserve the existing `sales@sunkaier.com` intake and add Mark, Helena,
