@@ -4,14 +4,22 @@ import { randomUUID as nodeRandomUUID } from 'node:crypto';
 import { requireLogin } from '../middleware/auth.mjs';
 import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
 import {
+  assignEmailThreadTriage,
+  convertEmailThreadToInquiry,
   EmailArchiveError,
   getVisibleEmailAttachment,
   getVisibleEmailThread,
+  linkEmailThreadToInquiry,
   linkEmailThreadToOpportunity,
+  listEmailLinkableInquiries,
   listEmailLinkableOpportunities,
+  listEmailTriageAssignees,
+  resolveVisibleEmailMailbox,
+  setEmailThreadDisposition,
   listVisibleEmailThreads
 } from '../services/emailArchiveService.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
+import { canAccessInquiryInbox } from '../services/inquiryService.mjs';
 import {
   CustomerEmailError,
   createCustomerEmailDraft,
@@ -27,8 +35,30 @@ function handleError(error, res, next) {
   next(error);
 }
 
-function archiveFolder(value) {
-  return ['active', 'archived', 'spam', 'all'].includes(value) ? value : 'active';
+function emailFolder(value) {
+  return ['pending', 'inbox', 'sent', 'linked', 'archived', 'spam'].includes(value) ? value : 'pending';
+}
+
+function emailFolderFilter(folder, mailboxKey) {
+  const base = { mailboxKey };
+  if (folder === 'pending') return { ...base, archiveDisposition: 'active', triageStatus: 'pending', direction: 'inbound' };
+  if (folder === 'inbox') return { ...base, archiveDisposition: 'active', direction: 'inbound' };
+  if (folder === 'sent') return { ...base, archiveDisposition: 'active', direction: 'outbound' };
+  if (folder === 'linked') return {
+    ...base,
+    archiveDisposition: 'active',
+    triageStatuses: ['linked_opportunity', 'linked_inquiry', 'converted_inquiry']
+  };
+  if (folder === 'archived') return { ...base, archiveDisposition: 'archived', triageStatus: 'archived' };
+  return { ...base, archiveDisposition: 'spam', triageStatus: 'spam' };
+}
+
+function threadRedirect(threadId, body = {}) {
+  const query = new URLSearchParams();
+  const mailbox = String(body.mailbox || '').trim().toLowerCase();
+  if (mailbox) query.set('mailbox', mailbox);
+  query.set('from', emailFolder(String(body.from || 'pending')));
+  return `/email-center/threads/${threadId}?${query.toString()}`;
 }
 
 const emailListDateFormatter = new Intl.DateTimeFormat('en-CA', {
@@ -55,6 +85,7 @@ export function emailCenterRoutes({
   enabled = false,
   emailArchiveRepository,
   inquiryRepository,
+  userRepository,
   opportunityRepository,
   opportunityResponsibilityRepository,
   quotationPackageRepository,
@@ -75,6 +106,7 @@ export function emailCenterRoutes({
   const dependencies = {
     emailArchiveRepository,
     inquiryRepository,
+    userRepository,
     opportunityRepository,
     opportunityResponsibilityRepository,
     quotationPackageRepository,
@@ -98,15 +130,24 @@ export function emailCenterRoutes({
 
   router.get('/email-center', async (req, res, next) => {
     try {
-      const folder = archiveFolder(String(req.query.folder || 'active'));
-      const threads = await listVisibleEmailThreads(
+      const folder = emailFolder(String(req.query.folder || 'pending'));
+      const { mailbox, mailboxes } = await resolveVisibleEmailMailbox(
         dependencies,
         req.currentUser,
-        folder === 'all' ? {} : { archiveDisposition: folder }
+        req.query.mailbox
       );
+      const threads = mailbox
+        ? await listVisibleEmailThreads(
+            dependencies,
+            req.currentUser,
+            emailFolderFilter(folder, mailbox.key)
+          )
+        : [];
       res.render('email-center/index', {
         threads,
         folder,
+        mailbox,
+        mailboxes,
         formatEmailListDate
       });
     } catch (error) {
@@ -117,15 +158,28 @@ export function emailCenterRoutes({
   router.get('/email-center/threads/:threadId', async (req, res, next) => {
     try {
       const thread = await getVisibleEmailThread(dependencies, req.currentUser, req.params.threadId);
-      const backFolder = archiveFolder(String(req.query.from || 'active'));
-      const linkableOpportunities = thread.opportunityId
+      const backFolder = emailFolder(String(req.query.from || 'pending'));
+      const backMailbox = String(req.query.mailbox || thread.mailboxKey || '').trim().toLowerCase();
+      const canTriage = ['pending', 'outbound_only'].includes(thread.triageStatus || 'pending');
+      const linkableOpportunities = thread.opportunityId || !canTriage
         ? []
         : await listEmailLinkableOpportunities(dependencies, req.currentUser);
+      const linkableInquiries = thread.inquiryId || !canTriage
+        ? []
+        : await listEmailLinkableInquiries(dependencies, req.currentUser);
+      const triageAssignees = (thread.triageStatus || 'pending') === 'pending'
+        ? await listEmailTriageAssignees(dependencies, req.currentUser, thread)
+        : [];
       res.render('email-center/detail', {
         thread,
         formatEmailListDate,
         backFolder,
-        linkableOpportunities
+        backMailbox,
+        canTriage,
+        canTriageInquiry: canAccessInquiryInbox(req.currentUser),
+        linkableOpportunities,
+        linkableInquiries,
+        triageAssignees
       });
     } catch (error) {
       handleError(error, res, next);
@@ -143,7 +197,75 @@ export function emailCenterRoutes({
         req.params.threadId,
         req.body.opportunityId
       );
-      res.redirect(`/email-center/threads/${req.params.threadId}`);
+      res.redirect(threadRedirect(req.params.threadId, req.body));
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/email-center/threads/:threadId/inquiry', async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        return res.status(403).send('Invalid CSRF token');
+      }
+      await linkEmailThreadToInquiry(
+        dependencies,
+        req.currentUser,
+        req.params.threadId,
+        req.body.inquiryId
+      );
+      res.redirect(threadRedirect(req.params.threadId, req.body));
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/email-center/threads/:threadId/convert-inquiry', async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        return res.status(403).send('Invalid CSRF token');
+      }
+      const result = await convertEmailThreadToInquiry(
+        dependencies,
+        req.currentUser,
+        req.params.threadId
+      );
+      res.redirect(`/inquiries/${result.inquiry.id}`);
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/email-center/threads/:threadId/disposition', async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        return res.status(403).send('Invalid CSRF token');
+      }
+      await setEmailThreadDisposition(
+        dependencies,
+        req.currentUser,
+        req.params.threadId,
+        req.body.action,
+        req.body.note
+      );
+      res.redirect(threadRedirect(req.params.threadId, req.body));
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/email-center/threads/:threadId/assignment', async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        return res.status(403).send('Invalid CSRF token');
+      }
+      await assignEmailThreadTriage(
+        dependencies,
+        req.currentUser,
+        req.params.threadId,
+        req.body.assignedUserId
+      );
+      res.redirect(threadRedirect(req.params.threadId, req.body));
     } catch (error) {
       handleError(error, res, next);
     }

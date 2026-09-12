@@ -472,8 +472,9 @@ test('archive polling deduplicates repeated Message-ID before marking both provi
     imapClientFactory: () => client
   });
 
-  assert.equal(inquiries.length, 1);
+  assert.equal(inquiries.length, 0);
   assert.equal(archive.threads.length, 1);
+  assert.equal(archive.threads[0].triageStatus, 'pending');
   assert.equal(archive.messages.length, 1);
   assert.deepEqual(result.imported.map((item) => item.duplicate), [false, true]);
   assert.deepEqual(seen, ['501', '502']);
@@ -502,8 +503,9 @@ test('archive polling uses reply headers to append to the original inquiry threa
   await pollEmailInquiries(options);
   const reply = await pollEmailInquiries(options);
 
-  assert.equal(inquiries.length, 1);
+  assert.equal(inquiries.length, 0);
   assert.equal(archive.threads.length, 1);
+  assert.equal(archive.threads[0].triageStatus, 'pending');
   assert.equal(archive.messages.length, 2);
   assert.equal(reply.imported[0].threadId, archive.threads[0].id);
 });
@@ -588,7 +590,7 @@ test('pollEmailInquiries imports a personal Sent folder as outbound without crea
   assert.equal(archive.deliveries[0].direction, 'outbound');
 });
 
-test('high-confidence spam advances the checkpoint without writing any CRM record', async () => {
+test('high-confidence rule classification remains pending while advancing the checkpoint', async () => {
   const archive = createMemoryArchive();
   const checkpoints = [];
   const state = {
@@ -626,11 +628,13 @@ test('high-confidence spam advances the checkpoint without writing any CRM recor
   });
 
   assert.equal(inquiryCreates, 0);
-  assert.equal(archive.threads.length, 0);
-  assert.equal(archive.messages.length, 0);
+  assert.equal(archive.threads.length, 1);
+  assert.equal(archive.threads[0].triageStatus, 'pending');
+  assert.equal(archive.threads[0].archiveDisposition, 'active');
+  assert.equal(archive.messages.length, 1);
   assert.equal(archive.attachments.length, 0);
-  assert.deepEqual(result.imported, []);
-  assert.deepEqual(result.filtered, [{ uid: 901, reason: 'reject_spam', category: 'marketing_spam', spamScore: 16 }]);
+  assert.equal(result.imported.length, 1);
+  assert.deepEqual(result.filtered, []);
   assert.deepEqual(checkpoints, [901]);
 });
 
@@ -1107,7 +1111,7 @@ test('raw-enabled polling deduplicates matching Message-ID while retaining both 
   }
 });
 
-test('raw-enabled polling discards high-confidence spam after scanning and stores no CRM evidence', async () => {
+test('raw-enabled polling archives rule-classified spam for pending human review', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-raw-spam-'));
   const archive = createMemoryArchive();
   const evidence = enableRawArchiveMemory(archive);
@@ -1135,9 +1139,15 @@ test('raw-enabled polling discards high-confidence spam after scanning and store
       imapClientFactory: () => client
     });
 
-    assert.equal(result.filtered.length, 1);
-    assert.equal(evidence.rawMessages.length, 0);
-    assert.equal(archive.messages.length, 0);
+    const rawFiles = (await readdir(path.join(uploadDir, 'email-raw'), { recursive: true }))
+      .filter((entry) => entry.endsWith('.eml'));
+    assert.equal(result.filtered.length, 0);
+    assert.equal(result.imported.length, 1);
+    assert.equal(evidence.rawMessages.length, 1);
+    assert.equal(archive.messages.length, 1);
+    assert.equal(archive.threads[0].triageStatus, 'pending');
+    assert.equal(archive.threads[0].archiveDisposition, 'active');
+    assert.equal(rawFiles.length, 1);
     assert.deepEqual(await readdir(path.join(uploadDir, 'email-raw', '.staging')), []);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });

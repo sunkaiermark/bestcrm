@@ -66,6 +66,31 @@ test('email archive repository supports explicit archived, spam, and all-mail vi
   assert.deepEqual(calls[1].params, []);
 });
 
+test('email archive repository separates mailbox folders and includes CRM-native sent mail', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) { calls.push({ sql: String(sql), params }); return { rows: [] }; }
+  });
+
+  await repository.listThreads({
+    archiveDisposition: 'active',
+    triageStatus: 'pending',
+    mailboxKey: 'MarkYang@Sunkaier.com',
+    direction: 'outbound'
+  });
+
+  assert.deepEqual(calls[0].params, [
+    'active',
+    'pending',
+    'markyang@sunkaier.com',
+    'outbound'
+  ]);
+  assert.match(calls[0].sql, /lower\(btrim\(mailbox_delivery\.mailbox_key\)\) = \$3/);
+  assert.match(calls[0].sql, /NOT EXISTS \([\s\S]*FROM email_message_mailbox_deliveries native_delivery/);
+  assert.match(calls[0].sql, /direction_message\.direction = \$4/);
+  assert.match(calls[0].sql, /direction_delivery\.id IS NULL[\s\S]*lower\(btrim\(thread\.mailbox_key\)\) = \$3/);
+});
+
 test('email archive repository lists one opportunity using its indexed relationship', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({

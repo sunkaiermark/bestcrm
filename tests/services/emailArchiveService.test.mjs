@@ -5,12 +5,18 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
+  assignEmailThreadTriage,
   archiveInboundEmailRecord,
   archiveImportedOutboundEmailRecord,
+  convertEmailThreadToInquiry,
   getVisibleEmailThread,
+  linkEmailThreadToInquiry,
   linkEmailThreadToOpportunity,
   listEmailLinkableOpportunities,
+  listVisibleEmailMailboxes,
   listVisibleEmailThreads,
+  resolveVisibleEmailMailbox,
+  setEmailThreadDisposition,
   storeEmailArchiveAttachments
 } from '../../src/services/emailArchiveService.mjs';
 
@@ -29,9 +35,9 @@ function parsed(overrides = {}) {
   };
 }
 
-test('new inbound thread creates one protected inquiry before archiving the message', async () => {
+test('new inbound thread enters pending triage without creating an inquiry', async () => {
   const calls = [];
-  const thread = { id: 3, inquiryId: 8, opportunityId: null, lastMessageAt: '2026-09-03T01:00:00Z' };
+  const thread = { id: 3, inquiryId: null, opportunityId: null, triageStatus: 'pending', lastMessageAt: '2026-09-03T01:00:00Z' };
   const result = await archiveInboundEmailRecord({
     inquiryRepository: {
       async createInquiry(input) { calls.push(['inquiry', input.sourceReference]); return { id: 8, ...input }; }
@@ -45,8 +51,9 @@ test('new inbound thread creates one protected inquiry before archiving the mess
     }
   }, parsed());
 
-  assert.deepEqual(calls, [['inquiry', 'rfq@example.com'], ['thread', 8], ['message', 3]]);
-  assert.equal(result.inquiry.id, 8);
+  assert.deepEqual(calls, [['thread', null], ['message', 3]]);
+  assert.equal(result.inquiry, null);
+  assert.equal(result.thread.triageStatus, 'pending');
   assert.equal(result.duplicate, false);
 });
 
@@ -68,7 +75,7 @@ test('reply headers join an existing opportunity thread without creating another
   assert.equal(result.inquiry, null);
 });
 
-test('high-confidence spam creates no inquiry, thread, message, or archive record', async () => {
+test('rule-classified spam stays advisory and enters pending without creating an inquiry', async () => {
   const calls = [];
   const spam = parsed();
   spam.inquiry = {
@@ -89,15 +96,18 @@ test('high-confidence spam creates no inquiry, thread, message, or archive recor
     emailArchiveRepository: {
       async findMessageIdentity() { return null; },
       async findThreadByReferences() { return null; },
-      async createThread() { calls.push('thread'); },
-      async createInboundMessage() { calls.push('message'); }
+      async createThread(input) { calls.push('thread'); return { id: 3, ...input }; },
+      async createInboundMessage(input) { calls.push('message'); return { id: 9, ...input }; },
+      async touchThread() {}
     }
   }, spam);
 
-  assert.deepEqual(calls, []);
-  assert.equal(result.rejectedSpam, true);
-  assert.equal(result.message, null);
-  assert.equal(result.thread, null);
+  assert.deepEqual(calls, ['thread', 'message']);
+  assert.equal(result.rejectedSpam, false);
+  assert.equal(result.inquiry, null);
+  assert.equal(result.thread.triageStatus, 'pending');
+  assert.equal(result.thread.archiveDisposition, 'active');
+  assert.equal(result.message.archiveDisposition, 'active');
   assert.equal(result.classification.spamScore, 8);
 });
 
@@ -128,13 +138,13 @@ test('one exact existing contact overrides spam heuristics and links the archive
     }
   }, candidate);
 
-  assert.equal(created.inquiry.status, 'new');
-  assert.equal(created.inquiry.matchedCustomerId, 10);
-  assert.equal(created.inquiry.matchedContactId, 20);
+  assert.equal(created.inquiry, undefined);
+  assert.equal(created.thread.customerId, 10);
+  assert.equal(created.thread.contactId, 20);
+  assert.equal(created.thread.triageStatus, 'pending');
   assert.equal(created.thread.archiveDisposition, 'active');
   assert.equal(created.message.classificationReason, 'known_contact_email');
-  assert.equal(created.inquiry.rawPayload.emailFilter.entryDecision, 'accept');
-  assert.deepEqual(created.inquiry.rawPayload.emailFilter.protectedReasons, ['known_contact_email']);
+  assert.equal(created.message.classificationCategory, 'known_contact');
 });
 
 test('an existing message thread protects a reply even when content scores as spam', async () => {
@@ -405,7 +415,7 @@ test('a shared mailbox delivery keeps manager visibility after the message is de
 
 test('manual opportunity linking is limited to visible active opportunities and cannot be changed', async () => {
   const actor = { id: 7, roles: [ROLES.SALESPERSON] };
-  const thread = { id: 3, mailboxOwnerUserId: 7, inquiryId: null, opportunityId: null };
+  const thread = { id: 3, mailboxOwnerUserId: 7, inquiryId: null, opportunityId: null, triageStatus: 'pending' };
   const opportunity = {
     id: 20,
     salespersonId: 7,
@@ -423,6 +433,15 @@ test('manual opportunity linking is limited to visible active opportunities and 
         linked = [threadId, opportunityId];
         thread.opportunityId = Number(opportunityId);
         return thread;
+      },
+      async transitionThreadTriage(input) {
+        assert.equal(input.expectedStatus, 'pending');
+        thread.triageStatus = input.triageStatus;
+        return thread;
+      },
+      async createTriageEvent(input) {
+        assert.equal(input.eventType, 'linked_opportunity');
+        return input;
       },
       async getThreadDetail() { return { ...thread, messages: [] }; }
     },
@@ -455,4 +474,166 @@ test('thread visibility forwards the requested archive folder without changing R
   const threads = await listVisibleEmailThreads(dependencies, manager, { archiveDisposition: 'spam' });
   assert.equal(threads.length, 1);
   assert.deepEqual(receivedFilter, { archiveDisposition: 'spam' });
+});
+
+test('mailbox picker keeps shared and personal mailbox boundaries role-scoped', async () => {
+  const dependencies = {
+    sharedAddress: 'sales@sunkaier.com',
+    emailArchiveRepository: {
+      async listActivePersonalMailboxAssignments() {
+        return [
+          { userId: 7, mailboxAddress: 'markyang@sunkaier.com', displayName: 'Mark' },
+          { userId: 8, mailboxAddress: 'helena@sunkaier.com', displayName: 'Helena' }
+        ];
+      }
+    }
+  };
+
+  const manager = await listVisibleEmailMailboxes(dependencies, { id: 2, roles: [ROLES.SALES_MANAGER] });
+  assert.deepEqual(manager.map((mailbox) => mailbox.key), ['sales@sunkaier.com']);
+  const owner = await listVisibleEmailMailboxes(dependencies, { id: 7, roles: [ROLES.SALESPERSON] });
+  assert.deepEqual(owner.map((mailbox) => mailbox.key), ['markyang@sunkaier.com']);
+  const administrator = await listVisibleEmailMailboxes(dependencies, { id: 1, roles: [ROLES.ADMINISTRATOR] });
+  assert.deepEqual(administrator.map((mailbox) => mailbox.key), [
+    'sales@sunkaier.com',
+    'markyang@sunkaier.com',
+    'helena@sunkaier.com'
+  ]);
+  await assert.rejects(
+    () => resolveVisibleEmailMailbox(dependencies, { id: 7, roles: [ROLES.SALESPERSON] }, 'helena@sunkaier.com'),
+    (error) => error.statusCode === 403
+  );
+});
+
+function triageMemory(threadOverrides = {}) {
+  const thread = {
+    id: 30,
+    mailboxKey: 'sales@sunkaier.com',
+    mailboxKeys: ['sales@sunkaier.com'],
+    mailboxOwnerUserIds: [],
+    hasSharedMailboxDelivery: true,
+    triageStatus: 'pending',
+    triageAssignedUserId: null,
+    inquiryId: null,
+    opportunityId: null,
+    customerId: null,
+    contactId: null,
+    customerName: '',
+    messages: [{
+      id: 40,
+      direction: 'inbound',
+      messageId: 'pending@example.com',
+      fromAddress: 'buyer@example.com',
+      fromName: 'Buyer',
+      subject: 'RFQ',
+      textBody: 'Please quote',
+      receivedAt: '2026-09-12T01:00:00Z'
+    }],
+    ...threadOverrides
+  };
+  const events = [];
+  const repository = {
+    async findThreadById() { return thread; },
+    async getThreadDetail() { return thread; },
+    async linkThreadToInquiry(id, inquiryId) {
+      if (thread.inquiryId) return null;
+      thread.inquiryId = Number(inquiryId);
+      return thread;
+    },
+    async assignThreadTriage(input) {
+      if (thread.triageStatus !== 'pending') return null;
+      thread.triageAssignedUserId = Number(input.assignedUserId);
+      return thread;
+    },
+    async transitionThreadTriage(input) {
+      if (thread.triageStatus !== input.expectedStatus) return null;
+      thread.triageStatus = input.triageStatus;
+      thread.archiveDisposition = input.archiveDisposition;
+      return thread;
+    },
+    async createTriageEvent(input) { events.push(input); return input; }
+  };
+  return { thread, events, repository };
+}
+
+test('manual inquiry conversion is atomic idempotent and records one audit event', async () => {
+  const memory = triageMemory();
+  const inquiries = [];
+  const inquiryRepository = {
+    async createInquiry(input) {
+      const inquiry = { id: 91, ...input };
+      inquiries.push(inquiry);
+      return inquiry;
+    },
+    async findById(id) { return Number(id) === 91 ? inquiries[0] : null; }
+  };
+  const dependencies = {
+    emailArchiveRepository: memory.repository,
+    inquiryRepository,
+    now: () => '2026-09-12T02:00:00Z',
+    emailArchiveTransaction: (callback) => callback({
+      emailArchiveRepository: memory.repository,
+      inquiryRepository
+    })
+  };
+  const actor = { id: 2, roles: [ROLES.SALES_MANAGER] };
+
+  const first = await convertEmailThreadToInquiry(dependencies, actor, 30);
+  const second = await convertEmailThreadToInquiry(dependencies, actor, 30);
+
+  assert.equal(first.inquiry.id, 91);
+  assert.equal(second.inquiry.id, 91);
+  assert.equal(inquiries.length, 1);
+  assert.equal(inquiries[0].sourceReference, 'pending@example.com');
+  assert.equal(inquiries[0].requirementText, 'Please quote');
+  assert.equal(memory.thread.triageStatus, 'converted_inquiry');
+  assert.equal(memory.events.length, 1);
+  assert.equal(memory.events[0].eventType, 'converted_inquiry');
+  assert.equal(memory.events[0].inquiryId, 91);
+});
+
+test('linking an existing inquiry completes pending triage without creating another inquiry', async () => {
+  const memory = triageMemory();
+  let created = 0;
+  const dependencies = {
+    emailArchiveRepository: memory.repository,
+    inquiryRepository: {
+      async findById(id) { return Number(id) === 81 ? { id: 81, status: 'new' } : null; },
+      async createInquiry() { created += 1; }
+    },
+    now: () => '2026-09-12T02:00:00Z'
+  };
+  const actor = { id: 2, roles: [ROLES.SALES_MANAGER] };
+
+  await linkEmailThreadToInquiry(dependencies, actor, 30, 81);
+
+  assert.equal(created, 0);
+  assert.equal(memory.thread.inquiryId, 81);
+  assert.equal(memory.thread.triageStatus, 'linked_inquiry');
+  assert.equal(memory.events[0].eventType, 'linked_inquiry');
+});
+
+test('assignment and archive actions are idempotent and append audit events once', async () => {
+  const memory = triageMemory();
+  const actor = { id: 2, roles: [ROLES.SALES_MANAGER], isActive: true };
+  const dependencies = {
+    emailArchiveRepository: memory.repository,
+    userRepository: {
+      async findByIdWithRoles(id) {
+        return Number(id) === 2 ? actor : null;
+      }
+    },
+    now: () => '2026-09-12T02:00:00Z'
+  };
+
+  await assignEmailThreadTriage(dependencies, actor, 30, 2);
+  await assignEmailThreadTriage(dependencies, actor, 30, 2);
+  await setEmailThreadDisposition(dependencies, actor, 30, 'archive', 'not actionable');
+  await setEmailThreadDisposition(dependencies, actor, 30, 'archive', 'not actionable');
+
+  assert.equal(memory.thread.triageAssignedUserId, 2);
+  assert.equal(memory.thread.triageStatus, 'archived');
+  assert.equal(memory.thread.archiveDisposition, 'archived');
+  assert.deepEqual(memory.events.map((event) => event.eventType), ['assigned', 'archived']);
+  assert.equal(memory.events[1].note, 'not actionable');
 });

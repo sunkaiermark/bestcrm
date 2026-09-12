@@ -1,19 +1,34 @@
 <%- include('../partials/app-start', { title: `${t('emailCenter')} - BESTCRM`, activeNav: 'email-center' }) %>
         <header class="page-header">
           <div>
-            <p class="breadcrumb"><%= t('sharedMailboxArchive') %></p>
+            <p class="breadcrumb"><%= t('emailCenter') %></p>
             <h1><%= t('emailCenter') %></h1>
           </div>
         </header>
 
-        <nav class="email-folder-tabs" aria-label="<%= t('emailArchiveFolders') %>">
-          <% for (const item of ['active', 'archived', 'spam', 'all']) { %>
-            <a class="email-folder-tab<%= folder === item ? ' is-active' : '' %>" href="/email-center?folder=<%= item %>"<% if (folder === item) { %> aria-current="page"<% } %>><%= t(`emailArchiveFolder.${item}`) %></a>
-          <% } %>
-        </nav>
+        <% if (mailboxes.length) { %>
+          <form class="email-mailbox-picker" method="get" action="/email-center">
+            <label for="email-mailbox"><%= t('mailbox') %></label>
+            <select id="email-mailbox" name="mailbox" onchange="this.form.submit()">
+              <% for (const item of mailboxes) { %>
+                <option value="<%= item.key %>"<%= mailbox && mailbox.key === item.key ? ' selected' : '' %>><%= item.type === 'shared' ? t('emailMailboxShared') : t('emailMailboxPersonal') %> · <%= item.label %><%= item.ownerDisplayName ? ` · ${item.ownerDisplayName}` : '' %></option>
+              <% } %>
+            </select>
+            <input type="hidden" name="folder" value="pending">
+          </form>
+
+          <nav class="email-folder-tabs" aria-label="<%= t('emailArchiveFolders') %>">
+            <% for (const item of ['pending', 'inbox', 'sent', 'linked', 'archived', 'spam']) { %>
+              <a class="email-folder-tab<%= folder === item ? ' is-active' : '' %>" href="/email-center?mailbox=<%= encodeURIComponent(mailbox.key) %>&folder=<%= item %>"<% if (folder === item) { %> aria-current="page"<% } %>><%= t(`emailTriageFolder.${item}`) %></a>
+            <% } %>
+          </nav>
+
+          <% if (folder === 'pending') { %><p class="email-pending-definition"><%= t('emailPendingDefinition') %></p><% } %>
+        <% } %>
+
         <section class="email-inbox-list" aria-label="<%= t('emailCenter') %>">
           <% for (const thread of threads) { %>
-            <a class="email-inbox-row" href="/email-center/threads/<%= thread.id %>?from=<%= folder %>" title="<%= t('openEmailThread') %>">
+            <a class="email-inbox-row" href="/email-center/threads/<%= thread.id %>?mailbox=<%= encodeURIComponent(mailbox.key) %>&from=<%= folder %>" title="<%= t('openEmailThread') %>">
               <span class="email-inbox-sender" title="<%= thread.lastFromAddress %>"><%= thread.lastFromAddress || '-' %></span>
               <span class="email-inbox-main">
                 <span class="email-inbox-summary">
@@ -22,6 +37,7 @@
                   <span class="email-inbox-separator" aria-hidden="true">—</span>
                   <span class="email-inbox-preview" title="<%= thread.lastTextPreview %>"><%= thread.lastTextPreview %></span>
                 </span>
+                <span class="email-inbox-triage"><%= t(`emailTriageStatus.${thread.triageStatus}`) %><% if (thread.triageAssignedDisplayName) { %> · <%= thread.triageAssignedDisplayName %><% } %></span>
               </span>
               <span class="email-inbox-attachment<%= thread.attachmentCount ? '' : ' is-empty' %>" title="<%= t('attachmentCount') %>"><% if (thread.attachmentCount) { %><span aria-hidden="true">📎</span> <%= thread.attachmentCount %><% } %></span>
               <time class="email-inbox-time" datetime="<%= thread.lastMessageAt || '' %>"><%= formatEmailListDate(thread.lastMessageAt) %></time>

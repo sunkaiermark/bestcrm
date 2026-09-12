@@ -99,8 +99,8 @@ function createDependencies(uploadDir, options = {}) {
   let messageSequence = 20;
   const emailArchiveRepository = {
     async findThreadById(id) { return Number(id) === thread.id ? thread : null; },
-    async findLatestThreadByOpportunity() { return thread; },
-    async findLatestThreadByInquiry() { return thread; },
+    async findLatestThreadByOpportunity() { return options.existingThread === false ? null : thread; },
+    async findLatestThreadByInquiry() { return options.existingThread === false ? null : thread; },
     async getThreadDetail() { return { ...thread, messages }; },
     async findMessageById(id) { return messages.find((item) => item.id === Number(id)) || null; },
     async createThread(input) { return Object.assign(thread, input); },
@@ -200,9 +200,29 @@ function createDependencies(uploadDir, options = {}) {
     maxUploadMb: 5,
     now: () => '2026-09-03T10:00:00.000Z',
     randomUUID: () => '00000000-0000-4000-8000-000000000009',
-    state: { messages, attachments, attempts, sentPackages, packageVersion }
+    state: { thread, messages, attachments, attempts, sentPackages, packageVersion }
   };
 }
+
+test('a CRM-native outbound opportunity thread starts linked and never enters pending triage', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));
+  try {
+    const dependencies = createDependencies(uploadDir, { existingThread: false });
+    const draft = await createCustomerEmailDraft(dependencies, actor(), {
+      opportunityId: 20,
+      to: 'buyer@example.com',
+      subject: 'Mixer proposal',
+      body: 'Please review our proposal.',
+      action: 'draft'
+    });
+
+    assert.equal(draft.deliveryStatus, 'draft');
+    assert.equal(dependencies.state.thread.opportunityId, 20);
+    assert.equal(dependencies.state.thread.triageStatus, 'linked_opportunity');
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
 
 test('supporting engineer without per-opportunity permission can save but cannot send a draft', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));

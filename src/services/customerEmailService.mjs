@@ -337,6 +337,7 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
       opportunityId: context.opportunity?.id || null,
       customerId: context.opportunity?.customerId || context.inquiry?.matchedCustomerId || null,
       contactId: context.opportunity?.primaryContactId || context.inquiry?.matchedContactId || null,
+      triageStatus: context.opportunity ? 'linked_opportunity' : 'linked_inquiry',
       lastMessageAt: (dependencies.now || (() => new Date().toISOString()))()
     });
   }

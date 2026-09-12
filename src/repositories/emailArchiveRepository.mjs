@@ -24,6 +24,7 @@ function mapThreadRow(row) {
   return {
     id: Number(row.id),
     mailboxKey: row.mailbox_key,
+    mailboxKeys: jsonArray(row.mailbox_keys).map((value) => text(value).trim().toLowerCase()).filter(Boolean),
     mailboxOwnerUserId: primaryMailboxOwnerUserId,
     mailboxOwnerUserIds,
     hasSharedMailboxDelivery: row.has_shared_mailbox_delivery === undefined
@@ -45,6 +46,13 @@ function mapThreadRow(row) {
     archiveDisposition: text(row.archive_disposition) || 'active',
     classificationCategory: text(row.classification_category) || 'inquiry',
     classificationReason: text(row.classification_reason) || 'manual_review',
+    triageStatus: text(row.triage_status) || 'pending',
+    triageAssignedUserId: numberOrNull(row.triage_assigned_user_id),
+    triageAssignedDisplayName: text(row.triage_assigned_display_name),
+    triagedBy: numberOrNull(row.triaged_by),
+    triagedByDisplayName: text(row.triaged_by_display_name),
+    triagedAt: row.triaged_at,
+    triageNote: text(row.triage_note),
     lastMessageAt: row.last_message_at,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
@@ -53,6 +61,25 @@ function mapThreadRow(row) {
     lastDirection: text(row.last_direction),
     lastFromAddress: text(row.last_from_address),
     lastTextPreview: text(row.last_text_preview)
+  };
+}
+
+function mapTriageEventRow(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    threadId: Number(row.thread_id),
+    eventType: text(row.event_type),
+    fromStatus: text(row.from_status),
+    toStatus: text(row.to_status),
+    actorUserId: Number(row.actor_user_id),
+    actorDisplayName: text(row.actor_display_name),
+    assignedUserId: numberOrNull(row.assigned_user_id),
+    assignedDisplayName: text(row.assigned_display_name),
+    inquiryId: numberOrNull(row.inquiry_id),
+    opportunityId: numberOrNull(row.opportunity_id),
+    note: text(row.note),
+    createdAt: row.created_at
   };
 }
 
@@ -220,6 +247,7 @@ const threadSelect = `
   SELECT
     thread.id,
     thread.mailbox_key,
+    COALESCE(mailbox_owners.mailbox_keys, jsonb_build_array(lower(btrim(thread.mailbox_key)))) AS mailbox_keys,
     mailbox_assignment.user_id AS mailbox_owner_user_id,
     COALESCE(mailbox_owners.user_ids, '[]'::jsonb) AS mailbox_owner_user_ids,
     COALESCE(
@@ -242,6 +270,13 @@ const threadSelect = `
     thread.archive_disposition,
     thread.classification_category,
     thread.classification_reason,
+    thread.triage_status,
+    thread.triage_assigned_user_id,
+    triage_assignee.display_name AS triage_assigned_display_name,
+    thread.triaged_by,
+    triage_actor.display_name AS triaged_by_display_name,
+    thread.triaged_at,
+    thread.triage_note,
     thread.last_message_at,
     thread.created_at,
     thread.updated_at,
@@ -258,6 +293,8 @@ const threadSelect = `
     SELECT
       jsonb_agg(DISTINCT delivery_assignment.user_id ORDER BY delivery_assignment.user_id)
         FILTER (WHERE delivery_assignment.user_id IS NOT NULL) AS user_ids,
+      jsonb_agg(DISTINCT lower(btrim(delivery.mailbox_key)) ORDER BY lower(btrim(delivery.mailbox_key)))
+        FILTER (WHERE btrim(delivery.mailbox_key) <> '') AS mailbox_keys,
       bool_or(lower(btrim(delivery.mailbox_key)) = 'sales@sunkaier.com') AS has_shared_mailbox_delivery
     FROM email_messages delivery_message
     JOIN email_message_mailbox_deliveries delivery
@@ -268,6 +305,8 @@ const threadSelect = `
     WHERE delivery_message.thread_id = thread.id
   ) mailbox_owners ON true
   LEFT JOIN inquiries inquiry ON inquiry.id = thread.inquiry_id
+  LEFT JOIN users triage_assignee ON triage_assignee.id = thread.triage_assigned_user_id
+  LEFT JOIN users triage_actor ON triage_actor.id = thread.triaged_by
   LEFT JOIN opportunities opportunity ON opportunity.id = thread.opportunity_id
   LEFT JOIN customers customer ON customer.id = thread.customer_id
   LEFT JOIN contacts contact ON contact.id = thread.contact_id
@@ -559,16 +598,116 @@ export function createEmailArchiveRepository(queryTarget) {
       return result.rows[0] || null;
     },
 
-    async listThreads({ archiveDisposition = 'active' } = {}) {
+    async listThreads({ archiveDisposition = 'active', triageStatus = '', triageStatuses = [], mailboxKey = '', direction = '' } = {}) {
       const normalizedDisposition = ['active', 'archived', 'spam'].includes(archiveDisposition)
         ? archiveDisposition
         : '';
+      const normalizedTriageStatus = [
+        'pending',
+        'linked_opportunity',
+        'linked_inquiry',
+        'converted_inquiry',
+        'archived',
+        'spam',
+        'outbound_only'
+      ].includes(triageStatus) ? triageStatus : '';
+      const normalizedTriageStatuses = [...new Set((Array.isArray(triageStatuses) ? triageStatuses : [])
+        .map((value) => text(value).trim())
+        .filter((value) => [
+          'pending',
+          'linked_opportunity',
+          'linked_inquiry',
+          'converted_inquiry',
+          'archived',
+          'spam',
+          'outbound_only'
+        ].includes(value)))];
+      const normalizedMailboxKey = text(mailboxKey).trim().toLowerCase();
+      const normalizedDirection = ['inbound', 'outbound'].includes(direction) ? direction : '';
+      const params = [];
+      const where = [];
+      let mailboxParamIndex = 0;
+      if (normalizedDisposition) {
+        params.push(normalizedDisposition);
+        where.push(`thread.archive_disposition = $${params.length}`);
+      }
+      if (normalizedTriageStatus) {
+        params.push(normalizedTriageStatus);
+        where.push(`thread.triage_status = $${params.length}`);
+      } else if (normalizedTriageStatuses.length) {
+        params.push(normalizedTriageStatuses);
+        where.push(`thread.triage_status = ANY($${params.length}::text[])`);
+      }
+      if (normalizedMailboxKey) {
+        params.push(normalizedMailboxKey);
+        mailboxParamIndex = params.length;
+        where.push(`(
+          EXISTS (
+            SELECT 1
+            FROM email_messages mailbox_message
+            JOIN email_message_mailbox_deliveries mailbox_delivery
+              ON mailbox_delivery.message_id = mailbox_message.id
+            WHERE mailbox_message.thread_id = thread.id
+              AND lower(btrim(mailbox_delivery.mailbox_key)) = $${params.length}
+          )
+          OR (
+            lower(btrim(thread.mailbox_key)) = $${params.length}
+            AND EXISTS (
+              SELECT 1
+              FROM email_messages native_message
+              WHERE native_message.thread_id = thread.id
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM email_message_mailbox_deliveries native_delivery
+                  WHERE native_delivery.message_id = native_message.id
+                )
+            )
+          )
+        )`);
+      }
+      if (normalizedDirection) {
+        params.push(normalizedDirection);
+        where.push(`EXISTS (
+          SELECT 1
+          FROM email_messages direction_message
+          LEFT JOIN email_message_mailbox_deliveries direction_delivery
+            ON direction_delivery.message_id = direction_message.id
+          WHERE direction_message.thread_id = thread.id
+            AND direction_message.direction = $${params.length}
+            ${normalizedMailboxKey ? `AND (
+              lower(btrim(direction_delivery.mailbox_key)) = $${mailboxParamIndex}
+              OR (
+                direction_delivery.id IS NULL
+                AND lower(btrim(thread.mailbox_key)) = $${mailboxParamIndex}
+              )
+            )` : ''}
+        )`);
+      }
       const result = await queryTarget.query(`
         ${threadSelect}
-        ${normalizedDisposition ? 'WHERE thread.archive_disposition = $1' : ''}
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
         ORDER BY thread.last_message_at DESC, thread.id DESC
-      `, normalizedDisposition ? [normalizedDisposition] : []);
+      `, params);
       return result.rows.map(mapThreadRow);
+    },
+
+    async listActivePersonalMailboxAssignments() {
+      const result = await queryTarget.query(`
+        SELECT
+          assignment.user_id,
+          assignment.mailbox_address,
+          mailbox_owner.display_name
+        FROM user_personal_mailbox_assignments assignment
+        JOIN users mailbox_owner ON mailbox_owner.id = assignment.user_id
+        WHERE assignment.unassigned_at IS NULL
+          AND mailbox_owner.is_active = true
+        ORDER BY mailbox_owner.display_name, assignment.mailbox_address
+      `);
+      return result.rows.map((row) => ({
+        userId: Number(row.user_id),
+        mailboxAddress: text(row.mailbox_address).trim().toLowerCase(),
+        displayName: text(row.display_name)
+      }));
     },
 
     async listThreadsByOpportunity(opportunityId) {
@@ -592,7 +731,7 @@ export function createEmailArchiveRepository(queryTarget) {
     async getThreadDetail(id) {
       const thread = await this.findThreadById(id);
       if (!thread) return null;
-      const [messageResult, attachmentResult, attemptResult] = await Promise.all([
+      const [messageResult, attachmentResult, attemptResult, triageEventResult] = await Promise.all([
         queryTarget.query(`
           ${messageSelect}
           WHERE message.thread_id = $1
@@ -612,6 +751,17 @@ export function createEmailArchiveRepository(queryTarget) {
           JOIN email_messages message ON message.id = attempt.message_id
           WHERE message.thread_id = $1
           ORDER BY attempt.message_id, attempt.attempt_number
+        `, [id]),
+        queryTarget.query(`
+          SELECT
+            event.*,
+            actor.display_name AS actor_display_name,
+            assignee.display_name AS assigned_display_name
+          FROM email_thread_triage_events event
+          JOIN users actor ON actor.id = event.actor_user_id
+          LEFT JOIN users assignee ON assignee.id = event.assigned_user_id
+          WHERE event.thread_id = $1
+          ORDER BY event.id
         `, [id])
       ]);
       const messages = messageResult.rows.map(mapMessageRow);
@@ -622,7 +772,11 @@ export function createEmailArchiveRepository(queryTarget) {
       for (const row of attemptResult.rows) {
         messageMap.get(Number(row.message_id))?.deliveryAttempts.push(mapDeliveryAttemptRow(row));
       }
-      return { ...thread, messages };
+      return {
+        ...thread,
+        messages,
+        triageEvents: triageEventResult.rows.map(mapTriageEventRow)
+      };
     },
 
     async findMessageById(id) {
@@ -760,9 +914,14 @@ export function createEmailArchiveRepository(queryTarget) {
           archive_disposition,
           classification_category,
           classification_reason,
+          triage_status,
+          triage_assigned_user_id,
+          triaged_by,
+          triaged_at,
+          triage_note,
           last_message_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16)
         RETURNING *
       `, [
         input.mailboxKey,
@@ -775,6 +934,11 @@ export function createEmailArchiveRepository(queryTarget) {
         input.archiveDisposition || 'active',
         input.classificationCategory || 'inquiry',
         input.classificationReason || 'manual_review',
+        input.triageStatus || 'pending',
+        input.triageAssignedUserId || null,
+        input.triagedBy || null,
+        input.triagedAt || null,
+        input.triageNote || '',
         input.lastMessageAt
       ]);
       return mapThreadRow(result.rows[0]);
@@ -789,6 +953,84 @@ export function createEmailArchiveRepository(queryTarget) {
         RETURNING *
       `, [threadId, opportunityId]);
       return mapThreadRow(result.rows[0]);
+    },
+
+    async linkThreadToInquiry(threadId, inquiryId) {
+      const result = await queryTarget.query(`
+        UPDATE email_threads
+        SET inquiry_id = $2, updated_at = now()
+        WHERE id = $1
+          AND inquiry_id IS NULL
+        RETURNING *
+      `, [threadId, inquiryId]);
+      return mapThreadRow(result.rows[0]);
+    },
+
+    async assignThreadTriage(input) {
+      const result = await queryTarget.query(`
+        UPDATE email_threads
+        SET
+          triage_assigned_user_id = $2,
+          updated_at = now()
+        WHERE id = $1
+          AND triage_status = 'pending'
+        RETURNING *
+      `, [input.threadId, input.assignedUserId || null]);
+      return mapThreadRow(result.rows[0]);
+    },
+
+    async transitionThreadTriage(input) {
+      const result = await queryTarget.query(`
+        UPDATE email_threads
+        SET
+          triage_status = $3,
+          archive_disposition = $4,
+          triaged_by = $5,
+          triaged_at = $6,
+          triage_note = $7,
+          updated_at = now()
+        WHERE id = $1
+          AND triage_status = $2
+        RETURNING *
+      `, [
+        input.threadId,
+        input.expectedStatus,
+        input.triageStatus,
+        input.archiveDisposition || 'active',
+        input.actorUserId,
+        input.triagedAt,
+        input.note || ''
+      ]);
+      return mapThreadRow(result.rows[0]);
+    },
+
+    async createTriageEvent(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO email_thread_triage_events (
+          thread_id,
+          event_type,
+          from_status,
+          to_status,
+          actor_user_id,
+          assigned_user_id,
+          inquiry_id,
+          opportunity_id,
+          note
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        RETURNING *
+      `, [
+        input.threadId,
+        input.eventType,
+        input.fromStatus,
+        input.toStatus,
+        input.actorUserId,
+        input.assignedUserId || null,
+        input.inquiryId || null,
+        input.opportunityId || null,
+        input.note || ''
+      ]);
+      return mapTriageEventRow(result.rows[0]);
     },
 
     async createInboundMessage(input) {

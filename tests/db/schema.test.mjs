@@ -55,6 +55,7 @@ const opportunityTechnicalPlanSubmitDateMigrationPath = new URL('../../src/db/mi
 const formSubmissionIdempotencyMigrationPath = new URL('../../src/db/migrations/054_form_submission_idempotency.sql', import.meta.url);
 const userPersonalMailboxAssignmentsMigrationPath = new URL('../../src/db/migrations/055_user_personal_mailbox_assignments.sql', import.meta.url);
 const emailMailboxDeliveriesMigrationPath = new URL('../../src/db/migrations/056_email_mailbox_deliveries.sql', import.meta.url);
+const emailCenterTriageWorkflowMigrationPath = new URL('../../src/db/migrations/057_email_center_triage_workflow.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -956,5 +957,26 @@ test('mailbox delivery migration deduplicates messages while retaining each mail
   assert.match(sql, /INSERT INTO email_message_mailbox_deliveries/);
   assert.match(sql, /DROP INDEX IF EXISTS email_messages_provider_uid_idx/);
   assert.match(sql, /Email mailbox delivery records are immutable/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
+});
+
+test('email center triage migration adds frozen pending workflow and immutable audit events', async () => {
+  const sql = await readFile(emailCenterTriageWorkflowMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS triage_status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /triage_assigned_user_id bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_thread_triage_events/);
+  for (const status of [
+    'pending',
+    'linked_opportunity',
+    'linked_inquiry',
+    'converted_inquiry',
+    'archived',
+    'spam',
+    'outbound_only'
+  ]) {
+    assert.match(sql, new RegExp(`'${status}'`));
+  }
+  assert.match(sql, /Email triage events are immutable/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
 });

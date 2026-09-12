@@ -10,9 +10,10 @@ import { createApp } from '../../src/server.mjs';
 
 function thread(overrides = {}) {
   return {
-    id: 1, mailboxKey: 'sales@sunkaier.com', subject: '<script>alert(1)</script> RFQ', inquiryId: 8,
+    id: 1, mailboxKey: 'sales@sunkaier.com', mailboxKeys: ['sales@sunkaier.com'], subject: '<script>alert(1)</script> RFQ', inquiryId: null,
     opportunityId: null, opportunityNo: '', opportunityTitle: '', customerId: null, customerCode: '', customerName: '', contactId: null,
     contactCode: '', contactName: '',
+    triageStatus: 'pending', triageAssignedUserId: null, triageAssignedDisplayName: '', triageEvents: [],
     lastMessageAt: '2026-09-03T01:00:00Z', messageCount: 1, attachmentCount: 1, lastFromAddress: 'buyer@example.com',
     lastTextPreview: '<img src=x onerror=alert(1)> Need quote', messages: [{
       id: 11, threadId: 1, direction: 'inbound', messageId: 'rfq@example.com', inReplyTo: '',
@@ -36,6 +37,7 @@ async function createAgent({
   sendingEnabled = false,
   teamMembers = [],
   linkableOpportunities = [],
+  linkableInquiries = [],
   onLinkOpportunity = null
 }) {
   const passwordHash = await hashPassword('ChangeMe123!');
@@ -56,7 +58,8 @@ async function createAgent({
     customerName: 'Acme Co',
     contactId: 20,
     contactCode: 'CT000020',
-    contactName: 'Alice'
+    contactName: 'Alice',
+    triageStatus: 'linked_opportunity'
   });
   linked.messages = linked.messages.map((message) => ({ ...message, threadId: 2 }));
   linked.messages.push({
@@ -75,6 +78,9 @@ async function createAgent({
   linked.messageCount = 2;
   const repository = {
     async listThreads() { return [unlinked, linked]; },
+    async listActivePersonalMailboxAssignments() {
+      return [{ userId: user.id, mailboxAddress: user.email, displayName: user.displayName }];
+    },
     async listThreadsByOpportunity(id) { return Number(id) === 20 ? [linked] : []; },
     async findThreadById(id) { return Number(id) === 2 ? linked : Number(id) === 1 ? unlinked : null; },
     async findLatestThreadByOpportunity() { return linked; },
@@ -88,6 +94,15 @@ async function createAgent({
       onLinkOpportunity?.(Number(id), Number(opportunityId));
       return unlinked;
     },
+    async transitionThreadTriage(input) {
+      if (unlinked.triageStatus !== input.expectedStatus) return null;
+      unlinked.triageStatus = input.triageStatus;
+      return unlinked;
+    },
+    async createTriageEvent(input) {
+      unlinked.triageEvents.push(input);
+      return input;
+    },
     async findAttachmentById(id) { return Number(id) === 21 ? unlinked.messages[0].attachments[0] : null; },
     async findMessageById(id) { return Number(id) === 11 ? unlinked.messages[0] : null; }
   };
@@ -97,7 +112,7 @@ async function createAgent({
     userRepository: {
       async findByIdWithRoles(id) { return Number(id) === user.id ? user : null; },
       async findByUsernameWithRoles(username) { return username === user.username ? user : null; },
-      async listUsersByRole() { return []; }, async listUsersWithRoles() { return []; }
+      async listUsersByRole() { return []; }, async listUsersWithRoles() { return [user]; }
     },
     emailArchiveRepository: repository,
     opportunityRepository: {
@@ -109,6 +124,7 @@ async function createAgent({
       },
       async listOpportunities() { return linkableOpportunities; }
     },
+    inquiryRepository: { async listInquiries() { return linkableInquiries; } },
     opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return teamMembers; } },
     quotationPackageRepository: { async listByOpportunity() { return []; }, async getPackageDetail() { return null; } }
   });
@@ -131,16 +147,24 @@ test('enabled email center requires login', async () => {
   assert.equal(response.headers.location, '/login');
 });
 
-test('sales manager sees bilingual protected threads and plain-text escaped message content', async () => {
-  const agent = await createAgent({ userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh' });
+test('sales manager sees mailbox-separated pending threads and plain-text escaped message content', async () => {
+  const agent = await createAgent({
+    userId: 2,
+    roles: [ROLES.SALES_MANAGER],
+    language: 'zh',
+    linkableOpportunities: [{ id: 20, opportunityNo: '800020', title: 'Mixer Project' }],
+    linkableInquiries: [{ id: 9, subject: 'Mixer inquiry', contactEmail: 'buyer@example.com', status: 'new' }]
+  });
   const list = await agent.get('/email-center');
   assert.equal(list.status, 200);
   assert.match(list.text, /邮件中心/);
   assert.doesNotMatch(list.text, /业务邮件和附件永久保存在 CRM 归档中/);
   assert.doesNotMatch(list.text, /当前连接状态/);
-  assert.match(list.text, /class="email-folder-tab is-active"[^>]*aria-current="page"[^>]*>业务邮件<\/a>/);
+  assert.match(list.text, /公共邮箱 · sales@sunkaier\.com/);
+  assert.match(list.text, /class="email-folder-tab is-active"[^>]*aria-current="page"[^>]*>待处理<\/a>/);
+  assert.match(list.text, /“待处理”指仍需人工判断的正常业务收件/);
   assert.match(list.text, /class="email-inbox-list"/);
-  assert.match(list.text, /class="email-inbox-row" href="\/email-center\/threads\/1\?from=active" title="打开会话"/);
+  assert.match(list.text, /class="email-inbox-row" href="\/email-center\/threads\/1\?mailbox=sales%40sunkaier\.com&from=pending" title="打开会话"/);
   assert.match(list.text, /class="email-inbox-sender" title="buyer@example\.com">buyer@example\.com<\/span>/);
   assert.match(list.text, /class="email-inbox-preview" title="&lt;img src=x onerror=alert\(1\)&gt; Need quote"/);
   assert.match(list.text, /class="email-inbox-message-count" title="往来封数">\(2\)<\/span>/);
@@ -150,13 +174,18 @@ test('sales manager sees bilingual protected threads and plain-text escaped mess
   assert.match(list.text, /\.email-inbox-preview\s*\{[\s\S]*text-overflow:\s*ellipsis;/);
   assert.match(list.text, /2026-09-03 09:00/);
   assert.doesNotMatch(list.text, /GMT\+0800|China Standard Time|09:00:00/);
-  assert.match(list.text, /垃圾邮件隔离区/);
+  assert.match(list.text, />垃圾邮件<\/a>/);
   assert.match(list.text, /&lt;script&gt;alert\(1\)&lt;\/script&gt; RFQ/);
   assert.doesNotMatch(list.text, /<script>alert\(1\)<\/script>/);
 
   const detail = await agent.get('/email-center/threads/1');
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /href="\/email-center\?folder=active">← 返回邮件列表<\/a>/);
+  assert.match(detail.text, /href="\/email-center\?mailbox=sales%40sunkaier\.com&folder=pending">← 返回邮件列表<\/a>/);
+  assert.match(detail.text, /class="email-triage-grid-row"[\s\S]*?<button type="submit">人工分拣<\/button>[\s\S]*?<select name="assignedUserId"/);
+  assert.match(detail.text, /<button type="submit">关联商机<\/button>[\s\S]*?<select name="opportunityId"/);
+  assert.match(detail.text, /<button type="submit">关联询价<\/button>[\s\S]*?<select name="inquiryId"/);
+  assert.match(detail.text, /class="email-triage-final-actions"[\s\S]*?转为询价[\s\S]*?标记为垃圾邮件/);
+  assert.match(detail.text, /<summary>其他处理<\/summary>/);
   assert.match(detail.text, /class="email-conversation-list"/);
   assert.match(detail.text, /<details class="email-conversation-item email-message-inbound" open>/);
   assert.match(detail.text, /class="email-conversation-summary"/);
@@ -170,10 +199,10 @@ test('sales manager sees bilingual protected threads and plain-text escaped mess
 
 test('email thread back action preserves its source folder', async () => {
   const agent = await createAgent({ userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh' });
-  const detail = await agent.get('/email-center/threads/1?from=all');
+  const detail = await agent.get('/email-center/threads/1?mailbox=sales%40sunkaier.com&from=sent');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /href="\/email-center\?folder=all">← 返回邮件列表<\/a>/);
+  assert.match(detail.text, /href="\/email-center\?mailbox=sales%40sunkaier\.com&folder=sent">← 返回邮件列表<\/a>/);
 });
 
 test('an authorized user can link an unlinked personal conversation to one visible opportunity', async () => {
@@ -191,7 +220,7 @@ test('an authorized user can link an unlinked personal conversation to one visib
 
   const linked = await agent.post('/email-center/threads/1/opportunity').type('form').send({ opportunityId: 20 });
   assert.equal(linked.status, 302);
-  assert.equal(linked.headers.location, '/email-center/threads/1');
+  assert.equal(linked.headers.location, '/email-center/threads/1?from=pending');
   assert.deepEqual(linkedCalls, [[1, 20]]);
 
   const relink = await agent.post('/email-center/threads/1/opportunity').type('form').send({ opportunityId: 21 });
@@ -217,7 +246,7 @@ test('salesperson sees assigned opportunity mail but direct unlinked mail access
   const agent = await createAgent({ userId: 7, roles: [ROLES.SALESPERSON] });
   const list = await agent.get('/email-center');
   assert.equal(list.status, 200);
-  assert.match(list.text, /\/email-center\/threads\/2\?from=active/);
+  assert.match(list.text, /\/email-center\/threads\/2\?mailbox=user7%40sunkaier\.com&from=pending/);
   assert.doesNotMatch(list.text, /Mixer Project|C000010|Acme Co|CT000020|Alice/);
   assert.doesNotMatch(list.text, /Protected unlinked email/);
   assert.equal((await agent.get('/email-center/threads/1')).status, 403);

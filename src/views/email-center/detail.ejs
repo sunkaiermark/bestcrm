@@ -1,10 +1,11 @@
 <%- include('../partials/app-start', { title: `${thread.subject || t('noSubject')} - BESTCRM`, activeNav: 'email-center' }) %>
-        <p class="breadcrumb"><a class="secondary-action email-list-back" href="/email-center?folder=<%= backFolder %>">← <%= t('backToEmailList') %></a></p>
+        <p class="breadcrumb"><a class="secondary-action email-list-back" href="/email-center?mailbox=<%= encodeURIComponent(backMailbox) %>&folder=<%= backFolder %>">← <%= t('backToEmailList') %></a></p>
         <header class="page-header">
           <div>
             <h1><%= thread.subject || t('noSubject') %></h1>
-            <div class="muted"><%= t('mailbox') %>: <%= thread.mailboxKey %> · <%= thread.messageCount %> <%= t('messages') %></div>
+            <div class="muted"><%= t('mailbox') %>: <%= (thread.mailboxKeys && thread.mailboxKeys.length ? thread.mailboxKeys : [thread.mailboxKey]).join(', ') %> · <%= thread.messageCount %> <%= t('messages') %></div>
           </div>
+          <span class="status"><%= t(`emailTriageStatus.${thread.triageStatus}`) %></span>
         </header>
 
         <nav class="email-thread-context" aria-label="<%= t('linkedRecord') %>">
@@ -13,22 +14,73 @@
           <% } else if (!thread.customerId) { %><span class="muted"><%= t('unlinkedEmail') %></span><% } %>
           <% if (thread.customerId) { %><a class="secondary-action" href="/customers/<%= thread.customerId %>"><%= t('customer') %> <%= thread.customerCode ? `${thread.customerCode} · ` : '' %><%= thread.customerName %></a><% } %>
           <% if (thread.contactId) { %><a class="secondary-action" href="/contacts/<%= thread.contactId %>"><%= t('contact') %> <%= thread.contactCode ? `${thread.contactCode} · ` : '' %><%= thread.contactName %></a><% } %>
+          <% if (thread.triageAssignedDisplayName) { %><span class="status"><%= t('emailHandledBy') %>: <%= thread.triageAssignedDisplayName %></span><% } %>
         </nav>
 
-        <% if (!thread.opportunityId && linkableOpportunities.length) { %>
-          <form class="inline-form email-opportunity-link" method="post" action="/email-center/threads/<%= thread.id %>/opportunity">
-            <%- csrfField() %>
-            <label>
-              <span><%= t('linkOpportunity') %></span>
-              <select name="opportunityId" required>
-                <option value=""><%= t('selectOpportunity') %></option>
-                <% for (const opportunity of linkableOpportunities) { %>
-                  <option value="<%= opportunity.id %>"><%= opportunity.opportunityNo || `#${opportunity.id}` %> · <%= opportunity.title %></option>
+        <% if (canTriage) { %>
+          <section class="email-triage-panel" aria-label="<%= t('emailManualTriage') %>">
+            <div class="email-triage-grid">
+            <% if (thread.triageStatus === 'pending' && triageAssignees.length) { %>
+              <form class="email-triage-grid-row" method="post" action="/email-center/threads/<%= thread.id %>/assignment">
+                <%- csrfField() %>
+                <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+                <input type="hidden" name="from" value="<%= backFolder %>">
+                <button type="submit"><%= t('emailManualTriage') %></button>
+                <select name="assignedUserId" aria-label="<%= t('emailSelectReviewer') %>" required><option value=""><%= t('emailSelectReviewer') %></option><% for (const user of triageAssignees) { %><option value="<%= user.id %>"<%= Number(thread.triageAssignedUserId) === Number(user.id) ? ' selected' : '' %>><%= user.displayName %></option><% } %></select>
+              </form>
+            <% } %>
+
+            <% if (!thread.opportunityId && linkableOpportunities.length) { %>
+              <form class="email-triage-grid-row" method="post" action="/email-center/threads/<%= thread.id %>/opportunity">
+                <%- csrfField() %>
+                <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+                <input type="hidden" name="from" value="<%= backFolder %>">
+                <button type="submit"><%= t('linkOpportunity') %></button>
+                <select name="opportunityId" aria-label="<%= t('selectOpportunity') %>" required><option value=""><%= t('selectOpportunity') %></option><% for (const opportunity of linkableOpportunities) { %><option value="<%= opportunity.id %>"><%= opportunity.opportunityNo || `#${opportunity.id}` %> · <%= opportunity.title %></option><% } %></select>
+              </form>
+            <% } %>
+
+            <% if (canTriageInquiry && !thread.inquiryId) { %>
+              <% if (linkableInquiries.length) { %>
+                <form class="email-triage-grid-row" method="post" action="/email-center/threads/<%= thread.id %>/inquiry">
+                  <%- csrfField() %>
+                  <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+                  <input type="hidden" name="from" value="<%= backFolder %>">
+                  <button type="submit"><%= t('emailLinkInquiry') %></button>
+                  <select name="inquiryId" aria-label="<%= t('emailSelectInquiry') %>" required><option value=""><%= t('emailSelectInquiry') %></option><% for (const inquiry of linkableInquiries) { %><option value="<%= inquiry.id %>">#<%= inquiry.id %> · <%= inquiry.subject || inquiry.contactEmail %></option><% } %></select>
+                </form>
+              <% } %>
+            <% } %>
+
+              <div class="email-triage-final-actions">
+                <% if (canTriageInquiry && !thread.inquiryId) { %>
+                  <form method="post" action="/email-center/threads/<%= thread.id %>/convert-inquiry">
+                    <%- csrfField() %>
+                    <button type="submit"><%= t('emailConvertInquiry') %></button>
+                  </form>
                 <% } %>
-              </select>
-            </label>
-            <button type="submit"><%= t('linkOpportunity') %></button>
-          </form>
+                <form class="email-triage-spam-action" method="post" action="/email-center/threads/<%= thread.id %>/disposition">
+                  <%- csrfField() %>
+                  <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+                  <input type="hidden" name="from" value="<%= backFolder %>">
+                  <input type="hidden" name="action" value="spam">
+                  <button class="danger-action" type="submit"><%= t('emailSpamAction') %></button>
+                </form>
+              </div>
+            </div>
+
+            <details class="email-triage-more">
+              <summary><%= t('emailOtherActions') %></summary>
+              <form class="email-triage-archive-form" method="post" action="/email-center/threads/<%= thread.id %>/disposition">
+                <%- csrfField() %>
+                <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+                <input type="hidden" name="from" value="<%= backFolder %>">
+                <input type="hidden" name="action" value="archive">
+                <label><span><%= t('emailTriageNote') %></span><input type="text" name="note" maxlength="1000"></label>
+                <button class="secondary-action" type="submit"><%= t('emailArchiveAction') %></button>
+              </form>
+            </details>
+          </section>
         <% } %>
 
         <section class="email-conversation-list" aria-label="<%= t('emailConversation') %>">
@@ -36,41 +88,22 @@
             <details class="email-conversation-item email-message-<%= message.direction %>"<% if (messageIndex === thread.messages.length - 1) { %> open<% } %>>
               <summary class="email-conversation-summary">
                 <span class="email-sender-avatar" aria-hidden="true"><%= avatarText %></span>
-                <span class="email-conversation-heading">
-                  <strong><%= message.fromName || message.fromAddress %></strong>
-                  <span class="email-conversation-preview"><%= message.subject || t('noSubject') %> — <%= message.textBody %></span>
-                </span>
+                <span class="email-conversation-heading"><strong><%= message.fromName || message.fromAddress %></strong><span class="email-conversation-preview"><%= message.subject || t('noSubject') %> — <%= message.textBody %></span></span>
                 <span class="email-conversation-meta"><time datetime="<%= messageDate || '' %>"><%= formatEmailListDate(messageDate) %></time><span class="status"><%= t(`emailDeliveryStatus.${message.deliveryStatus}`) %></span></span>
               </summary>
               <div class="email-conversation-body">
                 <div class="email-recipient-line"><%= t('emailTo') %>: <%= recipients(message.toRecipients) || '-' %><% if (message.ccRecipients.length) { %> · <%= t('emailCc') %>: <%= recipients(message.ccRecipients) %><% } %></div>
-                <details class="email-message-details">
-                  <summary><%= t('emailMessageDetails') %></summary>
-                  <dl class="detail-grid">
-                    <div><dt><%= t('emailFrom') %></dt><dd><%= message.fromName ? `${message.fromName} <${message.fromAddress}>` : message.fromAddress %></dd></div>
-                    <div><dt><%= t('emailDate') %></dt><dd><%= formatEmailListDate(messageDate) %></dd></div>
-                    <div><dt><%= t('emailTo') %></dt><dd><%= recipients(message.toRecipients) || '-' %></dd></div>
-                    <div><dt><%= t('emailCc') %></dt><dd><%= recipients(message.ccRecipients) || '-' %></dd></div>
-                    <div><dt>Message-ID</dt><dd><%= message.messageId || '-' %></dd></div>
-                    <div><dt>In-Reply-To</dt><dd><%= message.inReplyTo || '-' %></dd></div>
-                  </dl>
-                </details>
+                <details class="email-message-details"><summary><%= t('emailMessageDetails') %></summary><dl class="detail-grid"><div><dt><%= t('emailFrom') %></dt><dd><%= message.fromName ? `${message.fromName} <${message.fromAddress}>` : message.fromAddress %></dd></div><div><dt><%= t('emailDate') %></dt><dd><%= formatEmailListDate(messageDate) %></dd></div><div><dt><%= t('emailTo') %></dt><dd><%= recipients(message.toRecipients) || '-' %></dd></div><div><dt><%= t('emailCc') %></dt><dd><%= recipients(message.ccRecipients) || '-' %></dd></div><div><dt>Message-ID</dt><dd><%= message.messageId || '-' %></dd></div><div><dt>In-Reply-To</dt><dd><%= message.inReplyTo || '-' %></dd></div></dl></details>
                 <pre class="email-plain-body"><%= message.textBody %></pre>
                 <% if (message.htmlBody) { %><p class="muted"><%= t('htmlEmailBlockedNotice') %></p><% } %>
-                <% if (message.attachments.length) { %>
-                  <div class="email-attachment-list">
-                    <strong><%= t('attachments') %></strong>
-                    <div class="email-attachment-chips">
-                      <% for (const attachment of message.attachments) { %>
-                        <a class="email-attachment-chip" href="/email-center/attachments/<%= attachment.id %>/download"><span aria-hidden="true">📎</span><span><%= attachment.originalName %></span><small><%= attachment.fileSize %> B</small></a>
-                      <% } %>
-                    </div>
-                    <details class="email-attachment-integrity"><summary><%= t('emailAttachmentIntegrity') %></summary><% for (const attachment of message.attachments) { %><p><%= attachment.originalName %> · SHA-256 <code><%= attachment.sha256 %></code></p><% } %></details>
-                  </div>
-                <% } %>
+                <% if (message.attachments.length) { %><div class="email-attachment-list"><strong><%= t('attachments') %></strong><div class="email-attachment-chips"><% for (const attachment of message.attachments) { %><a class="email-attachment-chip" href="/email-center/attachments/<%= attachment.id %>/download"><span aria-hidden="true">📎</span><span><%= attachment.originalName %></span><small><%= attachment.fileSize %> B</small></a><% } %></div><details class="email-attachment-integrity"><summary><%= t('emailAttachmentIntegrity') %></summary><% for (const attachment of message.attachments) { %><p><%= attachment.originalName %> · SHA-256 <code><%= attachment.sha256 %></code></p><% } %></details></div><% } %>
               </div>
             </details>
           <% } %>
           <% if (!thread.messages.length) { %><p class="empty"><%= t('noEmailMessages') %></p><% } %>
         </section>
+
+        <% if (thread.triageEvents && thread.triageEvents.length) { %>
+          <section class="email-triage-history"><h2><%= t('emailTriageHistory') %></h2><ol><% for (const event of thread.triageEvents) { %><li><time datetime="<%= event.createdAt || '' %>"><%= formatEmailListDate(event.createdAt) %></time> · <%= event.actorDisplayName || `#${event.actorUserId}` %> · <%= t(`emailTriageStatus.${event.toStatus}`) %><% if (event.assignedDisplayName) { %> · <%= event.assignedDisplayName %><% } %><% if (event.note) { %> · <%= event.note %><% } %></li><% } %></ol></section>
+        <% } %>
 <%- include('../partials/app-end') %>

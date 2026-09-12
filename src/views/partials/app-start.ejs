@@ -2738,6 +2738,126 @@
         width: fit-content;
       }
 
+      .email-mailbox-picker {
+        align-items: center;
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: flex;
+        gap: 12px;
+        margin-bottom: 14px;
+        padding: 12px 14px;
+      }
+
+      .email-mailbox-picker label {
+        font-weight: 700;
+      }
+
+      .email-mailbox-picker select {
+        min-width: min(100%, 420px);
+      }
+
+      .email-pending-definition {
+        background: #eef7f5;
+        border-left: 4px solid var(--accent);
+        color: var(--muted);
+        margin: 0 0 16px;
+        padding: 10px 12px;
+      }
+
+      .email-triage-panel {
+        background: #f8fafc;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        display: grid;
+        gap: 10px;
+        margin-bottom: 18px;
+        padding: 14px;
+      }
+
+      .email-triage-history h2 {
+        font-size: 18px;
+        margin: 0;
+      }
+
+      .email-triage-grid {
+        display: grid;
+        gap: 10px;
+        max-width: 712px;
+      }
+
+      .email-triage-grid-row {
+        align-items: center;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 180px minmax(280px, 520px);
+        margin: 0;
+      }
+
+      .email-triage-grid-row > button,
+      .email-triage-grid-row > select {
+        width: 100%;
+      }
+
+      .email-triage-final-actions {
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 180px 220px;
+      }
+
+      .email-triage-final-actions form,
+      .email-triage-final-actions button {
+        margin: 0;
+        width: 100%;
+      }
+
+      .email-triage-spam-action {
+        grid-column: 2;
+      }
+
+      .email-triage-more {
+        border-top: 1px solid var(--line);
+        color: var(--muted);
+        max-width: 712px;
+        padding-top: 10px;
+      }
+
+      .email-triage-more summary {
+        cursor: pointer;
+        width: fit-content;
+      }
+
+      .email-triage-archive-form {
+        align-items: end;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: minmax(280px, 520px) 180px;
+        margin-top: 10px;
+      }
+
+      .email-triage-archive-form label {
+        display: grid;
+        gap: 5px;
+      }
+
+      .email-triage-archive-form input,
+      .email-triage-archive-form button {
+        width: 100%;
+      }
+
+      .email-triage-history {
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin-top: 18px;
+        padding: 14px;
+      }
+
+      .email-triage-history ol {
+        color: var(--muted);
+        margin-bottom: 0;
+      }
+
       .email-folder-tabs {
         align-items: center;
         display: flex;
@@ -2819,6 +2939,11 @@
         display: grid;
         gap: 3px;
         min-width: 0;
+      }
+
+      .email-inbox-triage {
+        color: var(--muted);
+        font-size: 12px;
       }
 
       .email-inbox-summary {
@@ -3274,6 +3399,26 @@
 
         .email-opportunity-link {
           grid-template-columns: 1fr;
+        }
+
+        .email-mailbox-picker {
+          align-items: stretch;
+          display: grid;
+        }
+
+        .email-mailbox-picker select {
+          min-width: 0;
+          width: 100%;
+        }
+
+        .email-triage-grid-row,
+        .email-triage-final-actions,
+        .email-triage-archive-form {
+          grid-template-columns: 1fr;
+        }
+
+        .email-triage-spam-action {
+          grid-column: 1;
         }
 
         .app-main.opportunity-email-page {

@@ -543,22 +543,6 @@ export async function pollEmailInquiries({
                 emailArchiveRepository,
                 contactRepository
               }, parsedEmail);
-            if (direction === 'inbound'
-              && resolvedClassification?.classification.entryDecision === 'reject_spam') {
-              await rawCandidate.discard();
-              rawCandidate = null;
-              filtered.push({
-                uid,
-                reason: 'reject_spam',
-                category: resolvedClassification.classification.classificationCategory,
-                spamScore: resolvedClassification.classification.spamScore
-              });
-              if (markSeen) {
-                await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
-              }
-              await checkpoint(uid);
-              continue;
-            }
             attachmentScans = await scanEmailAttachments(malwareScanner, parsedEmail.attachments);
             rawCapture = await rawCandidate.commit({
               rfcMessageIdHint: parsedEmail.message.messageId,
@@ -584,19 +568,6 @@ export async function pollEmailInquiries({
         } catch (error) {
           if (!(error instanceof EmailArchiveDuplicateRaceError)) throw error;
           archiveResult = await runArchive();
-        }
-        if (direction === 'inbound' && archiveResult.rejectedSpam) {
-          filtered.push({
-            uid,
-            reason: 'reject_spam',
-            category: archiveResult.classification.classificationCategory,
-            spamScore: archiveResult.classification.spamScore
-          });
-          if (markSeen && selection.mode === 'legacy-unseen') {
-            await client.messageFlagsAdd(String(uid), ['\\Seen'], { uid: true });
-          }
-          await checkpoint(uid);
-          continue;
         }
         archiveAttachments = await storeEmailArchiveAttachments({
           emailArchiveRepository,
