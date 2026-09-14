@@ -137,23 +137,28 @@ test('todo repository creates and closes pending todos', async () => {
   assert.match(queryTarget.queries[0].sql, /INSERT INTO todos/);
   assert.match(queryTarget.queries[0].sql, /due_at/);
   assert.deepEqual(queryTarget.queries[0].params, [10, 3, 'Prepare technical solution', null]);
+  assert.match(queryTarget.queries[1].sql, /UPDATE work_items/);
+  assert.match(queryTarget.queries[2].sql, /INSERT INTO work_items/);
 
   await repository.closePendingForOpportunity(10, 'withdrawn');
-  assert.match(queryTarget.queries[1].sql, /UPDATE todos/);
-  assert.match(queryTarget.queries[1].sql, /status = \$2/);
-  assert.match(queryTarget.queries[1].sql, /completed_at = now\(\)/);
-  assert.deepEqual(queryTarget.queries[1].params, [10, 'withdrawn']);
+  assert.match(queryTarget.queries[3].sql, /UPDATE todos/);
+  assert.match(queryTarget.queries[3].sql, /status = \$2/);
+  assert.match(queryTarget.queries[3].sql, /completed_at = now\(\)/);
+  assert.deepEqual(queryTarget.queries[3].params, [10, 'withdrawn']);
+  assert.match(queryTarget.queries[4].sql, /UPDATE work_items/);
 
   await repository.closePendingForOpportunityAndAssignee(10, 3, 'reassigned');
-  assert.match(queryTarget.queries[2].sql, /UPDATE todos/);
-  assert.match(queryTarget.queries[2].sql, /assignee_user_id = \$2/);
-  assert.match(queryTarget.queries[2].sql, /status = \$3/);
-  assert.deepEqual(queryTarget.queries[2].params, [10, 3, 'reassigned']);
+  assert.match(queryTarget.queries[5].sql, /UPDATE todos/);
+  assert.match(queryTarget.queries[5].sql, /assignee_user_id = \$2/);
+  assert.match(queryTarget.queries[5].sql, /status = \$3/);
+  assert.deepEqual(queryTarget.queries[5].params, [10, 3, 'reassigned']);
+  assert.match(queryTarget.queries[6].sql, /UPDATE work_items/);
 
   await repository.closePendingForOpportunityAssigneeAndTitle(10, 3, 'Review technical package TS-D1', 'completed');
-  assert.match(queryTarget.queries[3].sql, /title = \$3/);
-  assert.match(queryTarget.queries[3].sql, /status = \$4/);
-  assert.deepEqual(queryTarget.queries[3].params, [10, 3, 'Review technical package TS-D1', 'completed']);
+  assert.match(queryTarget.queries[7].sql, /title = \$3/);
+  assert.match(queryTarget.queries[7].sql, /status = \$4/);
+  assert.deepEqual(queryTarget.queries[7].params, [10, 3, 'Review technical package TS-D1', 'completed']);
+  assert.match(queryTarget.queries[8].sql, /UPDATE work_items/);
 });
 
 test('todo repository lists opportunity todos with assignee names', async () => {

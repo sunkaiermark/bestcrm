@@ -1,0 +1,27 @@
+<%- include('../partials/app-start', { title: `${t('confirmProjectExecution')} - BESTCRM`, activeNav: 'workbench' }) %>
+        <p class="breadcrumb"><a href="/workbench"><%= t('workbench') %></a> / <%= t('confirmProjectExecution') %></p>
+        <header class="page-header">
+          <div>
+            <h1><%= t('confirmProjectExecution') %></h1>
+            <div class="muted"><%= opportunity.opportunityNo %> - <%= opportunity.title %></div>
+          </div>
+        </header>
+
+        <section class="detail-grid">
+          <div><span><%= t('customer') %></span><strong><%= opportunity.customerName %></strong></div>
+          <div><span><%= t('status') %></span><strong><%= statusLabel(opportunity.status) %></strong></div>
+        </section>
+
+        <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/project-execution/confirm">
+          <%- csrfField() %>
+          <label>
+            <%= t('contractSigningDate') %>
+            <input name="contractSignedOn" type="date" required>
+          </label>
+          <p class="muted"><%= t('projectExecutionConfirmationNotice') %></p>
+          <div class="inline-actions">
+            <button type="submit"><%= t('confirmAndCreate') %></button>
+            <a class="secondary-action" href="/workbench"><%= t('cancel') %></a>
+          </div>
+        </form>
+<%- include('../partials/app-end') %>

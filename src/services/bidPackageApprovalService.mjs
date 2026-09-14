@@ -417,7 +417,11 @@ export function createBidPackageApprovalService({ enabled = false, dependencies 
     opportunityId, assigneeUserId, title, eventType, actorUserId, targetUserId, comment,
     fromStatus, toStatus
   }) {
-    if (assigneeUserId) await repositories.todoRepository.create({ opportunityId, assigneeUserId, title });
+    if (assigneeUserId) await repositories.todoRepository.create({
+      opportunityId,
+      assigneeUserId,
+      title
+    }, actorUserId);
     await repositories.workflowEventRepository.create({
       opportunityId, eventType, fromStatus, toStatus, actorUserId, targetUserId, comment
     });
@@ -463,7 +467,7 @@ export function createBidPackageApprovalService({ enabled = false, dependencies 
       });
       await repositories.todoRepository.closePendingForOpportunityAssigneeAndTitle(
         context.workspace.opportunity.id, Number(actor.id),
-        todoTitle('Revise', packageType, submitted), 'completed'
+        todoTitle('Revise', packageType, submitted), 'completed', Number(actor.id)
       );
       await createTodoAndEvent(repositories, {
         opportunityId: context.workspace.opportunity.id,
@@ -540,13 +544,13 @@ export function createBidPackageApprovalService({ enabled = false, dependencies 
       });
       await repositories.todoRepository.closePendingForOpportunityAssigneeAndTitle(
         context.workspace.opportunity.id, Number(actor.id), reviewTask,
-        decision === 'approve' ? 'completed' : 'rejected'
+        decision === 'approve' ? 'completed' : 'rejected', Number(actor.id)
       );
       if (revision) await repositories.todoRepository.create({
         opportunityId: context.workspace.opportunity.id,
         assigneeUserId: reviewed.submittedBy,
         title: todoTitle('Revise', packageType, revision)
-      });
+      }, Number(actor.id));
       await repositories.workflowEventRepository.create({
         opportunityId: context.workspace.opportunity.id,
         eventType: `${decision}_bid_${packageType}_package`,
@@ -730,7 +734,7 @@ export function createBidPackageApprovalService({ enabled = false, dependencies 
       });
       await repositories.todoRepository.closePendingForOpportunityAssigneeAndTitle(
         context.workspace.opportunity.id, Number(actor.id),
-        todoTitle('Revise', 'complete', context.source), 'completed'
+        todoTitle('Revise', 'complete', context.source), 'completed', Number(actor.id)
       );
       await createTodoAndEvent(repositories, {
         opportunityId: context.workspace.opportunity.id, assigneeUserId: reviewer,
@@ -787,13 +791,13 @@ export function createBidPackageApprovalService({ enabled = false, dependencies 
       });
       await repositories.todoRepository.closePendingForOpportunityAssigneeAndTitle(
         context.workspace.opportunity.id, Number(actor.id), todoTitle('Review', 'complete', context.source),
-        decision === 'approve' ? 'completed' : 'rejected'
+        decision === 'approve' ? 'completed' : 'rejected', Number(actor.id)
       );
       if (revision) await repositories.todoRepository.create({
         opportunityId: context.workspace.opportunity.id,
         assigneeUserId: reviewed.submittedBy,
         title: todoTitle('Revise', 'complete', revision)
-      });
+      }, Number(actor.id));
       await repositories.workflowEventRepository.create({
         opportunityId: context.workspace.opportunity.id,
         eventType: `${decision}_bid_complete_package`,

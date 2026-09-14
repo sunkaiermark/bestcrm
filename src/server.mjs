@@ -33,6 +33,7 @@ import { createNotificationRepository } from './repositories/notificationReposit
 import { createOpportunityMaterialVersionRepository } from './repositories/opportunityMaterialVersionRepository.mjs';
 import { createOpportunityCommercialDraftRepository } from './repositories/opportunityCommercialDraftRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
+import { createProjectExecutionRepository } from './repositories/projectExecutionRepository.mjs';
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
 import { createOpportunityTechnicalDraftRepository } from './repositories/opportunityTechnicalDraftRepository.mjs';
 import { createQuotationPackageRepository } from './repositories/quotationPackageRepository.mjs';
@@ -58,6 +59,7 @@ import { inquiryRoutes } from './routes/inquiryRoutes.mjs';
 import { leadSubmissionRoutes } from './routes/leadSubmissionRoutes.mjs';
 import { notificationRoutes } from './routes/notificationRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
+import { projectExecutionRoutes } from './routes/projectExecutionRoutes.mjs';
 import { opportunityTechnicalDraftRoutes } from './routes/opportunityTechnicalDraftRoutes.mjs';
 import { quotationPackageRoutes } from './routes/quotationPackageRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
@@ -448,7 +450,19 @@ const emptyTodoRepository = {
 };
 
 const emptyWorkbenchRepository = {
-  async listPendingTodos() {
+  async listOpenWorkItems() {
+    return [];
+  },
+  async findWorkItemById() {
+    return null;
+  },
+  async updateWorkItemEstimation() {
+    return false;
+  },
+  async listOpportunityInitiationTodos() {
+    return [];
+  },
+  async listProjectExecutionConfirmationItems() {
     return [];
   },
   async listRecentWorkflowMessages() {
@@ -456,6 +470,14 @@ const emptyWorkbenchRepository = {
   },
   async countByWorkflowState() {
     return [];
+  }
+};
+
+const emptyProjectExecutionRepository = {
+  async findById() { return null; },
+  async findByOpportunity() { return null; },
+  async createForOpportunity() {
+    throw new Error('Project Execution repository is not configured');
   }
 };
 
@@ -708,6 +730,8 @@ export function createApp(options = {}) {
     || (pool ? createOpportunityMaterialVersionRepository(pool) : emptyOpportunityMaterialVersionRepository);
   const contractApprovalRepository = options.contractApprovalRepository || (pool ? createContractApprovalRepository(pool) : emptyContractApprovalRepository);
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
+  const projectExecutionRepository = options.projectExecutionRepository
+    || (pool ? createProjectExecutionRepository(pool) : emptyProjectExecutionRepository);
   const opportunityResponsibilityRepository = options.opportunityResponsibilityRepository
     || (pool ? createOpportunityResponsibilityRepository(pool) : emptyOpportunityResponsibilityRepository);
   const opportunityTechnicalDraftRepository = options.opportunityTechnicalDraftRepository
@@ -841,7 +865,11 @@ export function createApp(options = {}) {
       now: authenticatorMfaNow
     }
   }));
-  app.use(workbenchRoutes({ workbenchRepository }));
+  app.use(workbenchRoutes({
+    workbenchRepository,
+    salesWorkRepository,
+    notificationRepository
+  }));
   app.use(notificationRoutes({
     notificationRepository,
     webPushPublicKey: configuredWebPushPublicKey
@@ -926,6 +954,11 @@ export function createApp(options = {}) {
     customerRepository,
     contactRepository,
     opportunityRepository
+  }));
+  app.use(projectExecutionRoutes({
+    opportunityRepository,
+    projectExecutionRepository,
+    approvalSettingRepository
   }));
   app.use(opportunityTechnicalDraftRoutes({
     opportunityRepository,

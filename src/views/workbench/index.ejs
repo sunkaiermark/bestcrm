@@ -1,7 +1,51 @@
 <%- include('../partials/app-start', { title: `${t('workbench')} - BESTCRM`, activeNav: 'workbench' }) %>
+        <% const formatWorkTime = (value) => {
+          if (!value) return '\u2014';
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) return String(value);
+          return date.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+          });
+        }; %>
+        <% const workKpiLabel = (item) => {
+          if (item.kpiTarget) return item.kpiTarget;
+          const key = `workKpi.${item.kpiCode || 'complete_assigned_work'}`;
+          const label = t(key);
+          return label === key ? t('workKpi.complete_assigned_work') : label;
+        }; %>
+        <% const workStatusLabel = (status) => {
+          const key = `workItemStatus.${status || 'pending'}`;
+          const label = t(key);
+          return label === key ? status : label;
+        }; %>
+        <% const businessTypeLabel = (sourceType) => {
+          const keyByType = {
+            workflow_event: 'businessTypeWorkflowEvent',
+            opportunity: 'businessTypeOpportunity'
+          };
+          return keyByType[sourceType] ? t(keyByType[sourceType]) : (sourceType || t('notification'));
+        }; %>
+        <% const workEstimateLabel = (item) => {
+          const parts = [];
+          if (item.estimatedHours !== null && item.estimatedHours !== undefined) {
+            const hours = Number(item.estimatedHours).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
+              maximumFractionDigits: 2
+            });
+            parts.push(`${hours} ${t('hourUnit')}`);
+          }
+          if (item.workloadLevel) {
+            parts.push(t(`workloadLevel.${item.workloadLevel}`));
+          }
+          return parts.length ? parts.join(' · ') : t('notEstimated');
+        }; %>
         <header class="topbar">
         <div>
           <h1><%= t('workbench') %></h1>
+        </div>
+        <div class="inline-actions">
+          <% if (summary.canAccessSalesPlans) { %><a class="secondary-action" href="/sales-work/plans"><%= t('manageWorkPlans') %></a><% } %>
+          <a class="secondary-action" href="/notifications"><%= t('notificationSettings') %><% if (summary.unreadNotificationCount) { %> (<%= summary.unreadNotificationCount %>)<% } %></a>
         </div>
         </header>
 
@@ -22,25 +66,45 @@
 
         <section class="workbench-list">
           <article class="list-section">
-            <h2<% if (summary.pendingTodos.length > 0) { %> class="todo-alert-heading"<% } %>><%= t('myPendingTodos') %></h2>
+            <h2<% if (summary.actionItems.length > 0) { %> class="todo-alert-heading"<% } %>><%= t('needsMyAction') %></h2>
             <div class="list-body">
-              <% if (summary.pendingTodos.length === 0) { %>
-                <p class="empty"><%= t('noPendingTodos') %></p>
+              <% if (summary.actionItems.length === 0) { %>
+                <p class="empty"><%= t('noWorkItems') %></p>
               <% } else { %>
-                <table class="list-table">
+                <table class="list-table workbench-task-table">
                   <thead>
                     <tr>
-                      <th><%= t('todo') %></th>
-                      <th><%= t('opportunity') %></th>
-                      <th><%= t('customer') %></th>
+                      <th><%= t('relatedOpportunity') %></th>
+                      <th><%= t('specificWork') %></th>
+                      <th><%= t('plannedStart') %></th>
+                      <th><%= t('deadline') %></th>
+                      <th><%= t('estimatedHoursWorkload') %></th>
+                      <th><%= t('kpiCompletionStandard') %></th>
                     </tr>
                   </thead>
                   <tbody>
-                    <% for (const todo of summary.pendingTodos) { %>
+                    <% for (const todo of summary.actionItems) { %>
+                      <% const isOverdue = todo.dueAt && new Date(todo.dueAt).getTime() < Date.now(); %>
                       <tr>
-                        <td><%= todoTitleLabel(todo.title) %></td>
-                        <td><a href="/opportunities/<%= todo.opportunityId %>"><%= todo.opportunityNo %> - <%= todo.opportunityTitle %></a></td>
-                        <td><%= todo.customerName %></td>
+                        <td>
+                          <% if (todo.opportunityId) { %>
+                            <a href="/opportunities/<%= todo.opportunityId %>"><%= todo.opportunityNo %> - <%= todo.opportunityTitle %></a>
+                          <% } else { %>
+                            <span class="muted">\u2014</span>
+                          <% } %>
+                        </td>
+                        <td>
+                          <span class="work-item-status<%= isOverdue ? ' overdue' : '' %>"><%= isOverdue ? t('overdue') : workStatusLabel(todo.status) %></span>
+                          <strong><a href="<%= todo.actionUrl || `/opportunities/${todo.opportunityId}` %>"><%= todoTitleLabel(todo.title) %></a></strong>
+                          <% if (todo.description) { %><small class="work-item-description"><%= todo.description %></small><% } %>
+                        </td>
+                        <td><time datetime="<%= todo.plannedStartAt ? new Date(todo.plannedStartAt).toISOString() : '' %>"><%= formatWorkTime(todo.plannedStartAt) %></time></td>
+                        <td><time datetime="<%= todo.dueAt ? new Date(todo.dueAt).toISOString() : '' %>"><%= formatWorkTime(todo.dueAt) %></time></td>
+                        <td>
+                          <%= workEstimateLabel(todo) %>
+                          <% if (todo.estimateUrl) { %><small class="work-item-description"><a href="<%= todo.estimateUrl %>"><%= t('editWorkEstimate') %></a></small><% } %>
+                        </td>
+                        <td><%= workKpiLabel(todo) %></td>
                       </tr>
                     <% } %>
                   </tbody>
@@ -50,27 +114,78 @@
           </article>
 
           <article class="list-section">
-            <h2><%= t('recentWorkflowMessages') %></h2>
-            <% if (summary.recentWorkflowMessages.length === 0) { %>
-              <div class="list-body"><p class="empty"><%= t('noWorkflowMessages') %></p></div>
+            <h2><%= t('workPlan') %></h2>
+            <div class="list-body">
+              <% if (summary.workPlans.length === 0) { %>
+                <p class="empty"><%= t('noWorkPlans') %></p>
+              <% } else { %>
+                <table class="list-table workbench-task-table">
+                  <thead>
+                    <tr>
+                      <th><%= t('relatedBusiness') %></th>
+                      <th><%= t('specificWork') %></th>
+                      <th><%= t('plannedStart') %></th>
+                      <th><%= t('deadline') %></th>
+                      <th><%= t('estimatedHoursWorkload') %></th>
+                      <th><%= t('kpiCompletionStandard') %></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const item of summary.workPlans) { %>
+                      <tr>
+                        <td>
+                          <% if (item.opportunityId) { %>
+                            <a href="/opportunities/<%= item.opportunityId %>"><%= item.opportunityNo %> - <%= item.opportunityTitle %></a>
+                          <% } else if (item.customerName) { %>
+                            <%= item.customerName %>
+                          <% } else { %>
+                            <span class="muted">—</span>
+                          <% } %>
+                        </td>
+                        <td>
+                          <strong><a href="<%= item.actionUrl || '/workbench' %>"><%= todoTitleLabel(item.title) %></a></strong>
+                          <% if (item.description) { %><small class="work-item-description"><%= item.description %></small><% } %>
+                        </td>
+                        <td><%= formatWorkTime(item.plannedStartAt) %></td>
+                        <td><%= formatWorkTime(item.dueAt) %></td>
+                        <td>
+                          <%= workEstimateLabel(item) %>
+                          <% if (item.estimateUrl) { %><small class="work-item-description"><a href="<%= item.estimateUrl %>"><%= t('editWorkEstimate') %></a></small><% } %>
+                        </td>
+                        <td><%= workKpiLabel(item) %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } %>
+            </div>
+          </article>
+
+          <article class="list-section">
+            <h2><%= t('recentStatusMessages') %></h2>
+            <% if (summary.statusMessages.length === 0) { %>
+              <div class="list-body"><p class="empty"><%= t('noStatusMessages') %></p></div>
             <% } else { %>
               <div class="list-body">
                 <table class="list-table">
                   <thead>
                     <tr>
-                      <th><%= t('opportunity') %></th>
-                      <th><%= t('event') %></th>
-                      <th><%= t('actor') %></th>
-                      <th><%= t('comment') %></th>
+                      <th><%= t('relatedBusiness') %></th>
+                      <th><%= t('statusMessage') %></th>
+                      <th><%= t('time') %></th>
                     </tr>
                   </thead>
                   <tbody>
-                    <% for (const message of summary.recentWorkflowMessages) { %>
+                    <% for (const message of summary.statusMessages) { %>
                       <tr>
-                        <td><a href="/opportunities/<%= message.opportunityId %>"><%= message.opportunityNo %> - <%= message.opportunityTitle %></a></td>
-                        <td><span class="status"><%= workflowEventLabel(message.eventType) %></span> <span class="muted"><%= statusLabel(message.fromStatus) %> -> <%= statusLabel(message.toStatus) %></span></td>
-                        <td><%= message.actorDisplayName %><% if (message.targetDisplayName) { %> <%= t('to') %> <%= message.targetDisplayName %><% } %></td>
-                        <td><%= message.comment || '' %></td>
+                        <% if (message.actionUrl) { %>
+                          <td><a href="<%= message.actionUrl %>"><%= businessTypeLabel(message.sourceType) %></a></td>
+                          <td><strong><%= message.title %></strong><% if (message.body) { %><small class="work-item-description"><%= message.body %></small><% } %></td>
+                        <% } else { %>
+                          <td><a href="/opportunities/<%= message.opportunityId %>"><%= message.opportunityNo %> - <%= message.opportunityTitle %></a></td>
+                          <td><span class="status"><%= workflowEventLabel(message.eventType) %></span> <span class="muted"><%= statusLabel(message.fromStatus) %> → <%= statusLabel(message.toStatus) %></span><% if (message.comment) { %><small class="work-item-description"><%= message.comment %></small><% } %></td>
+                        <% } %>
+                        <td><%= formatWorkTime(message.createdAt) %></td>
                       </tr>
                     <% } %>
                   </tbody>

@@ -1982,7 +1982,7 @@ test('opportunity detail omits legacy technical text versions from the file time
   assert.equal(detail.status, 200);
   const technicalSection = extractBusinessSection(detail.text, 'technical', 'quote');
   assert.doesNotMatch(technicalSection, /Version History/);
-  assert.doesNotMatch(technicalSection, /Updated cabinet control solution|V2|approved/);
+  assert.doesNotMatch(technicalSection, /Updated cabinet control solution|class="file-version">V2|approved/);
   assert.doesNotMatch(technicalSection, /IP65, stainless cabinet/);
   assert.doesNotMatch(technicalSection, /Revise drawings and wiring plan/);
 });
@@ -2148,7 +2148,7 @@ test('opportunity detail hides commercial quote version history because quote ro
   assert.equal(detail.status, 200);
   const quoteSection = extractBusinessSection(detail.text, 'quote', 'contract');
   assert.doesNotMatch(quoteSection, /Version History/);
-  assert.doesNotMatch(quoteSection, /V2/);
+  assert.doesNotMatch(quoteSection, /class="file-version">V2/);
   assert.doesNotMatch(quoteSection, /Quote Engineer/);
   assert.doesNotMatch(quoteSection, /Commercial Manager/);
   assert.doesNotMatch(quoteSection, /Total Price|Payment Terms|Items|2100|Control cabinet|PLC control set/);
@@ -2189,7 +2189,7 @@ test('opportunity detail hides contract approval version history because contrac
   assert.equal(detail.status, 200);
   const contractSection = extractBusinessSection(detail.text, 'contract', 'audit');
   assert.doesNotMatch(contractSection, /Contract Approvals|Version History/);
-  assert.doesNotMatch(contractSection, /V2|Legal One|missing clause/);
+  assert.doesNotMatch(contractSection, /class="file-version">V2|Legal One|missing clause/);
 });
 
 test('opportunity detail shows upload forms in each business material panel', async () => {

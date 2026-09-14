@@ -167,7 +167,8 @@ async function createLoggedInAgent(options = {}) {
 function assertAppSidebar(html) {
   assert.match(html, /class="left-nav"/);
   assert.match(html, /href="\/workbench"/);
-  assert.match(html, /href="\/sales-work\/plans"/);
+  const navigation = html.match(/<nav class="nav-group">[\s\S]*?<\/nav>/)?.[0] || '';
+  assert.doesNotMatch(navigation, /href="\/sales-work\/plans"/);
   assert.match(html, /href="\/opportunities"/);
   assert.match(html, /href="\/customers"/);
   assert.match(html, /href="\/contacts"/);
@@ -182,7 +183,7 @@ test('anonymous users are redirected from sales work plans', async () => {
   assert.equal(response.headers.location, '/login');
 });
 
-test('salesperson can view sales work plan list and navigation entry', async () => {
+test('salesperson can view the work plan management page reached from Workbench', async () => {
   const { agent, calls } = await createLoggedInAgent();
 
   const response = await agent.get('/sales-work/plans');

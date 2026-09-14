@@ -870,14 +870,19 @@ export async function applyWorkflowAction({
       await repositories.todoRepository.closePendingForOpportunityAndAssignee(
         todo.opportunityId,
         todo.assigneeUserId,
-        todo.status
+        todo.status,
+        actor.id
       );
     } else {
-      await repositories.todoRepository.closePendingForOpportunity(todo.opportunityId, todo.status);
+      await repositories.todoRepository.closePendingForOpportunity(
+        todo.opportunityId,
+        todo.status,
+        actor.id
+      );
     }
   }
   for (const todo of effects.todosToCreate) {
-    await repositories.todoRepository.create(todo);
+    await repositories.todoRepository.create(todo, actor.id);
   }
 
   return effectiveAfter;

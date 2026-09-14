@@ -93,6 +93,15 @@ export const APPROVAL_SETTINGS = Object.freeze([
     assignment: 'Selected by Sales when submitting the contract approval package.',
     approveResult: 'Approves the contract and archives the opportunity.',
     rejectResult: 'Rejects back to Sales before contract resubmission.'
+  },
+  {
+    key: 'project_execution_creation',
+    stage: 'Project Execution Creation',
+    owner: 'Authorized User',
+    approver: 'Authorized User',
+    assignment: 'Configured explicitly by an administrator. The configured user must also hold the configured role.',
+    approveResult: 'Confirms the signed contract date and creates the Opportunity\'s single Project Execution record.',
+    rejectResult: 'No Project Execution is created.'
   }
 ]);
 

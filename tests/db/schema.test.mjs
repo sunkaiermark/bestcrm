@@ -57,6 +57,8 @@ const userPersonalMailboxAssignmentsMigrationPath = new URL('../../src/db/migrat
 const emailMailboxDeliveriesMigrationPath = new URL('../../src/db/migrations/056_email_mailbox_deliveries.sql', import.meta.url);
 const emailCenterTriageWorkflowMigrationPath = new URL('../../src/db/migrations/057_email_center_triage_workflow.sql', import.meta.url);
 const emailSpamRetentionAndPurgeMigrationPath = new URL('../../src/db/migrations/058_email_spam_retention_and_purge.sql', import.meta.url);
+const unifiedWorkItemsMigrationPath = new URL('../../src/db/migrations/059_unified_work_items.sql', import.meta.url);
+const projectExecutionsMigrationPath = new URL('../../src/db/migrations/060_project_executions.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -735,6 +737,41 @@ test('Google Workspace customer center migration creates an append-only assignme
   assert.match(sql, /action NOT IN \('transfer', 'release'\) OR btrim\(reason\) <> ''/);
   assert.match(sql, /BEFORE UPDATE OR DELETE ON email_thread_assignment_events/);
   assert.match(sql, /Email thread assignment events are append-only/);
+});
+
+test('unified work item migration creates auditable role work without changing opportunity workflow state', async () => {
+  const sql = await readFile(unifiedWorkItemsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS work_items/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS work_item_events/);
+  assert.match(sql, /planned_start_at timestamptz/);
+  assert.match(sql, /due_at timestamptz/);
+  assert.match(sql, /estimated_hours numeric\(8, 2\)/);
+  assert.match(sql, /workload_level text CHECK/);
+  assert.match(sql, /'low', 'medium', 'high'/);
+  assert.match(sql, /kpi_code text NOT NULL/);
+  assert.match(sql, /kpi_target text NOT NULL/);
+  assert.match(sql, /work_items_active_business_key_idx/);
+  assert.match(sql, /business_type text CHECK/);
+  assert.match(sql, /business_record_id bigint/);
+  assert.match(sql, /bestcrm_record_work_item_event/);
+  assert.match(sql, /'estimation_changed'/);
+  assert.match(sql, /FROM todos todo/);
+  assert.match(sql, /'workflow_todo'/);
+  assert.doesNotMatch(sql, /UPDATE opportunities/);
+});
+
+test('project execution migration enforces one audited post-contract record per opportunity', async () => {
+  const sql = await readFile(projectExecutionsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS project_executions/);
+  assert.match(sql, /opportunity_id bigint NOT NULL UNIQUE REFERENCES opportunities\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /contract_signed_on date NOT NULL/);
+  assert.match(sql, /confirmed_by_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS project_execution_events/);
+  assert.match(sql, /bestcrm_record_project_execution_event/);
+  assert.match(sql, /AFTER INSERT OR UPDATE OF status/);
+  assert.doesNotMatch(sql, /UPDATE opportunities/);
 });
 
 test('opportunity technical plan migration stores the planned proposal submission date', async () => {

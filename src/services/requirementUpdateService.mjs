@@ -54,12 +54,12 @@ export async function createSupplementalRequirementUpdate({
     targetUserId: opportunity.quotationEngineerId,
     comment: eventComment(input)
   });
-  await closePendingTodos(opportunity.id, 'superseded');
+  await closePendingTodos(opportunity.id, 'superseded', actor.id);
   await createTodo({
     opportunityId: opportunity.id,
     assigneeUserId: opportunity.quotationEngineerId,
     title: reworkTodoTitle
-  });
+  }, actor.id);
 
   return {
     update,

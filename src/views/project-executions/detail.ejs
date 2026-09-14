@@ -1,0 +1,22 @@
+<%- include('../partials/app-start', { title: `${t('projectExecution')} - BESTCRM`, activeNav: 'workbench' }) %>
+        <p class="breadcrumb"><a href="/workbench"><%= t('workbench') %></a> / <%= t('projectExecution') %></p>
+        <header class="page-header">
+          <div>
+            <h1><%= t('projectExecution') %></h1>
+            <div class="muted"><%= projectExecution.opportunityNo %> - <%= projectExecution.opportunityTitle %></div>
+          </div>
+        </header>
+
+        <section class="detail-grid">
+          <div><span><%= t('relatedOpportunity') %></span><strong><a href="/opportunities/<%= projectExecution.opportunityId %>"><%= projectExecution.opportunityNo %> - <%= projectExecution.opportunityTitle %></a></strong></div>
+          <div><span><%= t('customer') %></span><strong><%= projectExecution.customerName %></strong></div>
+          <div><span><%= t('contractSigningDate') %></span><strong><%= projectExecution.contractSignedOn %></strong></div>
+          <div><span><%= t('status') %></span><strong><%= t(`projectExecutionStatus.${projectExecution.status}`) %></strong></div>
+          <div><span><%= t('confirmedBy') %></span><strong><%= projectExecution.confirmedByDisplayName %></strong></div>
+        </section>
+
+        <section class="list-section">
+          <h2><%= t('projectExecutionScope') %></h2>
+          <div class="list-body"><p class="muted"><%= t('projectExecutionScopeNotice') %></p></div>
+        </section>
+<%- include('../partials/app-end') %>

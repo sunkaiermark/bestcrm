@@ -972,6 +972,56 @@
         color: #991b1b;
       }
 
+      .workbench-task-table {
+        min-width: 1080px;
+        table-layout: fixed;
+        width: 100%;
+      }
+
+      .workbench-task-table th {
+        font-size: 16px;
+        text-transform: none;
+      }
+
+      .workbench-task-table th:nth-child(1),
+      .workbench-task-table td:nth-child(1) { width: 23%; }
+      .workbench-task-table th:nth-child(2),
+      .workbench-task-table td:nth-child(2) { width: 20%; }
+      .workbench-task-table th:nth-child(3),
+      .workbench-task-table td:nth-child(3),
+      .workbench-task-table th:nth-child(4),
+      .workbench-task-table td:nth-child(4) { width: 12%; }
+      .workbench-task-table th:nth-child(5),
+      .workbench-task-table td:nth-child(5) { width: 13%; }
+      .workbench-task-table th:nth-child(6),
+      .workbench-task-table td:nth-child(6) { width: 20%; }
+
+      .workbench-task-table td {
+        vertical-align: top;
+      }
+
+      .work-item-status {
+        background: #e7f0f8;
+        border-radius: 999px;
+        color: #315d84;
+        display: inline-block;
+        font-size: 12px;
+        font-weight: 700;
+        margin: 0 7px 3px 0;
+        padding: 2px 7px;
+      }
+
+      .work-item-status.overdue {
+        background: #fee2e2;
+        color: #991b1b;
+      }
+
+      .work-item-description {
+        color: var(--muted);
+        display: block;
+        margin-top: 4px;
+      }
+
       .business-section > h2 {
         align-items: center;
         color: #ffffff;
@@ -3765,9 +3815,8 @@
           </div>
         <% } %>
         <nav class="nav-group">
-          <a class="<%= navClass('workbench') %>" href="/workbench"><%= t('workbench') %></a>
-          <a class="<%= navClass('notifications') %> notification-nav-link" href="/notifications">
-            <span><%= t('notifications') %></span>
+          <a class="<%= navClass('workbench') %> notification-nav-link" href="/workbench">
+            <span><%= t('workbench') %></span>
             <span class="notification-badge" data-notification-badge hidden>0</span>
           </a>
           <% if (canSeeInquiryNav) { %>
@@ -3779,7 +3828,6 @@
           <% if (canSubmitLead) { %>
             <a class="<%= navClass('lead-submissions') %>" href="/lead-submissions"><%= t('navLeadSubmissions') %></a>
           <% } %>
-          <a class="<%= navClass('sales-work') %>" href="/sales-work/plans"><%= t('navSalesWork') %></a>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>
           <a class="<%= navClass('customers') %>" href="/customers"><%= t('customers') %></a>
           <a class="<%= navClass('contacts') %>" href="/contacts"><%= t('contacts') %></a>
