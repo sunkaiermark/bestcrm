@@ -64,6 +64,26 @@ test('GET / redirects to the workbench entry', async () => {
   assert.equal(response.headers.location, '/workbench');
 });
 
+test('application write maintenance keeps health online and blocks business mutations before routing', async () => {
+  const app = createApp({
+    databaseUrl: '',
+    sessionSecret: 'test-secret',
+    writeMaintenanceFlagExists: () => true
+  });
+
+  const health = await request(app).get('/health');
+  const mutation = await request(app)
+    .post('/account/password')
+    .set('Accept', 'application/json')
+    .send({ currentPassword: 'ignored', newPassword: 'ignored' });
+  const login = await request(app).post('/login').send({ username: 'missing', password: 'missing' });
+
+  assert.equal(health.status, 200);
+  assert.equal(mutation.status, 503);
+  assert.equal(mutation.body.code, 'write_maintenance');
+  assert.notEqual(login.status, 503);
+});
+
 test('GET /assets/sunkaier-logo.png serves the sidebar logo', async () => {
   const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 

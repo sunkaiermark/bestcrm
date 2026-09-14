@@ -85,7 +85,10 @@ test('production backup and rollback scripts record and enforce artifact checksu
   assert.match(backupScript, /raw_email_inventory_sha256=\$RAW_EMAIL_INVENTORY_SHA256/);
   assert.match(backupScript, /email-raw-files\.sha256/);
   assert.match(backupScript, /systemctl is-active --quiet bestcrm-email-backfill\.service/);
-  assert.match(backupScript, /stop BESTCRM and email intake before creating a consistent database\/file backup/);
+  assert.match(backupScript, /Email intake is active; stop it before creating a consistent database\/file backup/);
+  assert.match(backupScript, /BESTCRM_ALLOW_APP_DURING_BACKUP/);
+  assert.match(backupScript, /BESTCRM_WRITE_MAINTENANCE_FLAG/);
+  assert.match(backupScript, /application reads remain online and business writes are paused/);
   assert.doesNotMatch(backupScript, /find "\$BACKUP_DIR"[^\n]+-exec rm -rf/);
   assert.doesNotMatch(retentionScript, /\.\.\/src\//);
   assert.match(retentionScript, /manifest\.txt/);
@@ -112,6 +115,53 @@ test('production deployment and rollback keep uploads private but traversable by
     assert.match(script, /sudo -u "\$SERVICE_USER" test -r "\$UPLOAD_DIR"/);
     assert.match(script, /sudo -u "\$SERVICE_USER" test -w "\$UPLOAD_DIR"/);
   }
+});
+
+test('production deployment prepares online, serializes releases, and uses a short guarded cutover', async () => {
+  const root = path.resolve(import.meta.dirname, '..', '..');
+  const deployScript = await readFile(path.join(root, 'scripts', 'deploy-production.sh'), 'utf8');
+
+  assert.match(deployScript, /flock -n 9/);
+  assert.match(deployScript, /BESTCRM deploy phase: prepare release while the active application remains available/);
+  assert.match(deployScript, /BESTCRM deploy phase: create a verified backup/);
+  assert.match(deployScript, /BESTCRM deploy phase: short atomic cutover/);
+  assert.match(deployScript, /scripts\/write-maintenance-capable/);
+  assert.match(deployScript, /BESTCRM_ALLOW_LEGACY_DOWNTIME/);
+  assert.match(deployScript, /BESTCRM_ALLOW_APP_DURING_BACKUP=true/);
+  assert.match(deployScript, /BESTCRM_MAINTENANCE_DRAIN_SECONDS/);
+  assert.match(deployScript, /nginx_has_maintenance_fallback/);
+  assert.match(deployScript, /BESTCRM deploy phase: install the scoped Nginx maintenance fallback/);
+  assert.match(deployScript, /bash "\$NGINX_INSTALLER"/);
+  assert.match(deployScript, /mv -Tf "\$next_link" "\$CURRENT_APP"/);
+  assert.match(deployScript, /wait_for_health/);
+  assert.match(deployScript, /restore_after_failure/);
+
+  const prepareIndex = deployScript.indexOf('npm ci --omit=dev');
+  const backupIndex = deployScript.indexOf('"$BACKUP_SCRIPT"', prepareIndex);
+  const cutoverIndex = deployScript.indexOf('systemctl stop "$SERVICE_NAME"', backupIndex);
+  assert.ok(prepareIndex > -1 && backupIndex > prepareIndex && cutoverIndex > backupIndex);
+});
+
+test('Nginx maintenance fallback installer is scoped, validated, and recoverable', async () => {
+  const root = path.resolve(import.meta.dirname, '..', '..');
+  const installer = await readFile(
+    path.join(root, 'scripts', 'install-nginx-maintenance-fallback.sh'),
+    'utf8'
+  );
+  const snippet = await readFile(
+    path.join(root, 'docs', 'deployment', 'templates', 'nginx-bestcrm-maintenance.conf'),
+    'utf8'
+  );
+
+  assert.match(installer, /BESTCRM_NGINX_SITE_FILE:-\/etc\/nginx\/sites-available\/bestcrm/);
+  assert.match(installer, /readlink -f "\$ENABLED_SITE"/);
+  assert.match(installer, /proxy_pass http:\/\/127\.0\.0\.1:3000/);
+  assert.match(installer, /nginx -t/);
+  assert.match(installer, /restore_on_failure/);
+  assert.match(installer, /systemctl reload nginx\.service/);
+  assert.match(snippet, /error_page 502 503 504 =503 \/bestcrm-maintenance\.html/);
+  assert.match(snippet, /Retry-After "60" always/);
+  assert.doesNotMatch(installer, /ssl_certificate/);
 });
 
 test('Phase A+B production preflight is read-only and checks the exact migration boundary', async () => {

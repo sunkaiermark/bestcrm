@@ -115,6 +115,16 @@
         color: #991b1b;
       }
 
+      .write-maintenance-banner {
+        background: #fff7ed;
+        border: 1px solid #fdba74;
+        border-radius: 8px;
+        color: #9a3412;
+        font-weight: 700;
+        margin: 0 0 16px;
+        padding: 10px 14px;
+      }
+
       .account-security-grid {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -3868,3 +3878,8 @@
       </aside>
 
       <main class="app-main<%= typeof mainClass !== 'undefined' && mainClass ? ` ${mainClass}` : '' %>">
+        <% if (typeof writeMaintenanceActive !== 'undefined' && writeMaintenanceActive) { %>
+          <div class="write-maintenance-banner" role="status">
+            <%= language === 'zh' ? '系统正在创建发布前备份：浏览和查询可用，保存、提交及上传暂时暂停。' : 'A release backup is in progress. Reading remains available; saving, submitting and uploading are temporarily paused.' %>
+          </div>
+        <% } %>

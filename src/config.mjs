@@ -288,6 +288,9 @@ export function loadConfig(env = process.env) {
       recoveryCodePepper: authenticatorMfaRecoveryCodePepper
     },
     uploadDir: env.UPLOAD_DIR || './var/uploads',
+    writeMaintenanceFlagPath: String(
+      env.BESTCRM_WRITE_MAINTENANCE_FLAG || '/run/bestcrm/write-maintenance'
+    ).trim(),
     technicalDocumentFontPath: env.TECHNICAL_DOCUMENT_FONT_PATH || '',
     maxUploadMb: numberEnv(env.MAX_UPLOAD_MB, 3072)
   };

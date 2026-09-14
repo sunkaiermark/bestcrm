@@ -142,14 +142,27 @@ sudo -n /opt/bestcrm/scripts/deploy-production.sh /opt/bestcrm/bestcrm-release.z
 
 这个脚本会自动做以下事情：
 
-1. 先执行生产备份
-2. 解压新版本到 `/opt/bestcrm/releases/<version>`
-3. 安装生产依赖
-4. 停止 `bestcrm` 服务
-5. 切换 `/opt/bestcrm/app` 到新版本
-6. 执行数据库迁移
-7. 启动服务
-8. 输出服务状态
+1. 用全局文件锁阻止重复部署
+2. 保持旧版本在线，解压新版本并安装生产依赖
+3. 停止邮件接入和历史回填，启用只读维护状态
+4. 在旧版本仍可浏览和查询时完成发布前备份
+5. 短暂停止 `bestcrm`，原子切换 `/opt/bestcrm/app`
+6. 执行向后兼容的数据库迁移
+7. 启动新版本并轮询 `/health`
+8. 健康检查失败时切回旧版本；成功时解除只读并恢复邮件接入
+
+第一次发布本流程时，旧版本还不认识只读维护标志，必须在批准的维护窗口显式加入一次性引导参数：
+
+```bash
+sudo -n env BESTCRM_ALLOW_LEGACY_DOWNTIME=true \
+  /opt/bestcrm/scripts/deploy-production.sh \
+  /opt/bestcrm/bestcrm-release.zip \
+  v2026.06.23-01
+```
+
+后续版本禁止再使用该参数。正常备份阶段允许浏览和查询，保存、提交及上传会返回 `503` 和 `Retry-After: 60`；最终切换目标不超过 60 秒。
+
+首次引导发布会从已经解包的候选版本自动安装独立的 Nginx 维护兜底。安装器只在现有 HTTPS 站点加入一个 `include`，不修改 Certbot 证书配置；修改前会保存原站点文件，`nginx -t` 或重载失败时自动恢复。后续发布会先验证兜底仍然有效。
 
 部署后检查：
 
@@ -250,8 +263,12 @@ http://175.27.225.156/login
 如果需要单独手工备份：
 
 ```bash
+sudo -n systemctl stop bestcrm-email-backfill.service bestcrm-email-intake.service bestcrm.service
 sudo -n /opt/bestcrm/scripts/backup-production.sh
+sudo -n systemctl start bestcrm.service bestcrm-email-intake.service
 ```
+
+手工备份仍采用停机保护。只有统一部署脚本会设置并验证只读维护标志，从而安全执行在线备份。
 
 备份目录格式：
 

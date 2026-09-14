@@ -12,6 +12,8 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_PATH="$BACKUP_DIR/$STAMP"
 RAW_EMAIL_DIR="$UPLOAD_DIR/email-raw"
 RAW_EMAIL_INVENTORY="$BACKUP_PATH/email-raw-files.sha256"
+ALLOW_APP_DURING_BACKUP="${BESTCRM_ALLOW_APP_DURING_BACKUP:-false}"
+MAINTENANCE_FLAG="${BESTCRM_WRITE_MAINTENANCE_FLAG:-/run/bestcrm/write-maintenance}"
 BACKUP_STARTED=false
 BACKUP_COMPLETE=false
 
@@ -35,7 +37,6 @@ if [ ! -f "$ENV_READER" ]; then
 fi
 
 DATABASE_URL="$(node "$ENV_READER" "$ENV_FILE" DATABASE_URL)"
-RAW_ARCHIVE_ENABLED="$(node "$ENV_READER" "$ENV_FILE" EMAIL_RAW_ARCHIVE_ENABLED)"
 export DATABASE_URL
 
 if [ -z "${DATABASE_URL:-}" ]; then
@@ -48,11 +49,17 @@ if systemctl is-active --quiet bestcrm-email-backfill.service; then
   exit 1
 fi
 
-if [ "$RAW_ARCHIVE_ENABLED" = "true" ]; then
-  if systemctl is-active --quiet bestcrm || systemctl is-active --quiet bestcrm-email-intake.service; then
-    echo "Raw email archive is enabled; stop BESTCRM and email intake before creating a consistent database/file backup." >&2
+if systemctl is-active --quiet bestcrm-email-intake.service; then
+  echo "Email intake is active; stop it before creating a consistent database/file backup." >&2
+  exit 1
+fi
+
+if systemctl is-active --quiet bestcrm; then
+  if [ "$ALLOW_APP_DURING_BACKUP" != "true" ] || [ ! -f "$MAINTENANCE_FLAG" ]; then
+    echo "BESTCRM is active without the write-maintenance flag; stop it or enable controlled online backup mode." >&2
     exit 1
   fi
+  echo "BESTCRM backup mode: application reads remain online and business writes are paused."
 fi
 
 mkdir -p "$BACKUP_DIR"

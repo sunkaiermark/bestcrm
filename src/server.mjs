@@ -9,6 +9,7 @@ import { createWorkflowTransaction } from './db/workflowTransaction.mjs';
 import { createEmailArchiveTransaction } from './db/emailArchiveTransaction.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
 import { csrfProtection } from './middleware/csrf.mjs';
+import { writeMaintenance } from './middleware/writeMaintenance.mjs';
 import { submissionGuard } from './middleware/submissionGuard.mjs';
 import { createTrustedDeviceIntegration } from './middleware/trustedDevice.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
@@ -789,6 +790,10 @@ export function createApp(options = {}) {
     verify(req, res, buf) {
       req.rawBody = Buffer.from(buf);
     }
+  }));
+  app.use(writeMaintenance({
+    flagPath: options.writeMaintenanceFlagPath ?? config.writeMaintenanceFlagPath,
+    flagExists: options.writeMaintenanceFlagExists
   }));
   app.use(inquiryIntakeRoutes({
     inquiryRepository,
