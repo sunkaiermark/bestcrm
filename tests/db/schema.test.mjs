@@ -59,6 +59,7 @@ const emailCenterTriageWorkflowMigrationPath = new URL('../../src/db/migrations/
 const emailSpamRetentionAndPurgeMigrationPath = new URL('../../src/db/migrations/058_email_spam_retention_and_purge.sql', import.meta.url);
 const unifiedWorkItemsMigrationPath = new URL('../../src/db/migrations/059_unified_work_items.sql', import.meta.url);
 const projectExecutionsMigrationPath = new URL('../../src/db/migrations/060_project_executions.sql', import.meta.url);
+const opportunityTechnicalDocumentsMigrationPath = new URL('../../src/db/migrations/061_opportunity_technical_documents.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -772,6 +773,31 @@ test('project execution migration enforces one audited post-contract record per 
   assert.match(sql, /bestcrm_record_project_execution_event/);
   assert.match(sql, /AFTER INSERT OR UPDATE OF status/);
   assert.doesNotMatch(sql, /UPDATE opportunities/);
+});
+
+test('opportunity technical document migration creates the controlled template matrix and immutable version files', async () => {
+  const sql = await readFile(opportunityTechnicalDocumentsMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS document_type text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS product_category_code text/);
+  assert.match(sql, /technical_templates_active_document_category_idx/);
+  assert.match(sql, /bestcrm_protect_technical_template_classification/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_equipment_items/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_documents/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_document_versions/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_document_version_items/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_document_files/);
+  assert.match(sql, /octet_length\(content\) = byte_size/);
+  assert.match(sql, /bestcrm_validate_technical_document_identity/);
+  assert.match(sql, /bestcrm_validate_technical_document_version_item/);
+  assert.match(sql, /Uploaded versions must preserve the complete prior equipment and template snapshot/);
+  assert.match(sql, /CREATE CONSTRAINT TRIGGER opportunity_technical_document_version_items_source_trigger/);
+  assert.match(sql, /DEFERRABLE INITIALLY DEFERRED/);
+  assert.match(sql, /bestcrm_validate_technical_document_version_completeness/);
+  assert.match(sql, /Technical document version requires one DOCX and one PDF file/);
+  assert.match(sql, /bestcrm_reject_technical_document_history_mutation/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON opportunity_technical_document_files/);
+  assert.match(sql, /BEFORE DELETE ON opportunity_equipment_items/);
 });
 
 test('opportunity technical plan migration stores the planned proposal submission date', async () => {

@@ -37,6 +37,7 @@ import { createOpportunityRepository } from './repositories/opportunityRepositor
 import { createProjectExecutionRepository } from './repositories/projectExecutionRepository.mjs';
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
 import { createOpportunityTechnicalDraftRepository } from './repositories/opportunityTechnicalDraftRepository.mjs';
+import { createOpportunityTechnicalDocumentRepository } from './repositories/opportunityTechnicalDocumentRepository.mjs';
 import { createQuotationPackageRepository } from './repositories/quotationPackageRepository.mjs';
 import { createQuotationPackageDocumentRepository } from './repositories/quotationPackageDocumentRepository.mjs';
 import { createRequirementUpdateRepository } from './repositories/requirementUpdateRepository.mjs';
@@ -62,6 +63,7 @@ import { notificationRoutes } from './routes/notificationRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { projectExecutionRoutes } from './routes/projectExecutionRoutes.mjs';
 import { opportunityTechnicalDraftRoutes } from './routes/opportunityTechnicalDraftRoutes.mjs';
+import { opportunityTechnicalDocumentRoutes } from './routes/opportunityTechnicalDocumentRoutes.mjs';
 import { quotationPackageRoutes } from './routes/quotationPackageRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
@@ -74,6 +76,7 @@ import { createMfaRecoveryCodeService } from './services/mfaRecoveryCodeService.
 import { createMfaSecretEncryptionService } from './services/mfaSecretEncryptionService.mjs';
 import { createSmsSecondFactorService } from './services/smsSecondFactorService.mjs';
 import { createTechnicalDocumentService } from './services/technicalDocumentService.mjs';
+import { createTechnicalMaterialDocumentService } from './services/technicalMaterialDocumentService.mjs';
 import { createTotpService } from './services/totpService.mjs';
 import { createTrustedDeviceService } from './services/trustedDeviceService.mjs';
 import { createCustomerEmailTransport } from './services/customerEmailService.mjs';
@@ -474,6 +477,20 @@ const emptyWorkbenchRepository = {
   }
 };
 
+const emptyOpportunityTechnicalDocumentRepository = {
+  async listEquipmentByOpportunity() { return []; },
+  async findEquipmentItem() { return null; },
+  async createEquipment() { throw new Error('Opportunity technical document repository is not configured'); },
+  async updateEquipment() { throw new Error('Opportunity technical document repository is not configured'); },
+  async archiveEquipment() { throw new Error('Opportunity technical document repository is not configured'); },
+  async listDocumentsByOpportunity() { return []; },
+  async findDocumentByIdentity() { return null; },
+  async getDocumentDetail() { return null; },
+  async createDocumentVersionOne() { throw new Error('Opportunity technical document repository is not configured'); },
+  async addUploadedVersion() { throw new Error('Opportunity technical document repository is not configured'); },
+  async findFile() { return null; }
+};
+
 const emptyProjectExecutionRepository = {
   async findById() { return null; },
   async findByOpportunity() { return null; },
@@ -737,6 +754,8 @@ export function createApp(options = {}) {
     || (pool ? createOpportunityResponsibilityRepository(pool) : emptyOpportunityResponsibilityRepository);
   const opportunityTechnicalDraftRepository = options.opportunityTechnicalDraftRepository
     || (pool ? createOpportunityTechnicalDraftRepository(pool) : emptyOpportunityTechnicalDraftRepository);
+  const opportunityTechnicalDocumentRepository = options.opportunityTechnicalDocumentRepository
+    || (pool ? createOpportunityTechnicalDocumentRepository(pool) : emptyOpportunityTechnicalDocumentRepository);
   const opportunityCommercialDraftRepository = options.opportunityCommercialDraftRepository
     || (pool ? createOpportunityCommercialDraftRepository(pool) : emptyOpportunityCommercialDraftRepository);
   const quotationPackageRepository = options.quotationPackageRepository
@@ -761,6 +780,8 @@ export function createApp(options = {}) {
     || (pool ? createBidPackageApprovalRepository(pool) : emptyBidPackageApprovalRepository);
   const technicalDocumentService = options.technicalDocumentService
     || createTechnicalDocumentService({ fontPath: config.technicalDocumentFontPath });
+  const technicalMaterialDocumentService = options.technicalMaterialDocumentService
+    || createTechnicalMaterialDocumentService({ fontPath: config.technicalDocumentFontPath });
   const workflowTransaction = 'workflowTransaction' in options
     ? options.workflowTransaction
     : pool ? createWorkflowTransaction(pool) : null;
@@ -964,6 +985,14 @@ export function createApp(options = {}) {
     opportunityRepository,
     projectExecutionRepository,
     approvalSettingRepository
+  }));
+  app.use(opportunityTechnicalDocumentRoutes({
+    opportunityRepository,
+    opportunityResponsibilityRepository,
+    technicalTemplateRepository,
+    opportunityTechnicalDocumentRepository,
+    technicalMaterialDocumentService,
+    maxUploadMb: config.maxUploadMb
   }));
   app.use(opportunityTechnicalDraftRoutes({
     opportunityRepository,

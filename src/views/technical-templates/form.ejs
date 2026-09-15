@@ -21,10 +21,38 @@
             <%= t('templateName') %>
             <input name="name" maxlength="200" value="<%= template.name %>" required>
           </label>
-          <label>
-            <%= t('productFamily') %>
-            <input name="productFamily" maxlength="200" value="<%= template.productFamily %>" required>
-          </label>
+          <div class="form-grid">
+            <label>
+              <%= t('technicalDocumentType') %>
+              <% if (mode === 'new' || !template.productCategoryCode) { %>
+                <select name="documentType" required>
+                  <% for (const type of documentTypes) { %>
+                    <option value="<%= type.value %>" <%= template.documentType === type.value ? 'selected' : '' %>><%= t(`technicalDocumentType.${type.value}`) %></option>
+                  <% } %>
+                </select>
+              <% } else { %>
+                <input value="<%= t(`technicalDocumentType.${template.documentType}`) %>" disabled>
+                <input type="hidden" name="documentType" value="<%= template.documentType %>">
+              <% } %>
+            </label>
+            <label>
+              <%= t('productCategory') %>
+              <% if (mode === 'new' || !template.productCategoryCode) { %>
+                <select name="productCategoryCode" required>
+                  <option value=""><%= t('selectProductCategory') %></option>
+                  <% for (const category of productCategories) { %>
+                    <option value="<%= category.code %>" <%= template.productCategoryCode === category.code ? 'selected' : '' %>><%= language === 'zh' ? category.labelZh : `${category.labelEn} / ${category.labelZh}` %></option>
+                  <% } %>
+                </select>
+              <% } else { %>
+                <% const category = productCategories.find((item) => item.code === template.productCategoryCode); %>
+                <input value="<%= language === 'zh' ? category.labelZh : `${category.labelEn} / ${category.labelZh}` %>" disabled>
+                <input type="hidden" name="productCategoryCode" value="<%= template.productCategoryCode %>">
+              <% } %>
+            </label>
+          </div>
+          <div class="muted"><%= t('templateClassificationImmutableNotice') %></div>
+          <input type="hidden" name="productFamily" value="<%= template.productFamily || 'Controlled product category' %>">
           <label>
             <%= t('productModel') %>
             <input name="productModel" maxlength="200" value="<%= template.productModel || '' %>">

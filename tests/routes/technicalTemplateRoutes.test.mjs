@@ -19,6 +19,8 @@ async function createTechnicalTemplateAgent(options = {}) {
     id: 4,
     templateCode: 'MX-100',
     name: 'Mixer Technical Agreement',
+    documentType: 'technical_agreement',
+    productCategoryCode: 'mixer',
     productFamily: 'Mixing',
     productModel: 'MX-100',
     application: 'Polymerization',
@@ -193,7 +195,7 @@ test('quotation engineers only receive published templates and clauses', async (
 
   const templates = await agent.get('/technical-templates');
   assert.equal(templates.status, 200);
-  assert.match(templates.text, /Technical Agreement Templates/);
+  assert.match(templates.text, /Technical Document Templates/);
   assert.match(templates.text, /MX-100/);
   assert.match(templates.text, /href="\/technical-templates"/);
   assert.match(templates.text, /href="\/bid-center\/clauses"/);
@@ -222,7 +224,7 @@ test('technical manager sees bilingual template controls and revision audit data
   const response = await agent.get('/technical-templates/4');
 
   assert.equal(response.status, 200);
-  assert.match(response.text, /产品技术协议模板/);
+  assert.match(response.text, /产品技术资料模板/);
   assert.match(response.text, /TPL-R1/);
   assert.match(response.text, /项目依据/);
   assert.match(response.text, /处理能力/);
@@ -240,6 +242,8 @@ test('technical manager creates and advances template revisions through controll
   const created = await agent.post('/technical-templates').type('form').send({
     templateCode: 'rx-1',
     name: 'Reactor Agreement',
+    documentType: 'technical_agreement',
+    productCategoryCode: 'mixer',
     productFamily: 'Reactor',
     productModel: 'RX-1',
     application: 'Polymerization',

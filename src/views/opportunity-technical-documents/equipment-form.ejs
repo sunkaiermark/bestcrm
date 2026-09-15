@@ -1,0 +1,32 @@
+<%- include('../partials/app-start', { title: `${mode === 'new' ? t('addEquipmentItem') : t('editEquipmentItem')} - ${opportunity.opportunityNo} - BESTCRM`, activeNav: 'opportunities' }) %>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>/technical-documents"><%= t('opportunityTechnicalDocuments') %></a> / <%= mode === 'new' ? t('addEquipmentItem') : t('editEquipmentItem') %></p>
+        <header class="page-header"><h1><%= mode === 'new' ? t('addEquipmentItem') : t('editEquipmentItem') %></h1></header>
+        <form class="form-panel" method="post" action="<%= action %>">
+          <%- csrfField() %>
+          <div class="form-grid">
+            <label>
+              <%= t('productCategory') %>
+              <select name="productCategoryCode" required>
+                <option value=""><%= t('selectProductCategory') %></option>
+                <% for (const category of productCategories) { %>
+                  <option value="<%= category.code %>" <%= equipment.productCategoryCode === category.code ? 'selected' : '' %>><%= language === 'zh' ? category.labelZh : `${category.labelEn} / ${category.labelZh}` %></option>
+                <% } %>
+              </select>
+            </label>
+            <label><%= t('quantity') %><input name="quantity" type="number" min="1" max="100000" value="<%= equipment.quantity || 1 %>" required></label>
+          </div>
+          <div class="form-grid">
+            <label><%= t('equipmentName') %><input name="equipmentName" maxlength="300" value="<%= equipment.equipmentName || '' %>" required></label>
+            <label><%= t('productModel') %><input name="model" maxlength="200" value="<%= equipment.model || '' %>"></label>
+          </div>
+          <label>
+            <%= t('technicalParameters') %>
+            <textarea name="technicalParameters" maxlength="220000"><%= technicalParametersText %></textarea>
+            <span class="muted"><%= t('technicalParametersHint') %></span>
+          </label>
+          <div class="inline-actions">
+            <button type="submit"><%= mode === 'new' ? t('addEquipmentItem') : t('save') %></button>
+            <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents"><%= t('cancel') %></a>
+          </div>
+        </form>
+<%- include('../partials/app-end') %>

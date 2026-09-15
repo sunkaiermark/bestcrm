@@ -1,11 +1,15 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import {
   DEFAULT_TECHNICAL_AGREEMENT_SCHEMA,
+  TECHNICAL_DOCUMENT_DEFAULT_SCHEMAS,
+  TECHNICAL_DOCUMENT_TYPES,
+  TECHNICAL_PRODUCT_CATEGORIES,
   TECHNICAL_SECTION_CONDITION_OPERATORS,
   TECHNICAL_SECTION_TYPES,
   TECHNICAL_TEMPLATE_LANGUAGES,
   TECHNICAL_TEMPLATE_VARIABLE_SOURCES,
-  TECHNICAL_TEMPLATE_VARIABLE_TYPES
+  TECHNICAL_TEMPLATE_VARIABLE_TYPES,
+  technicalProductCategory
 } from '../domain/technicalTemplates.mjs';
 
 const languageSet = new Set(TECHNICAL_TEMPLATE_LANGUAGES);
@@ -13,6 +17,8 @@ const variableTypeSet = new Set(TECHNICAL_TEMPLATE_VARIABLE_TYPES);
 const variableSourceSet = new Set(TECHNICAL_TEMPLATE_VARIABLE_SOURCES);
 const sectionTypeSet = new Set(TECHNICAL_SECTION_TYPES);
 const sectionConditionOperatorSet = new Set(TECHNICAL_SECTION_CONDITION_OPERATORS);
+const documentTypeSet = new Set(TECHNICAL_DOCUMENT_TYPES.map((item) => item.value));
+const productCategorySet = new Set(TECHNICAL_PRODUCT_CATEGORIES.map((item) => item.code));
 const codePattern = /^[A-Z][A-Z0-9-]{0,31}$/;
 const variableKeyPattern = /^[a-z][a-z0-9_]{0,63}$/;
 const sectionKeyPattern = /^[a-z][a-z0-9_]{0,63}$/;
@@ -95,6 +101,26 @@ function normalizeLanguage(value) {
   const normalized = text(value);
   if (!languageSet.has(normalized)) {
     invalid('Template language is invalid');
+  }
+  return normalized;
+}
+
+function normalizeDocumentType(value) {
+  const normalized = text(value) || 'technical_agreement';
+  if (!documentTypeSet.has(normalized)) {
+    invalid('Technical document type is invalid');
+  }
+  return normalized;
+}
+
+function normalizeProductCategory(value, { required = false } = {}) {
+  const normalized = text(value);
+  if (!normalized) {
+    if (required) invalid('Product category is required');
+    return null;
+  }
+  if (!productCategorySet.has(normalized)) {
+    invalid('Product category is invalid');
   }
   return normalized;
 }
@@ -193,22 +219,36 @@ export function canViewTechnicalTemplate(user, template) {
 }
 
 export function normalizeTechnicalTemplateInput(input) {
+  const documentType = normalizeDocumentType(input.documentType);
+  const productCategoryCode = normalizeProductCategory(input.productCategoryCode, { required: true });
   return {
     templateCode: normalizeCode(input.templateCode, 'Template code'),
     name: requiredText(input.name, 'Template name', 200),
-    productFamily: requiredText(input.productFamily, 'Product family', 200),
+    documentType,
+    productCategoryCode,
+    productFamily: productCategoryCode
+      ? technicalProductCategory(productCategoryCode).labelZh
+      : requiredText(input.productFamily, 'Product family', 200),
     productModel: optionalText(input.productModel, 'Product model', 200),
     application: optionalText(input.application, 'Application', 300),
     language: normalizeLanguage(input.language),
     changeSummary: requiredText(input.changeSummary, 'Change summary', 2000),
-    contentSchema: DEFAULT_TECHNICAL_AGREEMENT_SCHEMA
+    contentSchema: JSON.parse(JSON.stringify(
+      TECHNICAL_DOCUMENT_DEFAULT_SCHEMAS[documentType] || DEFAULT_TECHNICAL_AGREEMENT_SCHEMA
+    ))
   };
 }
 
 export function normalizeTechnicalTemplateMetadataInput(input) {
+  const documentType = normalizeDocumentType(input.documentType);
+  const productCategoryCode = normalizeProductCategory(input.productCategoryCode, { required: true });
   return {
     name: requiredText(input.name, 'Template name', 200),
-    productFamily: requiredText(input.productFamily, 'Product family', 200),
+    documentType,
+    productCategoryCode,
+    productFamily: productCategoryCode
+      ? technicalProductCategory(productCategoryCode).labelZh
+      : requiredText(input.productFamily, 'Product family', 200),
     productModel: optionalText(input.productModel, 'Product model', 200),
     application: optionalText(input.application, 'Application', 300)
   };

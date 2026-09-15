@@ -1,0 +1,88 @@
+<%- include('../partials/app-start', { title: `${t('opportunityTechnicalDocuments')} - ${opportunity.opportunityNo} - BESTCRM`, activeNav: 'opportunities' }) %>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a> / <%= t('opportunityTechnicalDocuments') %></p>
+        <header class="page-header">
+          <div>
+            <h1><%= t('opportunityTechnicalDocuments') %></h1>
+            <div class="muted"><%= opportunity.title %></div>
+          </div>
+          <div class="inline-actions">
+            <% if (canManage) { %><a class="quick-action" href="/opportunities/<%= opportunity.id %>/technical-documents/equipment/new"><%= t('addEquipmentItem') %></a><% } %>
+            <a class="secondary-action" href="/opportunities/<%= opportunity.id %>"><%= t('back') %></a>
+          </div>
+        </header>
+
+        <section class="form-panel">
+          <strong><%= t('technicalDocumentVersionNotice') %></strong>
+          <div class="muted"><%= t('technicalDocumentHybridNotice') %></div>
+        </section>
+
+        <section class="list-section">
+          <div class="list-heading">
+            <div>
+              <h2><%= t('opportunityEquipmentItems') %></h2>
+              <div class="muted"><%= t('equipmentItemSnapshotNotice') %></div>
+            </div>
+          </div>
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead><tr><th><%= t('itemNumber') %></th><th><%= t('productCategory') %></th><th><%= t('equipmentName') %></th><th><%= t('productModel') %></th><th><%= t('quantity') %></th><th><%= t('technicalParameters') %></th><th><%= t('status') %></th><th><%= t('actions') %></th></tr></thead>
+              <tbody>
+                <% for (const item of equipmentItems) { %>
+                  <tr>
+                    <td><strong><%= String(item.itemNo).padStart(2, '0') %></strong></td>
+                    <td><%= t(`technicalProductCategory.${item.productCategoryCode}`) %></td>
+                    <td><%= item.equipmentName %></td>
+                    <td><%= item.model || '-' %></td>
+                    <td><%= item.quantity %></td>
+                    <td><%= (item.technicalParameters || []).length %></td>
+                    <td><span class="status"><%= item.archivedAt ? t('archived') : t('active') %></span></td>
+                    <td>
+                      <% if (canManage && !item.archivedAt) { %>
+                        <div class="inline-actions">
+                          <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents/equipment/<%= item.id %>/edit"><%= t('edit') %></a>
+                          <form method="post" action="/opportunities/<%= opportunity.id %>/technical-documents/equipment/<%= item.id %>/archive" onsubmit="return confirm('<%= t('archiveEquipmentConfirm') %>')">
+                            <%- csrfField() %><button class="danger-action" type="submit"><%= t('archive') %></button>
+                          </form>
+                        </div>
+                      <% } else { %>-<% } %>
+                    </td>
+                  </tr>
+                <% } %>
+                <% if (!equipmentItems.length) { %><tr><td colspan="8" class="empty"><%= t('noOpportunityEquipmentItems') %></td></tr><% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="list-section">
+          <div class="list-heading">
+            <div><h2><%= t('formalTechnicalDocuments') %></h2></div>
+            <% if (canManage && equipmentItems.some((item) => !item.archivedAt)) { %>
+              <div class="inline-actions">
+                <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents/new?type=datasheet"><%= t('technicalDocumentType.datasheet') %></a>
+                <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents/new?type=technical_agreement"><%= t('technicalDocumentType.technical_agreement') %></a>
+                <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents/new?type=bidding_document"><%= t('technicalDocumentType.bidding_document') %></a>
+              </div>
+            <% } %>
+          </div>
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead><tr><th><%= t('technicalDocumentType') %></th><th><%= t('documentCode') %></th><th><%= t('documentTitle') %></th><th><%= t('currentVersion') %></th><th><%= t('equipmentCount') %></th><th><%= t('updatedAt') %></th><th><%= t('actions') %></th></tr></thead>
+              <tbody>
+                <% for (const document of documents) { %>
+                  <tr>
+                    <td><%= t(`technicalDocumentType.${document.documentType}`) %></td>
+                    <td><strong><%= document.documentCode %></strong></td>
+                    <td><%= document.title %></td>
+                    <td><%= document.currentVersionLabel %></td>
+                    <td><%= document.itemCount %></td>
+                    <td><%= document.updatedAt ? new Date(document.updatedAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-GB') : '-' %></td>
+                    <td><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents/<%= document.id %>"><%= t('open') %></a></td>
+                  </tr>
+                <% } %>
+                <% if (!documents.length) { %><tr><td colspan="7" class="empty"><%= t('noFormalTechnicalDocuments') %></td></tr><% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

@@ -60,6 +60,8 @@ test('template input creates a safe structured standard-section schema', () => {
   const normalized = normalizeTechnicalTemplateInput({
     templateCode: 'mx-100',
     name: 'Mixer Technical Agreement',
+    documentType: 'technical_agreement',
+    productCategoryCode: 'mixer',
     productFamily: 'Mixing',
     productModel: 'MX-100',
     application: 'Polymerization',
@@ -68,6 +70,8 @@ test('template input creates a safe structured standard-section schema', () => {
   });
 
   assert.equal(normalized.templateCode, 'MX-100');
+  assert.equal(normalized.productCategoryCode, 'mixer');
+  assert.equal(normalized.productFamily, '搅拌机');
   assert.equal(normalized.language, 'bilingual');
   assert.equal(normalized.contentSchema.schemaVersion, 1);
   assert.equal(normalized.contentSchema.sections.length, 18);
@@ -135,8 +139,10 @@ test('technical manager creates templates and publishes only pending revisions',
 
   const created = await createTechnicalTemplate(repository, actor, {
     templateCode: 'RX-1',
-    name: 'Reactor Agreement',
-    productFamily: 'Reactor',
+    name: 'Mixer Agreement',
+    documentType: 'technical_agreement',
+    productCategoryCode: 'mixer',
+    productFamily: 'Mixing',
     language: 'en',
     changeSummary: 'Initial revision'
   });

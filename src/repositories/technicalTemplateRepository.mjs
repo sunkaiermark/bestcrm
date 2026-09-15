@@ -22,6 +22,8 @@ function mapTemplateRow(row) {
     id: Number(row.id),
     templateCode: row.template_code,
     name: row.name,
+    documentType: row.document_type || 'technical_agreement',
+    productCategoryCode: row.product_category_code || '',
     productFamily: row.product_family,
     productModel: row.product_model || '',
     application: row.application || '',
@@ -205,14 +207,29 @@ const clauseSelect = `
 
 export function createTechnicalTemplateRepository(queryTarget) {
   return {
-    async listTemplates({ publishedOnly = false } = {}) {
+    async listTemplates({ publishedOnly = false, documentType = null, productCategoryCodes = [] } = {}) {
+      const conditions = [];
+      const params = [];
+      if (publishedOnly) {
+        conditions.push(`t.is_active = true
+          AND t.current_published_revision_id IS NOT NULL
+          AND current_revision.status = 'published'`);
+      }
+      if (documentType) {
+        params.push(documentType);
+        conditions.push(`t.document_type = $${params.length}`);
+      }
+      if (Array.isArray(productCategoryCodes) && productCategoryCodes.length) {
+        params.push(productCategoryCodes);
+        conditions.push(`t.product_category_code = ANY($${params.length}::text[])`);
+      }
       const result = await queryTarget.query(`
         ${templateSelect}
-        ${publishedOnly ? `WHERE t.is_active = true
-          AND t.current_published_revision_id IS NOT NULL
-          AND current_revision.status = 'published'` : ''}
-        ORDER BY t.is_active DESC, t.product_family ASC, t.name ASC, t.template_code ASC
-      `);
+        ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
+        ORDER BY t.is_active DESC, t.document_type ASC,
+          t.product_category_code ASC NULLS LAST, t.product_family ASC,
+          t.name ASC, t.template_code ASC
+      `, params);
       return result.rows.map(mapTemplateRow);
     },
 
@@ -280,9 +297,9 @@ export function createTechnicalTemplateRepository(queryTarget) {
         WITH inserted_template AS (
           INSERT INTO technical_agreement_templates (
             template_code, name, product_family, product_model, application,
-            language, created_by, updated_by
+            language, document_type, product_category_code, created_by, updated_by
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $7)
+          VALUES ($1, $2, $3, $4, $5, $6, $10, $11, $7, $7)
           RETURNING *
         ), inserted_revision AS (
           INSERT INTO technical_agreement_template_revisions (
@@ -312,7 +329,9 @@ export function createTechnicalTemplateRepository(queryTarget) {
         input.language,
         actorUserId,
         input.changeSummary,
-        JSON.stringify(input.contentSchema)
+        JSON.stringify(input.contentSchema),
+        input.documentType || 'technical_agreement',
+        input.productCategoryCode || null
       ]);
       return result.rows[0] ? {
         id: Number(result.rows[0].id),
@@ -325,9 +344,11 @@ export function createTechnicalTemplateRepository(queryTarget) {
         WITH updated AS (
           UPDATE technical_agreement_templates
           SET name = $2,
-              product_family = $3,
+              product_family = CASE WHEN product_category_code IS NULL THEN $3 ELSE product_family END,
               product_model = $4,
               application = $5,
+              document_type = CASE WHEN product_category_code IS NULL THEN $7 ELSE document_type END,
+              product_category_code = COALESCE(product_category_code, $8),
               updated_by = $6,
               updated_at = now()
           WHERE id = $1
@@ -341,7 +362,16 @@ export function createTechnicalTemplateRepository(queryTarget) {
           FROM updated
         )
         SELECT id FROM updated
-      `, [id, input.name, input.productFamily, input.productModel, input.application, actorUserId]);
+      `, [
+        id,
+        input.name,
+        input.productFamily,
+        input.productModel,
+        input.application,
+        actorUserId,
+        input.documentType || 'technical_agreement',
+        input.productCategoryCode || null
+      ]);
       return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
     },
 

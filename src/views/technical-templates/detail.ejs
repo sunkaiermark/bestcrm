@@ -4,7 +4,7 @@
         <header class="page-header">
           <div>
             <h1><%= template.templateCode %> · <%= template.name %></h1>
-            <div class="muted"><%= t(`templateLanguage.${template.language}`) %> · <%= template.productFamily %></div>
+            <div class="muted"><%= t(`technicalDocumentType.${template.documentType || 'technical_agreement'}`) %> · <%= template.productCategoryCode ? t(`technicalProductCategory.${template.productCategoryCode}`) : template.productFamily %> · <%= t(`templateLanguage.${template.language}`) %></div>
           </div>
           <% if (canAuthor) { %>
             <a class="secondary-action" href="/technical-templates/<%= template.id %>/edit"><%= t('editTechnicalTemplate') %></a>
@@ -14,7 +14,8 @@
         <section class="detail-section">
           <h2><%= t('templateMetadata') %></h2>
           <dl class="detail-grid">
-            <div><dt><%= t('productFamily') %></dt><dd><%= template.productFamily %></dd></div>
+            <div><dt><%= t('technicalDocumentType') %></dt><dd><%= t(`technicalDocumentType.${template.documentType || 'technical_agreement'}`) %></dd></div>
+            <div><dt><%= t('productCategory') %></dt><dd><%= template.productCategoryCode ? t(`technicalProductCategory.${template.productCategoryCode}`) : template.productFamily %></dd></div>
             <div><dt><%= t('productModel') %></dt><dd><%= template.productModel || '-' %></dd></div>
             <div><dt><%= t('application') %></dt><dd><%= template.application || '-' %></dd></div>
             <div><dt><%= t('templateCurrentRevision') %></dt><dd><%= template.currentRevisionLabel || '-' %></dd></div>

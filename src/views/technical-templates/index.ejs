@@ -19,13 +19,37 @@
         </section>
 
         <section class="list-section">
+          <div class="list-heading">
+            <div><h2><%= t('technicalTemplateMatrix') %></h2><div class="muted"><%= t('technicalTemplateMatrixDescription') %></div></div>
+          </div>
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead><tr><th><%= t('productCategory') %></th><% for (const type of documentTypes) { %><th><%= t(`technicalDocumentType.${type.value}`) %></th><% } %></tr></thead>
+              <tbody>
+                <% for (const category of productCategories) { %>
+                  <tr>
+                    <td><strong><%= language === 'zh' ? category.labelZh : `${category.labelEn} / ${category.labelZh}` %></strong></td>
+                    <% for (const type of documentTypes) { const slot = templates.find((template) => template.documentType === type.value && template.productCategoryCode === category.code && template.isActive); %>
+                      <td>
+                        <% if (slot) { %><a href="/technical-templates/<%= slot.id %>"><%= slot.templateCode %> · <%= slot.currentRevisionLabel || t('templateStatus.draft') %></a><% } else { %><span class="muted"><%= t('templateSlotEmpty') %></span><% } %>
+                      </td>
+                    <% } %>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section class="list-section">
           <div class="list-body">
             <table class="list-table content-fit-table">
               <thead>
                 <tr>
                   <th><%= t('templateCode') %></th>
                   <th><%= t('templateName') %></th>
-                  <th><%= t('productFamily') %></th>
+                  <th><%= t('technicalDocumentType') %></th>
+                  <th><%= t('productCategory') %></th>
                   <th><%= t('productModel') %></th>
                   <th><%= t('application') %></th>
                   <th><%= t('outputLanguage') %></th>
@@ -39,7 +63,8 @@
                   <tr>
                     <td><strong><%= template.templateCode %></strong></td>
                     <td><%= template.name %></td>
-                    <td><%= template.productFamily %></td>
+                    <td><%= t(`technicalDocumentType.${template.documentType || 'technical_agreement'}`) %></td>
+                    <td><%= template.productCategoryCode ? t(`technicalProductCategory.${template.productCategoryCode}`) : template.productFamily %></td>
                     <td><%= template.productModel || '-' %></td>
                     <td><%= template.application || '-' %></td>
                     <td><%= t(`templateLanguage.${template.language}`) %></td>
@@ -51,7 +76,7 @@
                   </tr>
                 <% } %>
                 <% if (!templates.length) { %>
-                  <tr><td colspan="9" class="empty"><%= t('noTechnicalTemplates') %></td></tr>
+                  <tr><td colspan="10" class="empty"><%= t('noTechnicalTemplates') %></td></tr>
                 <% } %>
               </tbody>
             </table>

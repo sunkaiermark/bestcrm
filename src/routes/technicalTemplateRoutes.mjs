@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import {
+  TECHNICAL_DOCUMENT_TYPES,
+  TECHNICAL_PRODUCT_CATEGORIES,
   TECHNICAL_SECTION_CONDITION_OPERATORS,
   TECHNICAL_SECTION_TYPES,
   TECHNICAL_TEMPLATE_LANGUAGES,
@@ -84,6 +86,8 @@ function emptyTemplate() {
   return {
     templateCode: '',
     name: '',
+    documentType: 'technical_agreement',
+    productCategoryCode: '',
     productFamily: '',
     productModel: '',
     application: '',
@@ -127,7 +131,9 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
       res.render('technical-templates/index', {
         templates,
         canAuthor: canAuthorTechnicalTemplates(req.currentUser),
-        canManageVariables: canManageTechnicalVariableCatalog(req.currentUser)
+        canManageVariables: canManageTechnicalVariableCatalog(req.currentUser),
+        documentTypes: TECHNICAL_DOCUMENT_TYPES,
+        productCategories: TECHNICAL_PRODUCT_CATEGORIES
       });
     } catch (error) {
       handleError(error, res, next);
@@ -139,7 +145,9 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
       mode: 'new',
       action: '/technical-templates',
       template: emptyTemplate(),
-      languages: TECHNICAL_TEMPLATE_LANGUAGES
+      languages: TECHNICAL_TEMPLATE_LANGUAGES,
+      documentTypes: TECHNICAL_DOCUMENT_TYPES,
+      productCategories: TECHNICAL_PRODUCT_CATEGORIES
     });
   });
 
@@ -224,7 +232,9 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
         mode: 'edit',
         action: `/technical-templates/${template.id}`,
         template,
-        languages: TECHNICAL_TEMPLATE_LANGUAGES
+        languages: TECHNICAL_TEMPLATE_LANGUAGES,
+        documentTypes: TECHNICAL_DOCUMENT_TYPES,
+        productCategories: TECHNICAL_PRODUCT_CATEGORIES
       });
     } catch (error) {
       handleError(error, res, next);
