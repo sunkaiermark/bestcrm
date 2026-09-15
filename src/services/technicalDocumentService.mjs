@@ -20,7 +20,6 @@ import {
   WidthType
 } from 'docx';
 import PDFDocument from 'pdfkit';
-import { createBidDocumentRenderer } from './bidDocumentRenderer.mjs';
 
 const NAVY = '244C7C';
 const ORANGE = 'F15A24';
@@ -405,7 +404,6 @@ function generatePdfBuffer(draft, opportunity, reviewer, fontPath) {
 }
 
 export function createTechnicalDocumentService(options = {}) {
-  const bidRenderer = options.bidDocumentRenderer || createBidDocumentRenderer(options);
   return {
     async generateApprovedDocuments({ draft, opportunity, reviewer }) {
       ensureApprovedDraft(draft);
@@ -435,17 +433,6 @@ export function createTechnicalDocumentService(options = {}) {
           sha256: checksum(pdfContent)
         }
       ];
-    },
-
-    async generateControlledBidDocuments(input) {
-      ensureApprovedDraft(input.draft);
-      return bidRenderer.generatePackage({
-        ...input,
-        packageType: 'technical',
-        technicalDraft: input.draft,
-        versionLabel: input.versionLabel || input.draft.formalVersionLabel || documentNo(input.draft),
-        approvedAt: input.approvedAt || input.draft.reviewedAt
-      });
     }
   };
 }

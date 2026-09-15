@@ -176,9 +176,6 @@ export function loadConfig(env = process.env) {
     sessionCookieSecure,
     inquiryIntakeSecret: env.INQUIRY_INTAKE_SECRET || '',
     chatwootInquiryIntakeSecret: env.CHATWOOT_INQUIRY_INTAKE_SECRET || '',
-    bidCenter: {
-      enabled: booleanEnv(env.BID_CENTER_ENABLED, false)
-    },
     emailCenter: {
       enabled: emailCenterEnabled
     },

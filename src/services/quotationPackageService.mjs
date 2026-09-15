@@ -206,10 +206,6 @@ export async function getQuotationPackage(repository, user, opportunity, package
 
 export async function getQuotationPackageCreationOptions(repository, user, opportunity) {
   assertManage(user, opportunity);
-  if (typeof repository.hasBidWorkspace === 'function'
-    && await repository.hasBidWorkspace(opportunity.id)) {
-    throw new QuotationPackageValidationError('Use Bid Center to assemble this opportunity quotation package', 409);
-  }
   const [technicalSolutions, commercialQuotes, packages] = await Promise.all([
     repository.listApprovedTechnicalSolutions(opportunity.id),
     repository.listApprovedCommercialQuotes(opportunity.id),
@@ -230,10 +226,6 @@ export async function createQuotationPackageDraft(dependencies, user, opportunit
     ));
   }
   const repository = dependencies.quotationPackageRepository;
-  if (typeof repository.hasBidWorkspace === 'function'
-    && await repository.hasBidWorkspace(opportunity.id)) {
-    throw new QuotationPackageValidationError('Use Bid Center to assemble this opportunity quotation package', 409);
-  }
   const existingPackages = await repository.listByOpportunity(opportunity.id);
   if (existingPackages.some((item) => ['draft', 'pending', 'approved', 'accepted'].includes(item.status))) {
     throw new QuotationPackageValidationError('Finish the current quotation package before creating another revision', 409);

@@ -57,14 +57,6 @@ test('approval allocates the formal QP version under the opportunity lock', asyn
   assert.match(target.queries[0].sql, /submitted_by <> \$2/);
 });
 
-test('repository detects an opportunity already governed by Bid Center', async () => {
-  const target = fakeTarget([{ rows: [{ exists: true }] }]);
-  const repository = createQuotationPackageRepository(target);
-  assert.equal(await repository.hasBidWorkspace(20), true);
-  assert.match(target.queries[0].sql, /FROM opportunity_bid_workspaces/);
-  assert.deepEqual(target.queries[0].params, [20]);
-});
-
 test('customer email prefers the controlled complete PDF, attachment ZIP, and manifest', async () => {
   const target = fakeTarget([{ rows: [{
     source_type: 'complete_pdf', original_name: 'QP-V1.pdf', mime_type: 'application/pdf',
@@ -94,7 +86,7 @@ test('customer email falls back to legacy frozen attachments before controlled o
   assert.match(target.queries[1].sql, /FROM quotation_package_attachments/);
 });
 
-test('bid-center package mapping retains frozen workspace and commercial-version bindings', async () => {
+test('historical package mapping retains frozen legacy workspace and commercial-version bindings', async () => {
   const target = fakeTarget([
     { rows: [packageRow({ workspace_id: '40', commercial_draft_id: '42', commercial_draft_version_no: '3', review_source_package_id: '49' })] },
     { rows: [] },

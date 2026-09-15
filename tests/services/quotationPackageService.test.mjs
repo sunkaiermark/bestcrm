@@ -103,28 +103,33 @@ test('only assigned commercial manager can approve a pending package', async () 
   );
 });
 
-test('legacy quotation package mutations cannot bypass Bid Center completeness and approval routes', async () => {
-  const bidCenterDraft = draft({ status: 'pending', workspaceId: 40, submittedBy: 7 });
+test('historical workspace-linked quotation packages remain immutable', async () => {
+  const historicalDraft = draft({ status: 'pending', workspaceId: 40, submittedBy: 7 });
   await assert.rejects(
-    () => reviewQuotationPackage({ async approvePending() { throw new Error('must not run'); } }, commercialManager, opportunity, bidCenterDraft, 'approve', ''),
+    () => reviewQuotationPackage({ async approvePending() { throw new Error('must not run'); } }, commercialManager, opportunity, historicalDraft, 'approve', ''),
     /Forbidden/
   );
 });
 
-test('legacy quotation package creation cannot bypass an existing Bid Center workspace', async () => {
-  let listCalled = false;
+test('retired Bid Center does not block current quotation package creation', async () => {
+  const context = approvedContext();
+  let obsoleteCheckCalled = false;
   const repository = {
-    async hasBidWorkspace() { return true; },
-    async listByOpportunity() { listCalled = true; return []; }
+    async hasBidWorkspace() { obsoleteCheckCalled = true; throw new Error('obsolete check must not run'); },
+    async listByOpportunity() { return []; },
+    async getCreationContext() { return context; },
+    async createDraft(input) { return draft(input); },
+    async addAttachmentSnapshot() {},
+    async getPackageDetail() { return draft(); }
   };
-  await assert.rejects(
-    () => createQuotationPackageDraft({ quotationPackageRepository: repository }, sales, opportunity, {
-      technicalSolutionVersionId: 41, commercialQuoteId: 31, currency: 'USD', deliveryPeriod: '16 weeks'
-    }),
-    (error) => error instanceof QuotationPackageValidationError
-      && error.statusCode === 409 && /Use Bid Center/.test(error.message)
-  );
-  assert.equal(listCalled, false);
+  const created = await createQuotationPackageDraft({
+    quotationPackageRepository: repository,
+    quotationPackageFileReader: async () => Buffer.from('test')
+  }, sales, opportunity, {
+    technicalSolutionVersionId: 41, commercialQuoteId: 31, currency: 'USD', deliveryPeriod: '16 weeks'
+  });
+  assert.equal(created.id, 51);
+  assert.equal(obsoleteCheckCalled, false);
 });
 
 test('package comparison includes commercial fields, component versions and attachment checksums', () => {

@@ -14,12 +14,7 @@ import { submissionGuard } from './middleware/submissionGuard.mjs';
 import { createTrustedDeviceIntegration } from './middleware/trustedDevice.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
 import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
-import { createBidContentBlockRepository } from './repositories/bidContentBlockRepository.mjs';
-import { createBidPackageEditorRepository } from './repositories/bidPackageEditorRepository.mjs';
-import { createBidPackageApprovalRepository } from './repositories/bidPackageApprovalRepository.mjs';
-import { createBidWorkspaceRepository } from './repositories/bidWorkspaceRepository.mjs';
 import { createCommercialQuoteRepository } from './repositories/commercialQuoteRepository.mjs';
-import { createCommercialPackageTemplateRepository } from './repositories/commercialPackageTemplateRepository.mjs';
 import { createContractApprovalRepository } from './repositories/contractApprovalRepository.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
@@ -32,14 +27,12 @@ import { createLoginSecurityRepository } from './repositories/loginSecurityRepos
 import { createMfaRepository } from './repositories/mfaRepository.mjs';
 import { createNotificationRepository } from './repositories/notificationRepository.mjs';
 import { createOpportunityMaterialVersionRepository } from './repositories/opportunityMaterialVersionRepository.mjs';
-import { createOpportunityCommercialDraftRepository } from './repositories/opportunityCommercialDraftRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
 import { createProjectExecutionRepository } from './repositories/projectExecutionRepository.mjs';
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
 import { createOpportunityTechnicalDraftRepository } from './repositories/opportunityTechnicalDraftRepository.mjs';
 import { createOpportunityTechnicalDocumentRepository } from './repositories/opportunityTechnicalDocumentRepository.mjs';
 import { createQuotationPackageRepository } from './repositories/quotationPackageRepository.mjs';
-import { createQuotationPackageDocumentRepository } from './repositories/quotationPackageDocumentRepository.mjs';
 import { createRequirementUpdateRepository } from './repositories/requirementUpdateRepository.mjs';
 import { createRoleRepository } from './repositories/roleRepository.mjs';
 import { createSalesWorkRepository } from './repositories/salesWorkRepository.mjs';
@@ -51,8 +44,6 @@ import { createWorkbenchRepository } from './repositories/workbenchRepository.mj
 import { createWorkflowEventRepository } from './repositories/workflowEventRepository.mjs';
 import { accountRoutes } from './routes/accountRoutes.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
-import { bidCenterLibraryRoutes } from './routes/bidCenterLibraryRoutes.mjs';
-import { bidWorkspaceRoutes } from './routes/bidWorkspaceRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
 import { emailCenterRoutes } from './routes/emailCenterRoutes.mjs';
@@ -606,88 +597,6 @@ const emptyTechnicalTemplateRepository = {
   async retireClause() { throw new Error('Technical template repository is not configured'); }
 };
 
-const emptyQuotationPackageDocumentRepository = {
-  async listByWorkspace() { return []; },
-  async listByPackage() { return []; },
-  async findById() { return null; },
-  async lockPackage() {},
-  async createMany() { throw new Error('Quotation package document repository is not configured'); }
-};
-
-const emptyCommercialPackageTemplateRepository = {
-  async listTemplates() { return []; },
-  async getTemplateDetail() { return null; },
-  async findRevisionById() { return null; },
-  async createTemplate() { throw new Error('Commercial template repository is not configured'); },
-  async updateTemplate() { throw new Error('Commercial template repository is not configured'); },
-  async createRevision() { throw new Error('Commercial template repository is not configured'); },
-  async updateRevisionContent() { throw new Error('Commercial template repository is not configured'); },
-  async submitRevision() { throw new Error('Commercial template repository is not configured'); },
-  async publishRevision() { throw new Error('Commercial template repository is not configured'); },
-  async retireRevision() { throw new Error('Commercial template repository is not configured'); }
-};
-
-const emptyBidContentBlockRepository = {
-  async listBlocks() { return []; },
-  async getBlockDetail() { return null; },
-  async findRevisionById() { return null; },
-  async createBlock() { throw new Error('Bid content repository is not configured'); },
-  async updateBlock() { throw new Error('Bid content repository is not configured'); },
-  async updateRevision() { throw new Error('Bid content repository is not configured'); },
-  async updateDraft() { throw new Error('Bid content repository is not configured'); },
-  async createRevision() { throw new Error('Bid content repository is not configured'); },
-  async submitRevision() { throw new Error('Bid content repository is not configured'); },
-  async publishRevision() { throw new Error('Bid content repository is not configured'); },
-  async retireRevision() { throw new Error('Bid content repository is not configured'); }
-};
-
-const emptyBidWorkspaceRepository = {
-  async listPublishedOutputProfiles() { return []; },
-  async findPublishedOutputProfile() { return null; },
-  async listWorkspaces() { return []; },
-  async getWorkspaceDetail() { return null; },
-  async findByOpportunity() { return null; },
-  async getGenerationContext() { return null; },
-  async listCurrentPublishedContentSnapshots() { return []; },
-  async createWorkspace() { throw new Error('Bid workspace repository is not configured'); }
-};
-
-const emptyBidPackageEditorRepository = {
-  async listChanges() { return []; },
-  async listEvents() { return []; },
-  async listAttachments() { return []; },
-  async findAttachment() { return null; },
-  async listSuggestions() { return []; },
-  async updateTechnicalDraft() { throw new Error('Bid package editor repository is not configured'); },
-  async updateCommercialDraft() { throw new Error('Bid package editor repository is not configured'); },
-  async insertChange() { throw new Error('Bid package editor repository is not configured'); },
-  async insertEvent() { throw new Error('Bid package editor repository is not configured'); },
-  async touchWorkspace() { throw new Error('Bid package editor repository is not configured'); },
-  async createAttachment() { throw new Error('Bid package editor repository is not configured'); },
-  async removeAttachment() { throw new Error('Bid package editor repository is not configured'); },
-  async createSuggestion() { throw new Error('Bid package editor repository is not configured'); }
-};
-
-const emptyBidPackageApprovalRepository = {
-  async createCompletenessCheck() { throw new Error('Bid package approval repository is not configured'); },
-  async listCompletenessChecks() { return []; },
-  async setWorkspaceStatus() { throw new Error('Bid package approval repository is not configured'); },
-  async copyDraftArtifacts() { throw new Error('Bid package approval repository is not configured'); },
-  async submitCommercial() { throw new Error('Bid package approval repository is not configured'); },
-  async approveCommercial() { throw new Error('Bid package approval repository is not configured'); },
-  async rejectCommercial() { throw new Error('Bid package approval repository is not configured'); },
-  async cloneRejectedCommercial() { throw new Error('Bid package approval repository is not configured'); },
-  async createCompleteDraft() { throw new Error('Bid package approval repository is not configured'); },
-  async submitComplete() { throw new Error('Bid package approval repository is not configured'); },
-  async cloneRejectedComplete() { throw new Error('Bid package approval repository is not configured'); }
-};
-
-const emptyOpportunityCommercialDraftRepository = {
-  async createDraft() { throw new Error('Opportunity commercial draft repository is not configured'); },
-  async listByWorkspace() { return []; },
-  async getDraftDetail() { return null; }
-};
-
 export function createApp(options = {}) {
   const config = { ...loadConfig(), ...options };
   const shouldCreatePool = !options.userRepository && config.databaseUrl;
@@ -756,28 +665,14 @@ export function createApp(options = {}) {
     || (pool ? createOpportunityTechnicalDraftRepository(pool) : emptyOpportunityTechnicalDraftRepository);
   const opportunityTechnicalDocumentRepository = options.opportunityTechnicalDocumentRepository
     || (pool ? createOpportunityTechnicalDocumentRepository(pool) : emptyOpportunityTechnicalDocumentRepository);
-  const opportunityCommercialDraftRepository = options.opportunityCommercialDraftRepository
-    || (pool ? createOpportunityCommercialDraftRepository(pool) : emptyOpportunityCommercialDraftRepository);
   const quotationPackageRepository = options.quotationPackageRepository
     || (pool ? createQuotationPackageRepository(pool) : emptyQuotationPackageRepository);
-  const quotationPackageDocumentRepository = options.quotationPackageDocumentRepository
-    || (pool ? createQuotationPackageDocumentRepository(pool) : emptyQuotationPackageDocumentRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
   const salesWorkRepository = options.salesWorkRepository || (pool ? createSalesWorkRepository(pool) : emptySalesWorkRepository);
   const technicalTemplateRepository = options.technicalTemplateRepository
     || (pool ? createTechnicalTemplateRepository(pool) : emptyTechnicalTemplateRepository);
-  const commercialPackageTemplateRepository = options.commercialPackageTemplateRepository
-    || (pool ? createCommercialPackageTemplateRepository(pool) : emptyCommercialPackageTemplateRepository);
-  const bidContentBlockRepository = options.bidContentBlockRepository
-    || (pool ? createBidContentBlockRepository(pool) : emptyBidContentBlockRepository);
-  const bidWorkspaceRepository = options.bidWorkspaceRepository
-    || (pool ? createBidWorkspaceRepository(pool) : emptyBidWorkspaceRepository);
-  const bidPackageEditorRepository = options.bidPackageEditorRepository
-    || (pool ? createBidPackageEditorRepository(pool) : emptyBidPackageEditorRepository);
-  const bidPackageApprovalRepository = options.bidPackageApprovalRepository
-    || (pool ? createBidPackageApprovalRepository(pool) : emptyBidPackageApprovalRepository);
   const technicalDocumentService = options.technicalDocumentService
     || createTechnicalDocumentService({ fontPath: config.technicalDocumentFontPath });
   const technicalMaterialDocumentService = options.technicalMaterialDocumentService
@@ -852,7 +747,6 @@ export function createApp(options = {}) {
     res.locals.webPushPublicKey = configuredWebPushPublicKey;
     res.locals.emailCenterEnabled = Boolean(config.emailCenter?.enabled);
     res.locals.customerEmailSendingEnabled = Boolean(config.customerEmail?.enabled);
-    res.locals.bidCenterEnabled = Boolean(config.bidCenter?.enabled);
     next();
   });
   app.use(attachCurrentUser(userRepository));
@@ -909,34 +803,6 @@ export function createApp(options = {}) {
     authenticatorMfaEnabled
   }));
   app.use(technicalTemplateRoutes({ technicalTemplateRepository }));
-  app.use(bidCenterLibraryRoutes({
-    enabled: Boolean(config.bidCenter?.enabled),
-    commercialPackageTemplateRepository,
-    bidContentBlockRepository,
-    uploadDir: config.uploadDir,
-    maxUploadMb: config.maxUploadMb
-  }));
-  app.use(bidWorkspaceRoutes({
-    enabled: Boolean(config.bidCenter?.enabled),
-    opportunityRepository,
-    opportunityResponsibilityRepository,
-    technicalTemplateRepository,
-    commercialPackageTemplateRepository,
-    bidContentBlockRepository,
-    bidWorkspaceRepository,
-    bidPackageEditorRepository,
-    bidPackageApprovalRepository,
-    opportunityTechnicalDraftRepository,
-    opportunityCommercialDraftRepository,
-    quotationPackageRepository,
-    quotationPackageDocumentRepository,
-    todoRepository,
-    workflowEventRepository,
-    workflowTransaction,
-    uploadDir: config.uploadDir,
-    maxUploadMb: config.maxUploadMb,
-    bidDocumentOptions: options.bidDocumentOptions
-  }));
   app.use(customerRoutes({ customerRepository }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
   app.use(leadSubmissionRoutes({

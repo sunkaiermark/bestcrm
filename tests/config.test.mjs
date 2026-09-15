@@ -6,18 +6,14 @@ test('development config can use the local session secret default', () => {
   const config = loadConfig({ NODE_ENV: 'development' });
 
   assert.equal(config.sessionSecret, 'dev-session-secret');
-  assert.equal(config.bidCenter.enabled, false);
+  assert.equal(Object.hasOwn(config, 'bidCenter'), false);
   assert.equal(config.loginSecondFactor.enabled, false);
   assert.equal(config.maxUploadMb, 3072);
 });
 
-test('bid center stays disabled unless explicitly enabled with a supported boolean', () => {
-  assert.equal(loadConfig({ NODE_ENV: 'development' }).bidCenter.enabled, false);
-  assert.equal(loadConfig({ NODE_ENV: 'development', BID_CENTER_ENABLED: 'true' }).bidCenter.enabled, true);
-  assert.equal(loadConfig({ NODE_ENV: 'development', BID_CENTER_ENABLED: ' ON ' }).bidCenter.enabled, true);
-  assert.equal(loadConfig({ NODE_ENV: 'development', BID_CENTER_ENABLED: 'false' }).bidCenter.enabled, false);
-  assert.equal(loadConfig({ NODE_ENV: 'development', BID_CENTER_ENABLED: 'enabled' }).bidCenter.enabled, false);
-  assert.equal(loadConfig({ NODE_ENV: 'development', BID_CENTER_ENABLED: '2' }).bidCenter.enabled, false);
+test('retired Bid Center cannot be restored by its obsolete environment flag', () => {
+  assert.equal(Object.hasOwn(loadConfig({ NODE_ENV: 'development' }), 'bidCenter'), false);
+  assert.equal(Object.hasOwn(loadConfig({ NODE_ENV: 'development', BID_CENTER_ENABLED: 'true' }), 'bidCenter'), false);
 });
 
 test('config reads optional SMS login second-factor settings', () => {

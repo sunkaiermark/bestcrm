@@ -195,7 +195,6 @@
           <div class="page-actions opportunity-detail-actions">
             <a class="secondary-action" href="/opportunities" title="<%= t('backToList') %>" aria-label="<%= t('backToList') %>"><span aria-hidden="true">←</span> <%= t('backShort') %></a>
             <% if (customerEmailSendingEnabled) { %><a class="secondary-action" href="/email-center/compose?opportunityId=<%= opportunity.id %>" title="<%= t('composeCustomerEmail') %>" aria-label="<%= t('composeCustomerEmail') %>"><span aria-hidden="true">✉</span> <%= t('emailShort') %></a><% } %>
-            <% if (typeof bidCenterEnabled !== 'undefined' && bidCenterEnabled) { %><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/bid-workspace" title="<%= t('createOrOpenBidWorkspace') %>" aria-label="<%= t('createOrOpenBidWorkspace') %>"><%= t('biddingShort') %></a><% } %>
             <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents" title="<%= t('opportunityTechnicalDocuments') %>" aria-label="<%= t('opportunityTechnicalDocuments') %>"><%= t('technicalDocumentsShort') %></a>
             <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-drafts" title="<%= t('projectTechnicalDrafts') %>" aria-label="<%= t('projectTechnicalDrafts') %>"><%= t('technicalShort') %></a>
             <% if (typeof canEditOpportunity !== 'undefined' && canEditOpportunity) { %>

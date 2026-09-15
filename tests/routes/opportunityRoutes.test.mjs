@@ -797,8 +797,7 @@ test('opportunity framework text and common actions use selected Chinese languag
 
 test('opportunity detail uses compact header actions and hides repeated customer details', async () => {
   const { agent } = await createLoggedInAgent({
-    customerEmail: { enabled: true },
-    bidCenter: { enabled: true }
+    customerEmail: { enabled: true }
   });
 
   const detail = await agent.get('/opportunities/30');
@@ -807,8 +806,10 @@ test('opportunity detail uses compact header actions and hides repeated customer
   const headerHtml = detail.text.match(/<header class="page-header opportunity-detail-header">[\s\S]*?<\/header>/)?.[0] || '';
   assert.match(headerHtml, />←<\/span> Back<\/a>/);
   assert.match(headerHtml, />✉<\/span> Email<\/a>/);
-  assert.match(headerHtml, />Bidding<\/a>/);
+  assert.match(headerHtml, /href="\/opportunities\/30\/technical-documents"/);
+  assert.match(headerHtml, />Documents<\/a>/);
   assert.match(headerHtml, />Technical<\/a>/);
+  assert.doesNotMatch(headerHtml, /\/bid-workspace|>Bidding<\/a>/);
   assert.match(headerHtml, /OPP-20260605-abcdef12/);
   assert.doesNotMatch(headerHtml, /C000010|Acme Co/);
   assert.match(detail.text, /\.opportunity-detail-header\s*\{[\s\S]*grid-template-columns:\s*minmax\(720px,\s*68%\) minmax\(0,\s*1fr\);/);

@@ -11,7 +11,15 @@ An Opportunity may contain more than one product category and more than one equi
 2. `Technical Agreement`
 3. `Bidding Document`
 
-The existing `TS-D` / `TS-V` technical-solution approval history remains unchanged. This feature is an additive document workspace.
+The existing `TS-D` / `TS-V` technical-solution approval history remains unchanged. This workspace is the sole active customer technical-material workflow and replaces the legacy Bid Center.
+
+## Legacy Bid Center retirement
+
+- The legacy Bid Center navigation chapter and its Project Bids, Technical Package, Commercial Package, Standard Clauses, Public Materials, and Output Records entries are removed.
+- Legacy `/bid-center/*` routes and `/opportunities/:id/bid-workspace` are not mounted and return `404`, even if an obsolete `BID_CENTER_ENABLED=true` value remains in a deployment environment.
+- Opportunities expose only the new technical-material entry for `Datasheet`, `Technical Agreement`, and `Bidding Document` generation.
+- `/technical-templates` is the controlled master-template library for the three document types. The existing technical-clause library remains available for the unchanged `TS-D` / `TS-V` workflow; it is not a Bid Center entry.
+- Previously applied Bid Center migrations and stored database records are retained unchanged for audit and rollback. They have no active navigation or HTTP mutation path and are not consulted by the replacement workflow.
 
 ## Product categories
 

@@ -146,17 +146,6 @@ export function createQuotationPackageRepository(queryTarget) {
   return {
     supportsQuotationPackages: true,
 
-    async hasBidWorkspace(opportunityId) {
-      const result = await queryTarget.query(`
-        SELECT EXISTS (
-          SELECT 1
-          FROM opportunity_bid_workspaces
-          WHERE opportunity_id = $1
-        ) AS exists
-      `, [opportunityId]);
-      return result.rows[0]?.exists === true;
-    },
-
     async listByOpportunity(opportunityId) {
       const result = await queryTarget.query(`
         ${packageSelect}

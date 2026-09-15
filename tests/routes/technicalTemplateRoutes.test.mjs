@@ -197,8 +197,10 @@ test('quotation engineers only receive published templates and clauses', async (
   assert.equal(templates.status, 200);
   assert.match(templates.text, /Technical Document Templates/);
   assert.match(templates.text, /MX-100/);
+  assert.match(templates.text, /Technical Documents/);
   assert.match(templates.text, /href="\/technical-templates"/);
-  assert.match(templates.text, /href="\/bid-center\/clauses"/);
+  assert.match(templates.text, /href="\/technical-clauses"/);
+  assert.doesNotMatch(templates.text, /\/bid-center\//);
   assert.doesNotMatch(templates.text, /New Technical Template/);
   assert.deepEqual(calls[0], { method: 'listTemplates', filter: { publishedOnly: true } });
 
@@ -224,6 +226,8 @@ test('technical manager sees bilingual template controls and revision audit data
   const response = await agent.get('/technical-templates/4');
 
   assert.equal(response.status, 200);
+  assert.match(response.text, /技术资料中心/);
+  assert.doesNotMatch(response.text, /标书中心|\/bid-center\//);
   assert.match(response.text, /产品技术资料模板/);
   assert.match(response.text, /TPL-R1/);
   assert.match(response.text, /项目依据/);

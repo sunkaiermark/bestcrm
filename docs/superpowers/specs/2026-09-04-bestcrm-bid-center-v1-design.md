@@ -1,7 +1,9 @@
 # BESTCRM 标书中心 V1 设计规范
 
+> 退役通知（2026-09-15）：本规范仅保留为历史审计资料。旧标书中心已由商机下的 Datasheet、Technical Agreement 和 Bidding Document 工作流完全取代，不得据此恢复、部署或继续实施旧功能。
+
 - 日期：2026-09-04
-- 状态：Frozen V1
+- 状态：Retired（历史冻结件）
 - 业务确认日期：2026-09-04
 - 业务确认指令：`确认冻结 BESTCRM 标书中心 V1`
 - 冻结候选稿 SHA-256：`14c43327e35e82432ead45b1c6b821f46bd74e474a0f17c03efdce00a2b526ba`
