@@ -217,6 +217,19 @@ test('duplicate Message-ID returns the existing archive without creating records
 test('imported sent mail joins the referenced opportunity thread and records its mailbox owner', async () => {
   const thread = { id: 4, inquiryId: 8, opportunityId: 20, lastMessageAt: '2026-09-03T01:00:00Z' };
   const captured = {};
+  const rawCapture = {
+    mailboxKey: 'markyang@sunkaier.com',
+    providerName: 'imap',
+    providerMailbox: 'Sent Messages',
+    providerUidValidity: '5',
+    providerUid: 12,
+    rfcMessageIdHint: 'sent@example.com',
+    sourceReceivedAt: '2026-09-03T02:00:00Z',
+    storedPath: 'email-raw/markyang/sent-12.eml',
+    fileSize: 128,
+    sha256: 'a'.repeat(64),
+    scan: { engine: 'test', verdict: 'clean' }
+  };
   const candidate = parsed({
     mailboxKey: 'markyang@sunkaier.com',
     messageId: 'sent@example.com',
@@ -235,6 +248,11 @@ test('imported sent mail joins the referenced opportunity thread and records its
       async findMessageIdentity() { return null; },
       async findThreadByReferences(ids) { assert.deepEqual(ids, ['rfq@example.com']); return thread; },
       async findActivePersonalMailboxOwner(address) { assert.equal(address, 'markyang@sunkaier.com'); return 7; },
+      async createRawMessage(input) {
+        return { rawMessage: { id: 81, ...input }, created: true };
+      },
+      async createRawScanAttempt(input) { captured.rawScan = input; return input; },
+      async createRawProcessingAttempt(input) { captured.rawProcessing = input; return input; },
       async createImportedOutboundMessage(input) {
         captured.message = input;
         return { id: 13, ...input, direction: 'outbound' };
@@ -242,13 +260,18 @@ test('imported sent mail joins the referenced opportunity thread and records its
       async createMailboxDelivery(input) { captured.delivery = input; return input; },
       async touchThread(id, at) { captured.touch = [id, at]; }
     }
-  }, candidate);
+  }, candidate, { rawCapture });
 
   assert.equal(result.duplicate, false);
   assert.equal(captured.message.threadId, 4);
   assert.equal(captured.message.authoredBy, 7);
+  assert.equal(captured.message.rawMessageId, undefined);
+  assert.equal(captured.message.rawEmlStoredPath, undefined);
   assert.equal(captured.delivery.direction, 'outbound');
   assert.equal(captured.delivery.mailboxKey, 'markyang@sunkaier.com');
+  assert.equal(captured.delivery.rawMessageId, 81);
+  assert.equal(captured.rawProcessing.rawMessageId, 81);
+  assert.equal(captured.rawProcessing.outcome, 'succeeded');
   assert.deepEqual(captured.touch, [4, '2026-09-03T02:00:00Z']);
 });
 

@@ -393,11 +393,6 @@ export async function archiveImportedOutboundEmailRecord(repositories, parsed, o
     : null;
   const archivedMessage = await emailArchiveRepository.createImportedOutboundMessage({
     ...message,
-    rawMessageId: rawMessage?.id || null,
-    rawEmlStoredPath: rawMessage?.storedPath || null,
-    rawEmlFileSize: rawMessage?.fileSize || null,
-    rawEmlSha256: rawMessage?.sha256 || null,
-    importedAt: rawMessage ? new Date().toISOString() : null,
     threadId: thread.id,
     authoredBy
   });
