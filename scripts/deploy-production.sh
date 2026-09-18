@@ -179,8 +179,8 @@ if [ ! -f "$ENV_READER" ]; then
   echo "Missing safe environment reader: $ENV_READER" >&2
   exit 1
 fi
-if [ ! -x "$BACKUP_SCRIPT" ]; then
-  echo "Backup script is not executable or missing: $BACKUP_SCRIPT" >&2
+if [ ! -f "$BACKUP_SCRIPT" ]; then
+  echo "Backup script is missing: $BACKUP_SCRIPT" >&2
   exit 1
 fi
 if service_is_active "$EMAIL_BACKFILL_SERVICE"; then
@@ -259,11 +259,11 @@ if [ "$ONLINE_BACKUP_CAPABLE" = "true" ]; then
   sleep "$MAINTENANCE_DRAIN_SECONDS"
   BESTCRM_ALLOW_APP_DURING_BACKUP=true \
     BESTCRM_WRITE_MAINTENANCE_FLAG="$MAINTENANCE_FLAG" \
-    "$BACKUP_SCRIPT"
+    bash "$BACKUP_SCRIPT"
 else
   echo "Bootstrap mode: the active application must stop for this one backup." >&2
   systemctl stop "$SERVICE_NAME"
-  "$BACKUP_SCRIPT"
+  bash "$BACKUP_SCRIPT"
 fi
 
 echo "BESTCRM deploy phase: short atomic cutover"

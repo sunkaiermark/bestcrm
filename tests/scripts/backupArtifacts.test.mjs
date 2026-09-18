@@ -128,6 +128,9 @@ test('production deployment prepares online, serializes releases, and uses a sho
   assert.match(deployScript, /scripts\/write-maintenance-capable/);
   assert.match(deployScript, /BESTCRM_ALLOW_LEGACY_DOWNTIME/);
   assert.match(deployScript, /BESTCRM_ALLOW_APP_DURING_BACKUP=true/);
+  assert.match(deployScript, /if \[ ! -f "\$BACKUP_SCRIPT" \]/);
+  assert.doesNotMatch(deployScript, /if \[ ! -x "\$BACKUP_SCRIPT" \]/);
+  assert.match(deployScript, /bash "\$BACKUP_SCRIPT"/);
   assert.match(deployScript, /BESTCRM_MAINTENANCE_DRAIN_SECONDS/);
   assert.match(deployScript, /nginx_has_maintenance_fallback/);
   assert.match(deployScript, /BESTCRM deploy phase: install the scoped Nginx maintenance fallback/);
