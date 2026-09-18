@@ -62,6 +62,7 @@ function mapThreadRow(row) {
     updatedAt: row.updated_at,
     messageCount: Number(row.message_count || 0),
     attachmentCount: Number(row.attachment_count || 0),
+    purgeEligible: Boolean(row.purge_eligible),
     lastDirection: text(row.last_direction),
     lastFromAddress: text(row.last_from_address),
     lastTextPreview: text(row.last_text_preview)
@@ -280,25 +281,13 @@ function mapEmailPurgeCandidate(row) {
   };
 }
 
-const emailPurgeBusinessEligibility = `
-  thread.inquiry_id IS NULL
-  AND thread.opportunity_id IS NULL
+const emailPurgeNonInquiryEligibility = `
+  thread.opportunity_id IS NULL
   AND thread.customer_id IS NULL
   AND thread.contact_id IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM email_messages outbound
     WHERE outbound.thread_id = thread.id AND outbound.direction = 'outbound'
-  )
-  AND NOT EXISTS (
-    SELECT 1 FROM email_thread_triage_events business_event
-    WHERE business_event.thread_id = thread.id
-      AND business_event.event_type IN (
-        'linked_opportunity',
-        'linked_lead',
-        'converted_lead',
-        'linked_inquiry',
-        'converted_inquiry'
-      )
   )
   AND NOT EXISTS (
     SELECT 1
@@ -321,10 +310,38 @@ const emailPurgeBusinessEligibility = `
   )
 `;
 
-const spamPurgeEligibility = `
+const strictEmailInquiryEligibility = `
+  thread.inquiry_id IS NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM email_thread_triage_events business_event
+    WHERE business_event.thread_id = thread.id
+      AND business_event.event_type IN (
+        'linked_opportunity',
+        'linked_lead',
+        'converted_lead',
+        'linked_inquiry',
+        'converted_inquiry'
+      )
+  )
+`;
+
+const confirmedSpamEligibility = `
   thread.archive_disposition = 'spam'
   AND thread.triage_status = 'spam'
-  AND ${emailPurgeBusinessEligibility}
+`;
+
+const emailPurgeBusinessEligibility = `
+  (
+    (
+      ${emailPurgeNonInquiryEligibility}
+      AND ${strictEmailInquiryEligibility}
+    )
+    OR (${confirmedSpamEligibility})
+  )
+`;
+
+const spamPurgeEligibility = `
+  ${confirmedSpamEligibility}
 `;
 
 const threadSelect = `
@@ -366,6 +383,7 @@ const threadSelect = `
     thread.updated_at,
     COALESCE(summary.message_count, 0) AS message_count,
     COALESCE(summary.attachment_count, 0) AS attachment_count,
+    (${emailPurgeBusinessEligibility}) AS purge_eligible,
     last_message.direction AS last_direction,
     last_message.from_address AS last_from_address,
     left(last_message.text_body, 240) AS last_text_preview

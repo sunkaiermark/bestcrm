@@ -91,7 +91,7 @@
         <% } %>
 
         <% if (canDeleteThread) { %>
-          <section class="form-panel email-thread-delete" aria-label="<%= t('emailDeleteAction') %>">
+          <section id="email-delete" class="form-panel email-thread-delete" aria-label="<%= t('emailDeleteAction') %>">
             <h2><%= t('emailDeleteAction') %></h2>
             <p><%= t('emailDeleteRule') %></p>
             <form class="inline-form" method="post" action="/email-center/threads/<%= thread.id %>/purge" onsubmit="return confirm('<%= t('emailDeleteConfirm') %>')">

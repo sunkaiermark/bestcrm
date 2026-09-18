@@ -990,29 +990,35 @@ export async function purgeEligibleEmailSpam(dependencies, actor, input = {}) {
     throw new EmailArchiveError('Spam cleanup is unavailable', 503);
   }
   const mailboxKey = text(input.mailboxKey).toLowerCase();
-  const candidates = await dependencies.emailArchiveRepository.listSpamPurgeCandidates({
-    mailboxKey,
-    limit: 100
-  });
+  const seenThreadIds = new Set();
   const purged = [];
   const fileFailures = [];
-  for (const listedCandidate of candidates) {
-    const subjectSha256 = createHash('sha256').update(listedCandidate.subject || '', 'utf8').digest('hex');
-    const candidate = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => (
-      transactionDependencies.emailArchiveRepository.purgeEmailThread({
-        threadId: listedCandidate.threadId,
-        actorUserId: actor.id,
-        subjectSha256,
-        reason: 'administrator-confirmed spam; no current or historical business links and no outbound messages'
-      })
-    ));
-    if (!candidate) continue;
-    purged.push(candidate);
-    const failures = await removePurgedEmailFiles(dependencies.uploadDir || './var/uploads', candidate);
-    fileFailures.push(...failures.map((failure) => ({ threadId: candidate.threadId, ...failure })));
+  while (true) {
+    const candidates = await dependencies.emailArchiveRepository.listSpamPurgeCandidates({
+      mailboxKey,
+      limit: 100
+    });
+    const newCandidates = candidates.filter((candidate) => !seenThreadIds.has(Number(candidate.threadId)));
+    if (!newCandidates.length) break;
+    for (const listedCandidate of newCandidates) {
+      seenThreadIds.add(Number(listedCandidate.threadId));
+      const subjectSha256 = createHash('sha256').update(listedCandidate.subject || '', 'utf8').digest('hex');
+      const candidate = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => (
+        transactionDependencies.emailArchiveRepository.purgeEmailThread({
+          threadId: listedCandidate.threadId,
+          actorUserId: actor.id,
+          subjectSha256,
+          reason: 'administrator-confirmed permanent deletion from the spam list'
+        })
+      ));
+      if (!candidate) continue;
+      purged.push(candidate);
+      const failures = await removePurgedEmailFiles(dependencies.uploadDir || './var/uploads', candidate);
+      fileFailures.push(...failures.map((failure) => ({ threadId: candidate.threadId, ...failure })));
+    }
   }
   return {
-    candidates: candidates.length,
+    candidates: seenThreadIds.size,
     purgedThreads: purged.length,
     purgedMessages: purged.reduce((total, candidate) => total + candidate.messageCount, 0),
     purgedBytes: purged.reduce(
@@ -1046,12 +1052,14 @@ export async function purgeEmailThread(dependencies, actor, threadId, input = {}
       threadId: thread.id,
       actorUserId: actor.id,
       subjectSha256,
-      reason: 'administrator-confirmed unlinked email; no current or historical business links and no outbound messages'
+      reason: thread.triageStatus === 'spam' && thread.archiveDisposition === 'spam'
+        ? 'administrator-confirmed permanent deletion from the spam list'
+        : 'administrator-confirmed unlinked email; no current or historical business links and no outbound messages'
     })
   ));
   if (!candidate) {
     throw new EmailArchiveError(
-      'Email is protected because it has a business relationship, outbound message, or historical business link',
+      'Non-spam email is protected because it has a business relationship, outbound message, or historical business link',
       409
     );
   }

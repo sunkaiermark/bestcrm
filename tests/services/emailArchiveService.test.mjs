@@ -809,7 +809,7 @@ test('spam cleanup summary is administrator-only and immediate during system deb
   });
 });
 
-test('administrator spam purge requires typed confirmation and removes only repository-approved files', async () => {
+test('administrator spam purge requires typed confirmation and continues until every listed spam thread is gone', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-spam-purge-'));
   const attachmentPath = 'email-archive/spam.pdf';
   const rawPath = 'email-raw/spam.eml';
@@ -819,13 +819,29 @@ test('administrator spam purge requires typed confirmation and removes only repo
   await writeFile(path.join(uploadDir, rawPath), 'raw spam');
   const administrator = { id: 1, roles: [ROLES.ADMINISTRATOR] };
   const purgeCalls = [];
+  let listCalls = 0;
   const repository = {
     async listSpamPurgeCandidates(input) {
       assert.equal(input.mailboxKey, 'sales@sunkaier.com');
-      return [{ threadId: 8, subject: 'SEO spam' }];
+      listCalls += 1;
+      if (listCalls === 1) return [{ threadId: 8, subject: 'SEO spam' }];
+      if (listCalls === 2) return [{ threadId: 9, subject: 'More spam' }];
+      return [];
     },
     async purgeEmailThread(input) {
       purgeCalls.push(input);
+      if (Number(input.threadId) === 9) {
+        return {
+          threadId: 9,
+          messageCount: 1,
+          attachmentCount: 0,
+          attachmentBytes: 0,
+          rawMessageCount: 0,
+          rawMessageBytes: 0,
+          attachmentPaths: [],
+          rawMessagePaths: []
+        };
+      }
       return {
         threadId: 8,
         messageCount: 1,
@@ -852,12 +868,15 @@ test('administrator spam purge requires typed confirmation and removes only repo
       confirmation: 'DELETE',
       mailboxKey: 'sales@sunkaier.com'
     });
-    assert.equal(result.purgedThreads, 1);
-    assert.equal(result.purgedMessages, 1);
+    assert.equal(result.purgedThreads, 2);
+    assert.equal(result.purgedMessages, 2);
     assert.equal(result.purgedBytes, 23);
     assert.deepEqual(result.fileFailures, []);
     assert.equal(purgeCalls[0].actorUserId, 1);
     assert.match(purgeCalls[0].subjectSha256, /^[0-9a-f]{64}$/);
+    assert.match(purgeCalls[0].reason, /permanent deletion from the spam list/);
+    assert.equal(purgeCalls.length, 2);
+    assert.equal(listCalls, 3);
     await assert.rejects(() => readFile(path.join(uploadDir, attachmentPath)), /ENOENT/);
     await assert.rejects(() => readFile(path.join(uploadDir, rawPath)), /ENOENT/);
   } finally {

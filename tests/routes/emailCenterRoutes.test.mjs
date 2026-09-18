@@ -65,6 +65,8 @@ async function createAgent({
     contactName: 'Alice',
     triageStatus: 'linked_opportunity'
   });
+  unlinked.purgeEligible = purgeEligibleThreadIds.includes(unlinked.id);
+  linked.purgeEligible = purgeEligibleThreadIds.includes(linked.id);
   linked.messages = linked.messages.map((message) => ({ ...message, threadId: 2 }));
   linked.messages.push({
     ...linked.messages[0],
@@ -246,6 +248,7 @@ test('only an administrator sees and can invoke immediate permanent spam cleanup
     userId: 1,
     roles: [ROLES.ADMINISTRATOR],
     language: 'zh',
+    purgeEligibleThreadIds: [1, 2],
     spamCleanupSummary: {
       eligibleThreads: 3,
       messages: 4,
@@ -258,9 +261,11 @@ test('only an administrator sees and can invoke immediate permanent spam cleanup
   const adminSpam = await administrator.get('/email-center?mailbox=sales%40sunkaier.com&folder=spam');
   assert.equal(adminSpam.status, 200);
   assert.match(adminSpam.text, /垃圾邮件清理/);
-  assert.match(adminSpam.text, /可清理会话[^]*?<strong>3<\/strong>/);
+  assert.match(adminSpam.text, /垃圾邮件会话[^]*?<strong>3<\/strong>/);
   assert.match(adminSpam.text, /3\.0 MB/);
   assert.match(adminSpam.text, /name="confirmation"[^>]*pattern="DELETE"/);
+  assert.match(adminSpam.text, /class="danger-action email-spam-row-delete" href="\/email-center\/threads\/1[^>]*>永久删除<\/a>/);
+  assert.match(adminSpam.text, /class="danger-action email-spam-row-delete" href="\/email-center\/threads\/2[^>]*>永久删除<\/a>/);
 
   const rejected = await administrator.post('/email-center/spam/purge').type('form').send({
     mailbox: 'sales@sunkaier.com',
@@ -293,6 +298,7 @@ test('administrator can delete an eligible unlinked thread but linked mail stays
   assert.equal(unlinkedDetail.status, 200);
   assert.match(unlinkedDetail.text, /彻底删除邮件/);
   assert.match(unlinkedDetail.text, /action="\/email-center\/threads\/1\/purge"/);
+  assert.match(unlinkedDetail.text, /id="email-delete"/);
 
   const linkedDetail = await administrator.get('/email-center/threads/2');
   assert.equal(linkedDetail.status, 200);

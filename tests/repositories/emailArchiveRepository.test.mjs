@@ -9,7 +9,7 @@ function threadRow(overrides = {}) {
     opportunity_title: null, customer_id: null, customer_code: null, customer_name: null, contact_id: null,
     contact_code: null, contact_name: null, archive_disposition: 'active', classification_category: 'inquiry',
     classification_reason: 'inquiry_intent', last_message_at: '2026-09-03T01:00:00Z', created_at: '2026-09-03T01:00:00Z',
-    updated_at: '2026-09-03T01:00:00Z', message_count: 1, attachment_count: 2, last_direction: 'inbound',
+    updated_at: '2026-09-03T01:00:00Z', message_count: 1, attachment_count: 2, purge_eligible: true, last_direction: 'inbound',
     last_from_address: 'buyer@example.com', last_text_preview: 'Need quote', ...overrides
   };
 }
@@ -39,6 +39,7 @@ test('email archive repository lists threaded summaries without exposing bodies 
   const threads = await repository.listThreads();
   assert.equal(threads[0].messageCount, 1);
   assert.equal(threads[0].attachmentCount, 2);
+  assert.equal(threads[0].purgeEligible, true);
   assert.equal(threads[0].inquiryId, 8);
   assert.equal(threads[0].lastFromAddress, 'buyer@example.com');
   assert.match(calls[0].sql, /LEFT JOIN LATERAL/);
@@ -66,7 +67,7 @@ test('email archive repository supports explicit archived, spam, and all-mail vi
   assert.deepEqual(calls[1].params, []);
 });
 
-test('email purge eligibility excludes every business relationship and outbound conversation', async () => {
+test('spam cleanup includes every confirmed spam thread regardless of business-link history', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({
     async query(sql, params) {
@@ -89,18 +90,14 @@ test('email purge eligibility excludes every business relationship and outbound 
     rawMessageBytes: 70
   });
   assert.deepEqual(calls[0].params, ['sales@sunkaier.com']);
+  assert.match(calls[0].sql, /thread\.archive_disposition = 'spam'/);
   assert.match(calls[0].sql, /thread\.triage_status = 'spam'/);
-  assert.match(calls[0].sql, /thread\.inquiry_id IS NULL/);
-  assert.match(calls[0].sql, /thread\.opportunity_id IS NULL/);
-  assert.match(calls[0].sql, /thread\.customer_id IS NULL/);
-  assert.match(calls[0].sql, /thread\.contact_id IS NULL/);
-  assert.match(calls[0].sql, /outbound\.direction = 'outbound'/);
-  assert.match(calls[0].sql, /business_event\.event_type IN \([\s\S]*'linked_opportunity'[\s\S]*'converted_lead'[\s\S]*'converted_inquiry'[\s\S]*\)/);
-  assert.match(calls[0].sql, /opportunity_activity_links/);
-  assert.match(calls[0].sql, /quotation_package_versions/);
+  assert.doesNotMatch(calls[0].sql, /spam_inquiry/);
+  assert.doesNotMatch(calls[0].sql, /opportunity_activity_links/);
+  assert.doesNotMatch(calls[0].sql, /quotation_package_versions/);
 });
 
-test('individual email deletion uses the same permanent business-history guard', async () => {
+test('individual email deletion allows confirmed spam and keeps the non-spam business guard', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({
     async query(sql, params) {
@@ -111,6 +108,8 @@ test('individual email deletion uses the same permanent business-history guard',
 
   assert.equal(await repository.isThreadPurgeEligible(88), true);
   assert.deepEqual(calls[0].params, [88]);
+  assert.match(calls[0].sql, /OR \(\s*thread\.archive_disposition = 'spam'/);
+  assert.match(calls[0].sql, /thread\.triage_status = 'spam'/);
   assert.match(calls[0].sql, /thread\.inquiry_id IS NULL/);
   assert.match(calls[0].sql, /thread\.opportunity_id IS NULL/);
   assert.match(calls[0].sql, /business_event\.event_type IN \([\s\S]*'linked_opportunity'[\s\S]*'converted_lead'[\s\S]*'converted_inquiry'[\s\S]*\)/);
