@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdtemp, rm, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -51,6 +51,31 @@ test('CLI prints the requested value and fails closed for missing keys', async (
     assert.equal(missing.status, 1);
     assert.equal(missing.stdout, '');
     assert.match(missing.stderr, /Required environment key is missing/);
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
+test('CLI still runs when invoked through a release symlink', async () => {
+  const directory = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-env-reader-symlink-'));
+  const envPath = path.join(directory, 'bestcrm.env');
+  const scriptsAlias = path.join(directory, 'scripts-alias');
+  try {
+    await writeFile(envPath, 'DATABASE_URL=postgres://localhost/bestcrm\n', 'utf8');
+    await symlink(
+      path.resolve('scripts'),
+      scriptsAlias,
+      process.platform === 'win32' ? 'junction' : 'dir'
+    );
+
+    const success = spawnSync(
+      process.execPath,
+      [path.join(scriptsAlias, 'read-env-value.mjs'), envPath, 'DATABASE_URL'],
+      { encoding: 'utf8' }
+    );
+    assert.equal(success.status, 0);
+    assert.equal(success.stdout, 'postgres://localhost/bestcrm');
+    assert.equal(success.stderr, '');
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

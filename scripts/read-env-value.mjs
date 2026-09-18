@@ -1,8 +1,7 @@
 #!/usr/bin/env node
 
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { isMainModule } from '../src/utils/moduleEntry.mjs';
 
 const ENV_KEY_PATTERN = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
@@ -106,10 +105,7 @@ export function readEnvValue(filePath, key) {
   return values.get(key);
 }
 
-const isMainModule = process.argv[1]
-  && resolve(process.argv[1]) === resolve(fileURLToPath(import.meta.url));
-
-if (isMainModule) {
+if (isMainModule(import.meta.url)) {
   const [, , filePath, key] = process.argv;
   if (!filePath || !key) {
     console.error('Usage: read-env-value.mjs /path/to/env-file KEY');
