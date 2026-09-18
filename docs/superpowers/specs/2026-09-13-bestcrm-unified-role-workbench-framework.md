@@ -104,13 +104,16 @@ Quality Issue. `opportunity_id` alone is not a sufficient long-term link.
 
 Approved navigation decision on 2026-09-14: the former sidebar entries **Work**,
 **Notifications** and **Workbench** are consolidated into one **Workbench**
-entry. Their functions remain distinct inside that page:
+entry. The workbench keeps only operational content:
 
 1. **Needs My Action** contains executable assignments, approvals and decisions;
 2. **Work Plan** contains related business, specific work, planned start, deadline
-   and KPI/completion standard;
-3. **Recent Status Messages** contains passive workflow changes, results,
-   hand-offs and risk notices.
+   and KPI/completion standard.
+
+Passive workflow changes, results, hand-offs and risk notices remain available
+in the Notification Center and source-record audit history. They are not repeated
+on the Workbench because they do not represent work that the signed-in user must
+perform.
 
 The signed-in user's stored roles and permissions determine the workbench
 content automatically. Ordinary users do not receive a Sales / Technical /
@@ -176,7 +179,8 @@ master database.
 The approved first implementation slice is limited to:
 
 1. one role-derived Workbench, with no ordinary-user role selector;
-2. Needs My Action, Work Plan and Recent Status Messages on that page;
+2. Needs My Action and Work Plan on that page, with passive status history kept
+   in the Notification Center and source-record audit history;
 3. the shared auditable work-item spine used by existing Opportunity tasks;
 4. exactly one Project Execution per Opportunity;
 5. an administrator-configured authorized user who explicitly confirms the

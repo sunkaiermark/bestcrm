@@ -134,25 +134,19 @@ export async function getWorkbenchSummary(input, user) {
     workflowWorkItems,
     opportunityInitiationTodos,
     projectExecutionConfirmationItems,
-    recentWorkflowMessages,
     stateCounts,
     salesWorkPlans,
-    notifications,
     unreadNotificationCount
   ] = await Promise.all([
     workbenchRepository.listOpenWorkItems(user.id, workLimit),
     workbenchRepository.listOpportunityInitiationTodos(user.id, 8),
     workbenchRepository.listProjectExecutionConfirmationItems(user.id, 8),
-    workbenchRepository.listRecentWorkflowMessages(user.id, isAdministrator, 10),
     workbenchRepository.countByWorkflowState(user.id, isAdministrator),
     canUseSalesPlans
       ? salesWorkRepository.listPlans({ salespersonUserId: user.id, status: 'planned' })
       : [],
-    notificationRepository.listForUser(user.id, { limit: 10 }),
     notificationRepository.countUnread(user.id)
   ]);
-
-  const statusMessages = notifications.length ? notifications : recentWorkflowMessages;
 
   return {
     actionItems: mergeCurrentWorkItems([
@@ -161,7 +155,6 @@ export async function getWorkbenchSummary(input, user) {
       ...projectExecutionConfirmationItems
     ], workLimit),
     workPlans: mergeCurrentWorkItems(salesWorkPlans.map(mapSalesWorkPlan), 20),
-    statusMessages,
     unreadNotificationCount,
     canAccessSalesPlans: canUseSalesPlans,
     stateCounts

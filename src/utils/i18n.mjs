@@ -1488,7 +1488,7 @@ const dictionaries = {
     confirmNewPassword: '确认新密码',
     contacts: '\u8054\u7cfb\u4eba',
     contactSearchPlaceholder: '\u6309\u8054\u7cfb\u4eba\u4ee3\u7801\u3001\u59d3\u540d\u3001\u5ba2\u6237\u3001\u90ae\u7bb1\u3001\u7535\u8bdd\u6216\u5fae\u4fe1\u67e5\u8be2',
-    countsByWorkflowState: '\u5de5\u4f5c\u6d41\u72b6\u6001\u7edf\u8ba1',
+    countsByWorkflowState: '流程统计',
     country: '\u56fd\u5bb6',
     createContact: '\u65b0\u5efa\u8054\u7cfb\u4eba',
     createCustomer: '\u65b0\u5efa\u5ba2\u6237',
@@ -1929,10 +1929,10 @@ const dictionaries = {
     projectType: '\u9879\u76ee\u7c7b\u578b',
     relatedOpportunity: '\u5173\u8054\u5546\u673a',
     relatedBusiness: '\u5173\u8054\u4e1a\u52a1',
-    specificWork: '\u5177\u4f53\u5de5\u4f5c',
-    plannedStart: '\u8ba1\u5212\u5f00\u59cb',
+    specificWork: '工作内容',
+    plannedStart: '开始时间',
     deadline: '\u622a\u6b62\u65f6\u95f4',
-    estimatedHoursWorkload: '\u9884\u8ba1\u5de5\u65f6\uff0f\u5de5\u4f5c\u91cf',
+    estimatedHoursWorkload: '工时／工作量',
     estimatedHours: '\u9884\u8ba1\u5de5\u65f6',
     workloadLevel: '\u5de5\u4f5c\u91cf\u7b49\u7ea7',
     workItemEstimate: '\u5de5\u4f5c\u91cf\u8bc4\u4f30',
@@ -1944,7 +1944,7 @@ const dictionaries = {
     'workloadLevel.low': '\u4f4e',
     'workloadLevel.medium': '\u4e2d',
     'workloadLevel.high': '\u9ad8',
-    kpiCompletionStandard: 'KPI\uff0f\u5b8c\u6210\u6807\u51c6',
+    kpiCompletionStandard: '完成标准',
     needsMyAction: '\u9700\u8981\u6211\u5904\u7406',
     noWorkItems: '\u5f53\u524d\u6ca1\u6709\u9700\u8981\u4f60\u5904\u7406\u7684\u5de5\u4f5c\u3002',
     workPlan: '\u5de5\u4f5c\u8ba1\u5212',
@@ -2524,8 +2524,8 @@ const dictionaries = {
     'workItemStatus.completed': '\u5df2\u5b8c\u6210',
     'workItemStatus.cancelled': '\u5df2\u53d6\u6d88',
     'workItemStatus.planned': '\u5df2\u8ba1\u5212',
-    'workKpi.approve_on_time': '\u622a\u6b62\u65f6\u95f4\u524d\u5b8c\u6210\u5ba1\u6279\uff0c\u6216\u7ed9\u51fa\u660e\u786e\u9a73\u56de\u610f\u89c1',
-    'workKpi.submit_technical_solution': '\u622a\u6b62\u65f6\u95f4\u524d\u6309\u8981\u6c42\u63d0\u4ea4\u6280\u672f\u65b9\u6848\u5e76\u8fdb\u5165\u6280\u672f\u5ba1\u6279',
+    'workKpi.approve_on_time': '按时审批或明确驳回',
+    'workKpi.submit_technical_solution': '按时提交技术方案并进入审批',
     'workKpi.resubmit_technical_solution': '\u622a\u6b62\u65f6\u95f4\u524d\u5b8c\u6210\u4fee\u6539\u5e76\u91cd\u65b0\u63d0\u4ea4\u6280\u672f\u5ba1\u6279',
     'workKpi.review_technical_solution': '\u622a\u6b62\u65f6\u95f4\u524d\u6279\u51c6\uff0c\u6216\u7ed9\u51fa\u660e\u786e\u4fee\u6539\u8981\u6c42',
     'workKpi.submit_commercial_quote': '\u622a\u6b62\u65f6\u95f4\u524d\u63d0\u4ea4\u5b8c\u6574\u5546\u52a1\u62a5\u4ef7\u5e76\u8fdb\u5165\u5ba1\u6279',
@@ -2697,6 +2697,27 @@ const todoTitleKeys = new Map([
   ['Submit opportunity initiation', 'todoTitle.submitOpportunityInitiation'],
   ['Confirm Project Execution creation', 'confirmProjectExecution']
 ]);
+
+for (const [sourceKey, translationKey] of [
+  ['approve_commercial_quote', 'todoTitle.approveCommercialQuote'],
+  ['approve_opportunity_initiation', 'todoTitle.approveOpportunityInitiation'],
+  ['approve_technical_solution', 'todoTitle.approveTechnicalSolution'],
+  ['prepare_commercial_quote', 'todoTitle.prepareCommercialQuote'],
+  ['prepare_technical_solution', 'todoTitle.prepareTechnicalSolution'],
+  ['record_customer_result', 'todoTitle.recordCustomerResult'],
+  ['review_contract', 'todoTitle.reviewContract'],
+  ['revise_commercial_quote', 'todoTitle.reviseCommercialQuote'],
+  ['revise_contract', 'todoTitle.reviseContract'],
+  ['revise_and_resubmit_opportunity', 'todoTitle.reviseAndResubmitOpportunity'],
+  ['revise_opportunity_initiation', 'todoTitle.reviseOpportunityInitiation'],
+  ['revise_technical_solution', 'todoTitle.reviseTechnicalSolution'],
+  ['send_approved_quote', 'todoTitle.sendApprovedQuote'],
+  ['submit_contract_approval', 'todoTitle.submitContractApproval'],
+  ['submit_opportunity_initiation', 'todoTitle.submitOpportunityInitiation'],
+  ['confirm_project_execution_creation', 'confirmProjectExecution']
+]) {
+  todoTitleKeys.set(sourceKey, translationKey);
+}
 
 export function normalizeLanguage(value) {
   return value === 'zh' ? 'zh' : 'en';

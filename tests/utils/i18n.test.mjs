@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  createTodoTitleLabeler,
   createTranslator,
   inferLanguageFromAcceptLanguage,
   listMissingTranslationKeys,
@@ -19,4 +20,6 @@ test('language helpers normalize input and retain readable fallbacks', () => {
   assert.equal(inferLanguageFromAcceptLanguage('en-US,en;q=0.9'), 'en');
   assert.equal(createTranslator('zh')('language'), '语言');
   assert.equal(createTranslator('en')('missing.key'), 'missing.key');
+  assert.equal(createTodoTitleLabeler('zh')('prepare_technical_solution'), '编制技术方案');
+  assert.equal(createTodoTitleLabeler('zh')('approve_opportunity_initiation'), '审批商机立项');
 });

@@ -38,10 +38,6 @@ test('getWorkbenchSummary gathers workbench panels for a normal user', async () 
     async listAssignedOpportunities(userId, limit) {
       throw new Error(`assigned opportunities should not be queried: ${userId}, ${limit}`);
     },
-    async listRecentWorkflowMessages(userId, isAdministrator, limit) {
-      calls.push(['messages', userId, isAdministrator, limit]);
-      return [{ id: 4, eventType: 'submit_initiation' }];
-    },
     async countByWorkflowState(userId, isAdministrator) {
       calls.push(['counts', userId, isAdministrator]);
       return [{ status: 'draft', count: 2 }];
@@ -63,7 +59,6 @@ test('getWorkbenchSummary gathers workbench panels for a normal user', async () 
       { id: 'opportunity-initiation-2', title: 'Submit opportunity initiation' }
     ],
     workPlans: [],
-    statusMessages: [{ id: 4, eventType: 'submit_initiation' }],
     unreadNotificationCount: 0,
     canAccessSalesPlans: true,
     stateCounts: [{ status: 'draft', count: 2 }]
@@ -71,17 +66,15 @@ test('getWorkbenchSummary gathers workbench panels for a normal user', async () 
   assert.deepEqual(calls, [
     ['workItems', 7, 20],
     ['initiationTodos', 7, 8],
-    ['messages', 7, false, 10],
     ['counts', 7, false]
   ]);
 });
 
-test('getWorkbenchSummary merges own sales plans and personal notifications without a role selector', async () => {
+test('getWorkbenchSummary merges own sales plans and keeps only the unread notification count', async () => {
   const repository = {
     async listOpenWorkItems() { return []; },
     async listOpportunityInitiationTodos() { return []; },
     async listProjectExecutionConfirmationItems() { return []; },
-    async listRecentWorkflowMessages() { return [{ id: 1, eventType: 'fallback' }]; },
     async countByWorkflowState() { return []; }
   };
   const salesWorkRepository = {
@@ -91,11 +84,7 @@ test('getWorkbenchSummary merges own sales plans and personal notifications with
     }
   };
   const notificationRepository = {
-    async listForUser(userId, options) {
-      assert.equal(userId, 7);
-      assert.deepEqual(options, { limit: 10 });
-      return [{ id: 8, title: 'Approved', actionUrl: '/opportunities/30' }];
-    },
+    async listForUser() { throw new Error('status messages should not be queried for the workbench'); },
     async countUnread(userId) {
       assert.equal(userId, 7);
       return 2;
@@ -111,7 +100,6 @@ test('getWorkbenchSummary merges own sales plans and personal notifications with
   assert.equal(summary.workPlans.length, 1);
   assert.equal(summary.workPlans[0].title, 'Call customer');
   assert.equal(summary.workPlans[0].actionUrl, '/sales-work/plans/4/edit');
-  assert.deepEqual(summary.statusMessages, [{ id: 8, title: 'Approved', actionUrl: '/opportunities/30' }]);
   assert.equal(summary.unreadNotificationCount, 2);
   assert.equal(summary.canAccessSalesPlans, true);
 });
@@ -122,10 +110,6 @@ test('getWorkbenchSummary passes administrator visibility to repository', async 
     async listOpenWorkItems() { return []; },
     async listOpportunityInitiationTodos() { return []; },
     async listProjectExecutionConfirmationItems() { return []; },
-    async listRecentWorkflowMessages(userId, isAdministrator) {
-      calls.push(['messages', userId, isAdministrator]);
-      return [];
-    },
     async countByWorkflowState(userId, isAdministrator) {
       calls.push(['counts', userId, isAdministrator]);
       return [];
@@ -142,7 +126,6 @@ test('getWorkbenchSummary passes administrator visibility to repository', async 
   });
 
   assert.deepEqual(calls, [
-    ['messages', 1, true],
     ['counts', 1, true]
   ]);
 });
@@ -168,7 +151,6 @@ test('getWorkbenchSummary uses unified work items and removes duplicate current 
       }];
     },
     async listProjectExecutionConfirmationItems() { return []; },
-    async listRecentWorkflowMessages() { return []; },
     async countByWorkflowState() { return []; }
   };
 
