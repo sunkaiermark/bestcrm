@@ -12,20 +12,19 @@
         <section class="list-section">
           <div class="list-body">
             <table class="list-table content-fit-table">
-              <thead><tr><th><%= t('draftNumber') %></th><th><%= t('sourceTemplate') %></th><th><%= t('outputLanguage') %></th><th><%= t('status') %></th><th><%= t('updatedBy') %></th><th><%= t('updatedAt') %></th><th><%= t('actions') %></th></tr></thead>
+              <thead><tr><th><%= t('draftNumber') %></th><th><%= t('sourceTemplate') %></th><th><%= t('status') %></th><th><%= t('updatedBy') %></th><th><%= t('updatedAt') %></th><th><%= t('actions') %></th></tr></thead>
               <tbody>
                 <% for (const draft of drafts) { %>
                   <tr>
                 <td><strong><%= draft.formalVersionLabel || draft.draftLabel %></strong><% if (draft.formalVersionLabel) { %><br><span class="muted"><%= draft.draftLabel %></span><% } %></td>
                     <td><%= draft.templateCodeSnapshot %> · TPL-R<%= draft.templateRevisionNoSnapshot %></td>
-                    <td><%= t(`templateLanguage.${draft.language}`) %></td>
                     <td><span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span></td>
                     <td><%= draft.updatedByDisplayName || draft.updatedBy %></td>
                     <td><%= draft.updatedAt || '' %></td>
                     <td><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>"><%= t('openTechnicalDraft') %></a></td>
                   </tr>
                 <% } %>
-                <% if (!drafts.length) { %><tr><td colspan="7" class="empty"><%= t('noTechnicalDrafts') %></td></tr><% } %>
+                <% if (!drafts.length) { %><tr><td colspan="6" class="empty"><%= t('noTechnicalDrafts') %></td></tr><% } %>
               </tbody>
             </table>
           </div>

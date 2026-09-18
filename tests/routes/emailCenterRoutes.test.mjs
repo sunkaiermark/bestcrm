@@ -13,6 +13,7 @@ function thread(overrides = {}) {
     id: 1, mailboxKey: 'sales@sunkaier.com', mailboxKeys: ['sales@sunkaier.com'], subject: '<script>alert(1)</script> RFQ', inquiryId: null,
     opportunityId: null, opportunityNo: '', opportunityTitle: '', customerId: null, customerCode: '', customerName: '', contactId: null,
     contactCode: '', contactName: '',
+    classificationCategory: 'inquiry',
     triageStatus: 'pending', triageAssignedUserId: null, triageAssignedDisplayName: '', triageEvents: [],
     lastMessageAt: '2026-09-03T01:00:00Z', messageCount: 1, attachmentCount: 1, lastFromAddress: 'buyer@example.com',
     lastTextPreview: '<img src=x onerror=alert(1)> Need quote', messages: [{
@@ -37,7 +38,6 @@ async function createAgent({
   sendingEnabled = false,
   teamMembers = [],
   linkableOpportunities = [],
-  linkableInquiries = [],
   onLinkOpportunity = null,
   onPurgeThread = null,
   purgeEligibleThreadIds = [1],
@@ -143,7 +143,7 @@ async function createAgent({
       },
       async listOpportunities() { return linkableOpportunities; }
     },
-    inquiryRepository: { async listInquiries() { return linkableInquiries; } },
+    inquiryRepository: { async listInquiries() { return []; } },
     opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return teamMembers; } },
     quotationPackageRepository: { async listByOpportunity() { return []; }, async getPackageDetail() { return null; } }
   });
@@ -171,8 +171,7 @@ test('sales manager sees mailbox-separated pending threads and plain-text escape
     userId: 2,
     roles: [ROLES.SALES_MANAGER],
     language: 'zh',
-    linkableOpportunities: [{ id: 20, opportunityNo: '800020', title: 'Mixer Project' }],
-    linkableInquiries: [{ id: 9, subject: 'Mixer inquiry', contactEmail: 'buyer@example.com', status: 'new' }]
+    linkableOpportunities: [{ id: 20, opportunityNo: '800020', title: 'Mixer Project' }]
   });
   const list = await agent.get('/email-center');
   assert.equal(list.status, 200);
@@ -194,16 +193,26 @@ test('sales manager sees mailbox-separated pending threads and plain-text escape
   assert.match(list.text, /2026-09-03 09:00/);
   assert.doesNotMatch(list.text, /GMT\+0800|China Standard Time|09:00:00/);
   assert.match(list.text, />垃圾邮件<\/a>/);
+  assert.match(list.text, /<label for="email-category">规则分类<\/label>/);
+  assert.match(list.text, /<option value="marketing_spam">营销垃圾邮件<\/option>/);
+  assert.match(list.text, /class="email-category-badge">潜在询价<\/span>/);
+  assert.match(list.text, /\.email-mailbox-picker label\s*\{[^}]*white-space:\s*nowrap;/);
+  assert.match(list.text, /\.email-category-filter\s*\{[^}]*gap:\s*18px;[^}]*white-space:\s*nowrap;/);
+  assert.match(list.text, /\.email-folder-tabs\s*\{[^}]*gap:\s*16px;/);
   assert.match(list.text, /&lt;script&gt;alert\(1\)&lt;\/script&gt; RFQ/);
   assert.doesNotMatch(list.text, /<script>alert\(1\)<\/script>/);
 
   const detail = await agent.get('/email-center/threads/1');
   assert.equal(detail.status, 200);
+  assert.match(detail.text, /<main class="app-main email-reader-page">/);
+  assert.match(detail.text, /class="email-reader-shell"[\s\S]*class="email-reader-head"[\s\S]*class="email-reader-scroll" tabindex="0"/);
+  assert.match(detail.text, /\.app-main\.email-reader-page\s*\{[^}]*display:\s*flex;[^}]*height:\s*100vh;[^}]*overflow:\s*hidden;/);
+  assert.match(detail.text, /\.email-reader-scroll\s*\{[^}]*overflow-y:\s*auto;/);
   assert.match(detail.text, /href="\/email-center\?mailbox=sales%40sunkaier\.com&folder=pending">← 返回邮件列表<\/a>/);
   assert.match(detail.text, /class="email-triage-grid-row"[\s\S]*?<button type="submit">人工分拣<\/button>[\s\S]*?<select name="assignedUserId"/);
   assert.match(detail.text, /<button type="submit">关联商机<\/button>[\s\S]*?<select name="opportunityId"/);
-  assert.match(detail.text, /<button type="submit">关联询价<\/button>[\s\S]*?<select name="inquiryId"/);
-  assert.match(detail.text, /class="email-triage-final-actions"[\s\S]*?转为询价[\s\S]*?标记为垃圾邮件/);
+  assert.match(detail.text, /class="email-triage-final-actions"[\s\S]*?新建线索[\s\S]*?标记为垃圾邮件/);
+  assert.doesNotMatch(detail.text, /关联询价|转为询价|name="inquiryId"|convert-inquiry/);
   assert.match(detail.text, /<summary>其他处理<\/summary>/);
   assert.match(detail.text, /class="email-conversation-list"/);
   assert.match(detail.text, /<details class="email-conversation-item email-message-inbound" open>/);
@@ -214,6 +223,9 @@ test('sales manager sees mailbox-separated pending threads and plain-text escape
   assert.match(detail.text, /&lt;script&gt;alert\(2\)&lt;\/script&gt; Need quote/);
   assert.doesNotMatch(detail.text, /tracker\.example\/pixel/);
   assert.match(detail.text, new RegExp('a'.repeat(64)));
+
+  assert.equal((await agent.post('/email-center/threads/1/inquiry')).status, 404);
+  assert.equal((await agent.post('/email-center/threads/1/convert-inquiry')).status, 404);
 });
 
 test('email thread back action preserves its source folder', async () => {

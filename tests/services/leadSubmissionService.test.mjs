@@ -3,31 +3,38 @@ import assert from 'node:assert/strict';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
   canSubmitNewLead,
-  canViewOwnLeadSubmission,
+  canViewLeadSubmission,
   leadSubmissionListFilterFor,
   listEligibleReviewManagers,
+  listEligibleSalespeople,
   submitSalesLead
 } from '../../src/services/leadSubmissionService.mjs';
 
 const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
 const manager = { id: 2, displayName: 'Sales Manager', isActive: true, roles: [ROLES.SALES_MANAGER] };
 
-test('salespeople use a private lead receipt instead of the inquiry inbox', () => {
+test('salespeople see their own leads while managers can use the shared lead list', () => {
   assert.equal(canSubmitNewLead(salesperson), true);
-  assert.equal(canSubmitNewLead(manager), false);
-  assert.equal(canViewOwnLeadSubmission(salesperson, {
+  assert.equal(canSubmitNewLead(manager), true);
+  assert.equal(canViewLeadSubmission(salesperson, {
     submissionType: 'sales_lead',
     createdBy: 7
   }), true);
-  assert.equal(canViewOwnLeadSubmission(salesperson, {
+  assert.equal(canViewLeadSubmission(salesperson, {
     submissionType: 'sales_lead',
     createdBy: 8
   }), false);
+  assert.equal(canViewLeadSubmission(manager, {
+    submissionType: 'sales_lead',
+    createdBy: 8
+  }), true);
   assert.deepEqual(leadSubmissionListFilterFor(salesperson), {
     createdBy: 7,
     submissionType: 'sales_lead'
   });
-  assert.throws(() => leadSubmissionListFilterFor(manager), /Forbidden/);
+  assert.deepEqual(leadSubmissionListFilterFor(manager), {
+    submissionType: 'sales_lead'
+  });
 });
 
 test('only active sales managers can review a submitted lead', () => {
@@ -37,6 +44,7 @@ test('only active sales managers can review a submitted lead', () => {
     salesperson
   ];
   assert.deepEqual(listEligibleReviewManagers(users).map((user) => user.id), [2]);
+  assert.deepEqual(listEligibleSalespeople(users).map((user) => user.id), [7]);
 });
 
 test('salesperson submission becomes a manager-assigned inquiry with salesperson recommendation', async () => {

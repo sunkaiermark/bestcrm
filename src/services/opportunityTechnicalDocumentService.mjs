@@ -4,8 +4,11 @@ import JSZip from 'jszip';
 import {
   TECHNICAL_DOCUMENT_TYPES,
   TECHNICAL_PRODUCT_CATEGORIES,
+  localizedTechnicalField,
   opportunityTechnicalDocumentCode,
+  technicalContentLanguage,
   technicalDocumentType,
+  technicalDocumentTypeLabel,
   technicalProductCategory
 } from '../domain/technicalTemplates.mjs';
 import { canViewOpportunity, isProjectLeadEngineer } from './opportunityService.mjs';
@@ -66,6 +69,11 @@ function uniquePositiveIds(value, field) {
 
 function clone(value) {
   return JSON.parse(JSON.stringify(value ?? null));
+}
+
+function outputLanguage(value) {
+  if (!['en', 'zh'].includes(text(value))) invalid('Login language is invalid');
+  return technicalContentLanguage(value);
 }
 
 function ensureViewer(actor, opportunity) {
@@ -180,8 +188,10 @@ export async function archiveOpportunityEquipment(repository, actor, opportunity
   return archived;
 }
 
-function selectedClauseSnapshots(contentSchema, publishedClauses) {
-  const publishedById = new Map((publishedClauses || []).map((clause) => [Number(clause.id), clause]));
+function selectedClauseSnapshots(contentSchema, publishedClauses, language) {
+  const publishedById = new Map((publishedClauses || [])
+    .filter((clause) => clause.language === language)
+    .map((clause) => [Number(clause.id), clause]));
   const snapshots = [];
   for (const section of contentSchema?.sections || []) {
     for (const clauseId of section.defaultClauseIds || []) {
@@ -233,7 +243,8 @@ async function resolveVersionItems({
   technicalTemplateRepository,
   items,
   documentType,
-  opportunity
+  opportunity,
+  language
 }) {
   const templates = await technicalTemplateRepository.listTemplates({ publishedOnly: true, documentType });
   const templateByCategory = new Map();
@@ -246,9 +257,12 @@ async function resolveVersionItems({
   }
   const missingCategories = [...new Set(items
     .filter((item) => !templateByCategory.has(item.productCategoryCode))
-    .map((item) => technicalProductCategory(item.productCategoryCode)?.labelZh || item.productCategoryCode))];
+    .map((item) => {
+      const category = technicalProductCategory(item.productCategoryCode);
+      return (language === 'zh' ? category?.labelZh : category?.labelEn) || item.productCategoryCode;
+    }))];
   if (missingCategories.length) {
-    conflict(`Missing current published ${technicalDocumentType(documentType).label} template: ${missingCategories.join(', ')}`);
+    conflict(`Missing current published ${technicalDocumentTypeLabel(documentType, language)} template: ${missingCategories.join(', ')}`);
   }
 
   const publishedClauses = await technicalTemplateRepository.listClauses({ publishedOnly: true });
@@ -273,13 +287,13 @@ async function resolveVersionItems({
       variable.variableKey,
       variableValue(variable, item, opportunity, template)
     ]));
-    const clauses = selectedClauseSnapshots(revision.contentSchema, publishedClauses);
+    const clauses = selectedClauseSnapshots(revision.contentSchema, publishedClauses, language);
     const category = technicalProductCategory(item.productCategoryCode);
     versionItems.push({
       equipmentItemId: Number(item.id),
       itemNo: Number(item.itemNo),
       productCategoryCode: item.productCategoryCode,
-      productCategoryName: category?.labelZh || item.productCategoryCode,
+      productCategoryName: (language === 'zh' ? category?.labelZh : category?.labelEn) || item.productCategoryCode,
       equipmentName: item.equipmentName,
       model: item.model || '',
       quantity: Number(item.quantity),
@@ -287,8 +301,9 @@ async function resolveVersionItems({
       templateId: Number(template.id),
       templateRevisionId: Number(revision.id),
       templateCode: template.templateCode,
-      templateName: template.name,
+      templateName: localizedTechnicalField(template, 'name', language) || template.templateCode,
       templateRevisionNo: Number(revision.revisionNo),
+      outputLanguage: language,
       renderedContent: renderTechnicalDraftContent({
         contentSchema: revision.contentSchema,
         variableSchema,
@@ -308,11 +323,11 @@ function normalizeDocumentSelection(input) {
   if (documentType === 'datasheet' && equipmentItemIds.length !== 1) {
     invalid('A Datasheet must contain exactly one equipment item');
   }
-  return { documentType, equipmentItemIds };
+  return { documentType, equipmentItemIds, language: outputLanguage(input.language) };
 }
 
-function documentTitle(opportunity, documentType, items) {
-  const typeLabel = technicalDocumentType(documentType).label;
+function documentTitle(opportunity, documentType, items, language) {
+  const typeLabel = technicalDocumentTypeLabel(documentType, language);
   return documentType === 'datasheet'
     ? `${items[0].equipmentName} - ${typeLabel}`
     : `${opportunity.title} - ${typeLabel}`;
@@ -369,11 +384,12 @@ export async function createOpportunityTechnicalDocumentVersionOne(repositories,
     technicalTemplateRepository: repositories.technicalTemplateRepository,
     items,
     documentType: selection.documentType,
-    opportunity
+    opportunity,
+    language: selection.language
   });
-  const title = documentTitle(opportunity, selection.documentType, items);
+  const title = documentTitle(opportunity, selection.documentType, items, selection.language);
   const sourceSnapshot = {
-    schemaVersion: 1,
+    schemaVersion: 2,
     snapshotAt: new Date().toISOString(),
     opportunity: {
       id: Number(opportunity.id),
@@ -384,6 +400,7 @@ export async function createOpportunityTechnicalDocumentVersionOne(repositories,
     },
     documentType: selection.documentType,
     documentCode,
+    language: selection.language,
     equipment: versionItems.map((item) => ({
       equipmentItemId: item.equipmentItemId,
       itemNo: item.itemNo,
@@ -399,7 +416,8 @@ export async function createOpportunityTechnicalDocumentVersionOne(repositories,
     document: { documentType: selection.documentType, documentCode, title },
     versionNo: 1,
     items: versionItems,
-    actor
+    actor,
+    language: selection.language
   });
   const created = await repositories.opportunityTechnicalDocumentRepository.createDocumentVersionOne({
     opportunityId: Number(opportunity.id),

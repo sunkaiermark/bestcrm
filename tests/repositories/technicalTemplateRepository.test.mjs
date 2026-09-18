@@ -17,9 +17,13 @@ function templateRow(overrides = {}) {
     id: '4',
     template_code: 'MX-100',
     name: 'Mixer Technical Agreement',
+    name_en: 'Mixer Technical Agreement',
+    name_zh: '搅拌机技术协议',
     product_family: 'Mixing',
     product_model: 'MX-100',
     application: 'Polymerization',
+    application_en: 'Polymerization',
+    application_zh: '聚合工艺',
     language: 'bilingual',
     current_published_revision_id: '9',
     current_revision_no: '2',
@@ -46,6 +50,7 @@ test('technical template repository lists published templates with revision labe
   assert.equal(templates[0].id, 4);
   assert.equal(templates[0].currentRevisionLabel, 'TPL-R2');
   assert.equal(templates[0].currentPublishedRevisionId, 9);
+  assert.equal(templates[0].nameZh, '搅拌机技术协议');
   assert.match(queryTarget.queries[0].sql, /t\.is_active = true/);
   assert.match(queryTarget.queries[0].sql, /current_revision\.status = 'published'/);
 });
@@ -96,9 +101,13 @@ test('repository creates a template and its first structured draft atomically', 
   const created = await repository.createTemplate({
     templateCode: 'RX-1',
     name: 'Reactor Agreement',
+    nameEn: 'Reactor Agreement',
+    nameZh: null,
     productFamily: 'Reactor',
     productModel: null,
     application: null,
+    applicationEn: null,
+    applicationZh: null,
     language: 'en',
     changeSummary: 'Initial revision',
     contentSchema
@@ -108,7 +117,9 @@ test('repository creates a template and its first structured draft atomically', 
   assert.match(queryTarget.queries[0].sql, /WITH inserted_template AS/);
   assert.match(queryTarget.queries[0].sql, /INSERT INTO technical_agreement_template_revisions/);
   assert.match(queryTarget.queries[0].sql, /INSERT INTO technical_template_events/);
-  assert.equal(queryTarget.queries[0].params[8], JSON.stringify(contentSchema));
+  assert.equal(queryTarget.queries[0].params[11], JSON.stringify(contentSchema));
+  assert.match(queryTarget.queries[0].sql, /name_en, name_zh/);
+  assert.match(queryTarget.queries[0].sql, /application_en, application_zh/);
 });
 
 test('repository clones the latest immutable revision and its variable snapshots', async () => {

@@ -1,4 +1,8 @@
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
+import {
+  EMAIL_CLASSIFICATION_CATEGORIES,
+  EMAIL_TRIAGE_STATUSES
+} from '../domain/emailArchive.mjs';
 
 function numberOrNull(value) {
   return value === null || value === undefined ? null : Number(value);
@@ -288,7 +292,13 @@ const emailPurgeBusinessEligibility = `
   AND NOT EXISTS (
     SELECT 1 FROM email_thread_triage_events business_event
     WHERE business_event.thread_id = thread.id
-      AND business_event.event_type IN ('linked_opportunity', 'linked_inquiry', 'converted_inquiry')
+      AND business_event.event_type IN (
+        'linked_opportunity',
+        'linked_lead',
+        'converted_lead',
+        'linked_inquiry',
+        'converted_inquiry'
+      )
   )
   AND NOT EXISTS (
     SELECT 1
@@ -672,32 +682,26 @@ export function createEmailArchiveRepository(queryTarget) {
       return result.rows[0] || null;
     },
 
-    async listThreads({ archiveDisposition = 'active', triageStatus = '', triageStatuses = [], mailboxKey = '', direction = '' } = {}) {
+    async listThreads({
+      archiveDisposition = 'active',
+      triageStatus = '',
+      triageStatuses = [],
+      mailboxKey = '',
+      direction = '',
+      classificationCategory = ''
+    } = {}) {
       const normalizedDisposition = ['active', 'archived', 'spam'].includes(archiveDisposition)
         ? archiveDisposition
         : '';
-      const normalizedTriageStatus = [
-        'pending',
-        'linked_opportunity',
-        'linked_inquiry',
-        'converted_inquiry',
-        'archived',
-        'spam',
-        'outbound_only'
-      ].includes(triageStatus) ? triageStatus : '';
+      const normalizedTriageStatus = EMAIL_TRIAGE_STATUSES.includes(triageStatus) ? triageStatus : '';
       const normalizedTriageStatuses = [...new Set((Array.isArray(triageStatuses) ? triageStatuses : [])
         .map((value) => text(value).trim())
-        .filter((value) => [
-          'pending',
-          'linked_opportunity',
-          'linked_inquiry',
-          'converted_inquiry',
-          'archived',
-          'spam',
-          'outbound_only'
-        ].includes(value)))];
+        .filter((value) => EMAIL_TRIAGE_STATUSES.includes(value)))];
       const normalizedMailboxKey = text(mailboxKey).trim().toLowerCase();
       const normalizedDirection = ['inbound', 'outbound'].includes(direction) ? direction : '';
+      const normalizedClassificationCategory = EMAIL_CLASSIFICATION_CATEGORIES.includes(classificationCategory)
+        ? classificationCategory
+        : '';
       const params = [];
       const where = [];
       let mailboxParamIndex = 0;
@@ -756,6 +760,10 @@ export function createEmailArchiveRepository(queryTarget) {
               )
             )` : ''}
         )`);
+      }
+      if (normalizedClassificationCategory) {
+        params.push(normalizedClassificationCategory);
+        where.push(`thread.classification_category = $${params.length}`);
       }
       const result = await queryTarget.query(`
         ${threadSelect}

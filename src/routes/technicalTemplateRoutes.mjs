@@ -1,10 +1,12 @@
 import { Router } from 'express';
+import multer from 'multer';
 import {
   TECHNICAL_DOCUMENT_TYPES,
+  TECHNICAL_IMAGE_ALIGNMENTS,
   TECHNICAL_PRODUCT_CATEGORIES,
   TECHNICAL_SECTION_CONDITION_OPERATORS,
   TECHNICAL_SECTION_TYPES,
-  TECHNICAL_TEMPLATE_LANGUAGES,
+  TECHNICAL_TABLE_ALIGNMENTS,
   TECHNICAL_TEMPLATE_VARIABLE_SOURCES,
   TECHNICAL_TEMPLATE_VARIABLE_TYPES
 } from '../domain/technicalTemplates.mjs';
@@ -37,6 +39,29 @@ import {
   updateTechnicalTemplate,
   updateTechnicalVariableDefinition
 } from '../services/technicalTemplateService.mjs';
+
+const templateImageUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { files: 1, fileSize: 2 * 1024 * 1024, fields: 60, fieldSize: 150000 }
+}).single('sectionImage');
+
+function receiveTemplateImage(req, res, next) {
+  templateImageUpload(req, res, (error) => {
+    if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+      res.status(413).send('Section image must be no larger than 2 MB');
+      return;
+    }
+    if (error) {
+      res.status(400).send('Section image upload is invalid');
+      return;
+    }
+    if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+      res.status(403).send('Invalid CSRF token');
+      return;
+    }
+    next();
+  });
+}
 
 function forbidden(res) {
   res.status(403).send('Forbidden');
@@ -107,11 +132,11 @@ function emptyVariableDefinition() {
   };
 }
 
-function emptyClause() {
+function emptyClause(language = 'en') {
   return {
     clauseCode: '',
     title: '',
-    language: 'en',
+    language,
     productFamily: '',
     productModel: '',
     application: '',
@@ -127,7 +152,7 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.get('/technical-templates', async (req, res, next) => {
     try {
-      const templates = await listTechnicalTemplates(technicalTemplateRepository, req.currentUser);
+      const templates = await listTechnicalTemplates(technicalTemplateRepository, req.currentUser, req.language);
       res.render('technical-templates/index', {
         templates,
         canAuthor: canAuthorTechnicalTemplates(req.currentUser),
@@ -145,7 +170,6 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
       mode: 'new',
       action: '/technical-templates',
       template: emptyTemplate(),
-      languages: TECHNICAL_TEMPLATE_LANGUAGES,
       documentTypes: TECHNICAL_DOCUMENT_TYPES,
       productCategories: TECHNICAL_PRODUCT_CATEGORIES
     });
@@ -153,7 +177,12 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.post('/technical-templates', requireAuthor, async (req, res, next) => {
     try {
-      const created = await createTechnicalTemplate(technicalTemplateRepository, req.currentUser, req.body);
+      const created = await createTechnicalTemplate(
+        technicalTemplateRepository,
+        req.currentUser,
+        req.body,
+        req.language
+      );
       res.redirect(`/technical-templates/${created.id}`);
     } catch (error) {
       handleError(error, res, next);
@@ -181,7 +210,12 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.post('/technical-templates/variables', requireVariableAdministrator, async (req, res, next) => {
     try {
-      await createTechnicalVariableDefinition(technicalTemplateRepository, req.currentUser, req.body);
+      await createTechnicalVariableDefinition(
+        technicalTemplateRepository,
+        req.currentUser,
+        req.body,
+        req.language
+      );
       res.redirect('/technical-templates/variables');
     } catch (error) {
       handleError(error, res, next);
@@ -209,7 +243,13 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.post('/technical-templates/variables/:id', requireVariableAdministrator, async (req, res, next) => {
     try {
-      await updateTechnicalVariableDefinition(technicalTemplateRepository, req.currentUser, req.params.id, req.body);
+      await updateTechnicalVariableDefinition(
+        technicalTemplateRepository,
+        req.currentUser,
+        req.params.id,
+        req.body,
+        req.language
+      );
       res.redirect('/technical-templates/variables');
     } catch (error) {
       handleError(error, res, next);
@@ -227,12 +267,16 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.get('/technical-templates/:id/edit', requireAuthor, async (req, res, next) => {
     try {
-      const template = await getTechnicalTemplateDetail(technicalTemplateRepository, req.currentUser, req.params.id);
+      const template = await getTechnicalTemplateDetail(
+        technicalTemplateRepository,
+        req.currentUser,
+        req.params.id,
+        req.language
+      );
       res.render('technical-templates/form', {
         mode: 'edit',
         action: `/technical-templates/${template.id}`,
         template,
-        languages: TECHNICAL_TEMPLATE_LANGUAGES,
         documentTypes: TECHNICAL_DOCUMENT_TYPES,
         productCategories: TECHNICAL_PRODUCT_CATEGORIES
       });
@@ -243,7 +287,13 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.post('/technical-templates/:id', requireAuthor, async (req, res, next) => {
     try {
-      await updateTechnicalTemplate(technicalTemplateRepository, req.currentUser, req.params.id, req.body);
+      await updateTechnicalTemplate(
+        technicalTemplateRepository,
+        req.currentUser,
+        req.params.id,
+        req.body,
+        req.language
+      );
       res.redirect(`/technical-templates/${req.params.id}`);
     } catch (error) {
       handleError(error, res, next);
@@ -311,7 +361,12 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.get('/technical-templates/:id/revisions/:revisionId/editor', requireAuthor, async (req, res, next) => {
     try {
-      const template = await getTechnicalTemplateDetail(technicalTemplateRepository, req.currentUser, req.params.id);
+      const template = await getTechnicalTemplateDetail(
+        technicalTemplateRepository,
+        req.currentUser,
+        req.params.id,
+        req.language
+      );
       const revision = template.revisions.find((candidate) => candidate.id === Number(req.params.revisionId));
       if (!revision) {
         res.status(404).send('Template revision not found');
@@ -321,20 +376,23 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
         res.status(409).send('Only draft template revisions can be edited');
         return;
       }
-      const clauses = await technicalTemplateRepository.listClauses({ publishedOnly: true });
+      const clauses = (await technicalTemplateRepository.listClauses({ publishedOnly: true }))
+        .filter((clause) => clause.language === req.language);
       res.render('technical-templates/editor', {
         template,
         revision,
         clauses,
         sectionTypes: TECHNICAL_SECTION_TYPES,
-        conditionOperators: TECHNICAL_SECTION_CONDITION_OPERATORS
+        conditionOperators: TECHNICAL_SECTION_CONDITION_OPERATORS,
+        tableAlignments: TECHNICAL_TABLE_ALIGNMENTS,
+        imageAlignments: TECHNICAL_IMAGE_ALIGNMENTS
       });
     } catch (error) {
       handleError(error, res, next);
     }
   });
 
-  router.post('/technical-templates/:id/revisions/:revisionId/sections/:sectionKey', requireAuthor, async (req, res, next) => {
+  router.post('/technical-templates/:id/revisions/:revisionId/sections/:sectionKey', requireAuthor, receiveTemplateImage, async (req, res, next) => {
     try {
       await updateTechnicalTemplateSection(
         technicalTemplateRepository,
@@ -342,7 +400,14 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
         req.params.id,
         req.params.revisionId,
         req.params.sectionKey,
-        req.body
+        {
+          ...req.body,
+          sectionImage: req.file ? {
+            buffer: req.file.buffer,
+            originalName: req.file.originalname
+          } : null
+        },
+        req.language
       );
       res.redirect(`/technical-templates/${req.params.id}/revisions/${req.params.revisionId}/editor`);
     } catch (error) {
@@ -352,7 +417,12 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.get('/technical-templates/:id', async (req, res, next) => {
     try {
-      const template = await getTechnicalTemplateDetail(technicalTemplateRepository, req.currentUser, req.params.id);
+      const template = await getTechnicalTemplateDetail(
+        technicalTemplateRepository,
+        req.currentUser,
+        req.params.id,
+        req.language
+      );
       const canAuthor = canAuthorTechnicalTemplates(req.currentUser);
       const variableDefinitions = canAuthor
         ? await listTechnicalVariableDefinitions(technicalTemplateRepository, req.currentUser, { forTemplate: true })
@@ -365,7 +435,7 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.get('/technical-clauses', async (req, res, next) => {
     try {
-      const clauses = await listTechnicalClauses(technicalTemplateRepository, req.currentUser);
+      const clauses = await listTechnicalClauses(technicalTemplateRepository, req.currentUser, req.language);
       res.render('technical-templates/clauses', {
         clauses,
         canAuthor: canAuthorTechnicalTemplates(req.currentUser)
@@ -379,14 +449,13 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
     res.render('technical-templates/clause-form', {
       mode: 'new',
       action: '/technical-clauses',
-      clause: emptyClause(),
-      languages: TECHNICAL_TEMPLATE_LANGUAGES
+      clause: emptyClause(req.language)
     });
   });
 
   router.post('/technical-clauses', requireAuthor, async (req, res, next) => {
     try {
-      await createTechnicalClause(technicalTemplateRepository, req.currentUser, req.body);
+      await createTechnicalClause(technicalTemplateRepository, req.currentUser, req.body, req.language);
       res.redirect('/technical-clauses');
     } catch (error) {
       handleError(error, res, next);
@@ -395,7 +464,12 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.get('/technical-clauses/:id/edit', requireAuthor, async (req, res, next) => {
     try {
-      const clause = await getTechnicalClause(technicalTemplateRepository, req.currentUser, req.params.id);
+      const clause = await getTechnicalClause(
+        technicalTemplateRepository,
+        req.currentUser,
+        req.params.id,
+        req.language
+      );
       if (clause.status !== 'draft') {
         res.status(409).send('Only a draft clause can be edited');
         return;
@@ -403,8 +477,7 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
       res.render('technical-templates/clause-form', {
         mode: 'edit',
         action: `/technical-clauses/${clause.id}`,
-        clause,
-        languages: TECHNICAL_TEMPLATE_LANGUAGES
+        clause
       });
     } catch (error) {
       handleError(error, res, next);
@@ -413,7 +486,13 @@ export function technicalTemplateRoutes({ technicalTemplateRepository }) {
 
   router.post('/technical-clauses/:id', requireAuthor, async (req, res, next) => {
     try {
-      await updateTechnicalClause(technicalTemplateRepository, req.currentUser, req.params.id, req.body);
+      await updateTechnicalClause(
+        technicalTemplateRepository,
+        req.currentUser,
+        req.params.id,
+        req.body,
+        req.language
+      );
       res.redirect('/technical-clauses');
     } catch (error) {
       handleError(error, res, next);

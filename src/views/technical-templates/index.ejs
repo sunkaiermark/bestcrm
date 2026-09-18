@@ -28,7 +28,7 @@
               <tbody>
                 <% for (const category of productCategories) { %>
                   <tr>
-                    <td><strong><%= language === 'zh' ? category.labelZh : `${category.labelEn} / ${category.labelZh}` %></strong></td>
+                    <td><strong><%= t(`technicalProductCategory.${category.code}`) %></strong></td>
                     <% for (const type of documentTypes) { const slot = templates.find((template) => template.documentType === type.value && template.productCategoryCode === category.code && template.isActive); %>
                       <td>
                         <% if (slot) { %><a href="/technical-templates/<%= slot.id %>"><%= slot.templateCode %> · <%= slot.currentRevisionLabel || t('templateStatus.draft') %></a><% } else { %><span class="muted"><%= t('templateSlotEmpty') %></span><% } %>
@@ -52,7 +52,6 @@
                   <th><%= t('productCategory') %></th>
                   <th><%= t('productModel') %></th>
                   <th><%= t('application') %></th>
-                  <th><%= t('outputLanguage') %></th>
                   <th><%= t('templateCurrentRevision') %></th>
                   <th><%= t('status') %></th>
                   <th><%= t('actions') %></th>
@@ -67,7 +66,6 @@
                     <td><%= template.productCategoryCode ? t(`technicalProductCategory.${template.productCategoryCode}`) : template.productFamily %></td>
                     <td><%= template.productModel || '-' %></td>
                     <td><%= template.application || '-' %></td>
-                    <td><%= t(`templateLanguage.${template.language}`) %></td>
                     <td><%= template.currentRevisionLabel || '-' %></td>
                     <td>
                       <span class="status"><%= template.isActive ? t('activeForNewProjects') : t('inactiveForNewProjects') %></span>
@@ -76,7 +74,7 @@
                   </tr>
                 <% } %>
                 <% if (!templates.length) { %>
-                  <tr><td colspan="10" class="empty"><%= t('noTechnicalTemplates') %></td></tr>
+                  <tr><td colspan="9" class="empty"><%= t('noTechnicalTemplates') %></td></tr>
                 <% } %>
               </tbody>
             </table>

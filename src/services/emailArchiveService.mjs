@@ -2,7 +2,11 @@ import { createHash } from 'node:crypto';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import { canAccessInquiryInbox } from './inquiryService.mjs';
-import { canViewOpportunity } from './opportunityService.mjs';
+import { canSubmitNewLead, submitSalesLead } from './leadSubmissionService.mjs';
+import {
+  canViewOpportunity,
+  createOpportunityDraft
+} from './opportunityService.mjs';
 import { removeStoredAttachmentFile, resolveStoredPath, storeAttachmentBuffer } from './attachmentFileService.mjs';
 import {
   EmailRawIdentityConflictError,
@@ -704,6 +708,40 @@ export async function linkEmailThreadToOpportunity(dependencies, actor, threadId
   return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
 }
 
+function inboundSourceMessage(thread) {
+  const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+  return [...messages].reverse().find((message) => message.direction === 'inbound') || null;
+}
+
+function conversionDraftFromThread(thread) {
+  const sourceMessage = inboundSourceMessage(thread);
+  if (!sourceMessage) throw new EmailArchiveError('Inbound source message is required', 409);
+  const subject = sourceMessage.subject || thread.subject || '';
+  const requirement = sourceMessage.textBody || subject || 'Email request';
+  return {
+    emailThreadId: thread.id,
+    subject,
+    companyName: thread.customerName || '',
+    contactName: sourceMessage.fromName || thread.contactName || '',
+    contactEmail: text(sourceMessage.fromAddress).toLowerCase(),
+    sourceChannel: 'email',
+    requirementText: requirement,
+    customerId: thread.customerId || null,
+    primaryContactId: thread.contactId || null,
+    salespersonId: thread.mailboxOwnerUserId || null,
+    title: subject,
+    requirement
+  };
+}
+
+export async function getEmailThreadIntakeContext(dependencies, actor, threadId) {
+  const thread = await getVisibleEmailThread(dependencies, actor, threadId);
+  return {
+    thread,
+    draft: conversionDraftFromThread(thread)
+  };
+}
+
 export async function linkEmailThreadToInquiry(dependencies, actor, threadId, inquiryId) {
   if (!canAccessInquiryInbox(actor)) throw new EmailArchiveError('Forbidden', 403);
   const targetInquiryId = Number(inquiryId);
@@ -735,6 +773,82 @@ export async function linkEmailThreadToInquiry(dependencies, actor, threadId, in
     });
   });
   return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
+}
+
+export async function convertEmailThreadToLead(dependencies, actor, threadId, input) {
+  if (!canSubmitNewLead(actor)) throw new EmailArchiveError('Forbidden', 403);
+  const visible = await getVisibleEmailThread(dependencies, actor, threadId);
+  if (visible.inquiryId && visible.triageStatus === 'converted_lead') {
+    return {
+      thread: visible,
+      lead: await dependencies.inquiryRepository.findById(visible.inquiryId)
+    };
+  }
+  const result = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
+    const current = await transactionDependencies.emailArchiveRepository.getThreadDetail(visible.id);
+    if (!current) throw new EmailArchiveError('Email thread not found', 404);
+    if (!triageTransitionAllowed(current)) throw new EmailArchiveError('Email thread has already been triaged', 409);
+    const lead = await submitSalesLead({
+      inquiryRepository: transactionDependencies.inquiryRepository,
+      userRepository: transactionDependencies.userRepository || dependencies.userRepository
+    }, actor, {
+      ...conversionDraftFromThread(current),
+      ...input,
+      sourceChannel: 'email',
+      emailThreadId: current.id
+    });
+    const linked = await transactionDependencies.emailArchiveRepository.linkThreadToInquiry(current.id, lead.id);
+    if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
+    await transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
+      eventType: 'converted_lead',
+      triageStatus: 'converted_lead',
+      inquiryId: lead.id,
+      triagedAt: dependencies.now?.() || new Date().toISOString()
+    });
+    return { lead };
+  });
+  return {
+    lead: result.lead,
+    thread: await dependencies.emailArchiveRepository.getThreadDetail(visible.id)
+  };
+}
+
+export async function createOpportunityFromEmailThread(dependencies, actor, threadId, input) {
+  const visible = await getVisibleEmailThread(dependencies, actor, threadId);
+  const result = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
+    const current = await transactionDependencies.emailArchiveRepository.getThreadDetail(visible.id);
+    if (!current) throw new EmailArchiveError('Email thread not found', 404);
+    if (!triageTransitionAllowed(current)) throw new EmailArchiveError('Email thread has already been triaged', 409);
+    const draft = conversionDraftFromThread(current);
+    const opportunity = await createOpportunityDraft({
+      customerRepository: transactionDependencies.customerRepository || dependencies.customerRepository,
+      contactRepository: transactionDependencies.contactRepository || dependencies.contactRepository,
+      opportunityRepository: transactionDependencies.opportunityRepository || dependencies.opportunityRepository,
+      userRepository: transactionDependencies.userRepository || dependencies.userRepository
+    }, actor, {
+      ...draft,
+      ...input
+    }, {
+      manualEntry: true,
+      salespersonId: input.salespersonId || draft.salespersonId
+    });
+    const linked = await transactionDependencies.emailArchiveRepository.linkThreadToOpportunity(
+      current.id,
+      opportunity.id
+    );
+    if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
+    await transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
+      eventType: 'linked_opportunity',
+      triageStatus: 'linked_opportunity',
+      opportunityId: opportunity.id,
+      triagedAt: dependencies.now?.() || new Date().toISOString()
+    });
+    return { opportunity };
+  });
+  return {
+    opportunity: result.opportunity,
+    thread: await dependencies.emailArchiveRepository.getThreadDetail(visible.id)
+  };
 }
 
 function inquiryInputFromThread(thread, actor) {

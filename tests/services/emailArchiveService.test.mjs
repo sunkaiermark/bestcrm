@@ -9,7 +9,10 @@ import {
   archiveInboundEmailRecord,
   archiveImportedOutboundEmailRecord,
   canPurgeEmailThread,
+  convertEmailThreadToLead,
   convertEmailThreadToInquiry,
+  createOpportunityFromEmailThread,
+  getEmailThreadIntakeContext,
   getEmailSpamCleanupSummary,
   getVisibleEmailThread,
   linkEmailThreadToInquiry,
@@ -544,6 +547,11 @@ function triageMemory(threadOverrides = {}) {
       thread.inquiryId = Number(inquiryId);
       return thread;
     },
+    async linkThreadToOpportunity(id, opportunityId) {
+      if (thread.opportunityId) return null;
+      thread.opportunityId = Number(opportunityId);
+      return thread;
+    },
     async assignThreadTriage(input) {
       if (thread.triageStatus !== 'pending') return null;
       thread.triageAssignedUserId = Number(input.assignedUserId);
@@ -594,6 +602,123 @@ test('manual inquiry conversion is atomic idempotent and records one audit event
   assert.equal(memory.events.length, 1);
   assert.equal(memory.events[0].eventType, 'converted_inquiry');
   assert.equal(memory.events[0].inquiryId, 91);
+});
+
+test('email intake context prefills a lead and converted mail becomes a lead instead of an inquiry', async () => {
+  const memory = triageMemory();
+  const leads = [];
+  const users = [
+    { id: 2, displayName: 'Manager', isActive: true, roles: [ROLES.SALES_MANAGER] },
+    { id: 7, displayName: 'Sales', isActive: true, roles: [ROLES.SALESPERSON] }
+  ];
+  const inquiryRepository = {
+    async createInquiry(input) {
+      const lead = { id: 92, ...input };
+      leads.push(lead);
+      return lead;
+    },
+    async findById(id) { return Number(id) === 92 ? leads[0] : null; }
+  };
+  const userRepository = { async listUsersWithRoles() { return users; } };
+  const dependencies = {
+    emailArchiveRepository: memory.repository,
+    inquiryRepository,
+    userRepository,
+    now: () => '2026-09-12T02:00:00Z',
+    emailArchiveTransaction: (callback) => callback({
+      emailArchiveRepository: memory.repository,
+      inquiryRepository,
+      userRepository
+    })
+  };
+  const actor = users[0];
+
+  const context = await getEmailThreadIntakeContext(dependencies, actor, 30);
+  assert.equal(context.draft.sourceChannel, 'email');
+  assert.equal(context.draft.contactEmail, 'buyer@example.com');
+  assert.equal(context.draft.requirementText, 'Please quote');
+
+  const first = await convertEmailThreadToLead(dependencies, actor, 30, {
+    submissionToken: '05ab97d9-7bc5-4db0-973a-d68315c4ae8c',
+    assignedUserId: 2,
+    recommendedSalespersonId: 7,
+    companyName: 'Acme',
+    requirementText: 'Please quote one mixer'
+  });
+  const second = await convertEmailThreadToLead(dependencies, actor, 30, {});
+
+  assert.equal(first.lead.id, 92);
+  assert.equal(second.lead.id, 92);
+  assert.equal(leads.length, 1);
+  assert.equal(leads[0].submissionType, 'sales_lead');
+  assert.equal(leads[0].sourceChannel, 'email');
+  assert.equal(leads[0].rawPayload.emailThreadId, 30);
+  assert.equal(memory.thread.triageStatus, 'converted_lead');
+  assert.equal(memory.events[0].eventType, 'converted_lead');
+});
+
+test('existing-customer email creates and links one opportunity atomically', async () => {
+  const memory = triageMemory({ customerId: 10, contactId: 20 });
+  const created = [];
+  const customerRepository = {
+    async getCustomerDetail(id) {
+      return Number(id) === 10 ? { id: 10, ownerUserId: 7, archivedAt: null } : null;
+    }
+  };
+  const contactRepository = {
+    async getContactDetail(id) {
+      return Number(id) === 20
+        ? { id: 20, customerId: 10, customerOwnerUserId: 7, archivedAt: null }
+        : null;
+    }
+  };
+  const opportunityRepository = {
+    async createOpportunity(input) {
+      const opportunity = { id: 51, ...input };
+      created.push(opportunity);
+      return opportunity;
+    }
+  };
+  const userRepository = {
+    async listUsersByRole() {
+      return [{ id: 7, isActive: true, roles: [ROLES.SALESPERSON] }];
+    }
+  };
+  const dependencies = {
+    emailArchiveRepository: memory.repository,
+    customerRepository,
+    contactRepository,
+    opportunityRepository,
+    userRepository,
+    now: () => '2026-09-12T02:00:00Z',
+    emailArchiveTransaction: (callback) => callback({
+      emailArchiveRepository: memory.repository,
+      customerRepository,
+      contactRepository,
+      opportunityRepository,
+      userRepository
+    })
+  };
+
+  const result = await createOpportunityFromEmailThread(
+    dependencies,
+    { id: 2, roles: [ROLES.SALES_MANAGER] },
+    30,
+    {
+      salespersonId: 7,
+      customerId: 10,
+      primaryContactId: 20,
+      title: 'Mixer project',
+      requirement: 'Please quote one mixer'
+    }
+  );
+
+  assert.equal(result.opportunity.id, 51);
+  assert.equal(created.length, 1);
+  assert.equal(created[0].originInquiryId, null);
+  assert.equal(memory.thread.opportunityId, 51);
+  assert.equal(memory.thread.triageStatus, 'linked_opportunity');
+  assert.equal(memory.events[0].opportunityId, 51);
 });
 
 test('linking an existing inquiry completes pending triage without creating another inquiry', async () => {

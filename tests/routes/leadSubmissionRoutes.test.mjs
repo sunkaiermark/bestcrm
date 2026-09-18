@@ -25,6 +25,13 @@ async function buildApp({ currentUserRoles = [ROLES.SALESPERSON], receiptCreated
     isActive: true,
     roles: [ROLES.SALES_MANAGER]
   };
+  const salesperson = {
+    id: 8,
+    username: 'sales02',
+    displayName: 'Sales Two',
+    isActive: true,
+    roles: [ROLES.SALESPERSON]
+  };
   const receipt = {
     id: 11,
     source: 'manual',
@@ -55,7 +62,7 @@ async function buildApp({ currentUserRoles = [ROLES.SALESPERSON], receiptCreated
     userRepository: {
       async findByIdWithRoles(id) { return Number(id) === user.id ? user : null; },
       async findByUsernameWithRoles(username) { return username === user.username ? user : null; },
-      async listUsersWithRoles() { return [user, manager]; }
+      async listUsersWithRoles() { return [user, manager, salesperson]; }
     },
     inquiryRepository: {
       async listInquiries(filter) {
@@ -88,13 +95,13 @@ test('salesperson sees only personal lead submissions and cannot open inquiry in
     const { agent, calls } = await buildApp({ uploadDir });
     const list = await agent.get('/lead-submissions');
     assert.equal(list.status, 200);
-    assert.match(list.text, /My lead submissions/);
+    assert.match(list.text, />Leads</);
     assert.match(list.text, /Acme/);
     assert.deepEqual(calls[0], ['listInquiries', { createdBy: 7, submissionType: 'sales_lead' }]);
 
     const receipt = await agent.get('/lead-submissions/11');
     assert.equal(receipt.status, 200);
-    assert.match(receipt.text, /Lead submission receipt/);
+    assert.match(receipt.text, /Lead details/);
     assert.equal((await agent.get('/inquiries')).status, 403);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
@@ -140,13 +147,20 @@ test('salesperson submits a manager-assigned lead with one supporting file', asy
   }
 });
 
-test('another salesperson cannot open someone else lead receipt and managers cannot use sales submission routes', async () => {
+test('another salesperson cannot open someone else lead while managers can use the shared lead routes', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-access-'));
   try {
     const other = await buildApp({ uploadDir, receiptCreatedBy: 8 });
     assert.equal((await other.agent.get('/lead-submissions/11')).status, 404);
     const manager = await buildApp({ uploadDir, currentUserRoles: [ROLES.SALES_MANAGER] });
-    assert.equal((await manager.agent.get('/lead-submissions')).status, 403);
+    const managerList = await manager.agent.get('/lead-submissions');
+    assert.equal(managerList.status, 200);
+    assert.match(managerList.text, />Leads</);
+    const managerForm = await manager.agent.get('/lead-submissions/new');
+    assert.equal(managerForm.status, 200);
+    assert.match(managerForm.text, /name="recommendedSalespersonId"/);
+    assert.match(managerForm.text, /Sales Two/);
+    assert.equal((await manager.agent.get('/lead-submissions/11')).status, 200);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

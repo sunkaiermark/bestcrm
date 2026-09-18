@@ -6,13 +6,20 @@ import { Router } from 'express';
 import multer from 'multer';
 import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
 import { SALES_LEAD_SOURCE_CHANNELS } from '../domain/inquiries.mjs';
+import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
 import {
+  convertEmailThreadToLead,
+  EmailArchiveError,
+  getEmailThreadIntakeContext
+} from '../services/emailArchiveService.mjs';
+import {
   canSubmitNewLead,
-  canViewOwnLeadSubmission,
+  canViewLeadSubmission,
   leadSubmissionListFilterFor,
   listEligibleReviewManagers,
+  listEligibleSalespeople,
   submitSalesLead
 } from '../services/leadSubmissionService.mjs';
 import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
@@ -50,15 +57,19 @@ async function removeUploadedFile(file) {
 
 async function loadOwnSubmission(inquiryRepository, actor, id) {
   const inquiry = await inquiryRepository.findById(id);
-  return canViewOwnLeadSubmission(actor, inquiry) ? inquiry : null;
+  return canViewLeadSubmission(actor, inquiry) ? inquiry : null;
 }
 
 function handleLeadError(error, res, next) {
+  if (error instanceof EmailArchiveError || Number.isInteger(error?.statusCode)) {
+    res.status(error.statusCode || 400).send(error.message);
+    return;
+  }
   if (error.message === 'Forbidden') {
     res.status(403).send('Forbidden');
     return;
   }
-  if (['Requirement is required', 'Company or contact is required', 'Sales manager is required', 'Invalid submission token'].includes(error.message)) {
+  if (['Requirement is required', 'Company or contact is required', 'Sales manager is required', 'Sales owner is required', 'Invalid submission token'].includes(error.message)) {
     res.status(400).send(error.message);
     return;
   }
@@ -69,11 +80,25 @@ export function leadSubmissionRoutes({
   inquiryRepository,
   inquiryAttachmentRepository,
   userRepository,
+  emailArchiveRepository = null,
+  opportunityRepository = null,
+  opportunityResponsibilityRepository = null,
+  emailArchiveTransaction = null,
+  sharedAddress = 'sales@sunkaier.com',
   uploadDir = './var/uploads',
   maxUploadMb = 3072
 }) {
   const router = Router();
   const upload = createUploadMiddleware(uploadDir, maxUploadMb);
+  const emailDependencies = {
+    emailArchiveRepository,
+    inquiryRepository,
+    userRepository,
+    opportunityRepository,
+    opportunityResponsibilityRepository,
+    emailArchiveTransaction,
+    sharedAddress
+  };
 
   router.use('/lead-submissions', requireLogin);
   router.use('/lead-submissions', (req, res, next) => {
@@ -97,12 +122,27 @@ export function leadSubmissionRoutes({
     try {
       const users = await userRepository.listUsersWithRoles();
       const reviewManagers = listEligibleReviewManagers(users);
+      const salespeople = listEligibleSalespeople(users);
+      const emailThreadId = Number(req.query.emailThreadId || 0);
+      const emailContext = Number.isInteger(emailThreadId) && emailThreadId > 0
+        ? await getEmailThreadIntakeContext(emailDependencies, req.currentUser, emailThreadId)
+        : null;
+      const submission = emailContext
+        ? {
+            ...emailContext.draft,
+            priority: 'normal',
+            recommendedSalespersonId: emailContext.draft.salespersonId || null
+          }
+        : { priority: 'normal', sourceChannel: 'other' };
       res.render('lead-submissions/form', {
-        submission: { priority: 'normal', sourceChannel: 'other' },
+        submission,
+        emailThreadId: emailContext?.thread.id || null,
         submissionToken: randomUUID(),
         sourceChannels: SALES_LEAD_SOURCE_CHANNELS,
         countryOptions: CUSTOMER_COUNTRIES,
         reviewManagers,
+        salespeople,
+        showSalesOwnerField: !hasRole(req.currentUser, ROLES.SALESPERSON),
         maxUploadMb
       });
     } catch (error) {
@@ -127,7 +167,15 @@ export function leadSubmissionRoutes({
         res.status(403).send('Invalid CSRF token');
         return;
       }
-      const inquiry = await submitSalesLead({ inquiryRepository, userRepository }, req.currentUser, req.body);
+      const emailThreadId = Number(req.body.emailThreadId || 0);
+      const inquiry = Number.isInteger(emailThreadId) && emailThreadId > 0
+        ? (await convertEmailThreadToLead(
+            emailDependencies,
+            req.currentUser,
+            emailThreadId,
+            req.body
+          )).lead
+        : await submitSalesLead({ inquiryRepository, userRepository }, req.currentUser, req.body);
       if (req.file && !inquiry.wasDuplicate) {
         await inquiryAttachmentRepository.createAttachment({
           inquiryId: inquiry.id,

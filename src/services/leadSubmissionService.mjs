@@ -17,32 +17,44 @@ function numberOrNull(value) {
 }
 
 export function canSubmitNewLead(user) {
-  return hasRole(user, ROLES.SALESPERSON);
+  return hasRole(user, ROLES.ADMINISTRATOR)
+    || hasRole(user, ROLES.SALES_MANAGER)
+    || hasRole(user, ROLES.SALESPERSON);
 }
 
-export function canViewOwnLeadSubmission(user, inquiry) {
-  return canSubmitNewLead(user)
-    && inquiry?.submissionType === 'sales_lead'
-    && Number(inquiry.createdBy) === Number(user.id);
+export function canViewLeadSubmission(user, inquiry) {
+  if (!canSubmitNewLead(user) || inquiry?.submissionType !== 'sales_lead') {
+    return false;
+  }
+  return hasRole(user, ROLES.ADMINISTRATOR)
+    || hasRole(user, ROLES.SALES_MANAGER)
+    || Number(inquiry.createdBy) === Number(user.id);
 }
 
 export function leadSubmissionListFilterFor(user) {
   if (!canSubmitNewLead(user)) {
     forbidden();
   }
-  return {
-    createdBy: Number(user.id),
-    submissionType: 'sales_lead'
-  };
+  return hasRole(user, ROLES.ADMINISTRATOR) || hasRole(user, ROLES.SALES_MANAGER)
+    ? { submissionType: 'sales_lead' }
+    : { createdBy: Number(user.id), submissionType: 'sales_lead' };
 }
 
 export function listEligibleReviewManagers(users = []) {
   return users.filter((user) => user?.isActive !== false && hasRole(user, ROLES.SALES_MANAGER));
 }
 
+export function listEligibleSalespeople(users = []) {
+  return users.filter((user) => user?.isActive !== false && hasRole(user, ROLES.SALESPERSON));
+}
+
 export function normalizeLeadSubmissionInput(input, actor) {
   const sourceChannel = isSalesLeadSourceChannel(input.sourceChannel) ? input.sourceChannel : 'other';
   const submissionToken = text(input.submissionToken);
+  const emailThreadId = numberOrNull(input.emailThreadId);
+  const recommendedSalespersonId = hasRole(actor, ROLES.SALESPERSON)
+    ? Number(actor.id)
+    : numberOrNull(input.recommendedSalespersonId);
   return {
     source: 'manual',
     submissionType: 'sales_lead',
@@ -58,11 +70,15 @@ export function normalizeLeadSubmissionInput(input, actor) {
     productInterest: text(input.productInterest),
     opportunityType: text(input.opportunityType),
     requirementText: text(input.requirementText),
-    rawPayload: { intakeKind: 'sales_lead', sourceChannel },
+    rawPayload: {
+      intakeKind: 'sales_lead',
+      sourceChannel,
+      ...(Number.isInteger(emailThreadId) && emailThreadId > 0 ? { emailThreadId } : {})
+    },
     priority: isInquiryPriority(input.priority) ? input.priority : 'normal',
     status: 'new',
     assignedUserId: numberOrNull(input.assignedUserId),
-    recommendedSalespersonId: Number(actor.id),
+    recommendedSalespersonId,
     matchedCustomerId: null,
     matchedContactId: null,
     createdBy: Number(actor.id),
@@ -91,6 +107,11 @@ export async function submitSalesLead({ inquiryRepository, userRepository }, act
     .find((user) => Number(user.id) === Number(normalized.assignedUserId));
   if (!manager) {
     throw new Error('Sales manager is required');
+  }
+  const salesperson = listEligibleSalespeople(users)
+    .find((user) => Number(user.id) === Number(normalized.recommendedSalespersonId));
+  if (!salesperson) {
+    throw new Error('Sales owner is required');
   }
   return inquiryRepository.createInquiry(normalized);
 }

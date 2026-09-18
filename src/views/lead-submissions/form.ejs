@@ -10,6 +10,7 @@
         <form class="form-panel lead-submission-form" method="post" action="/lead-submissions" enctype="multipart/form-data">
           <%- csrfField() %>
           <input type="hidden" name="submissionToken" value="<%= submissionToken %>">
+          <% if (emailThreadId) { %><input type="hidden" name="emailThreadId" value="<%= emailThreadId %>"><% } %>
           <label>
             <%= t('leadSourceChannel') %>
             <select name="sourceChannel" required>
@@ -42,6 +43,17 @@
               <% } %>
             </select>
           </label>
+          <% if (showSalesOwnerField) { %>
+            <label>
+              <%= t('recommendedSalesOwner') %>
+              <select name="recommendedSalespersonId" required>
+                <option value=""><%= t('selectSalesOwner') %></option>
+                <% for (const salesperson of salespeople) { %>
+                  <option value="<%= salesperson.id %>"<%= String(submission.recommendedSalespersonId || '') === String(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
+                <% } %>
+              </select>
+            </label>
+          <% } %>
           <label>
             <%= t('reviewSalesManager') %>
             <select name="assignedUserId" required>

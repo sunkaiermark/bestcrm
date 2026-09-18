@@ -9,7 +9,7 @@
               <select name="productCategoryCode" required>
                 <option value=""><%= t('selectProductCategory') %></option>
                 <% for (const category of productCategories) { %>
-                  <option value="<%= category.code %>" <%= equipment.productCategoryCode === category.code ? 'selected' : '' %>><%= language === 'zh' ? category.labelZh : `${category.labelEn} / ${category.labelZh}` %></option>
+                  <option value="<%= category.code %>" <%= equipment.productCategoryCode === category.code ? 'selected' : '' %>><%= t(`technicalProductCategory.${category.code}`) %></option>
                 <% } %>
               </select>
             </label>

@@ -5,7 +5,6 @@
           <%- csrfField() %>
           <% if (mode === 'new') { %><label><%= t('clauseCode') %><input name="clauseCode" maxlength="32" pattern="[A-Za-z][A-Za-z0-9-]*" value="<%= clause.clauseCode %>" required></label><% } else { %><label><%= t('clauseCode') %><input value="<%= clause.clauseCode %>" disabled></label><% } %>
           <label><%= t('clauseTitle') %><input name="title" maxlength="300" value="<%= clause.title %>" required></label>
-          <label><%= t('outputLanguage') %><select name="language" required><% for (const option of languages) { %><option value="<%= option %>" <%= clause.language === option ? 'selected' : '' %>><%= t(`templateLanguage.${option}`) %></option><% } %></select></label>
           <label><%= t('productFamily') %><input name="productFamily" maxlength="200" value="<%= clause.productFamily || '' %>"></label>
           <label><%= t('productModel') %><input name="productModel" maxlength="200" value="<%= clause.productModel || '' %>"></label>
           <label><%= t('application') %><input name="application" maxlength="300" value="<%= clause.application || '' %>"></label>

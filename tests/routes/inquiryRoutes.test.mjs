@@ -270,14 +270,15 @@ test('salespeople cannot open inquiry inbox', async () => {
   assert.equal(response.status, 403);
 });
 
-test('sales manager can view inquiry list from navigation', async () => {
+test('sales manager can view website forms from navigation', async () => {
   const { agent, calls } = await createLoggedInAgent();
 
   const response = await agent.get('/inquiries?status=reviewing&source=email');
 
   assert.equal(response.status, 200);
   assert.match(response.text, /href="\/inquiries"/);
-  assert.match(response.text, /Inquiries/);
+  assert.match(response.text, /Website Forms/);
+  assert.match(response.text, /Manual entries go directly to Leads or Opportunities/);
   assert.match(response.text, /class="list-body inquiry-list-body" tabindex="0"/);
   assert.match(response.text, /class="list-table content-fit-table inquiry-list-table"/);
   assert.match(response.text, /\.form-panel\.inquiry-filter-panel\s*\{[^}]*max-width:\s*none;/);
@@ -286,22 +287,22 @@ test('sales manager can view inquiry list from navigation', async () => {
   assert.match(response.text, /\.inquiry-list-body\s*\{[^}]*max-height:\s*70vh;[^}]*overflow:\s*auto;/);
   assert.match(response.text, /\.inquiry-list-table thead th\s*\{[^}]*position:\s*sticky;[^}]*top:\s*0;/);
   assert.match(response.text, /\.content-fit-table\.inquiry-list-table th,[\s\S]*?\.content-fit-table\.inquiry-list-table td\s*\{[^}]*overflow:\s*hidden;[^}]*overflow-wrap:\s*normal;[^}]*text-align:\s*center;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
-  assert.match(response.text, /\.content-fit-table\.inquiry-list-table th:nth-child\(5\),[\s\S]*?\.content-fit-table\.inquiry-list-table td:nth-child\(7\)\s*\{[^}]*text-align:\s*left;/);
-  assert.match(response.text, /\.inquiry-list-table\s*\{[^}]*min-width:\s*1630px;[^}]*table-layout:\s*fixed;/);
-  assert.match(response.text, /\.inquiry-list-table th:nth-child\(5\),[\s\S]*?width:\s*clamp\(360px, 30vw, 520px\);/);
-  assert.match(response.text, /\.inquiry-list-table th:nth-child\(6\),[\s\S]*?width:\s*clamp\(200px, 17vw, 300px\);/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table th:nth-child\(4\),[\s\S]*?\.content-fit-table\.inquiry-list-table td:nth-child\(7\)\s*\{[^}]*text-align:\s*left;/);
+  assert.match(response.text, /\.inquiry-list-table\s*\{[^}]*min-width:\s*1450px;[^}]*table-layout:\s*fixed;/);
+  assert.match(response.text, /\.inquiry-list-table th:nth-child\(4\),[\s\S]*?width:\s*clamp\(300px, 27vw, 480px\);/);
+  assert.match(response.text, /\.inquiry-list-table th:nth-child\(5\),[\s\S]*?width:\s*clamp\(180px, 15vw, 270px\);/);
   assert.match(response.text, /\.content-fit-table\.inquiry-list-table thead th\s*\{[^}]*font-weight:\s*500;/);
   assert.match(response.text, /\.content-fit-table\.inquiry-list-table thead th\s*\{[^}]*text-transform:\s*none;/);
-  assert.match(response.text, /<th>Date<\/th>\s*<th>Source<\/th>\s*<th>Status<\/th>\s*<th>Priority<\/th>\s*<th>Subject<\/th>\s*<th>Company<\/th>\s*<th>Contact<\/th>\s*<th>Products<\/th>\s*<th>Type<\/th>\s*<th>Assigned to<\/th>\s*<th>Actions<\/th>/);
+  assert.match(response.text, /<th>Date<\/th>\s*<th>Status<\/th>\s*<th>Priority<\/th>\s*<th>Subject<\/th>\s*<th>Company<\/th>\s*<th>Contact<\/th>\s*<th>Products<\/th>\s*<th>Type<\/th>\s*<th>Assigned to<\/th>\s*<th>Actions<\/th>/);
   assert.match(response.text, /<td data-label="Date"[^>]*>2026-07-30<\/td>/);
   assert.match(response.text, /<td class="clickable-cell" data-label="Subject"/);
   assert.match(response.text, /<td data-label="Company" title="Acme Co">Acme Co<\/td>/);
   assert.match(response.text, /<td data-label="Products" title="Evaporator">Evaporator<\/td>/);
   assert.match(response.text, /@media \(max-width:\s*860px\)\s*\{[\s\S]*?\.inquiry-list-table tbody tr\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*repeat\(2, minmax\(0, 1fr\)\);/);
   assert.match(response.text, /\.content-fit-table\.inquiry-list-table tbody td::before\s*\{[^}]*content:\s*attr\(data-label\);/);
-  assert.match(response.text, /\.content-fit-table\.inquiry-list-table tbody td:nth-child\(5\),[\s\S]*?\.content-fit-table\.inquiry-list-table tbody td:nth-child\(7\),[\s\S]*?\.content-fit-table\.inquiry-list-table tbody td:nth-child\(11\)\s*\{[^}]*grid-column:\s*1 \/ -1;/);
-  assert.match(response.text, /\.content-fit-table\.inquiry-list-table th:nth-child\(5\),[\s\S]*?\.content-fit-table\.inquiry-list-table td:nth-child\(8\)\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
-  assert.match(response.text, /\.content-fit-table\.inquiry-list-table td:nth-child\(5\) \.cell-link\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table tbody td:nth-child\(4\),[\s\S]*?\.content-fit-table\.inquiry-list-table tbody td:nth-child\(7\),[\s\S]*?\.content-fit-table\.inquiry-list-table tbody td:nth-child\(10\)\s*\{[^}]*grid-column:\s*1 \/ -1;/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table th:nth-child\(4\),[\s\S]*?\.content-fit-table\.inquiry-list-table td:nth-child\(7\)\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
+  assert.match(response.text, /\.content-fit-table\.inquiry-list-table td:nth-child\(4\) \.cell-link\s*\{[^}]*overflow:\s*hidden;[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
   assert.match(response.text, /Need evaporator quote/);
   assert.match(response.text, /CT000030 · Alice/);
   assert.match(response.text, /Acme Co/);
@@ -315,7 +316,7 @@ test('sales manager can view inquiry list from navigation', async () => {
   assert.match(response.text, /value="all">Show all/);
   assert.match(response.text, /Showing <strong>1–1<\/strong> \/ <strong>1<\/strong>/);
   assert.deepEqual(calls.filter((call) => call[0] === 'listInquiries'), [
-    ['listInquiries', { status: 'reviewing', source: 'email', limit: 50, offset: 0 }]
+    ['listInquiries', { status: 'reviewing', source: 'website', submissionType: 'standard', limit: 50, offset: 0 }]
   ]);
 });
 
@@ -332,7 +333,7 @@ test('inquiry list can show all filtered results without pagination controls', a
   const response = await agent.get('/inquiries?query=Acme&status=reviewing&view=all');
 
   assert.equal(response.status, 200);
-  const expectedFilter = { status: 'reviewing', searchTerm: 'Acme' };
+  const expectedFilter = { status: 'reviewing', searchTerm: 'Acme', source: 'website', submissionType: 'standard' };
   assert.deepEqual(calls.filter((call) => call[0] === 'countInquiries'), [
     ['countInquiries', expectedFilter]
   ]);
@@ -354,7 +355,7 @@ test('Chinese inquiry list keeps native date controls', async () => {
   assert.equal(response.status, 200);
   assert.match(response.text, /name="dateFrom" type="date"/);
   assert.match(response.text, /name="dateTo" type="date"/);
-  assert.match(response.text, /<th>\u65e5\u671f<\/th>\s*<th>\u6765\u6e90<\/th>\s*<th>\u72b6\u6001<\/th>\s*<th>\u4f18\u5148\u7ea7<\/th>\s*<th>\u4e3b\u9898<\/th>\s*<th>\u516c\u53f8<\/th>\s*<th>\u8054\u7cfb\u4eba<\/th>\s*<th>\u4ea7\u54c1<\/th>\s*<th>\u7c7b\u578b<\/th>\s*<th>\u8d1f\u8d23\u4eba<\/th>\s*<th>\u64cd\u4f5c<\/th>/);
+  assert.match(response.text, /<th>\u65e5\u671f<\/th>\s*<th>\u72b6\u6001<\/th>\s*<th>\u4f18\u5148\u7ea7<\/th>\s*<th>\u4e3b\u9898<\/th>\s*<th>\u516c\u53f8<\/th>\s*<th>\u8054\u7cfb\u4eba<\/th>\s*<th>\u4ea7\u54c1<\/th>\s*<th>\u7c7b\u578b<\/th>\s*<th>\u8d1f\u8d23\u4eba<\/th>\s*<th>\u64cd\u4f5c<\/th>/);
   assert.match(response.text, /<td data-label="\u65e5\u671f"/);
   assert.match(response.text, /<td class="clickable-cell" data-label="\u4e3b\u9898"/);
 });
@@ -374,7 +375,8 @@ test('inquiry list applies search filters and server-side pagination', async () 
   assert.equal(response.status, 200);
   const expectedFilter = {
     status: 'reviewing',
-    source: 'email',
+    source: 'website',
+    submissionType: 'standard',
     assignedUserId: 7,
     searchTerm: 'Acme',
     dateFrom: '2026-07-01',
@@ -412,17 +414,12 @@ test('inquiry list ignores an implausible future source date', async () => {
   assert.doesNotMatch(response.text, /2157-01-01/);
 });
 
-test('sales manager opens manual inquiry form and creates inquiry', async () => {
+test('manual inquiry entry redirects to leads and direct manual inquiry posts are retired', async () => {
   const { agent, calls } = await createLoggedInAgent();
 
   const form = await agent.get('/inquiries/new');
-  assert.equal(form.status, 200);
-  assert.match(form.text, /New inquiry/);
-  assert.match(form.text, /name="source"/);
-  assert.match(form.text, /name="requirementText"/);
-  const assigneeSelect = form.text.match(/<select name="assignedUserId"[\s\S]*?<\/select>/)?.[0] || '';
-  assert.match(assigneeSelect, /Sales One/);
-  assert.doesNotMatch(assigneeSelect, /Sales Two/);
+  assert.equal(form.status, 302);
+  assert.equal(form.headers.location, '/lead-submissions/new');
 
   const created = await agent
     .post('/inquiries')
@@ -440,35 +437,9 @@ test('sales manager opens manual inquiry form and creates inquiry', async () => 
       requirementText: 'Need dryer quote'
     });
 
-  assert.equal(created.status, 302);
-  assert.equal(created.headers.location, '/inquiries/12');
-  assert.deepEqual(calls.filter((call) => call[0] === 'createInquiry'), [
-    ['createInquiry', {
-      source: 'manual',
-      submissionType: 'standard',
-      sourceChannel: 'manual',
-      sourceReference: '',
-      sourceReceivedAt: null,
-      subject: 'Manual RFQ',
-      companyName: 'Beta Co',
-      contactName: 'Bob',
-      contactEmail: 'bob@example.com',
-      contactPhone: '',
-      country: '',
-      productInterest: 'Dryer',
-      opportunityType: '',
-      requirementText: 'Need dryer quote',
-      rawPayload: {},
-      priority: 'normal',
-      status: 'new',
-      assignedUserId: 7,
-      recommendedSalespersonId: null,
-      matchedCustomerId: null,
-      matchedContactId: null,
-      createdBy: 7,
-      reviewNote: ''
-    }]
-  ]);
+  assert.equal(created.status, 410);
+  assert.match(created.text, /Create a lead or opportunity directly/);
+  assert.equal(calls.some((call) => call[0] === 'createInquiry'), false);
 });
 
 test('salesperson cannot create an inquiry directly', async () => {
@@ -494,7 +465,7 @@ test('salesperson cannot create an inquiry directly', async () => {
   assert.equal(calls.some((call) => call[0] === 'createInquiry'), false);
 });
 
-test('sales manager can assign only to active sales managers', async () => {
+test('website forms page does not expose a manual inquiry form', async () => {
   const { agent } = await createLoggedInAgent({
     user: {
       id: 2,
@@ -523,14 +494,12 @@ test('sales manager can assign only to active sales managers', async () => {
     }]
   });
 
-  const form = await agent.get('/inquiries/new');
-  assert.equal(form.status, 200);
-  const assigneeSelect = form.text.match(/<select name="assignedUserId"[\s\S]*?<\/select>/)?.[0] || '';
-  assert.match(assigneeSelect, /Sales Manager/);
-  assert.match(assigneeSelect, /Sales Manager Two/);
-  assert.doesNotMatch(assigneeSelect, />Sales Two</);
-  assert.doesNotMatch(assigneeSelect, /Quotation Engineer/);
-  assert.doesNotMatch(assigneeSelect, /Inactive Sales/);
+  const page = await agent.get('/inquiries');
+  assert.equal(page.status, 200);
+  assert.doesNotMatch(page.text, /href="\/inquiries\/new"/);
+  assert.doesNotMatch(page.text, /name="source"/);
+  assert.match(page.text, /href="\/lead-submissions\/new"/);
+  assert.match(page.text, /href="\/opportunities\/new"/);
 });
 
 test('inquiry detail supports review and conversion forms', async () => {

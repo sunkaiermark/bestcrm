@@ -10,6 +10,7 @@ import {
   markOpportunityTechnicalDraftReady,
   prefillTechnicalDraftVariables,
   renderTechnicalDraftContent,
+  technicalDraftSubmissionSummary,
   updateOpportunityTechnicalDraftSection,
   updateOpportunityTechnicalDraftVariables,
   validateTechnicalDraftVariables
@@ -18,6 +19,27 @@ import {
 const lead = { id: 3, roles: [ROLES.QUOTATION_ENGINEER] };
 const support = { id: 4, roles: [ROLES.QUOTATION_ENGINEER] };
 const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
+
+test('technical draft submission summary uses only the frozen document language', () => {
+  const draft = {
+    language: 'zh',
+    draftRevisionNo: 2,
+    templateCodeSnapshot: 'MX-100',
+    templateRevisionNoSnapshot: 3,
+    renderedContent: {
+      sections: [{
+        key: 'design_parameters',
+        labelEn: 'Design Parameters',
+        labelZh: '设计参数',
+        included: true
+      }]
+    }
+  };
+
+  const summary = technicalDraftSubmissionSummary(draft);
+  assert.match(summary, /TS-D2 由 MX-100 TPL-R3 生成；章节：设计参数/);
+  assert.doesNotMatch(summary, /Design Parameters|generated from|sections:/);
+});
 
 function opportunity() {
   return {
@@ -62,10 +84,16 @@ function section(overrides = {}) {
     sectionType: 'parameter_table',
     bodyEn: 'Standard values',
     bodyZh: '标准参数',
-    tableRows: [['Item', 'Value']],
+    tableRowsEn: [['Item', 'Value']],
+    tableRowsZh: [['项目', '数值']],
     condition: { operator: 'always', variableKey: '', value: '' },
     defaultClauseIds: [30],
     blocks: [],
+    layout: {
+      pageBreakBefore: false,
+      table: { headerRow: true, columnWidths: [40, 60], columnAlignments: ['left', 'right'], merges: [] },
+      image: null
+    },
     ...overrides
   };
 }
@@ -83,6 +111,7 @@ function draft(overrides = {}) {
   return {
     id: 41,
     opportunityId: 20,
+    language: 'en',
     status: 'draft',
     contentSchemaSnapshot,
     variableSchemaSnapshot,
@@ -121,6 +150,8 @@ test('generation freezes the current published template and prefills known proje
     id: 5,
     templateCode: 'MX-100',
     name: 'Mixer Agreement',
+    nameEn: 'Mixer Agreement',
+    nameZh: '搅拌机协议',
     productModel: 'MX-100',
     language: 'bilingual',
     isActive: true,
@@ -141,7 +172,7 @@ test('generation freezes the current published template and prefills known proje
     technicalTemplateRepository: {
       async getTemplateDetail() { return template; },
       async listClauses() {
-        return [{ id: 30, clauseCode: 'FAT-01', revisionNo: 1, revisionLabel: 'FAT-01-R1', title: 'FAT', language: 'bilingual', content: 'FAT required', conditionSchema: {}, status: 'published' }];
+        return [{ id: 30, clauseCode: 'FAT-01', revisionNo: 1, revisionLabel: 'FAT-01-R1', title: 'FAT', language: 'en', content: 'FAT required', conditionSchema: {}, status: 'published' }];
       }
     },
     opportunityTechnicalDraftRepository: {
@@ -166,7 +197,7 @@ test('generation freezes the current published template and prefills known proje
   assert.equal(result.id, 41);
   assert.equal(created[0].templateRevisionId, 9);
   assert.equal(created[0].templateRevisionNoSnapshot, 2);
-  assert.equal(created[0].language, 'bilingual');
+  assert.equal(created[0].language, 'en');
   assert.equal(created[0].variableValues.customer_name, 'Acme');
   assert.equal(created[0].variableValues.product_model, 'MX-100');
   assert.equal(created[0].selectedClauses[0].revisionLabel, 'FAT-01-R1');
@@ -174,8 +205,8 @@ test('generation freezes the current published template and prefills known proje
   assert.notEqual(created[0].contentSchemaSnapshot, template.revisions[0].contentSchema);
 });
 
-test('English Chinese and bilingual templates preserve their selected generation language', async () => {
-  for (const language of ['en', 'zh', 'bilingual']) {
+test('one dual-language template generates only the selected login language', async () => {
+  for (const language of ['en', 'zh']) {
     const created = [];
     const repositories = {
       technicalTemplateRepository: {
@@ -184,8 +215,10 @@ test('English Chinese and bilingual templates preserve their selected generation
             id: 5,
             templateCode: `MX-${language}`,
             name: 'Agreement',
+            nameEn: 'Agreement',
+            nameZh: '协议',
             productModel: '',
-            language,
+            language: 'bilingual',
             isActive: true,
             currentPublishedRevisionId: 9,
             revisions: [{ id: 9, revisionNo: 1, status: 'published', contentSchema: { schemaVersion: 1, sections: [section()] }, variables: [] }]
@@ -198,8 +231,9 @@ test('English Chinese and bilingual templates preserve their selected generation
         async createDraft(input) { created.push(input); return input; }
       }
     };
-    await generateOpportunityTechnicalDraft(repositories, lead, opportunity(), 5);
+    await generateOpportunityTechnicalDraft(repositories, lead, opportunity(), 5, language);
     assert.equal(created[0].language, language);
+    assert.equal(created[0].templateNameSnapshot, language === 'zh' ? '协议' : 'Agreement');
     assert.equal(created[0].renderedContent.sections.length, 1);
   }
 });
@@ -236,6 +270,7 @@ test('conditions alter inclusion without executing template expressions', () => 
     selectedClauses: []
   });
   assert.equal(content.sections[0].included, false);
+  assert.deepEqual(content.sections[0].layout.table.columnWidths, [40, 60]);
 });
 
 test('Supporting Engineers edit only assigned sections and attributed changes differ from the standard', async () => {
@@ -248,13 +283,14 @@ test('Supporting Engineers edit only assigned sections and attributed changes di
   assert.equal(canEditOpportunityTechnicalDraftSection(support, opportunity(), currentDraft, 'utilities'), false);
 
   await updateOpportunityTechnicalDraftSection(repository, support, opportunity(), currentDraft, 'design_parameters', {
-    bodyEn: 'Project-specific 50 t/h',
-    bodyZh: '项目参数 50 t/h',
+    body: 'Project-specific 50 t/h',
     tableRows: 'Capacity | 50 t/h'
   });
   assert.equal(calls[0].standardChanged, true);
   assert.equal(calls[0].actorUserId, 4);
   assert.equal(calls[0].renderedContent.sections[0].lastEditedBy, 4);
+  assert.equal(calls[0].renderedContent.sections[0].bodyZh, '标准参数');
+  assert.deepEqual(calls[0].renderedContent.sections[0].tableRowsZh, [['项目', '数值']]);
 
   await assert.rejects(
     updateOpportunityTechnicalDraftSection(repository, support, opportunity(), currentDraft, 'utilities', {}),

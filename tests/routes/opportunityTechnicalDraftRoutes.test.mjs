@@ -10,7 +10,8 @@ function standardSection(overrides = {}) {
   return {
     key: 'design_parameters', labelEn: 'Design Parameters', labelZh: '设计参数', enabled: true,
     sortOrder: 1, sectionType: 'parameter_table', bodyEn: 'Standard parameters', bodyZh: '标准参数',
-    tableRows: [['Item', 'Value']], condition: { operator: 'always', variableKey: '', value: '' },
+    tableRowsEn: [['Item', 'Value']], tableRowsZh: [['项目', '数值']],
+    condition: { operator: 'always', variableKey: '', value: '' },
     defaultClauseIds: [30], blocks: [], ...overrides
   };
 }
@@ -50,10 +51,13 @@ async function createDraftAgent(options = {}) {
   })] };
   const clause = {
     id: 30, clauseCode: 'FAT-01', revisionNo: 1, revisionLabel: 'FAT-01-R1', title: 'Factory Acceptance Test',
-    language: 'bilingual', content: 'Documented FAT required.', conditionSchema: {}, status: 'published'
+    language: options.language || 'en',
+    content: options.language === 'zh' ? '需执行并记录工厂验收。' : 'Documented FAT required.',
+    conditionSchema: {}, status: 'published'
   };
   const template = {
     id: 5, templateCode: 'MX-100', name: 'Mixer Agreement', productFamily: 'Mixing', productModel: 'MX-100',
+    nameEn: 'Mixer Agreement', nameZh: '搅拌机协议', productCategoryCode: 'mixer',
     language: 'bilingual', isActive: true, currentPublishedRevisionId: 9,
     currentRevisionLabel: 'TPL-R1', revisions: [{ id: 9, revisionNo: 1, status: 'published', contentSchema, variables }]
   };
@@ -68,7 +72,7 @@ async function createDraftAgent(options = {}) {
     status: options.draftStatus || 'draft',
     formalVersionNo: options.formalVersionNo || null,
     formalVersionLabel: options.formalVersionNo ? `TS-V${options.formalVersionNo}` : '',
-    language: 'bilingual',
+    language: options.language || 'en',
     templateCodeSnapshot: 'MX-100',
     templateNameSnapshot: 'Mixer Agreement',
     templateRevisionNoSnapshot: 1,
@@ -140,7 +144,7 @@ test('anonymous users are redirected from project technical draft routes', async
   assert.equal(response.headers.location, '/login');
 });
 
-test('Project Lead Engineer sees bilingual draft list and can generate from a published template', async () => {
+test('Project Lead Engineer sees the login-language draft list and generation freezes that language', async () => {
   const { agent, calls } = await createDraftAgent({ language: 'zh' });
   const list = await agent.get('/opportunities/20/technical-drafts');
   assert.equal(list.status, 200);
@@ -151,7 +155,7 @@ test('Project Lead Engineer sees bilingual draft list and can generate from a pu
   const created = await agent.post('/opportunities/20/technical-drafts').type('form').send({ templateId: 5 });
   assert.equal(created.status, 302);
   assert.equal(created.headers.location, '/opportunities/20/technical-drafts/41');
-  assert.ok(calls.some(([method]) => method === 'createDraft'));
+  assert.ok(calls.some(([method, input]) => method === 'createDraft' && input.language === 'zh'));
 });
 
 test('draft detail shows snapshot validation structured sections clauses and contribution history', async () => {
@@ -165,6 +169,7 @@ test('draft detail shows snapshot validation structured sections clauses and con
   assert.match(response.text, /标准条款选择/);
   assert.match(response.text, /FAT-01-R1/);
   assert.match(response.text, /草稿贡献历史/);
+  assert.doesNotMatch(response.text, /Capacity|Standard parameters|Documented FAT required\./);
 });
 
 test('sales owner can read the generated project draft but cannot mutate engineering content', async () => {
@@ -179,7 +184,7 @@ test('sales owner can read the generated project draft but cannot mutate enginee
 test('Supporting Engineer edits an assigned section but cannot edit an unassigned section', async () => {
   const { agent, calls } = await createDraftAgent({ userId: 4, username: 'support01', displayName: 'Support Engineer' });
   const assigned = await agent.post('/opportunities/20/technical-drafts/41/sections/design_parameters').type('form').send({
-    bodyEn: 'Project parameters', bodyZh: '项目参数', tableRows: 'Capacity | 20 t/h'
+    body: 'Project parameters', tableRows: 'Capacity | 20 t/h'
   });
   assert.equal(assigned.status, 302);
   assert.ok(calls.some(([method, input]) => method === 'updateSection' && input.sectionKey === 'design_parameters' && input.actorUserId === 4));

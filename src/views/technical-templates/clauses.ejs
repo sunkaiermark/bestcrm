@@ -4,12 +4,12 @@
           <% if (canAuthor) { %><a class="quick-action" href="/technical-clauses/new"><%= t('newStandardClause') %></a><% } %>
         </header>
         <section class="list-section"><div class="list-body"><table class="list-table content-fit-table">
-          <thead><tr><th><%= t('revision') %></th><th><%= t('clauseTitle') %></th><th><%= t('productFamily') %></th><th><%= t('outputLanguage') %></th><th><%= t('status') %></th><th><%= t('changeSummary') %></th><% if (canAuthor) { %><th><%= t('actions') %></th><% } %></tr></thead>
+          <thead><tr><th><%= t('revision') %></th><th><%= t('clauseTitle') %></th><th><%= t('productFamily') %></th><th><%= t('status') %></th><th><%= t('changeSummary') %></th><% if (canAuthor) { %><th><%= t('actions') %></th><% } %></tr></thead>
           <tbody>
             <% for (const clause of clauses) { %>
               <tr>
                 <td><strong><%= clause.revisionLabel %></strong></td><td><%= clause.title %><br><span class="muted"><%= clause.content %></span></td><td><%= clause.productFamily || '-' %></td>
-                <td><%= t(`templateLanguage.${clause.language}`) %></td><td><span class="status"><%= t(`templateStatus.${clause.status}`) %></span></td><td><%= clause.changeSummary %></td>
+                <td><span class="status"><%= t(`templateStatus.${clause.status}`) %></span></td><td><%= clause.changeSummary %></td>
                 <% if (canAuthor) { %><td><div class="inline-actions">
                   <% if (clause.status === 'draft') { %><a class="secondary-action" href="/technical-clauses/<%= clause.id %>/edit"><%= t('edit') %></a><form method="post" action="/technical-clauses/<%= clause.id %>/submit" onsubmit="return confirm('<%= t('submitClauseConfirm') %>')"><%- csrfField() %><button type="submit"><%= t('submitForReview') %></button></form><% } %>
                   <% if (clause.status === 'review_pending') { %><form method="post" action="/technical-clauses/<%= clause.id %>/publish" onsubmit="return confirm('<%= t('publishClauseConfirm') %>')"><%- csrfField() %><button type="submit"><%= t('publish') %></button></form><% } %>
@@ -17,7 +17,7 @@
                 </div></td><% } %>
               </tr>
             <% } %>
-            <% if (!clauses.length) { %><tr><td colspan="7" class="empty"><%= t('noStandardClauses') %></td></tr><% } %>
+            <% if (!clauses.length) { %><tr><td colspan="6" class="empty"><%= t('noStandardClauses') %></td></tr><% } %>
           </tbody>
         </table></div></section>
 <%- include('../partials/app-end') %>

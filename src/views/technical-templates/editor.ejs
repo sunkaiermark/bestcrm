@@ -1,4 +1,24 @@
 <%- include('../partials/app-start', { title: `${t('templateEditor')} - ${template.templateCode} - BESTCRM`, activeNav: 'technical-templates' }) %>
+        <style>
+          .template-layout-panel { margin: 1rem 0; padding: 1rem; border: 1px solid #d9e0e8; border-radius: 8px; background: #f7fafd; }
+          .template-layout-panel legend { padding: 0 .45rem; color: #244c7c; font-weight: 700; }
+          .template-layout-flags { display: flex; flex-wrap: wrap; gap: .75rem 1.5rem; margin-bottom: .9rem; }
+          .column-layout-controls { display: grid; gap: .55rem; margin: .75rem 0; }
+          .column-layout-row { display: grid; grid-template-columns: minmax(7rem, .65fr) minmax(12rem, 2fr) minmax(9rem, 1fr); gap: .75rem; align-items: center; }
+          .column-layout-row label { margin: 0; }
+          .merge-layout-row { display: grid; grid-template-columns: repeat(3, minmax(6rem, 1fr)) auto; gap: .55rem; align-items: end; margin-bottom: .55rem; }
+          .table-layout-toolbar { display: flex; align-items: center; gap: .75rem; margin: .75rem 0; }
+          .table-layout-preview { overflow-x: auto; margin-top: .8rem; padding: .65rem; border: 1px dashed #bcc8d6; border-radius: 6px; background: #fff; }
+          .table-layout-preview table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+          .table-layout-preview th, .table-layout-preview td { padding: .45rem .55rem; border: 1px solid #d9e0e8; overflow-wrap: anywhere; }
+          .table-layout-preview th { color: #fff; background: #244c7c; }
+          .table-layout-preview tbody tr:nth-child(even) td { background: #f7fafd; }
+          .section-image-preview { display: block; max-width: 100%; max-height: 20rem; margin: .8rem auto; border: 1px solid #d9e0e8; border-radius: 6px; }
+          .section-image-controls { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: .75rem; }
+          @media (max-width: 800px) {
+            .column-layout-row, .merge-layout-row, .section-image-controls { grid-template-columns: 1fr; }
+          }
+        </style>
         <p class="breadcrumb"><a href="/technical-templates"><%= t('technicalTemplateLibrary') %></a> / <a href="/technical-templates/<%= template.id %>"><%= template.templateCode %></a> / <%= revision.revisionLabel %></p>
         <header class="page-header">
           <div>
@@ -12,13 +32,16 @@
         </section>
 
         <% for (const section of [...(revision.contentSchema.sections || [])].sort((left, right) => left.sortOrder - right.sortOrder)) { %>
+          <% const sectionRows = section[language === 'zh' ? 'tableRowsZh' : 'tableRowsEn'] || []; %>
+          <% const sectionLayout = section.layout || {}; %>
+          <% const tableLayout = sectionLayout.table || {}; %>
+          <% const sectionImage = sectionLayout.image || null; %>
           <details class="form-panel technical-template-revision" <%= section.sortOrder === 1 ? 'open' : '' %>>
             <summary><strong><%= section.sortOrder %>. <%= language === 'zh' ? section.labelZh : section.labelEn %></strong> <span class="muted">(<%= section.key %>)</span></summary>
-            <form method="post" action="/technical-templates/<%= template.id %>/revisions/<%= revision.id %>/sections/<%= section.key %>">
+            <form method="post" enctype="multipart/form-data" data-template-section-form action="/technical-templates/<%= template.id %>/revisions/<%= revision.id %>/sections/<%= section.key %>">
               <%- csrfField() %>
               <div class="form-grid">
-                <label><%= t('sectionLabelEn') %><input name="labelEn" maxlength="200" value="<%= section.labelEn %>" required></label>
-                <label><%= t('sectionLabelZh') %><input name="labelZh" maxlength="200" value="<%= section.labelZh %>" required></label>
+                <label><%= t('sectionLabel') %><input name="label" maxlength="200" value="<%= language === 'zh' ? section.labelZh : section.labelEn %>" required></label>
                 <label><%= t('sectionType') %>
                   <select name="sectionType" required>
                     <% for (const type of sectionTypes) { %><option value="<%= type %>" <%= (section.sectionType || 'narrative') === type ? 'selected' : '' %>><%= t(`sectionType.${type}`) %></option><% } %>
@@ -27,9 +50,57 @@
                 <label><%= t('sortOrder') %><input name="sortOrder" type="number" min="1" max="99" value="<%= section.sortOrder %>" required></label>
               </div>
               <label class="checkbox-row"><input name="enabled" type="checkbox" <%= section.enabled !== false ? 'checked' : '' %>><span><%= t('includeSectionByDefault') %></span></label>
-              <label><%= t('sectionBodyEn') %><textarea name="bodyEn" maxlength="100000"><%= section.bodyEn || '' %></textarea></label>
-              <label><%= t('sectionBodyZh') %><textarea name="bodyZh" maxlength="100000"><%= section.bodyZh || '' %></textarea></label>
-              <label><%= t('structuredTableRows') %><textarea name="tableRows" maxlength="100000"><%= (section.tableRows || []).map((row) => row.join(' | ')).join('\n') %></textarea><span class="muted"><%= t('structuredTableRowsHint') %></span></label>
+              <label><%= t('sectionBody') %><textarea name="body" maxlength="100000"><%= (language === 'zh' ? section.bodyZh : section.bodyEn) || '' %></textarea></label>
+              <label><%= t('structuredTableRows') %><textarea name="tableRows" maxlength="100000"><%= sectionRows.map((row) => row.join(' | ')).join('\n') %></textarea><span class="muted"><%= t('structuredTableRowsHint') %></span></label>
+
+              <fieldset class="template-layout-panel" data-table-layout-designer
+                data-column-label="<%= t('tableColumn') %>"
+                data-width-label="<%= t('tableColumnWidth') %>"
+                data-alignment-label="<%= t('tableColumnAlignment') %>"
+                data-row-label="<%= t('tableMergeRow') %>"
+                data-start-column-label="<%= t('tableMergeStartColumn') %>"
+                data-span-label="<%= t('tableMergeSpan') %>"
+                data-remove-label="<%= t('remove') %>"
+                data-align-left="<%= t('layoutAlignment.left') %>"
+                data-align-center="<%= t('layoutAlignment.center') %>"
+                data-align-right="<%= t('layoutAlignment.right') %>">
+                <legend><%= t('controlledLayoutSettings') %></legend>
+                <div class="template-layout-flags">
+                  <input type="hidden" name="tableHeaderRow" value="false">
+                  <label class="checkbox-row"><input name="tableHeaderRow" value="true" type="checkbox" <%= (tableLayout.headerRow ?? sectionRows.length > 1) ? 'checked' : '' %>><span><%= t('repeatTableHeader') %></span></label>
+                  <input type="hidden" name="pageBreakBefore" value="false">
+                  <label class="checkbox-row"><input name="pageBreakBefore" value="true" type="checkbox" <%= sectionLayout.pageBreakBefore ? 'checked' : '' %>><span><%= t('pageBreakBeforeSection') %></span></label>
+                </div>
+                <input type="hidden" name="columnWidths" value="<%= (tableLayout.columnWidths || []).join(' | ') %>">
+                <input type="hidden" name="columnAlignments" value="<%= (tableLayout.columnAlignments || []).join(' | ') %>">
+                <textarea name="tableMerges" hidden><%= (tableLayout.merges || []).map((merge) => `${merge.row},${merge.column},${merge.span}`).join('\n') %></textarea>
+                <div class="column-layout-controls" data-column-controls></div>
+                <div class="table-layout-toolbar">
+                  <strong><%= t('mergedCells') %></strong>
+                  <button type="button" class="button-link" data-add-merge><%= t('addMergedCell') %></button>
+                  <span class="muted"><%= t('mergedCellsHint') %></span>
+                </div>
+                <div data-merge-controls></div>
+                <div class="table-layout-preview" data-table-preview></div>
+              </fieldset>
+
+              <fieldset class="template-layout-panel">
+                <legend><%= t('sectionImage') %></legend>
+                <% if (sectionImage?.data) { %>
+                  <img class="section-image-preview" src="data:<%= sectionImage.mimeType %>;base64,<%= sectionImage.data %>" alt="<%= language === 'zh' ? sectionImage.captionZh : sectionImage.captionEn %>">
+                  <label class="checkbox-row"><input type="checkbox" name="removeSectionImage"><span><%= t('removeSectionImage') %></span></label>
+                <% } %>
+                <label><%= t('uploadSectionImage') %><input type="file" name="sectionImage" accept="image/png,image/jpeg"><span class="muted"><%= t('sectionImageHint') %></span></label>
+                <div class="section-image-controls">
+                  <label><%= t('sectionImageCaption') %><input name="imageCaption" maxlength="500" value="<%= sectionImage ? (language === 'zh' ? sectionImage.captionZh : sectionImage.captionEn) : '' %>"></label>
+                  <label><%= t('sectionImageAlignment') %>
+                    <select name="imageAlignment">
+                      <% for (const alignment of imageAlignments) { %><option value="<%= alignment %>" <%= (sectionImage?.alignment || 'center') === alignment ? 'selected' : '' %>><%= t(`layoutAlignment.${alignment}`) %></option><% } %>
+                    </select>
+                  </label>
+                  <label><%= t('sectionImageWidth') %> <output data-image-width-output><%= sectionImage?.widthPercent || 60 %>%</output><input name="imageWidthPercent" type="range" min="20" max="100" step="5" value="<%= sectionImage?.widthPercent || 60 %>"></label>
+                </div>
+              </fieldset>
               <div class="form-grid">
                 <label><%= t('conditionOperator') %>
                   <select name="conditionOperator">
@@ -55,4 +126,5 @@
             </form>
           </details>
         <% } %>
+        <script src="/assets/technical-template-editor.js" defer></script>
 <%- include('../partials/app-end') %>

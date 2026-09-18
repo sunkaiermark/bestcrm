@@ -46,6 +46,7 @@ async function createTechnicalDocumentAgent(options = {}) {
   };
   const template = {
     id: 5, templateCode: 'MIX-DS', name: 'Mixer Datasheet', documentType: 'datasheet',
+    nameEn: 'Mixer Datasheet', nameZh: '搅拌机技术数据表',
     productCategoryCode: 'mixer', productFamily: '搅拌机', language: 'bilingual',
     currentPublishedRevisionId: 9, isActive: true,
     revisions: [{
@@ -169,14 +170,18 @@ test('assigned Quotation Engineer adds structured equipment and opens template c
 });
 
 test('formal V1 generation resolves the item template and redirects to the document', async () => {
-  const { agent, calls } = await createTechnicalDocumentAgent();
+  const { agent, calls } = await createTechnicalDocumentAgent({ language: 'zh' });
   const response = await agent.post('/opportunities/20/technical-documents').type('form').send({
     documentType: 'datasheet', equipmentItemIds: '11'
   });
   assert.equal(response.status, 302);
   assert.equal(response.headers.location, '/opportunities/20/technical-documents/30');
-  assert.ok(calls.some(([name]) => name === 'generateVersionOne'));
-  assert.ok(calls.some(([name, input]) => name === 'createDocument' && input.documentCode === 'OPP-20-01-DATASHEET'));
+  assert.ok(calls.some(([name, input]) => name === 'generateVersionOne' && input.language === 'zh'));
+  assert.ok(calls.some(([name, input]) => (
+    name === 'createDocument'
+    && input.documentCode === 'OPP-20-01-DATASHEET'
+    && input.sourceSnapshot.language === 'zh'
+  )));
 });
 
 test('document detail downloads integrity-checked files and accepts a paired external V2', async () => {

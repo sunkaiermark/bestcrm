@@ -257,7 +257,7 @@ export function opportunityTechnicalDocumentRoutes({
         dependencies,
         req.currentUser,
         opportunity,
-        req.body
+        { ...req.body, language: req.language }
       );
       res.redirect(`/opportunities/${opportunity.id}/technical-documents/${created.documentId}`);
     } catch (error) {

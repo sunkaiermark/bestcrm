@@ -6,14 +6,14 @@
   const issueByVariable = new Map((draft.validationIssues || []).map((issue) => [issue.variableKey, issue]));
   const sectionLabel = (sectionKey) => {
     const section = sections.find((candidate) => candidate.key === sectionKey);
-    return section ? (language === 'zh' ? section.labelZh : section.labelEn) : sectionKey;
+    return section ? (draft.language === 'zh' ? section.labelZh : section.labelEn) : sectionKey;
   };
 %>
         <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a> / <a href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('projectTechnicalDrafts') %></a></p>
         <header class="page-header">
           <div>
             <h1><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %></h1>
-            <div class="muted"><%= draft.templateCodeSnapshot %> · TPL-R<%= draft.templateRevisionNoSnapshot %> · <%= t(`templateLanguage.${draft.language}`) %></div>
+            <div class="muted"><%= draft.templateCodeSnapshot %> · TPL-R<%= draft.templateRevisionNoSnapshot %></div>
           </div>
           <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span>
         </header>
@@ -26,7 +26,7 @@
               <strong><%= t('draftHasValidationIssues') %></strong>
               <ul>
                 <% for (const issue of draft.validationIssues) { %>
-                  <li><%= language === 'zh' ? issue.labelZh : issue.labelEn %> · <%= t(`validationIssue.${issue.code}`) %><%= issue.expected !== undefined ? ` (${Array.isArray(issue.expected) ? issue.expected.join(', ') : issue.expected})` : '' %></li>
+                  <li><%= draft.language === 'zh' ? issue.labelZh : issue.labelEn %> · <%= t(`validationIssue.${issue.code}`) %><%= issue.expected !== undefined ? ` (${Array.isArray(issue.expected) ? issue.expected.join(', ') : issue.expected})` : '' %></li>
                 <% } %>
               </ul>
             </div>
@@ -101,7 +101,7 @@
             <div class="form-grid">
               <% for (const variable of draft.variableSchemaSnapshot || []) { const editable = canManageDraft || editableSectionKeys.has(variable.sectionKey); %>
                 <label>
-                  <%= language === 'zh' ? variable.labelZh : variable.labelEn %><%= variable.isRequired ? ' *' : '' %>
+                  <%= draft.language === 'zh' ? variable.labelZh : variable.labelEn %><%= variable.isRequired ? ' *' : '' %>
                   <span class="muted"><%= variable.variableKey %> · <%= sectionLabel(variable.sectionKey) %></span>
                   <% if (variable.dataType === 'boolean') { %>
                     <select name="<%= variable.variableKey %>" <%= editable ? '' : 'disabled' %>><option value=""></option><option value="true" <%= draft.variableValues[variable.variableKey] === true ? 'selected' : '' %>><%= t('yesValue') %></option><option value="false" <%= draft.variableValues[variable.variableKey] === false ? 'selected' : '' %>><%= t('noValue') %></option></select>
@@ -133,7 +133,7 @@
             <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/assignments">
               <%- csrfField() %>
               <div class="form-grid">
-                <label><%= t('assignedSection') %><select name="sectionKey" required><% for (const section of sections) { %><option value="<%= section.key %>"><%= language === 'zh' ? section.labelZh : section.labelEn %></option><% } %></select></label>
+                <label><%= t('assignedSection') %><select name="sectionKey" required><% for (const section of sections) { %><option value="<%= section.key %>"><%= draft.language === 'zh' ? section.labelZh : section.labelEn %></option><% } %></select></label>
                 <label><%= t('supportingEngineer') %><select name="assigneeUserId" required><option value=""></option><% for (const engineer of supportingEngineers) { %><option value="<%= engineer.userId %>"><%= engineer.userDisplayName || engineer.username %></option><% } %></select></label>
                 <label><%= t('dueDate') %><input name="dueDate" type="date"></label>
               </div>
@@ -150,20 +150,20 @@
           <h2><%= t('structuredTechnicalContent') %></h2>
           <% for (const section of sections) { %>
             <article class="form-panel technical-template-revision <%= section.included ? '' : 'muted' %>">
-              <header class="page-header"><div><h3><%= section.sortOrder %>. <%= language === 'zh' ? section.labelZh : section.labelEn %></h3><div class="muted"><%= t(`sectionType.${section.sectionType}`) %> · <%= section.included ? t('includedSection') : t('excludedByCondition') %></div></div><% if (section.standardChanged) { %><span class="status"><%= t('standardContentChanged') %></span><% } %></header>
+              <header class="page-header"><div><h3><%= section.sortOrder %>. <%= draft.language === 'zh' ? section.labelZh : section.labelEn %></h3><div class="muted"><%= t(`sectionType.${section.sectionType}`) %> · <%= section.included ? t('includedSection') : t('excludedByCondition') %></div></div><% if (section.standardChanged) { %><span class="status"><%= t('standardContentChanged') %></span><% } %></header>
               <% if (editableSectionKeys.has(section.key)) { %>
                 <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/sections/<%= section.key %>">
                   <%- csrfField() %>
-                  <label><%= t('sectionBodyEn') %><textarea name="bodyEn" maxlength="100000"><%= section.bodyEn || '' %></textarea></label>
-                  <label><%= t('sectionBodyZh') %><textarea name="bodyZh" maxlength="100000"><%= section.bodyZh || '' %></textarea></label>
-                  <label><%= t('structuredTableRows') %><textarea name="tableRows" maxlength="100000"><%= (section.tableRows || []).map((row) => row.join(' | ')).join('\n') %></textarea></label>
+                  <label><%= t('sectionBody') %><textarea name="body" maxlength="100000"><%= (draft.language === 'zh' ? section.bodyZh : section.bodyEn) || '' %></textarea></label>
+                  <label><%= t('structuredTableRows') %><textarea name="tableRows" maxlength="100000"><%= (section[draft.language === 'zh' ? 'tableRowsZh' : 'tableRowsEn'] || []).map((row) => row.join(' | ')).join('\n') %></textarea></label>
                   <button type="submit"><%= t('saveProjectSection') %></button>
                 </form>
               <% } else { %>
-                <% if (section.bodyEn) { %><p><strong>EN</strong><br><%= section.bodyEn %></p><% } %>
-                <% if (section.bodyZh) { %><p><strong>中文</strong><br><%= section.bodyZh %></p><% } %>
+                <% const activeBody = draft.language === 'zh' ? section.bodyZh : section.bodyEn; %>
+                <% if (activeBody) { %><p><%= activeBody %></p><% } %>
               <% } %>
-              <% if ((section.tableRows || []).length) { %><div class="list-body"><table class="list-table content-fit-table"><tbody><% for (const row of section.tableRows) { %><tr><% for (const cell of row) { %><td><%= cell %></td><% } %></tr><% } %></tbody></table></div><% } %>
+              <% const activeTableRows = section[draft.language === 'zh' ? 'tableRowsZh' : 'tableRowsEn'] || []; %>
+              <% if (activeTableRows.length) { %><div class="list-body"><table class="list-table content-fit-table"><tbody><% for (const row of activeTableRows) { %><tr><% for (const cell of row) { %><td><%= cell %></td><% } %></tr><% } %></tbody></table></div><% } %>
               <% if ((section.clauses || []).length) { %><h4><%= t('standardClauses') %></h4><ul><% for (const clause of section.clauses) { %><li><strong><%= clause.revisionLabel %> · <%= clause.title %></strong><br><%= clause.content %><% if (clause.standardChanged) { %> <span class="status"><%= t('standardContentChanged') %></span><% } %></li><% } %></ul><% } %>
             </article>
           <% } %>

@@ -6,11 +6,11 @@
         </header>
         <section class="form-panel"><strong><%= t('administratorVariableNotice') %></strong></section>
         <section class="list-section"><div class="list-body"><table class="list-table content-fit-table">
-          <thead><tr><th><%= t('variableKey') %></th><th><%= t('englishLabel') %></th><th><%= t('chineseLabel') %></th><th><%= t('dataType') %></th><th><%= t('sourceField') %></th><th><%= t('status') %></th><th><%= t('actions') %></th></tr></thead>
+          <thead><tr><th><%= t('variableKey') %></th><th><%= t('variableLabel') %></th><th><%= t('dataType') %></th><th><%= t('sourceField') %></th><th><%= t('status') %></th><th><%= t('actions') %></th></tr></thead>
           <tbody>
             <% for (const definition of definitions) { %>
               <tr>
-                <td><strong><%= definition.variableKey %></strong></td><td><%= definition.labelEn %></td><td><%= definition.labelZh %></td>
+                <td><strong><%= definition.variableKey %></strong></td><td><%= language === 'zh' ? definition.labelZh : definition.labelEn %></td>
                 <td><%= t(`variableType.${definition.dataType}`) %></td><td><%= t(`variableSource.${definition.sourceField}`) %></td>
                 <td><span class="status"><%= definition.isActive ? t('active') : t('inactive') %></span></td>
                 <td><div class="inline-actions"><a class="secondary-action" href="/technical-templates/variables/<%= definition.id %>/edit"><%= t('edit') %></a>
@@ -18,7 +18,7 @@
                 </div></td>
               </tr>
             <% } %>
-            <% if (!definitions.length) { %><tr><td colspan="7" class="empty"><%= t('noVariableDefinitions') %></td></tr><% } %>
+            <% if (!definitions.length) { %><tr><td colspan="6" class="empty"><%= t('noVariableDefinitions') %></td></tr><% } %>
           </tbody>
         </table></div></section>
 <%- include('../partials/app-end') %>

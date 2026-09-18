@@ -7,6 +7,7 @@ import {
   Footer,
   Header,
   HeadingLevel,
+  ImageRun,
   PageNumber,
   Packer,
   Paragraph,
@@ -31,6 +32,7 @@ const DEFAULT_FONT = 'Arial';
 const CJK_FONT = 'Microsoft YaHei';
 
 const defaultPdfFontCandidates = [
+  'C:\\Windows\\Fonts\\Deng.ttf',
   'C:\\Windows\\Fonts\\NotoSansSC-VF.ttf',
   'C:\\Windows\\Fonts\\simhei.ttf',
   'C:\\Windows\\Fonts\\msyh.ttc',
@@ -67,12 +69,43 @@ function ensureApprovedDraft(draft) {
     error.statusCode = 409;
     throw error;
   }
+  if (!['en', 'zh'].includes(draft.language)) {
+    const error = new Error('Approved technical solution language must be English or Chinese');
+    error.statusCode = 409;
+    throw error;
+  }
 }
 
 function localizedValues(language, valueEn, valueZh) {
   if (language === 'en') return [text(valueEn)];
-  if (language === 'zh') return [text(valueZh)];
-  return [text(valueEn), text(valueZh)].filter(Boolean);
+  return [text(valueZh)];
+}
+
+function documentCopy(language) {
+  if (language === 'zh') {
+    return {
+      technicalSolution: '技术方案',
+      documentNo: '文档编号', opportunity: '商机', template: '模板',
+      approvedBy: '批准人', approvedOn: '批准日期',
+      projectVariables: '项目参数', parameter: '参数', value: '数值',
+      yes: '是', no: '否', standardClauses: '标准条款',
+      approvalRecord: '审批记录', status: '状态', approved: '已批准',
+      submittedBy: '提交人', submittedOn: '提交日期', reviewComment: '审批意见',
+      page: '第', of: '页，共', pages: '页',
+      subject: '已批准技术方案'
+    };
+  }
+  return {
+    technicalSolution: 'Technical Solution',
+    documentNo: 'Document No.', opportunity: 'Opportunity', template: 'Template',
+    approvedBy: 'Approved by', approvedOn: 'Approved on',
+    projectVariables: 'Project Variables', parameter: 'Parameter', value: 'Value',
+    yes: 'Yes', no: 'No', standardClauses: 'Standard Clauses',
+    approvalRecord: 'Approval Record', status: 'Status', approved: 'APPROVED',
+    submittedBy: 'Submitted by', submittedOn: 'Submitted on', reviewComment: 'Review comment',
+    page: 'Page', of: 'of', pages: '',
+    subject: 'Approved Technical Solution'
+  };
 }
 
 function bodyRun(value, options = {}) {
@@ -90,11 +123,20 @@ function bodyParagraph(value, options = {}) {
     children: [bodyRun(value, options)],
     spacing: { before: options.before ?? 0, after: options.after ?? 120, line: options.line ?? 264 },
     alignment: options.alignment || AlignmentType.LEFT,
-    keepNext: options.keepNext
+    keepNext: options.keepNext,
+    pageBreakBefore: options.pageBreakBefore
   });
 }
 
-function brandedHeader() {
+function alignmentType(value, fallback = AlignmentType.LEFT) {
+  if (value === 'center') return AlignmentType.CENTER;
+  if (value === 'right') return AlignmentType.RIGHT;
+  if (value === 'left') return AlignmentType.LEFT;
+  return fallback;
+}
+
+function brandedHeader(language) {
+  const copy = documentCopy(language);
   return new Header({
     children: [new Paragraph({
       border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: 'D7DBE2' } },
@@ -103,20 +145,26 @@ function brandedHeader() {
         bodyRun('S', { size: 22, bold: true, color: NAVY }),
         bodyRun('U', { size: 22, bold: true, color: ORANGE }),
         bodyRun('NKAIER', { size: 22, bold: true, color: NAVY }),
-        bodyRun('  |  TECHNICAL SOLUTION / 技术方案', { size: 18, color: MUTED })
+        bodyRun(`  |  ${language === 'en' ? copy.technicalSolution.toUpperCase() : copy.technicalSolution}`, { size: 18, color: MUTED })
       ]
     })]
   });
 }
 
-function brandedFooter(documentNumber) {
+function brandedFooter(documentNumber, language) {
+  const copy = documentCopy(language);
   return new Footer({
     children: [new Paragraph({
       border: { top: { style: BorderStyle.SINGLE, size: 4, color: 'D7DBE2' } },
       spacing: { before: 80 },
       children: [
         bodyRun(`${documentNumber}  |  SUNKAIER  |  `, { size: 17, color: MUTED }),
-        new TextRun({ children: ['Page ', PageNumber.CURRENT, ' of ', PageNumber.TOTAL_PAGES], font: DEFAULT_FONT, size: 17, color: MUTED })
+        new TextRun({
+          children: [`${copy.page} `, PageNumber.CURRENT, ` ${copy.of} `, PageNumber.TOTAL_PAGES, language === 'zh' ? ` ${copy.pages}` : ''],
+          font: DEFAULT_FONT,
+          size: 17,
+          color: MUTED
+        })
       ]
     })]
   });
@@ -125,6 +173,7 @@ function brandedFooter(documentNumber) {
 function cell(value, width, options = {}) {
   return new TableCell({
     width: { size: width, type: WidthType.DXA },
+    columnSpan: options.columnSpan > 1 ? options.columnSpan : undefined,
     verticalAlign: VerticalAlign.CENTER,
     margins: { top: 100, bottom: 100, left: 120, right: 120 },
     shading: options.fill ? { type: ShadingType.CLEAR, fill: options.fill, color: 'auto' } : undefined,
@@ -139,7 +188,37 @@ function cell(value, width, options = {}) {
   });
 }
 
+function percentageTableWidths(percentages, columnCount, totalWidth = TABLE_WIDTH) {
+  if (!Array.isArray(percentages) || percentages.length !== columnCount) return null;
+  const values = percentages.map(Number);
+  const total = values.reduce((sum, value) => sum + value, 0);
+  if (!total || values.some((value) => !Number.isFinite(value) || value <= 0)) return null;
+  const widths = values.map((value) => Math.max(1, Math.round(totalWidth * value / total)));
+  widths[widths.length - 1] += totalWidth - widths.reduce((sum, value) => sum + value, 0);
+  return widths;
+}
+
+function tableMergeMaps(merges, rowCount, columnCount) {
+  const starts = new Map();
+  const covered = new Set();
+  for (const merge of Array.isArray(merges) ? merges : []) {
+    const row = Number(merge.row) - 1;
+    const column = Number(merge.column) - 1;
+    const span = Number(merge.span);
+    if (!Number.isInteger(row) || row < 0 || row >= rowCount
+        || !Number.isInteger(column) || column < 0 || column >= columnCount
+        || !Number.isInteger(span) || span < 2 || column + span > columnCount) continue;
+    const cells = Array.from({ length: span }, (_, index) => `${row}:${column + index}`);
+    if (cells.some((key) => covered.has(key) || starts.has(key))) continue;
+    starts.set(`${row}:${column}`, span);
+    for (let index = 1; index < span; index += 1) covered.add(`${row}:${column + index}`);
+  }
+  return { starts, covered };
+}
+
 function fixedTable(rows, widths, options = {}) {
+  const columnCount = widths.length;
+  const { starts, covered } = tableMergeMaps(options.merges, rows.length, columnCount);
   return new Table({
     width: { size: TABLE_WIDTH, type: WidthType.DXA },
     layout: TableLayoutType.FIXED,
@@ -148,23 +227,91 @@ function fixedTable(rows, widths, options = {}) {
     rows: rows.map((row, rowIndex) => new TableRow({
       tableHeader: Boolean(options.header && rowIndex === 0),
       cantSplit: true,
-      children: row.map((value, columnIndex) => cell(value, widths[columnIndex], {
-        bold: Boolean(options.header && rowIndex === 0) || (options.labelColumn && columnIndex === 0),
-        fill: options.header && rowIndex === 0 ? PALE_BLUE : options.labelColumn && columnIndex === 0 ? LIGHT_GRAY : undefined,
-        alignment: options.centerColumns?.includes(columnIndex) ? AlignmentType.CENTER : AlignmentType.LEFT
-      }))
+      children: Array.from({ length: columnCount }, (_, columnIndex) => columnIndex)
+        .filter((columnIndex) => !covered.has(`${rowIndex}:${columnIndex}`))
+        .map((columnIndex) => {
+          const columnSpan = starts.get(`${rowIndex}:${columnIndex}`) || 1;
+          return cell(
+            row[columnIndex],
+            widths.slice(columnIndex, columnIndex + columnSpan).reduce((sum, value) => sum + value, 0),
+            {
+              columnSpan,
+              bold: Boolean(options.header && rowIndex === 0) || (options.labelColumn && columnIndex === 0),
+              fill: options.header && rowIndex === 0 ? PALE_BLUE : options.labelColumn && columnIndex === 0 ? LIGHT_GRAY : undefined,
+              alignment: alignmentType(
+                options.columnAlignments?.[columnIndex],
+                options.centerColumns?.includes(columnIndex) ? AlignmentType.CENTER : AlignmentType.LEFT
+              )
+            }
+          );
+        })
     }))
   });
 }
 
+function sectionImageBuffer(image) {
+  if (!image || !['image/png', 'image/jpeg'].includes(image.mimeType) || !text(image.data)) return null;
+  try {
+    const buffer = Buffer.from(image.data, 'base64');
+    return buffer.length ? buffer : null;
+  } catch {
+    return null;
+  }
+}
+
+function rasterDimensions(buffer, mimeType) {
+  if (mimeType === 'image/png' && buffer.length >= 24) {
+    return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+  }
+  if (mimeType === 'image/jpeg') {
+    let offset = 2;
+    while (offset + 9 < buffer.length) {
+      if (buffer[offset] !== 0xff) { offset += 1; continue; }
+      const marker = buffer[offset + 1];
+      const length = buffer.readUInt16BE(offset + 2);
+      if ([0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd, 0xce, 0xcf].includes(marker)) {
+        return { width: buffer.readUInt16BE(offset + 7), height: buffer.readUInt16BE(offset + 5) };
+      }
+      if (!Number.isInteger(length) || length < 2) break;
+      offset += length + 2;
+    }
+  }
+  return { width: 4, height: 3 };
+}
+
+function sectionImageDocxElements(section, activeSuffix) {
+  const image = section?.layout?.image;
+  const buffer = sectionImageBuffer(image);
+  if (!buffer) return [];
+  const dimensions = rasterDimensions(buffer, image.mimeType);
+  const targetWidth = Math.max(120, Math.round(620 * Math.min(100, Math.max(20, Number(image.widthPercent) || 60)) / 100));
+  const targetHeight = Math.max(40, Math.min(620, Math.round(targetWidth * dimensions.height / Math.max(1, dimensions.width))));
+  const elements = [new Paragraph({
+    alignment: alignmentType(image.alignment, AlignmentType.CENTER),
+    spacing: { before: 80, after: 70 },
+    children: [new ImageRun({
+      data: buffer,
+      type: image.mimeType === 'image/png' ? 'png' : 'jpg',
+      transformation: { width: targetWidth, height: targetHeight }
+    })]
+  })];
+  const caption = text(image[`caption${activeSuffix}`]);
+  if (caption) elements.push(bodyParagraph(caption, {
+    size: 18,
+    color: MUTED,
+    alignment: alignmentType(image.alignment, AlignmentType.CENTER)
+  }));
+  return elements;
+}
+
 function metadataRows(draft, opportunity, reviewer) {
+  const copy = documentCopy(draft.language);
   return [
-    ['Document No. / 文档编号', documentNo(draft)],
-    ['Opportunity / 商机', `${text(opportunity.opportunityNo)} - ${text(opportunity.title)}`],
-    ['Template / 模板', `${text(draft.templateCodeSnapshot)} - ${text(draft.templateNameSnapshot)} - TPL-R${draft.templateRevisionNoSnapshot}`],
-    ['Language / 语言', draft.language === 'en' ? 'English' : draft.language === 'zh' ? '中文' : 'English / 中文'],
-    ['Approved by / 批准人', text(reviewer?.displayName || draft.reviewerDisplayName || reviewer?.username) || '-'],
-    ['Approved on / 批准日期', dateText(draft.reviewedAt)]
+    [copy.documentNo, documentNo(draft)],
+    [copy.opportunity, `${text(opportunity.opportunityNo)} - ${text(opportunity.title)}`],
+    [copy.template, `${text(draft.templateCodeSnapshot)} - ${text(draft.templateNameSnapshot)} - TPL-R${draft.templateRevisionNoSnapshot}`],
+    [copy.approvedBy, text(reviewer?.displayName || draft.reviewerDisplayName || reviewer?.username) || '-'],
+    [copy.approvedOn, dateText(draft.reviewedAt)]
   ];
 }
 
@@ -173,9 +320,6 @@ function sectionParagraphs(section, language) {
   const bodies = localizedValues(language, section.bodyEn, section.bodyZh);
   for (const [index, value] of bodies.entries()) {
     if (!value) continue;
-    if (language === 'bilingual') {
-      paragraphs.push(bodyParagraph(index === 0 ? 'EN' : '中文', { bold: true, color: NAVY, after: 40, keepNext: true }));
-    }
     for (const line of value.split(/\r?\n/)) {
       if (line.trim()) paragraphs.push(bodyParagraph(line.trim()));
     }
@@ -185,23 +329,25 @@ function sectionParagraphs(section, language) {
 
 function buildDocx(draft, opportunity, reviewer) {
   const number = documentNo(draft);
+  const copy = documentCopy(draft.language);
+  const activeSuffix = draft.language === 'zh' ? 'Zh' : 'En';
   const children = [
     bodyParagraph('SUNKAIER', { size: 24, bold: true, color: NAVY, after: 60 }),
     bodyParagraph(draft.templateNameSnapshot, { size: 38, bold: true, color: NAVY, after: 80 }),
-    bodyParagraph('Technical Solution / 技术方案', { size: 26, color: MUTED, after: 280 }),
+    bodyParagraph(copy.technicalSolution, { size: 26, color: MUTED, after: 280 }),
     fixedTable(metadataRows(draft, opportunity, reviewer), [2700, 6660], { labelColumn: true }),
     bodyParagraph('', { after: 80 }),
-    new Paragraph({ text: 'Project Variables / 项目参数', heading: HeadingLevel.HEADING_1, keepNext: true })
+    new Paragraph({ text: copy.projectVariables, heading: HeadingLevel.HEADING_1, keepNext: true })
   ];
 
-  const variableRows = [['Parameter / 参数', 'Value / 数值']];
+  const variableRows = [[copy.parameter, copy.value]];
   for (const variable of draft.renderedContent?.variables || []) {
     const label = draft.language === 'en'
       ? variable.labelEn
       : draft.language === 'zh'
         ? variable.labelZh
-        : `${variable.labelEn} / ${variable.labelZh}`;
-    variableRows.push([label || variable.variableKey, variable.value === true ? 'Yes / 是' : variable.value === false ? 'No / 否' : text(variable.value) || '-']);
+        : variable.labelZh;
+    variableRows.push([label || variable.variableKey, variable.value === true ? copy.yes : variable.value === false ? copy.no : text(variable.value) || '-']);
   }
   children.push(fixedTable(variableRows, [3600, 5760], { header: true }));
 
@@ -210,19 +356,33 @@ function buildDocx(draft, opportunity, reviewer) {
       ? section.labelEn
       : draft.language === 'zh'
         ? section.labelZh
-        : `${section.labelEn} / ${section.labelZh}`;
-    children.push(new Paragraph({ text: heading || section.key, heading: HeadingLevel.HEADING_1, keepNext: true }));
+        : section.labelZh;
+    children.push(new Paragraph({
+      text: heading || section.key,
+      heading: HeadingLevel.HEADING_1,
+      keepNext: true,
+      pageBreakBefore: Boolean(section.layout?.pageBreakBefore)
+    }));
     children.push(...sectionParagraphs(section, draft.language));
-    if (Array.isArray(section.tableRows) && section.tableRows.length) {
-      const columnCount = Math.max(...section.tableRows.map((row) => row.length), 1);
+    children.push(...sectionImageDocxElements(section, activeSuffix));
+    const tableRows = section[`tableRows${activeSuffix}`] || [];
+    if (Array.isArray(tableRows) && tableRows.length) {
+      const columnCount = Math.max(...tableRows.map((row) => row.length), 1);
       const baseWidth = Math.floor(TABLE_WIDTH / columnCount);
-      const widths = Array.from({ length: columnCount }, (_, index) => index === columnCount - 1 ? TABLE_WIDTH - baseWidth * (columnCount - 1) : baseWidth);
-      const rows = section.tableRows.map((row) => Array.from({ length: columnCount }, (_, index) => text(row[index])));
-      children.push(fixedTable(rows, widths, { header: rows.length > 1 }));
+      const tableLayout = section.layout?.table || {};
+      const widths = percentageTableWidths(tableLayout.columnWidths, columnCount)
+        || Array.from({ length: columnCount }, (_, index) => index === columnCount - 1 ? TABLE_WIDTH - baseWidth * (columnCount - 1) : baseWidth);
+      const rows = tableRows.map((row) => Array.from({ length: columnCount }, (_, index) => text(row[index])));
+      children.push(fixedTable(rows, widths, {
+        header: tableLayout.headerRow ?? rows.length > 1,
+        columnAlignments: tableLayout.columnAlignments,
+        merges: tableLayout.merges
+      }));
     }
-    if (Array.isArray(section.clauses) && section.clauses.length) {
-      children.push(new Paragraph({ text: 'Standard Clauses / 标准条款', heading: HeadingLevel.HEADING_2, keepNext: true }));
-      for (const clause of section.clauses) {
+    const clauses = (section.clauses || []).filter((clause) => clause.language === draft.language);
+    if (clauses.length) {
+      children.push(new Paragraph({ text: copy.standardClauses, heading: HeadingLevel.HEADING_2, keepNext: true }));
+      for (const clause of clauses) {
         children.push(bodyParagraph(`${clause.revisionLabel} - ${clause.title}`, { bold: true, color: NAVY, after: 40, keepNext: true }));
         children.push(bodyParagraph(clause.content));
       }
@@ -230,18 +390,18 @@ function buildDocx(draft, opportunity, reviewer) {
   }
 
   children.push(new Paragraph({
-    text: 'Approval Record / 审批记录',
+    text: copy.approvalRecord,
     heading: HeadingLevel.HEADING_1,
     keepNext: true,
     pageBreakBefore: true
   }));
   children.push(fixedTable([
-    ['Status / 状态', 'APPROVED / 已批准'],
-    ['Submitted by / 提交人', text(draft.submitterDisplayName) || String(draft.submittedBy || '-')],
-    ['Submitted on / 提交日期', dateText(draft.submittedAt)],
-    ['Approved by / 批准人', text(reviewer?.displayName || draft.reviewerDisplayName) || String(draft.reviewedBy || '-')],
-    ['Approved on / 批准日期', dateText(draft.reviewedAt)],
-    ['Review comment / 审批意见', text(draft.reviewComment) || '-']
+    [copy.status, copy.approved],
+    [copy.submittedBy, text(draft.submitterDisplayName) || String(draft.submittedBy || '-')],
+    [copy.submittedOn, dateText(draft.submittedAt)],
+    [copy.approvedBy, text(reviewer?.displayName || draft.reviewerDisplayName) || String(draft.reviewedBy || '-')],
+    [copy.approvedOn, dateText(draft.reviewedAt)],
+    [copy.reviewComment, text(draft.reviewComment) || '-']
   ], [2700, 6660], { labelColumn: true }));
 
   return new Document({
@@ -261,8 +421,8 @@ function buildDocx(draft, opportunity, reviewer) {
           margin: { top: 1440, right: 1440, bottom: 1440, left: 1440, header: 708, footer: 708 }
         }
       },
-      headers: { default: brandedHeader() },
-      footers: { default: brandedFooter(number) },
+      headers: { default: brandedHeader(draft.language) },
+      footers: { default: brandedFooter(number, draft.language) },
       children
     }]
   });
@@ -281,7 +441,9 @@ function generatePdfBuffer(draft, opportunity, reviewer, fontPath) {
       return;
     }
     const chunks = [];
-    const doc = new PDFDocument({ size: 'LETTER', margins: { top: 62, right: 54, bottom: 62, left: 54 }, bufferPages: true, info: { Title: `${documentNo(draft)} ${draft.templateNameSnapshot}`, Author: 'SUNKAIER', Subject: 'Approved Technical Solution' } });
+    const copy = documentCopy(draft.language);
+    const activeSuffix = draft.language === 'zh' ? 'Zh' : 'En';
+    const doc = new PDFDocument({ size: 'LETTER', margins: { top: 62, right: 54, bottom: 62, left: 54 }, bufferPages: true, info: { Title: `${documentNo(draft)} ${draft.templateNameSnapshot}`, Author: 'SUNKAIER', Subject: copy.subject } });
     doc.on('data', (chunk) => chunks.push(chunk));
     doc.on('error', reject);
     doc.on('end', () => resolve(Buffer.concat(chunks)));
@@ -326,24 +488,88 @@ function generatePdfBuffer(draft, opportunity, reviewer, fontPath) {
       doc.moveDown(0.6);
       doc.x = left;
     };
-    const gridRows = (rows) => {
+    const gridRows = (rows, options = {}) => {
       if (!rows.length) return;
       const x = left;
       const cols = Math.max(...rows.map((row) => row.length), 1);
-      const width = contentWidth / cols;
-      for (const [rowIndex, row] of rows.entries()) {
-        const values = Array.from({ length: cols }, (_, index) => text(row[index]));
-        const height = Math.max(...values.map((value) => doc.heightOfString(value || ' ', { width: width - 12, lineGap: 2 }))) + 12;
-        ensureSpace(height);
+      const widths = percentageTableWidths(options.widthPercentages, cols, contentWidth)
+        || Array.from({ length: cols }, () => contentWidth / cols);
+      widths[widths.length - 1] += contentWidth - widths.reduce((sum, value) => sum + value, 0);
+      const { starts, covered } = tableMergeMaps(options.merges, rows.length, cols);
+      const cellsForRow = (row, rowIndex) => Array.from({ length: cols }, (_, columnIndex) => columnIndex)
+        .filter((columnIndex) => !covered.has(`${rowIndex}:${columnIndex}`))
+        .map((columnIndex) => {
+          const span = starts.get(`${rowIndex}:${columnIndex}`) || 1;
+          return {
+            columnIndex,
+            value: text(row[columnIndex]) || ' ',
+            width: widths.slice(columnIndex, columnIndex + span).reduce((sum, value) => sum + value, 0),
+            x: x + widths.slice(0, columnIndex).reduce((sum, value) => sum + value, 0)
+          };
+        });
+      const rowHeight = (row, rowIndex) => Math.max(...cellsForRow(row, rowIndex)
+        .map((cell) => doc.heightOfString(cell.value, { width: cell.width - 12, lineGap: 2 }))) + 12;
+      const drawRow = (row, rowIndex, isHeader) => {
+        const height = rowHeight(row, rowIndex);
         const rowY = doc.y;
-        for (const [columnIndex, value] of values.entries()) {
-          doc.rect(x + columnIndex * width, rowY, width, height).fill(rowIndex === 0 ? '#E8EEF5' : '#FFFFFF').stroke('#CBD3DC');
-          doc.fillColor(rowIndex === 0 ? `#${NAVY}` : '#1F2933').fontSize(9).text(value || ' ', x + columnIndex * width + 6, rowY + 6, { width: width - 12, lineGap: 2 });
+        for (const cell of cellsForRow(row, rowIndex)) {
+          doc.rect(cell.x, rowY, cell.width, height).fill(isHeader ? '#E8EEF5' : '#FFFFFF').stroke('#CBD3DC');
+          doc.fillColor(isHeader ? `#${NAVY}` : '#1F2933').fontSize(9).text(cell.value, cell.x + 6, rowY + 6, {
+            width: cell.width - 12,
+            lineGap: 2,
+            align: options.columnAlignments?.[cell.columnIndex] || 'left'
+          });
         }
         doc.y = rowY + height;
         doc.x = left;
+      };
+      const headerRow = Boolean(options.headerRow);
+      const firstDataIndex = headerRow ? 1 : 0;
+      const initialHeight = (headerRow ? rowHeight(rows[0], 0) : 0)
+        + (rows[firstDataIndex] ? rowHeight(rows[firstDataIndex], firstDataIndex) : 0);
+      ensureSpace(initialHeight);
+      if (headerRow) drawRow(rows[0], 0, true);
+      for (let rowIndex = firstDataIndex; rowIndex < rows.length; rowIndex += 1) {
+        const height = rowHeight(rows[rowIndex], rowIndex);
+        if (doc.y + height > pageBottom()) {
+          doc.addPage();
+          if (headerRow) drawRow(rows[0], 0, true);
+        }
+        drawRow(rows[rowIndex], rowIndex, false);
       }
       doc.moveDown(0.6);
+      doc.x = left;
+    };
+    const drawSectionImage = (section) => {
+      const image = section?.layout?.image;
+      const buffer = sectionImageBuffer(image);
+      if (!buffer) return;
+      const dimensions = rasterDimensions(buffer, image.mimeType);
+      let imageWidth = contentWidth * Math.min(100, Math.max(20, Number(image.widthPercent) || 60)) / 100;
+      let imageHeight = imageWidth * dimensions.height / Math.max(1, dimensions.width);
+      const maxHeight = pageBottom() - 72;
+      if (imageHeight > maxHeight) {
+        const scale = maxHeight / imageHeight;
+        imageWidth *= scale;
+        imageHeight *= scale;
+      }
+      const caption = text(image[`caption${activeSuffix}`]);
+      ensureSpace(imageHeight + (caption ? 32 : 12));
+      const imageX = image.alignment === 'left'
+        ? left
+        : image.alignment === 'right'
+          ? left + contentWidth - imageWidth
+          : left + (contentWidth - imageWidth) / 2;
+      doc.image(buffer, imageX, doc.y, { width: imageWidth, height: imageHeight });
+      doc.y += imageHeight + 6;
+      if (caption) {
+        doc.font('SUNKAIER-CJK').fillColor(`#${MUTED}`).fontSize(8).text(caption, left, doc.y, {
+          width: contentWidth,
+          align: image.alignment || 'center',
+          lineGap: 2
+        });
+        doc.y += 6;
+      }
       doc.x = left;
     };
 
@@ -352,43 +578,52 @@ function generatePdfBuffer(draft, opportunity, reviewer, fontPath) {
     doc.fillColor(`#${NAVY}`).text('NKAIER');
     doc.moveTo(54, doc.y + 4).lineTo(558, doc.y + 4).strokeColor('#D7DBE2').stroke();
     doc.moveDown(1.7).fillColor(`#${NAVY}`).fontSize(24).text(draft.templateNameSnapshot, left, doc.y, { width: contentWidth, lineGap: 3 });
-    doc.fillColor(`#${MUTED}`).fontSize(14).text('Technical Solution / 技术方案', left, doc.y, { width: contentWidth });
+    doc.fillColor(`#${MUTED}`).fontSize(14).text(copy.technicalSolution, left, doc.y, { width: contentWidth });
     doc.moveDown(1.2);
     keyValueRows(metadataRows(draft, opportunity, reviewer));
 
-    heading('Project Variables / 项目参数');
-    gridRows([['Parameter / 参数', 'Value / 数值'], ...(draft.renderedContent?.variables || []).map((variable) => {
-      const label = draft.language === 'en' ? variable.labelEn : draft.language === 'zh' ? variable.labelZh : `${variable.labelEn} / ${variable.labelZh}`;
-      const value = variable.value === true ? 'Yes / 是' : variable.value === false ? 'No / 否' : text(variable.value) || '-';
+    heading(copy.projectVariables);
+    gridRows([[copy.parameter, copy.value], ...(draft.renderedContent?.variables || []).map((variable) => {
+      const label = draft.language === 'en' ? variable.labelEn : variable.labelZh;
+      const value = variable.value === true ? copy.yes : variable.value === false ? copy.no : text(variable.value) || '-';
       return [label || variable.variableKey, value];
-    })]);
+    })], { headerRow: true });
 
     for (const section of (draft.renderedContent?.sections || []).filter((item) => item.included !== false)) {
-      const title = draft.language === 'en' ? section.labelEn : draft.language === 'zh' ? section.labelZh : `${section.labelEn} / ${section.labelZh}`;
+      if (section.layout?.pageBreakBefore && doc.y > 80) doc.addPage();
+      const title = draft.language === 'en' ? section.labelEn : section.labelZh;
       heading(title || section.key);
       const bodies = localizedValues(draft.language, section.bodyEn, section.bodyZh);
-      for (const [index, value] of bodies.entries()) {
-        if (draft.language === 'bilingual' && value) paragraph(index === 0 ? 'EN' : '中文', { color: `#${NAVY}`, size: 10 });
+      for (const value of bodies) {
         paragraph(value);
       }
-      gridRows(section.tableRows || []);
-      if (section.clauses?.length) {
-        paragraph('Standard Clauses / 标准条款', { color: `#${NAVY}`, size: 11 });
-        for (const clause of section.clauses) {
+      drawSectionImage(section);
+      const tableRows = section[`tableRows${activeSuffix}`] || [];
+      const tableLayout = section.layout?.table || {};
+      gridRows(tableRows, {
+        headerRow: tableLayout.headerRow ?? tableRows.length > 1,
+        widthPercentages: tableLayout.columnWidths,
+        columnAlignments: tableLayout.columnAlignments,
+        merges: tableLayout.merges
+      });
+      const clauses = (section.clauses || []).filter((clause) => clause.language === draft.language);
+      if (clauses.length) {
+        paragraph(copy.standardClauses, { color: `#${NAVY}`, size: 11 });
+        for (const clause of clauses) {
           paragraph(`${clause.revisionLabel} - ${clause.title}`, { color: `#${NAVY}` });
           paragraph(clause.content);
         }
       }
     }
 
-    heading('Approval Record / 审批记录');
+    heading(copy.approvalRecord);
     keyValueRows([
-      ['Status / 状态', 'APPROVED / 已批准'],
-      ['Submitted by / 提交人', text(draft.submitterDisplayName) || String(draft.submittedBy || '-')],
-      ['Submitted on / 提交日期', dateText(draft.submittedAt)],
-      ['Approved by / 批准人', text(reviewer?.displayName || draft.reviewerDisplayName) || String(draft.reviewedBy || '-')],
-      ['Approved on / 批准日期', dateText(draft.reviewedAt)],
-      ['Review comment / 审批意见', text(draft.reviewComment) || '-']
+      [copy.status, copy.approved],
+      [copy.submittedBy, text(draft.submitterDisplayName) || String(draft.submittedBy || '-')],
+      [copy.submittedOn, dateText(draft.submittedAt)],
+      [copy.approvedBy, text(reviewer?.displayName || draft.reviewerDisplayName) || String(draft.reviewedBy || '-')],
+      [copy.approvedOn, dateText(draft.reviewedAt)],
+      [copy.reviewComment, text(draft.reviewComment) || '-']
     ]);
 
     const range = doc.bufferedPageRange();
@@ -397,7 +632,10 @@ function generatePdfBuffer(draft, opportunity, reviewer, fontPath) {
       doc.font('SUNKAIER-CJK').fontSize(8).fillColor(`#${MUTED}`);
       const footerY = doc.page.height - 74;
       doc.text(`${documentNo(draft)}  |  SUNKAIER`, left, footerY, { width: 300, lineBreak: false });
-      doc.text(`Page ${index + 1} of ${range.count}`, 358, footerY, { width: 200, align: 'right', lineBreak: false });
+      const pageLabel = draft.language === 'zh'
+        ? `${copy.page} ${index + 1} ${copy.of} ${range.count} ${copy.pages}`
+        : `${copy.page} ${index + 1} ${copy.of} ${range.count}`;
+      doc.text(pageLabel, 358, footerY, { width: 200, align: 'right', lineBreak: false });
     }
     doc.end();
   });

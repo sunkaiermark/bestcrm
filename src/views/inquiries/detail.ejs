@@ -1,7 +1,8 @@
-<%- include('../partials/app-start', { title: `${inquiry.subject || t('inquiry')} - BESTCRM`, activeNav: 'inquiries' }) %>
+<% const isWebsiteForm = inquiry.source === 'website'; %>
+<%- include('../partials/app-start', { title: `${inquiry.subject || t(isWebsiteForm ? 'websiteForm' : 'inquiry')} - BESTCRM`, activeNav: 'inquiries' }) %>
         <% const formatFileSize = (bytes) => { const value = Number(bytes || 0); if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`; if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`; return `${value} B`; }; %>
         <% const canOpenApprovedCustomer = !customerApproval || Number(customerApproval.customerOwnerUserId) === Number(currentUser.id) || (currentUser.roles || []).includes('administrator'); %>
-        <p class="breadcrumb"><a href="/inquiries"><%= t('inquiries') %></a></p>
+        <p class="breadcrumb"><a href="/inquiries"><%= t(isWebsiteForm ? 'websiteForms' : 'inquiries') %></a></p>
         <header class="page-header inquiry-page-header">
           <div>
             <p class="inquiry-meta-line">
@@ -11,7 +12,7 @@
               · <%= t(`inquiryPriority.${inquiry.priority}`) %>
               <% if (inquiry.submissionType === 'sales_lead') { %> · <%= t('salesSubmittedLead') %><% } %>
             </p>
-            <h1><%= inquiry.subject || inquiry.companyName || `${t('inquiry')} #${inquiry.id}` %></h1>
+            <h1><%= inquiry.subject || inquiry.companyName || `${t(isWebsiteForm ? 'websiteForm' : 'inquiry')} #${inquiry.id}` %></h1>
           </div>
           <div class="inline-actions">
             <% if (customerEmailSendingEnabled) { %>
@@ -137,7 +138,7 @@
             </section>
 
             <section class="content-section inquiry-step-section">
-              <h2><span class="inquiry-step-number">2</span><%= t('inquiryContent') %></h2>
+              <h2><span class="inquiry-step-number">2</span><%= t(isWebsiteForm ? 'websiteFormContent' : 'inquiryContent') %></h2>
               <div class="inquiry-form-grid">
                 <label class="inquiry-field-wide"><%= t('subject') %><input name="subject" value="<%= inquiry.subject || '' %>"></label>
                 <label><%= t('productInterest') %><input name="productInterest" value="<%= inquiry.productInterest || '' %>"></label>
@@ -227,7 +228,7 @@
             </div>
           </section>
           <section class="content-section inquiry-step-section">
-            <h2><%= t('inquiryContent') %></h2>
+            <h2><%= t(isWebsiteForm ? 'websiteFormContent' : 'inquiryContent') %></h2>
             <div class="inquiry-summary-grid">
               <span><strong><%= t('productInterest') %>:</strong> <%= inquiry.productInterest || '-' %></span>
               <span><strong><%= t('opportunityType') %>:</strong> <%= inquiry.opportunityType || '-' %></span>

@@ -1,9 +1,9 @@
 export const TECHNICAL_TEMPLATE_LANGUAGES = Object.freeze(['en', 'zh', 'bilingual']);
 
 export const TECHNICAL_DOCUMENT_TYPES = Object.freeze([
-  Object.freeze({ value: 'datasheet', label: 'Datasheet', code: 'DATASHEET' }),
-  Object.freeze({ value: 'technical_agreement', label: 'Technical Agreement', code: 'TECHNICAL-AGREEMENT' }),
-  Object.freeze({ value: 'bidding_document', label: 'Bidding Document', code: 'BIDDING-DOCUMENT' })
+  Object.freeze({ value: 'datasheet', label: 'Datasheet', labelEn: 'Datasheet', labelZh: '技术数据表', code: 'DATASHEET' }),
+  Object.freeze({ value: 'technical_agreement', label: 'Technical Agreement', labelEn: 'Technical Agreement', labelZh: '技术协议', code: 'TECHNICAL-AGREEMENT' }),
+  Object.freeze({ value: 'bidding_document', label: 'Bidding Document', labelEn: 'Bidding Document', labelZh: '标书', code: 'BIDDING-DOCUMENT' })
 ]);
 
 export const TECHNICAL_PRODUCT_CATEGORIES = Object.freeze([
@@ -24,6 +24,25 @@ const technicalProductCategoryByCode = new Map(TECHNICAL_PRODUCT_CATEGORIES.map(
 
 export function technicalDocumentType(value) {
   return technicalDocumentTypeByValue.get(String(value || '')) || null;
+}
+
+export function technicalContentLanguage(value) {
+  return value === 'zh' ? 'zh' : 'en';
+}
+
+export function technicalDocumentTypeLabel(value, language = 'en') {
+  const type = technicalDocumentType(value);
+  if (!type) return '';
+  return technicalContentLanguage(language) === 'zh' ? type.labelZh : type.labelEn;
+}
+
+export function localizedTechnicalField(record, field, language = 'en') {
+  const suffix = technicalContentLanguage(language) === 'zh' ? 'Zh' : 'En';
+  const localizedKey = `${field}${suffix}`;
+  if (record && Object.prototype.hasOwnProperty.call(record, localizedKey)) {
+    return String(record[localizedKey] ?? '').trim();
+  }
+  return String(record?.[field] ?? '').trim();
 }
 
 export function technicalProductCategory(code) {
@@ -97,6 +116,18 @@ export const TECHNICAL_SECTION_TYPES = Object.freeze([
   'scope_matrix'
 ]);
 
+export const TECHNICAL_TABLE_ALIGNMENTS = Object.freeze([
+  'left',
+  'center',
+  'right'
+]);
+
+export const TECHNICAL_IMAGE_ALIGNMENTS = Object.freeze([
+  'left',
+  'center',
+  'right'
+]);
+
 export const TECHNICAL_SECTION_CONDITION_OPERATORS = Object.freeze([
   'always',
   'equals',
@@ -124,6 +155,19 @@ const sectionTypeByKey = Object.freeze({
   interfaces_battery_limits: 'scope_matrix'
 });
 
+function defaultSectionLayout(sectionType = 'narrative') {
+  return Object.freeze({
+    pageBreakBefore: false,
+    table: Object.freeze({
+      headerRow: sectionType !== 'narrative',
+      columnWidths: Object.freeze([]),
+      columnAlignments: Object.freeze([]),
+      merges: Object.freeze([])
+    }),
+    image: null
+  });
+}
+
 export const TECHNICAL_AGREEMENT_STANDARD_SECTIONS = Object.freeze([
   ['cover_and_parties', 'Cover and Parties', '封面与协议双方'],
   ['project_basis', 'Project Basis', '项目依据'],
@@ -143,20 +187,25 @@ export const TECHNICAL_AGREEMENT_STANDARD_SECTIONS = Object.freeze([
   ['installation_commissioning', 'Installation and Commissioning', '安装与调试'],
   ['acceptance_criteria', 'Acceptance Criteria', '验收标准'],
   ['technical_warranty', 'Technical Warranty', '技术保证']
-].map(([key, labelEn, labelZh], index) => Object.freeze({
-  key,
-  labelEn,
-  labelZh,
-  enabled: true,
-  sortOrder: index + 1,
-  sectionType: sectionTypeByKey[key] || 'narrative',
-  bodyEn: '',
-  bodyZh: '',
-  tableRows: [],
-  condition: { operator: 'always', variableKey: '', value: '' },
-  defaultClauseIds: [],
-  blocks: []
-})));
+].map(([key, labelEn, labelZh], index) => {
+  const sectionType = sectionTypeByKey[key] || 'narrative';
+  return Object.freeze({
+    key,
+    labelEn,
+    labelZh,
+    enabled: true,
+    sortOrder: index + 1,
+    sectionType,
+    bodyEn: '',
+    bodyZh: '',
+    tableRowsEn: [],
+    tableRowsZh: [],
+    condition: { operator: 'always', variableKey: '', value: '' },
+    defaultClauseIds: [],
+    blocks: [],
+    layout: defaultSectionLayout(sectionType)
+  });
+}));
 
 export const DEFAULT_TECHNICAL_AGREEMENT_SCHEMA = Object.freeze({
   schemaVersion: 1,
@@ -173,10 +222,12 @@ function standardSections(definitions) {
     sectionType,
     bodyEn: '',
     bodyZh: '',
-    tableRows: [],
+    tableRowsEn: [],
+    tableRowsZh: [],
     condition: { operator: 'always', variableKey: '', value: '' },
     defaultClauseIds: [],
-    blocks: []
+    blocks: [],
+    layout: defaultSectionLayout(sectionType)
   })));
 }
 

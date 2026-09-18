@@ -11,14 +11,21 @@ import { STATUSES } from '../domain/statuses.mjs';
 import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import {
+  createOpportunityFromEmailThread,
+  EmailArchiveError,
+  getEmailThreadIntakeContext
+} from '../services/emailArchiveService.mjs';
+import {
   archiveOpportunity,
   canArchiveOpportunity,
   canContributeOpportunityEngineering,
+  canCreateOpportunityManually,
   canManageOpportunityResponsibility,
   canManageOpportunityEngineeringTeam,
   canEditOpportunity,
   canReopenOpportunity,
   canViewOpportunity,
+  createOpportunityDraft,
   isSupportingEngineer,
   reopenOpportunity,
   updateOpportunity
@@ -739,6 +746,8 @@ export function opportunityRoutes({
   contactRepository,
   attachmentRepository,
   emailArchiveRepository,
+  emailArchiveTransaction = null,
+  sharedAddress = 'sales@sunkaier.com',
   emailCenterEnabled = false,
   commercialQuoteRepository,
   technicalSolutionRepository,
@@ -788,16 +797,60 @@ export function opportunityRoutes({
     }
   });
 
-  router.get('/opportunities/new', async (req, res) => {
-    if (hasRole(req.currentUser, ROLES.SALESPERSON)) {
-      res.redirect('/lead-submissions/new');
-      return;
+  router.get('/opportunities/new', async (req, res, next) => {
+    try {
+      if (hasRole(req.currentUser, ROLES.SALESPERSON)) {
+        res.redirect('/lead-submissions/new');
+        return;
+      }
+      if (!canCreateOpportunityManually(req.currentUser)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const [customers, contacts, salespeople] = await Promise.all([
+        customerRepository.listCustomers({}),
+        contactRepository.listContacts({}),
+        userRepository.listUsersByRole(ROLES.SALESPERSON)
+      ]);
+      const emailThreadId = Number(req.query.emailThreadId || 0);
+      const emailContext = Number.isInteger(emailThreadId) && emailThreadId > 0
+        ? await getEmailThreadIntakeContext({
+            emailArchiveRepository,
+            opportunityRepository,
+            opportunityResponsibilityRepository,
+            sharedAddress
+          }, req.currentUser, emailThreadId)
+        : null;
+      const matchedCustomer = emailContext?.draft.customerId
+        ? customers.find((customer) => Number(customer.id) === Number(emailContext.draft.customerId))
+        : null;
+      const opportunity = emailContext
+        ? {
+            title: emailContext.draft.title,
+            requirement: emailContext.draft.requirement,
+            customerId: matchedCustomer?.id || null,
+            primaryContactId: matchedCustomer ? emailContext.draft.primaryContactId : null,
+            salespersonId: matchedCustomer?.ownerUserId || emailContext.draft.salespersonId || salespeople[0]?.id || null
+          }
+        : { salespersonId: salespeople[0]?.id || null };
+      res.render('opportunities/form', {
+        pageTitle: res.locals.t('newOpportunity'),
+        submitLabel: res.locals.t('newOpportunity'),
+        allowInlineCreate: false,
+        allowSalesOwnerChoice: true,
+        directEntryNotice: res.locals.t('directOpportunityNotice'),
+        opportunity,
+        emailThreadId: emailContext?.thread.id || null,
+        customers,
+        contacts,
+        salespeople,
+        countryOptions: CUSTOMER_COUNTRIES,
+        regionOptions: CUSTOMER_REGIONS,
+        action: '/opportunities'
+      });
+    } catch (error) {
+      next(error);
     }
-    if (hasRole(req.currentUser, ROLES.ADMINISTRATOR) || hasRole(req.currentUser, ROLES.SALES_MANAGER)) {
-      res.redirect('/inquiries/new');
-      return;
-    }
-    res.status(403).send('Forbidden');
   });
 
   router.post('/opportunities/customers', (req, res) => {
@@ -808,8 +861,45 @@ export function opportunityRoutes({
     res.status(403).send(res.locals.t('createInquiryFirst'));
   });
 
-  router.post('/opportunities', (req, res) => {
-    res.status(403).send(res.locals.t('createInquiryFirst'));
+  router.post('/opportunities', async (req, res, next) => {
+    try {
+      if (!canCreateOpportunityManually(req.currentUser)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const emailThreadId = Number(req.body.emailThreadId || 0);
+      const opportunity = Number.isInteger(emailThreadId) && emailThreadId > 0
+        ? (await createOpportunityFromEmailThread({
+            customerRepository,
+            contactRepository,
+            emailArchiveRepository,
+            opportunityRepository,
+            opportunityResponsibilityRepository,
+            userRepository,
+            emailArchiveTransaction,
+            sharedAddress
+          }, req.currentUser, emailThreadId, req.body)).opportunity
+        : await createOpportunityDraft({
+            customerRepository,
+            contactRepository,
+            opportunityRepository,
+            userRepository
+          }, req.currentUser, req.body, {
+            manualEntry: true,
+            salespersonId: req.body.salespersonId
+          });
+      res.redirect(`/opportunities/${opportunity.id}`);
+    } catch (error) {
+      if (error instanceof EmailArchiveError) {
+        res.status(error.statusCode || 400).send(error.message);
+        return;
+      }
+      if (['Forbidden', 'Customer not found', 'Contact not found', 'Contact does not belong to customer', 'Opportunity title is required', 'Requirement is required'].includes(error.message)) {
+        res.status(error.message === 'Forbidden' ? 403 : 400).send(error.message);
+        return;
+      }
+      next(error);
+    }
   });
 
   router.get('/opportunities/:id/edit', async (req, res, next) => {

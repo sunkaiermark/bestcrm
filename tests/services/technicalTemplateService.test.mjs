@@ -73,10 +73,15 @@ test('template input creates a safe structured standard-section schema', () => {
   assert.equal(normalized.productCategoryCode, 'mixer');
   assert.equal(normalized.productFamily, '搅拌机');
   assert.equal(normalized.language, 'bilingual');
+  assert.equal(normalized.nameEn, 'Mixer Technical Agreement');
+  assert.equal(normalized.nameZh, null);
   assert.equal(normalized.contentSchema.schemaVersion, 1);
   assert.equal(normalized.contentSchema.sections.length, 18);
   assert.equal(normalized.contentSchema.sections[0].key, 'cover_and_parties');
   assert.equal(normalized.contentSchema.sections.at(-1).key, 'technical_warranty');
+  assert.equal(normalized.contentSchema.sections[0].layout.pageBreakBefore, false);
+  assert.deepEqual(normalized.contentSchema.sections[0].layout.table.columnWidths, []);
+  assert.equal(normalized.contentSchema.sections[5].layout.table.headerRow, true);
 });
 
 test('variable definitions reject unapproved data sources and executable syntax', () => {
@@ -276,21 +281,24 @@ test('structured template sections normalize order tables conditions and publish
         }]
       };
     },
-    async listClauses() { return [{ id: 30, status: 'published' }]; },
+    async listClauses() { return [{ id: 30, status: 'published', language: 'en' }]; },
     async updateRevisionContent(revisionId, contentSchema, actorUserId) {
       calls.push({ revisionId, contentSchema, actorUserId });
       return { id: revisionId, templateId: 4 };
     }
   };
   await updateTechnicalTemplateSection(repository, user(ROLES.TECHNICAL_MANAGER, 8), 4, 9, 'design_parameters', {
-    labelEn: 'Design Parameters',
-    labelZh: '设计参数',
+    label: 'Design Parameters',
     enabled: 'on',
     sortOrder: 1,
     sectionType: 'parameter_table',
-    bodyEn: 'Design basis',
-    bodyZh: '设计依据',
+    body: 'Design basis',
     tableRows: 'Capacity | 10 t/h\nPressure | 6 bar',
+    tableHeaderRow: ['false', 'true'],
+    pageBreakBefore: ['false', 'true'],
+    columnWidths: '35 | 65',
+    columnAlignments: 'left | right',
+    tableMerges: '1,1,2',
     conditionOperator: 'equals',
     conditionVariableKey: 'capacity',
     conditionValue: '10',
@@ -300,8 +308,50 @@ test('structured template sections normalize order tables conditions and publish
   assert.equal(calls[0].revisionId, 9);
   assert.equal(calls[0].actorUserId, 8);
   assert.equal(calls[0].contentSchema.sections[0].key, 'design_parameters');
-  assert.deepEqual(calls[0].contentSchema.sections[0].tableRows[0], ['Capacity', '10 t/h']);
+  assert.deepEqual(calls[0].contentSchema.sections[0].tableRowsEn[0], ['Capacity', '10 t/h']);
+  assert.equal(calls[0].contentSchema.sections[0].labelZh, '设计参数');
   assert.deepEqual(calls[0].contentSchema.sections[0].defaultClauseIds, [30]);
+  assert.equal(calls[0].contentSchema.sections[0].layout.pageBreakBefore, true);
+  assert.equal(calls[0].contentSchema.sections[0].layout.table.headerRow, true);
+  assert.deepEqual(calls[0].contentSchema.sections[0].layout.table.columnWidths, [35, 65]);
+  assert.deepEqual(calls[0].contentSchema.sections[0].layout.table.columnAlignments, ['left', 'right']);
+  assert.deepEqual(calls[0].contentSchema.sections[0].layout.table.merges, [{ row: 1, column: 1, span: 2 }]);
+});
+
+test('structured section layout accepts a safe image and rejects invalid table geometry', () => {
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64');
+  const section = normalizeTechnicalSectionInput('design_parameters', {
+    label: 'Design Parameters', enabled: 'on', sortOrder: 1, sectionType: 'parameter_table',
+    body: '', tableRows: 'Parameter | Value\nCapacity | 10 t/h',
+    tableHeaderRow: 'true', columnWidths: '30 | 70', columnAlignments: 'left | center',
+    tableMerges: '', conditionOperator: 'always', imageCaption: 'Process arrangement',
+    imageAlignment: 'right', imageWidthPercent: '55',
+    sectionImage: { buffer: png, originalName: 'process.png' }
+  }, 'en');
+
+  assert.equal(section.layout.image.mimeType, 'image/png');
+  assert.equal(section.layout.image.originalName, 'process.png');
+  assert.equal(section.layout.image.captionEn, 'Process arrangement');
+  assert.equal(section.layout.image.captionZh, '');
+  assert.equal(section.layout.image.alignment, 'right');
+  assert.equal(section.layout.image.widthPercent, 55);
+  assert.ok(section.layout.image.data.length > 40);
+
+  assert.throws(() => normalizeTechnicalSectionInput('design_parameters', {
+    label: 'Design Parameters', enabled: 'on', sortOrder: 1, sectionType: 'parameter_table',
+    tableRows: 'Parameter | Value', columnWidths: '20 | 30 | 50',
+    conditionOperator: 'always'
+  }), /column widths must match/i);
+  assert.throws(() => normalizeTechnicalSectionInput('design_parameters', {
+    label: 'Design Parameters', enabled: 'on', sortOrder: 1, sectionType: 'parameter_table',
+    tableRows: 'A | B | C', tableMerges: '1,1,2\n1,2,2',
+    conditionOperator: 'always'
+  }), /cannot overlap/i);
+  assert.throws(() => normalizeTechnicalSectionInput('design_parameters', {
+    label: 'Design Parameters', enabled: 'on', sortOrder: 1, sectionType: 'parameter_table',
+    tableRows: 'A | B', conditionOperator: 'always',
+    sectionImage: { buffer: Buffer.from('not-an-image'), originalName: 'payload.png' }
+  }), /PNG or JPEG/i);
 });
 
 test('structured section editor rejects executable text and unknown condition variables', async () => {
@@ -336,4 +386,60 @@ test('structured section editor rejects executable text and unknown condition va
     }),
     (error) => error.statusCode === 400 && /not assigned/.test(error.message)
   );
+});
+
+test('editing one template language preserves the other language content and clauses', async () => {
+  let savedSchema;
+  const repository = {
+    async getTemplateDetail() {
+      return {
+        id: 4,
+        revisions: [{
+          id: 9,
+          status: 'draft',
+          variables: [],
+          contentSchema: {
+            schemaVersion: 1,
+            sections: [{
+              key: 'project_basis', labelEn: 'Project Basis', labelZh: '项目依据',
+              bodyEn: 'English basis.', bodyZh: '中文依据。',
+              tableRowsEn: [['Item', 'Value']], tableRowsZh: [['项目', '数值']],
+              sortOrder: 1, enabled: true, sectionType: 'narrative',
+              condition: { operator: 'always', variableKey: '', value: '' },
+              defaultClauseIds: [30, 31], blocks: []
+            }]
+          }
+        }]
+      };
+    },
+    async listClauses() {
+      return [{ id: 30, language: 'en' }, { id: 31, language: 'zh' }];
+    },
+    async updateRevisionContent(_revisionId, contentSchema) {
+      savedSchema = contentSchema;
+      return { id: 9, templateId: 4 };
+    }
+  };
+
+  await updateTechnicalTemplateSection(
+    repository,
+    user(ROLES.TECHNICAL_MANAGER),
+    4,
+    9,
+    'project_basis',
+    {
+      label: '项目基础', body: '中文内容已更新。', tableRows: '项目 | 新数值',
+      enabled: 'on', sortOrder: 1, sectionType: 'narrative', conditionOperator: 'always',
+      defaultClauseIds: 31
+    },
+    'zh'
+  );
+
+  const section = savedSchema.sections[0];
+  assert.equal(section.labelEn, 'Project Basis');
+  assert.equal(section.bodyEn, 'English basis.');
+  assert.deepEqual(section.tableRowsEn, [['Item', 'Value']]);
+  assert.equal(section.labelZh, '项目基础');
+  assert.deepEqual(section.tableRowsZh, [['项目', '新数值']]);
+  assert.deepEqual(section.defaultClauseIds, [30, 31]);
 });

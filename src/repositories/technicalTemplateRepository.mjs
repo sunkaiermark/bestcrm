@@ -22,11 +22,15 @@ function mapTemplateRow(row) {
     id: Number(row.id),
     templateCode: row.template_code,
     name: row.name,
+    nameEn: row.name_en || '',
+    nameZh: row.name_zh || '',
     documentType: row.document_type || 'technical_agreement',
     productCategoryCode: row.product_category_code || '',
     productFamily: row.product_family,
     productModel: row.product_model || '',
     application: row.application || '',
+    applicationEn: row.application_en || '',
+    applicationZh: row.application_zh || '',
     language: row.language,
     currentPublishedRevisionId: numberOrNull(row.current_published_revision_id),
     currentRevisionNo: numberOrNull(row.current_revision_no),
@@ -228,7 +232,7 @@ export function createTechnicalTemplateRepository(queryTarget) {
         ${conditions.length ? `WHERE ${conditions.join(' AND ')}` : ''}
         ORDER BY t.is_active DESC, t.document_type ASC,
           t.product_category_code ASC NULLS LAST, t.product_family ASC,
-          t.name ASC, t.template_code ASC
+          COALESCE(t.name_en, t.name_zh, t.name) ASC, t.template_code ASC
       `, params);
       return result.rows.map(mapTemplateRow);
     },
@@ -296,23 +300,24 @@ export function createTechnicalTemplateRepository(queryTarget) {
       const result = await queryTarget.query(`
         WITH inserted_template AS (
           INSERT INTO technical_agreement_templates (
-            template_code, name, product_family, product_model, application,
-            language, document_type, product_category_code, created_by, updated_by
+            template_code, name, name_en, name_zh, product_family, product_model,
+            application, application_en, application_zh, language,
+            document_type, product_category_code, created_by, updated_by
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $10, $11, $7, $7)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, 'bilingual', $13, $14, $10, $10)
           RETURNING *
         ), inserted_revision AS (
           INSERT INTO technical_agreement_template_revisions (
             template_id, revision_no, status, change_summary, content_schema, created_by
           )
-          SELECT id, 1, 'draft', $8, $9::jsonb, $7
+          SELECT id, 1, 'draft', $11, $12::jsonb, $10
           FROM inserted_template
           RETURNING *
         ), inserted_event AS (
           INSERT INTO technical_template_events (
             template_id, entity_type, entity_id, event_type, to_status, actor_user_id, details
           )
-          SELECT it.id, 'revision', ir.id, 'created', 'draft', $7,
+          SELECT it.id, 'revision', ir.id, 'created', 'draft', $10,
             jsonb_build_object('revisionNo', ir.revision_no)
           FROM inserted_template it
           CROSS JOIN inserted_revision ir
@@ -323,10 +328,13 @@ export function createTechnicalTemplateRepository(queryTarget) {
       `, [
         input.templateCode,
         input.name,
+        input.nameEn,
+        input.nameZh,
         input.productFamily,
         input.productModel,
         input.application,
-        input.language,
+        input.applicationEn,
+        input.applicationZh,
         actorUserId,
         input.changeSummary,
         JSON.stringify(input.contentSchema),
@@ -343,13 +351,18 @@ export function createTechnicalTemplateRepository(queryTarget) {
       const result = await queryTarget.query(`
         WITH updated AS (
           UPDATE technical_agreement_templates
-          SET name = $2,
-              product_family = CASE WHEN product_category_code IS NULL THEN $3 ELSE product_family END,
-              product_model = $4,
-              application = $5,
-              document_type = CASE WHEN product_category_code IS NULL THEN $7 ELSE document_type END,
-              product_category_code = COALESCE(product_category_code, $8),
-              updated_by = $6,
+          SET name = $3,
+              name_en = CASE WHEN $2 = 'en' THEN $3 ELSE name_en END,
+              name_zh = CASE WHEN $2 = 'zh' THEN $3 ELSE name_zh END,
+              product_family = CASE WHEN product_category_code IS NULL THEN $4 ELSE product_family END,
+              product_model = $5,
+              application = $6,
+              application_en = CASE WHEN $2 = 'en' THEN $6 ELSE application_en END,
+              application_zh = CASE WHEN $2 = 'zh' THEN $6 ELSE application_zh END,
+              document_type = CASE WHEN product_category_code IS NULL THEN $8 ELSE document_type END,
+              product_category_code = COALESCE(product_category_code, $9),
+              language = 'bilingual',
+              updated_by = $7,
               updated_at = now()
           WHERE id = $1
           RETURNING *
@@ -357,13 +370,14 @@ export function createTechnicalTemplateRepository(queryTarget) {
           INSERT INTO technical_template_events (
             template_id, entity_type, entity_id, event_type, actor_user_id, details
           )
-          SELECT id, 'template', id, 'metadata_updated', $6,
-            jsonb_build_object('name', name, 'productFamily', product_family)
+          SELECT id, 'template', id, 'metadata_updated', $7,
+            jsonb_build_object('name', name, 'productFamily', product_family, 'contentLanguage', $2)
           FROM updated
         )
         SELECT id FROM updated
       `, [
         id,
+        input.contentLanguage,
         input.name,
         input.productFamily,
         input.productModel,

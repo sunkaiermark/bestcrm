@@ -15,7 +15,6 @@ import {
   canProcessInquiry,
   canViewInquiry,
   convertInquiryToOpportunity,
-  createInquiry,
   deleteInquiry,
   inquiryAssignableUsers,
   inquirySalespersonUsers,
@@ -53,7 +52,6 @@ function inquiryListViewMode(value) {
 function inquiryListViewFilters(filter) {
   return {
     query: filter.searchTerm || '',
-    source: filter.source || '',
     status: filter.status || '',
     dateFrom: filter.dateFrom || '',
     dateTo: filter.dateTo || '',
@@ -135,14 +133,6 @@ async function loadCrmOptions({ customerRepository, contactRepository, userRepos
   const assignableUsers = inquiryAssignableUsers(user, users);
   const salespeople = inquirySalespersonUsers(user, users);
   return { customers, contacts, assignableUsers, salespeople };
-}
-
-function renderInquiryForm(res, data = {}) {
-  res.render('inquiries/form', {
-    ...inquiryFormOptions,
-    countryOptions: CUSTOMER_COUNTRIES,
-    ...data
-  });
 }
 
 function renderInquiryDetail(res, data = {}) {
@@ -283,7 +273,11 @@ export function inquiryRoutes({
 
   router.get('/inquiries', async (req, res, next) => {
     try {
-      const filter = inquiryListFilterFor(req.currentUser, req.query);
+      const filter = {
+        ...inquiryListFilterFor(req.currentUser, req.query),
+        source: 'website',
+        submissionType: 'standard'
+      };
       const viewMode = inquiryListViewMode(req.query.view);
       const totalItems = await inquiryRepository.countInquiries(filter);
       const totalPages = viewMode === 'all' ? 1 : Math.max(1, Math.ceil(totalItems / INQUIRY_PAGE_SIZE));
@@ -324,33 +318,12 @@ export function inquiryRoutes({
     }
   });
 
-  router.get('/inquiries/new', async (req, res, next) => {
-    try {
-      const options = await loadCrmOptions({ customerRepository, contactRepository, userRepository }, req.currentUser);
-      const defaultAssignee = options.assignableUsers.find((user) => Number(user.id) === Number(req.currentUser.id))
-        || options.assignableUsers[0];
-      renderInquiryForm(res, {
-        inquiry: {
-          source: 'manual',
-          priority: 'normal',
-          status: 'new',
-          assignedUserId: defaultAssignee?.id || null
-        },
-        action: '/inquiries',
-        ...options
-      });
-    } catch (error) {
-      next(error);
-    }
+  router.get('/inquiries/new', (req, res) => {
+    res.redirect('/lead-submissions/new');
   });
 
-  router.post('/inquiries', async (req, res, next) => {
-    try {
-      const inquiry = await createInquiry({ inquiryRepository, userRepository }, req.currentUser, req.body);
-      res.redirect(`/inquiries/${inquiry.id}`);
-    } catch (error) {
-      handleInquiryError(error, res, next);
-    }
+  router.post('/inquiries', (req, res) => {
+    res.status(410).send(res.locals.t('createInquiryFirst'));
   });
 
   router.get('/inquiries/:id', async (req, res, next) => {

@@ -767,7 +767,7 @@ test('opportunity framework text and common actions use selected Chinese languag
   const list = await agent.get('/opportunities');
   assert.equal(list.status, 200);
   assert.match(list.text, /<h1>\u5546\u673a<\/h1>/);
-  assert.match(list.text, /提交新线索/);
+  assert.match(list.text, /新建线索/);
   assert.match(list.text, /\u9500\u552e\u8d1f\u8d23\u4eba/);
   assert.match(list.text, />\u67e5\u8be2<\/button>/);
   assert.match(list.text, /<th scope="col">\u5546\u673a\u540d\u79f0<\/th>/);
@@ -821,6 +821,52 @@ test('opportunity detail uses compact header actions and hides repeated customer
   assert.doesNotMatch(headerHtml, /class="status"/);
   assert.match(detail.text, /<th scope="row">Status<\/th>\s*<td>Draft<\/td>/);
   assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/delete"/);
+});
+
+test('sales manager can create an opportunity directly for an existing customer', async () => {
+  const { agent, created } = await createLoggedInAgent({
+    user: { roles: [ROLES.SALES_MANAGER] },
+    customerRepository: {
+      async listCustomers() {
+        return [{ id: 10, customerCode: 'C000010', name: 'Acme Co', ownerUserId: 8 }];
+      },
+      async getCustomerDetail() {
+        return { id: 10, customerCode: 'C000010', name: 'Acme Co', ownerUserId: 8 };
+      }
+    },
+    contactRepository: {
+      async listContacts() {
+        return [{ id: 20, customerId: 10, customerOwnerUserId: 8, name: 'Alice' }];
+      },
+      async getContactDetail() {
+        return { id: 20, customerId: 10, customerOwnerUserId: 8, name: 'Alice' };
+      }
+    }
+  });
+
+  const form = await agent.get('/opportunities/new');
+  assert.equal(form.status, 200);
+  assert.match(form.text, /New opportunity/);
+  assert.match(form.text, /name="salespersonId"/);
+  assert.match(form.text, /Team Member/);
+  assert.match(form.text, /id="opportunity-customer"/);
+  assert.match(form.text, /data-owner-user-id="8"/);
+  assert.match(form.text, /option\.dataset\.ownerUserId !== salespersonId/);
+  assert.match(form.text, /Create an opportunity directly for an existing customer/);
+
+  const response = await agent.post('/opportunities').type('form').send({
+    salespersonId: '8',
+    customerId: '10',
+    primaryContactId: '20',
+    title: 'Acme expansion',
+    requirement: 'Add one production line'
+  });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/opportunities/31');
+  assert.equal(created.length, 1);
+  assert.equal(created[0].originInquiryId, null);
+  assert.equal(created[0].salespersonId, 8);
 });
 
 test('future workflow stages stay fully collapsed until their status is reached', async () => {
@@ -1292,7 +1338,7 @@ test('direct opportunity customer creation is blocked', async () => {
     });
 
   assert.equal(response.status, 403);
-  assert.match(response.text, /Create and review an inquiry/);
+  assert.match(response.text, /Create a lead or opportunity directly/);
   assert.deepEqual(createdCustomers, []);
 });
 
@@ -3359,7 +3405,7 @@ test('JSON API blocks direct opportunity creation', async () => {
     });
 
   assert.equal(response.status, 403);
-  assert.match(response.body.error, /Create and review an inquiry/);
+  assert.match(response.body.error, /Create a lead or opportunity directly/);
   assert.deepEqual(created, []);
 });
 

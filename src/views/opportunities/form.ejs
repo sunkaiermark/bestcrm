@@ -4,15 +4,34 @@
           <h1><%= typeof pageTitle === 'undefined' ? t('opportunityInitiation') : pageTitle %></h1>
         </header>
 
+        <% if (typeof directEntryNotice !== 'undefined' && directEntryNotice) { %>
+          <p class="muted"><%= directEntryNotice %></p>
+        <% } %>
+
         <form id="opportunity-form" method="post" action="<%= action %>">
           <%- csrfField() %>
+          <% if (typeof emailThreadId !== 'undefined' && emailThreadId) { %><input type="hidden" name="emailThreadId" value="<%= emailThreadId %>"><% } %>
         </form>
         <section class="form-panel">
+          <% if (typeof allowSalesOwnerChoice !== 'undefined' && allowSalesOwnerChoice) { %>
+            <label>
+              <%= t('salesOwner') %>
+              <select id="opportunity-salesperson" name="salespersonId" form="opportunity-form" required>
+                <option value=""><%= t('selectSalesOwner') %></option>
+                <% for (const salesperson of salespeople) { %>
+                  <option value="<%= salesperson.id %>"<%= String(opportunity.salespersonId || '') === String(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
+                <% } %>
+              </select>
+            </label>
+          <% } %>
           <label>
             <%= t('customer') %>
-            <select name="customerId" form="opportunity-form" required>
+            <select id="opportunity-customer" name="customerId" form="opportunity-form" required>
+              <% if (typeof allowSalesOwnerChoice !== 'undefined' && allowSalesOwnerChoice) { %>
+                <option value=""><%= t('selectCustomer') %></option>
+              <% } %>
               <% for (const customer of customers) { %>
-                <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
+                <option value="<%= customer.id %>" data-owner-user-id="<%= customer.ownerUserId || '' %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
               <% } %>
             </select>
           </label>
@@ -102,7 +121,7 @@
           <% } %>
           <label>
             <%= t('contacts') %>
-            <select name="primaryContactId" form="opportunity-form">
+            <select id="opportunity-contact" name="primaryContactId" form="opportunity-form">
               <option value=""></option>
               <% for (const contact of contacts) { %>
                 <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>" <%= String(opportunity.primaryContactId || '') === String(contact.id) ? 'selected' : '' %>><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %><%= contact.customerName ? ` (${contact.customerCode ? `${contact.customerCode} · ` : ''}${contact.customerName})` : '' %></option>
@@ -155,4 +174,43 @@
           </label>
           <button type="submit" form="opportunity-form"><%= typeof submitLabel === 'undefined' ? t('saveDraft') : submitLabel %></button>
         </section>
+        <% if (typeof allowSalesOwnerChoice !== 'undefined' && allowSalesOwnerChoice) { %>
+          <script>
+            (() => {
+              const salespersonSelect = document.getElementById('opportunity-salesperson');
+              const customerSelect = document.getElementById('opportunity-customer');
+              const contactSelect = document.getElementById('opportunity-contact');
+              if (!salespersonSelect || !customerSelect || !contactSelect) return;
+
+              const updateContacts = (resetSelection) => {
+                const customerId = customerSelect.value;
+                for (const option of contactSelect.options) {
+                  const unavailable = Boolean(option.value) && option.dataset.customerId !== customerId;
+                  option.hidden = unavailable;
+                  option.disabled = unavailable;
+                }
+                if (resetSelection || contactSelect.selectedOptions[0]?.disabled) {
+                  contactSelect.value = '';
+                }
+              };
+
+              const updateCustomers = (resetSelection) => {
+                const salespersonId = salespersonSelect.value;
+                for (const option of customerSelect.options) {
+                  const unavailable = Boolean(option.value) && option.dataset.ownerUserId !== salespersonId;
+                  option.hidden = unavailable;
+                  option.disabled = unavailable;
+                }
+                if (resetSelection || customerSelect.selectedOptions[0]?.disabled) {
+                  customerSelect.value = '';
+                }
+                updateContacts(true);
+              };
+
+              salespersonSelect.addEventListener('change', () => updateCustomers(true));
+              customerSelect.addEventListener('change', () => updateContacts(true));
+              updateCustomers(false);
+            })();
+          </script>
+        <% } %>
 <%- include('../partials/app-end') %>

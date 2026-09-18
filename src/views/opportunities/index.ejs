@@ -4,7 +4,10 @@
           <% if ((currentUser.roles || []).includes('salesperson')) { %>
             <a class="quick-action" href="/lead-submissions/new"><%= t('submitNewLead') %></a>
           <% } else if ((currentUser.roles || []).some((role) => ['administrator', 'sales_manager'].includes(role))) { %>
-            <a class="quick-action" href="/inquiries/new"><%= t('newInquiry') %></a>
+            <div class="page-actions">
+              <a class="secondary-action" href="/lead-submissions/new"><%= t('submitNewLead') %></a>
+              <a class="quick-action" href="/opportunities/new"><%= t('newOpportunity') %></a>
+            </div>
           <% } %>
         </header>
 

@@ -4,8 +4,7 @@
         <form class="form-panel" method="post" action="<%= action %>">
           <%- csrfField() %>
           <label><%= t('variableKey') %><input name="variableKey" maxlength="64" pattern="[a-z][a-z0-9_]*" value="<%= definition.variableKey %>" required></label>
-          <label><%= t('englishLabel') %><input name="labelEn" maxlength="200" value="<%= definition.labelEn %>" required></label>
-          <label><%= t('chineseLabel') %><input name="labelZh" maxlength="200" value="<%= definition.labelZh %>" required></label>
+          <label><%= t('variableLabel') %><input name="label" maxlength="200" value="<%= language === 'zh' ? definition.labelZh : definition.labelEn %>" required></label>
           <label><%= t('dataType') %><select name="dataType" required><% for (const type of dataTypes) { %><option value="<%= type %>" <%= definition.dataType === type ? 'selected' : '' %>><%= t(`variableType.${type}`) %></option><% } %></select></label>
           <label><%= t('sourceField') %><select name="sourceField" required><% for (const source of sourceFields) { %><option value="<%= source %>" <%= definition.sourceField === source ? 'selected' : '' %>><%= t(`variableSource.${source}`) %></option><% } %></select></label>
           <label class="checkbox-row"><input name="isActive" type="checkbox" <%= definition.isActive ? 'checked' : '' %>><span><%= t('active') %></span></label>

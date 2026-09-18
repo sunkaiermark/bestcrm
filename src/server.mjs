@@ -809,6 +809,11 @@ export function createApp(options = {}) {
     inquiryRepository,
     inquiryAttachmentRepository,
     userRepository,
+    emailArchiveRepository,
+    opportunityRepository,
+    opportunityResponsibilityRepository,
+    emailArchiveTransaction,
+    sharedAddress: config.customerEmail?.sharedAddress || 'sales@sunkaier.com',
     uploadDir: config.uploadDir,
     maxUploadMb: config.maxUploadMb
   }));
@@ -827,6 +832,8 @@ export function createApp(options = {}) {
   app.use(emailCenterRoutes({
     enabled: Boolean(config.emailCenter?.enabled),
     emailArchiveRepository,
+    customerRepository,
+    contactRepository,
     inquiryRepository,
     userRepository,
     opportunityRepository,
@@ -889,6 +896,8 @@ export function createApp(options = {}) {
     contactRepository,
     attachmentRepository,
     emailArchiveRepository,
+    emailArchiveTransaction,
+    sharedAddress: config.customerEmail?.sharedAddress || 'sales@sunkaier.com',
     emailCenterEnabled: Boolean(config.emailCenter?.enabled),
     commercialQuoteRepository,
     technicalSolutionRepository,

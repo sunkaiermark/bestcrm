@@ -1,10 +1,14 @@
-<%- include('../partials/app-start', { title: `${t('inquiries')} - BESTCRM`, activeNav: 'inquiries' }) %>
+<%- include('../partials/app-start', { title: `${t('websiteForms')} - BESTCRM`, activeNav: 'inquiries' }) %>
         <header class="page-header">
           <div>
-            <p class="breadcrumb"><%= t('inquiryInbox') %></p>
-            <h1><%= t('inquiries') %></h1>
+            <p class="breadcrumb"><%= t('websiteFormInbox') %></p>
+            <h1><%= t('websiteForms') %></h1>
+            <p class="muted"><%= t('websiteFormNotice') %></p>
           </div>
-          <a class="quick-action" href="/inquiries/new"><%= t('newInquiry') %></a>
+          <div class="page-actions">
+            <a class="secondary-action" href="/lead-submissions/new"><%= t('submitNewLead') %></a>
+            <a class="quick-action" href="/opportunities/new"><%= t('newOpportunity') %></a>
+          </div>
         </header>
 
         <section class="list-section">
@@ -12,23 +16,14 @@
             <% if (viewMode === 'all') { %><input name="view" type="hidden" value="all"><% } %>
             <label class="inquiry-search-field">
               <%= t('keyword') %>
-              <input name="query" type="search" maxlength="200" value="<%= filters.query %>" placeholder="<%= t('inquirySearchPlaceholder') %>">
-            </label>
-            <label>
-              <%= t('source') %>
-              <select name="source">
-                <option value=""><%= t('allSources') %></option>
-                <% for (const source of sources) { %>
-                  <option value="<%= source %>"<%= filters.source === source ? ' selected' : '' %>><%= t(`inquirySource.${source}`) %></option>
-                <% } %>
-              </select>
+              <input name="query" type="search" maxlength="200" value="<%= filters.query %>" placeholder="<%= t('websiteFormSearchPlaceholder') %>">
             </label>
             <label>
               <%= t('status') %>
               <select name="status">
-                <option value=""><%= t('activeInquiryStatuses') %></option>
+                <option value=""><%= t('activeWebsiteFormStatuses') %></option>
                 <% for (const status of statuses) { %>
-                  <option value="<%= status %>"<%= filters.status === status ? ' selected' : '' %>><%= t(`inquiryStatus.${status}`) %></option>
+                  <option value="<%= status %>"<%= filters.status === status ? ' selected' : '' %>><%= t(`websiteFormStatus.${status}`) %></option>
                 <% } %>
               </select>
             </label>
@@ -63,12 +58,11 @@
             </div>
           </form>
 
-          <div class="list-body inquiry-list-body" tabindex="0" aria-label="<%= t('inquiries') %>">
+          <div class="list-body inquiry-list-body" tabindex="0" aria-label="<%= t('websiteForms') %>">
             <table class="list-table content-fit-table inquiry-list-table">
               <thead>
                 <tr>
                   <th><%= t('inquiryListDate') %></th>
-                  <th><%= t('inquiryListSource') %></th>
                   <th><%= t('inquiryListStatus') %></th>
                   <th><%= t('inquiryListPriority') %></th>
                   <th><%= t('inquiryListSubject') %></th>
@@ -84,8 +78,7 @@
                 <% for (const inquiry of inquiries) { %>
                   <tr>
                     <td data-label="<%= t('inquiryListDate') %>" title="<%= inquiry.sourceDateInvalid ? t('invalidSourceDateIgnored') : inquiry.listReceivedAt %>"><%= inquiry.listReceivedAt %></td>
-                    <td data-label="<%= t('inquiryListSource') %>"><%= t(`inquirySource.${inquiry.source}`) %></td>
-                    <td data-label="<%= t('inquiryListStatus') %>"><span class="status"><%= t(`inquiryStatus.${inquiry.status}`) %></span></td>
+                    <td data-label="<%= t('inquiryListStatus') %>"><span class="status"><%= t(`websiteFormStatus.${inquiry.status}`) %></span></td>
                     <td data-label="<%= t('inquiryListPriority') %>"><%= t(`inquiryPriority.${inquiry.priority}`) %></td>
                     <td class="clickable-cell" data-label="<%= t('inquiryListSubject') %>" title="<%= inquiry.subject || `#${inquiry.id}` %>"><a class="cell-link" href="/inquiries/<%= inquiry.id %>"><%= inquiry.subject || `#${inquiry.id}` %></a></td>
                     <td data-label="<%= t('inquiryListCompany') %>" title="<%= inquiry.companyName || '' %>"><%= inquiry.companyName || '' %></td>

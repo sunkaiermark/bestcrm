@@ -5,6 +5,7 @@ import {
   TECHNICAL_PRODUCT_CATEGORIES,
   opportunityTechnicalDocumentCode,
   opportunityTechnicalDocumentVersionLabel,
+  localizedTechnicalField,
   technicalDocumentType,
   technicalProductCategory
 } from '../../src/domain/technicalTemplates.mjs';
@@ -22,4 +23,11 @@ test('opportunity technical document codes are deterministic and versioned witho
   assert.equal(opportunityTechnicalDocumentCode('OPP-800001', 'bidding_document'), 'OPP-800001-BIDDING-DOCUMENT');
   assert.equal(opportunityTechnicalDocumentVersionLabel('OPP-800001-DATASHEET', 3), 'OPP-800001-DATASHEET-V3');
   assert.equal(opportunityTechnicalDocumentCode('OPP-800001', 'datasheet'), '');
+});
+
+test('localized technical fields never fall back to the opposite stored language', () => {
+  const localized = { name: 'Legacy English', nameEn: 'English name', nameZh: '' };
+  assert.equal(localizedTechnicalField(localized, 'name', 'en'), 'English name');
+  assert.equal(localizedTechnicalField(localized, 'name', 'zh'), '');
+  assert.equal(localizedTechnicalField({ name: 'Legacy name' }, 'name', 'zh'), 'Legacy name');
 });

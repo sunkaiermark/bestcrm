@@ -7,7 +7,7 @@
             <select name="templateId" required>
               <option value=""></option>
               <% for (const template of templates) { %>
-                <option value="<%= template.id %>"><%= template.templateCode %> · <%= template.name %> · <%= template.productFamily %> · <%= t(`templateLanguage.${template.language}`) %></option>
+                <option value="<%= template.id %>"><%= template.templateCode %> · <%= template.name %> · <%= template.productCategoryCode ? t(`technicalProductCategory.${template.productCategoryCode}`) : template.productFamily %></option>
               <% } %>
             </select>
           </label>

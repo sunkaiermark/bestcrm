@@ -28,13 +28,15 @@ function equipment(overrides = {}) {
 function template() {
   return {
     id: 5, templateCode: 'MIX-TA', name: 'Mixer Agreement', documentType: 'technical_agreement',
+    nameEn: 'Mixer Agreement', nameZh: '搅拌机技协议',
     productCategoryCode: 'mixer', productFamily: '搅拌机', language: 'bilingual', isActive: true,
     currentPublishedRevisionId: 9,
     revisions: [{
       id: 9, revisionNo: 2, status: 'published',
       contentSchema: { schemaVersion: 1, sections: [{
         key: 'design_parameters', labelEn: 'Design Parameters', labelZh: '设计参数',
-        sortOrder: 1, enabled: true, bodyEn: '', bodyZh: '', tableRows: [],
+        sortOrder: 1, enabled: true, bodyEn: 'English body.', bodyZh: '中文内容。',
+        tableRowsEn: [['Item', 'Value']], tableRowsZh: [['项目', '数值']],
         condition: { operator: 'always' }, defaultClauseIds: []
       }] },
       variables: [{
@@ -91,7 +93,7 @@ test('combined Technical Agreement V1 freezes every item and exact published tem
     }
   };
   const created = await createOpportunityTechnicalDocumentVersionOne(repositories, actor, opportunity, {
-    documentType: 'technical_agreement', equipmentItemIds: ['11']
+    documentType: 'technical_agreement', equipmentItemIds: ['11'], language: 'en'
   });
   assert.equal(created.versionNo, 1);
   const stored = calls.find(([name]) => name === 'create')[1];
@@ -99,6 +101,8 @@ test('combined Technical Agreement V1 freezes every item and exact published tem
   assert.equal(stored.versionItems[0].templateRevisionNo, 2);
   assert.equal(stored.versionItems[0].renderedContent.variables[0].value, '10 t/h');
   assert.equal(stored.sourceSnapshot.equipment[0].templateRevisionId, 9);
+  assert.equal(stored.sourceSnapshot.language, 'en');
+  assert.equal(calls.find(([name]) => name === 'generate')[1].language, 'en');
 });
 
 test('one combined document supports multiple equipment items from multiple product categories', async () => {
@@ -142,17 +146,64 @@ test('one combined document supports multiple equipment items from multiple prod
     }
   };
   await createOpportunityTechnicalDocumentVersionOne(repositories, actor, opportunity, {
-    documentType: 'technical_agreement', equipmentItemIds: ['11', '12']
+    documentType: 'technical_agreement', equipmentItemIds: ['11', '12'], language: 'en'
   });
   assert.deepEqual(stored.versionItems.map((item) => item.productCategoryCode), ['mixer', 'rubber_cutter']);
   assert.deepEqual(stored.versionItems.map((item) => item.templateRevisionNo), [2, 3]);
   assert.equal(stored.primaryEquipmentItemId, null);
 });
 
+test('Chinese login freezes Chinese template text and excludes English standard clauses', async () => {
+  const currentTemplate = template();
+  currentTemplate.revisions[0].contentSchema.sections[0].defaultClauseIds = [30, 31];
+  let stored;
+  let generated;
+  const repositories = {
+    opportunityTechnicalDocumentRepository: {
+      async listEquipmentByOpportunity() { return [equipment()]; },
+      async findDocumentByIdentity() { return null; },
+      async createDocumentVersionOne(input) {
+        stored = input;
+        return { documentId: 30, versionId: 40, versionNo: 1 };
+      }
+    },
+    technicalTemplateRepository: {
+      async listTemplates() { return [currentTemplate]; },
+      async getTemplateDetail() { return currentTemplate; },
+      async listClauses() {
+        return [
+          { id: 30, clauseCode: 'FAT-EN', revisionNo: 1, revisionLabel: 'FAT-EN-R1', title: 'English FAT', language: 'en', content: 'English clause.' },
+          { id: 31, clauseCode: 'FAT-ZH', revisionNo: 1, revisionLabel: 'FAT-ZH-R1', title: '中文验收', language: 'zh', content: '中文条款。' }
+        ];
+      }
+    },
+    technicalMaterialDocumentService: {
+      async generateVersionOne(input) {
+        generated = input;
+        return [
+          { format: 'docx', originalName: 'v1.docx', mimeType: 'docx', content: Buffer.from('docx'), byteSize: 4, sha256: 'a'.repeat(64) },
+          { format: 'pdf', originalName: 'v1.pdf', mimeType: 'pdf', content: Buffer.from('pdf'), byteSize: 3, sha256: 'b'.repeat(64) }
+        ];
+      }
+    }
+  };
+
+  await createOpportunityTechnicalDocumentVersionOne(repositories, actor, opportunity, {
+    documentType: 'technical_agreement', equipmentItemIds: ['11'], language: 'zh'
+  });
+
+  assert.equal(stored.sourceSnapshot.language, 'zh');
+  assert.equal(stored.title, 'Polymer Mixer - 技术协议');
+  assert.equal(stored.versionItems[0].templateName, '搅拌机技协议');
+  assert.equal(stored.versionItems[0].productCategoryName, '搅拌机');
+  assert.deepEqual(stored.versionItems[0].renderedContent.sections[0].clauses.map((clause) => clause.id), [31]);
+  assert.equal(generated.language, 'zh');
+});
+
 test('Datasheet requires exactly one item and blocks generation without its category template', async () => {
   await assert.rejects(
     createOpportunityTechnicalDocumentVersionOne({}, actor, opportunity, {
-      documentType: 'datasheet', equipmentItemIds: [11, 12]
+      documentType: 'datasheet', equipmentItemIds: [11, 12], language: 'en'
     }),
     (error) => error.statusCode === 400 && /exactly one/.test(error.message)
   );
@@ -168,7 +219,7 @@ test('Datasheet requires exactly one item and blocks generation without its cate
   };
   await assert.rejects(
     createOpportunityTechnicalDocumentVersionOne(repository, actor, opportunity, {
-      documentType: 'datasheet', equipmentItemIds: 11
+      documentType: 'datasheet', equipmentItemIds: 11, language: 'en'
     }),
     (error) => error.statusCode === 409 && /Missing current published Datasheet template/.test(error.message)
   );

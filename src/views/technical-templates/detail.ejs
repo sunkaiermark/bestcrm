@@ -4,7 +4,7 @@
         <header class="page-header">
           <div>
             <h1><%= template.templateCode %> · <%= template.name %></h1>
-            <div class="muted"><%= t(`technicalDocumentType.${template.documentType || 'technical_agreement'}`) %> · <%= template.productCategoryCode ? t(`technicalProductCategory.${template.productCategoryCode}`) : template.productFamily %> · <%= t(`templateLanguage.${template.language}`) %></div>
+            <div class="muted"><%= t(`technicalDocumentType.${template.documentType || 'technical_agreement'}`) %> · <%= template.productCategoryCode ? t(`technicalProductCategory.${template.productCategoryCode}`) : template.productFamily %></div>
           </div>
           <% if (canAuthor) { %>
             <a class="secondary-action" href="/technical-templates/<%= template.id %>/edit"><%= t('editTechnicalTemplate') %></a>

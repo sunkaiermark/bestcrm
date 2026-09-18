@@ -6,9 +6,13 @@ import {
   TECHNICAL_PRODUCT_CATEGORIES,
   TECHNICAL_SECTION_CONDITION_OPERATORS,
   TECHNICAL_SECTION_TYPES,
+  TECHNICAL_IMAGE_ALIGNMENTS,
+  TECHNICAL_TABLE_ALIGNMENTS,
   TECHNICAL_TEMPLATE_LANGUAGES,
   TECHNICAL_TEMPLATE_VARIABLE_SOURCES,
   TECHNICAL_TEMPLATE_VARIABLE_TYPES,
+  localizedTechnicalField,
+  technicalContentLanguage,
   technicalProductCategory
 } from '../domain/technicalTemplates.mjs';
 
@@ -17,12 +21,15 @@ const variableTypeSet = new Set(TECHNICAL_TEMPLATE_VARIABLE_TYPES);
 const variableSourceSet = new Set(TECHNICAL_TEMPLATE_VARIABLE_SOURCES);
 const sectionTypeSet = new Set(TECHNICAL_SECTION_TYPES);
 const sectionConditionOperatorSet = new Set(TECHNICAL_SECTION_CONDITION_OPERATORS);
+const tableAlignmentSet = new Set(TECHNICAL_TABLE_ALIGNMENTS);
+const imageAlignmentSet = new Set(TECHNICAL_IMAGE_ALIGNMENTS);
 const documentTypeSet = new Set(TECHNICAL_DOCUMENT_TYPES.map((item) => item.value));
 const productCategorySet = new Set(TECHNICAL_PRODUCT_CATEGORIES.map((item) => item.code));
 const codePattern = /^[A-Z][A-Z0-9-]{0,31}$/;
 const variableKeyPattern = /^[a-z][a-z0-9_]{0,63}$/;
 const sectionKeyPattern = /^[a-z][a-z0-9_]{0,63}$/;
 const unsafeTemplateSyntax = /(?:<\s*script\b|javascript\s*:|data\s*:\s*text\/html|<%|%>|{{|}}|{%|%})/i;
+const MAX_SECTION_IMAGE_BYTES = 2 * 1024 * 1024;
 
 function serviceError(message, statusCode) {
   const error = new Error(message);
@@ -78,6 +85,7 @@ function positiveInteger(value, field) {
 }
 
 function checkbox(value) {
+  if (Array.isArray(value)) return value.some((item) => checkbox(item));
   return value === true || value === 'true' || value === 'on' || value === '1';
 }
 
@@ -103,6 +111,24 @@ function normalizeLanguage(value) {
     invalid('Template language is invalid');
   }
   return normalized;
+}
+
+function normalizeContentLanguage(value) {
+  const normalized = text(value);
+  if (!['en', 'zh'].includes(normalized)) {
+    invalid('Login language is invalid');
+  }
+  return technicalContentLanguage(normalized);
+}
+
+function localizedTemplate(template, language) {
+  const contentLanguage = normalizeContentLanguage(language);
+  return {
+    ...template,
+    name: localizedTechnicalField(template, 'name', contentLanguage) || template.templateCode,
+    application: localizedTechnicalField(template, 'application', contentLanguage),
+    contentLanguage
+  };
 }
 
 function normalizeDocumentType(value) {
@@ -165,6 +191,117 @@ function normalizeTableRows(value) {
   return rows;
 }
 
+function delimitedValues(value) {
+  if (Array.isArray(value)) return value.map((item) => text(item)).filter(Boolean);
+  return text(value).split(/[|,\r\n]+/).map((item) => item.trim()).filter(Boolean);
+}
+
+function normalizeColumnWidths(value, columnCount) {
+  if (!columnCount) return [];
+  const values = delimitedValues(value);
+  if (!values.length) return [];
+  if (values.length !== columnCount) invalid('Table column widths must match the table column count');
+  const weights = values.map((item) => Number(item));
+  if (weights.some((item) => !Number.isFinite(item) || item <= 0 || item > 1000)) {
+    invalid('Table column widths are invalid');
+  }
+  const total = weights.reduce((sum, item) => sum + item, 0);
+  const normalized = weights.map((item) => Number(((item / total) * 100).toFixed(4)));
+  normalized[normalized.length - 1] = Number((100 - normalized.slice(0, -1).reduce((sum, item) => sum + item, 0)).toFixed(4));
+  if (normalized.some((item) => item < 5)) invalid('Every table column must be at least 5 percent wide');
+  return normalized;
+}
+
+function normalizeColumnAlignments(value, columnCount) {
+  if (!columnCount) return [];
+  const values = delimitedValues(value);
+  if (!values.length) return [];
+  if (values.length !== columnCount || values.some((item) => !tableAlignmentSet.has(item))) {
+    invalid('Table column alignments are invalid');
+  }
+  return values;
+}
+
+function normalizeTableMerges(value, rows) {
+  if (!rows.length || !text(value) && !Array.isArray(value)) return [];
+  const rowCount = rows.length;
+  const columnCount = Math.max(...rows.map((row) => row.length), 1);
+  const rawMerges = Array.isArray(value)
+    ? value
+    : text(value).split(/\r?\n/).map((line) => line.trim()).filter(Boolean).map((line) => {
+      const [row, column, span] = line.split(/[,:|]+/).map((item) => Number(item.trim()));
+      return { row, column, span };
+    });
+  if (rawMerges.length > 100) invalid('Too many merged table cells');
+  const occupied = new Set();
+  const merges = rawMerges.map((merge) => {
+    const normalized = {
+      row: Number(merge.row),
+      column: Number(merge.column),
+      span: Number(merge.span)
+    };
+    if (!Number.isInteger(normalized.row) || normalized.row < 1 || normalized.row > rowCount
+        || !Number.isInteger(normalized.column) || normalized.column < 1 || normalized.column > columnCount
+        || !Number.isInteger(normalized.span) || normalized.span < 2
+        || normalized.column + normalized.span - 1 > columnCount) {
+      invalid('Merged table cells are outside the table');
+    }
+    for (let column = normalized.column; column < normalized.column + normalized.span; column += 1) {
+      const key = `${normalized.row}:${column}`;
+      if (occupied.has(key)) invalid('Merged table cells cannot overlap');
+      occupied.add(key);
+    }
+    return normalized;
+  });
+  return merges.sort((left, right) => left.row - right.row || left.column - right.column);
+}
+
+function sectionImageMimeType(buffer) {
+  if (!Buffer.isBuffer(buffer)) return '';
+  if (buffer.length >= 8 && buffer.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) return 'image/png';
+  if (buffer.length >= 3 && buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  return '';
+}
+
+function normalizeSectionImage(input, currentImage, contentLanguage) {
+  if (checkbox(input.removeSectionImage)) return null;
+  const activeSuffix = contentLanguage === 'zh' ? 'Zh' : 'En';
+  const inactiveSuffix = contentLanguage === 'zh' ? 'En' : 'Zh';
+  let image = currentImage ? { ...currentImage } : null;
+  if (input.sectionImage) {
+    const buffer = input.sectionImage.buffer;
+    const mimeType = sectionImageMimeType(buffer);
+    if (!mimeType || buffer.length < 16 || buffer.length > MAX_SECTION_IMAGE_BYTES) {
+      invalid('Section image must be a PNG or JPEG file no larger than 2 MB');
+    }
+    image = {
+      mimeType,
+      originalName: optionalText(input.sectionImage.originalName, 'Section image filename', 240) || 'section-image',
+      data: buffer.toString('base64'),
+      widthPercent: 60,
+      alignment: 'center',
+      captionEn: '',
+      captionZh: ''
+    };
+  }
+  if (!image) return null;
+  const widthPercent = Number(input.imageWidthPercent ?? image.widthPercent ?? 60);
+  if (!Number.isFinite(widthPercent) || widthPercent < 20 || widthPercent > 100) {
+    invalid('Section image width must be between 20 and 100 percent');
+  }
+  const alignment = text(input.imageAlignment) || image.alignment || 'center';
+  if (!imageAlignmentSet.has(alignment)) invalid('Section image alignment is invalid');
+  return {
+    mimeType: image.mimeType,
+    originalName: text(image.originalName) || 'section-image',
+    data: text(image.data),
+    widthPercent,
+    alignment,
+    [`caption${activeSuffix}`]: safeTemplateText(input.imageCaption, 'Section image caption', 500) || '',
+    [`caption${inactiveSuffix}`]: text(image[`caption${inactiveSuffix}`])
+  };
+}
+
 function normalizeIdList(value, field) {
   const rawValues = Array.isArray(value) ? value : text(value).split(/[\r\n,]+/);
   const values = rawValues
@@ -218,20 +355,28 @@ export function canViewTechnicalTemplate(user, template) {
     && Number(template.currentPublishedRevisionId) > 0;
 }
 
-export function normalizeTechnicalTemplateInput(input) {
+export function normalizeTechnicalTemplateInput(input, language = 'en') {
   const documentType = normalizeDocumentType(input.documentType);
   const productCategoryCode = normalizeProductCategory(input.productCategoryCode, { required: true });
+  const contentLanguage = normalizeContentLanguage(language);
+  const name = requiredText(input.name, 'Template name', 200);
+  const application = optionalText(input.application, 'Application', 300);
   return {
     templateCode: normalizeCode(input.templateCode, 'Template code'),
-    name: requiredText(input.name, 'Template name', 200),
+    name,
+    nameEn: contentLanguage === 'en' ? name : null,
+    nameZh: contentLanguage === 'zh' ? name : null,
     documentType,
     productCategoryCode,
     productFamily: productCategoryCode
       ? technicalProductCategory(productCategoryCode).labelZh
       : requiredText(input.productFamily, 'Product family', 200),
     productModel: optionalText(input.productModel, 'Product model', 200),
-    application: optionalText(input.application, 'Application', 300),
-    language: normalizeLanguage(input.language),
+    application,
+    applicationEn: contentLanguage === 'en' ? application : null,
+    applicationZh: contentLanguage === 'zh' ? application : null,
+    language: 'bilingual',
+    contentLanguage,
     changeSummary: requiredText(input.changeSummary, 'Change summary', 2000),
     contentSchema: JSON.parse(JSON.stringify(
       TECHNICAL_DOCUMENT_DEFAULT_SCHEMAS[documentType] || DEFAULT_TECHNICAL_AGREEMENT_SCHEMA
@@ -239,11 +384,13 @@ export function normalizeTechnicalTemplateInput(input) {
   };
 }
 
-export function normalizeTechnicalTemplateMetadataInput(input) {
+export function normalizeTechnicalTemplateMetadataInput(input, language = 'en') {
   const documentType = normalizeDocumentType(input.documentType);
   const productCategoryCode = normalizeProductCategory(input.productCategoryCode, { required: true });
+  const contentLanguage = normalizeContentLanguage(language);
   return {
     name: requiredText(input.name, 'Template name', 200),
+    contentLanguage,
     documentType,
     productCategoryCode,
     productFamily: productCategoryCode
@@ -254,7 +401,7 @@ export function normalizeTechnicalTemplateMetadataInput(input) {
   };
 }
 
-export function normalizeVariableDefinitionInput(input) {
+export function normalizeVariableDefinitionInput(input, language = null, currentDefinition = null) {
   const variableKey = requiredText(input.variableKey, 'Variable key', 64).toLowerCase();
   const dataType = text(input.dataType);
   const sourceField = text(input.sourceField);
@@ -267,10 +414,29 @@ export function normalizeVariableDefinitionInput(input) {
   if (!variableSourceSet.has(sourceField)) {
     invalid('Variable source field is not allowed');
   }
+  let labelEn;
+  let labelZh;
+  if (language) {
+    const contentLanguage = normalizeContentLanguage(language);
+    const activeLabel = requiredText(
+      input.label ?? input[contentLanguage === 'zh' ? 'labelZh' : 'labelEn'],
+      'Variable label',
+      200
+    );
+    labelEn = contentLanguage === 'en'
+      ? activeLabel
+      : text(currentDefinition?.labelEn) || variableKey;
+    labelZh = contentLanguage === 'zh'
+      ? activeLabel
+      : text(currentDefinition?.labelZh) || variableKey;
+  } else {
+    labelEn = requiredText(input.labelEn, 'English label', 200);
+    labelZh = requiredText(input.labelZh, 'Chinese label', 200);
+  }
   return {
     variableKey,
-    labelEn: requiredText(input.labelEn, 'English label', 200),
-    labelZh: requiredText(input.labelZh, 'Chinese label', 200),
+    labelEn,
+    labelZh,
     dataType,
     sourceField,
     isActive: checkbox(input.isActive)
@@ -300,8 +466,9 @@ export function normalizeRevisionVariableInput(input) {
   };
 }
 
-export function normalizeTechnicalSectionInput(sectionKey, input) {
+export function normalizeTechnicalSectionInput(sectionKey, input, language = 'en', currentSection = {}) {
   const normalizedSectionKey = text(sectionKey);
+  const contentLanguage = normalizeContentLanguage(language);
   if (!sectionKeyPattern.test(normalizedSectionKey)) {
     invalid('Template section is invalid');
   }
@@ -323,28 +490,80 @@ export function normalizeTechnicalSectionInput(sectionKey, input) {
   if (!['always', 'truthy'].includes(operator) && !conditionValue) {
     invalid('Conditional sections require a comparison value');
   }
+  const activeSuffix = contentLanguage === 'zh' ? 'Zh' : 'En';
+  const inactiveSuffix = contentLanguage === 'zh' ? 'En' : 'Zh';
+  const activeLabel = requiredText(
+    input.label ?? input[`label${activeSuffix}`],
+    'Section name',
+    200
+  );
+  const activeBody = safeTemplateText(
+    input.body ?? input[`body${activeSuffix}`],
+    'Section content',
+    100000
+  ) || '';
+  const activeTableRows = normalizeTableRows(input.tableRows);
+  const columnCount = activeTableRows.length
+    ? Math.max(...activeTableRows.map((row) => row.length), 1)
+    : 0;
+  const currentLayout = currentSection?.layout || {};
+  const currentTableLayout = currentLayout.table || {};
+  const tableHeaderRow = input.tableHeaderRow === undefined
+    ? (currentTableLayout.headerRow ?? activeTableRows.length > 1)
+    : checkbox(input.tableHeaderRow);
+  const columnWidths = normalizeColumnWidths(
+    input.columnWidths === undefined ? currentTableLayout.columnWidths : input.columnWidths,
+    columnCount
+  );
+  const columnAlignments = normalizeColumnAlignments(
+    input.columnAlignments === undefined ? currentTableLayout.columnAlignments : input.columnAlignments,
+    columnCount
+  );
+  const merges = normalizeTableMerges(
+    input.tableMerges === undefined ? currentTableLayout.merges : input.tableMerges,
+    activeTableRows
+  );
+  const image = normalizeSectionImage(input, currentLayout.image, contentLanguage);
+  const { tableRows: _legacyTableRows, ...preservedSection } = currentSection || {};
   return {
+    ...preservedSection,
     key: normalizedSectionKey,
-    labelEn: requiredText(input.labelEn, 'English section label', 200),
-    labelZh: requiredText(input.labelZh, 'Chinese section label', 200),
+    [`label${activeSuffix}`]: activeLabel,
+    [`label${inactiveSuffix}`]: text(currentSection?.[`label${inactiveSuffix}`]),
     enabled: checkbox(input.enabled),
     sortOrder: positiveInteger(input.sortOrder || 1, 'Section sort order'),
     sectionType,
-    bodyEn: safeTemplateText(input.bodyEn, 'English section content', 100000) || '',
-    bodyZh: safeTemplateText(input.bodyZh, 'Chinese section content', 100000) || '',
-    tableRows: normalizeTableRows(input.tableRows),
+    [`body${activeSuffix}`]: activeBody,
+    [`body${inactiveSuffix}`]: text(currentSection?.[`body${inactiveSuffix}`]),
+    [`tableRows${activeSuffix}`]: activeTableRows,
+    [`tableRows${inactiveSuffix}`]: Array.isArray(currentSection?.[`tableRows${inactiveSuffix}`])
+      ? currentSection[`tableRows${inactiveSuffix}`]
+      : [],
     condition: {
       operator,
       variableKey: operator === 'always' ? '' : conditionVariableKey,
       value: conditionValue
     },
     defaultClauseIds: normalizeIdList(input.defaultClauseIds, 'Default clauses'),
-    blocks: []
+    blocks: Array.isArray(currentSection?.blocks) ? currentSection.blocks : [],
+    layout: {
+      pageBreakBefore: input.pageBreakBefore === undefined
+        ? Boolean(currentLayout.pageBreakBefore)
+        : checkbox(input.pageBreakBefore),
+      table: {
+        headerRow: tableHeaderRow,
+        columnWidths,
+        columnAlignments,
+        merges
+      },
+      image
+    }
   };
 }
 
-export async function updateTechnicalTemplateSection(repository, actor, templateId, revisionId, sectionKey, input) {
+export async function updateTechnicalTemplateSection(repository, actor, templateId, revisionId, sectionKey, input, language = 'en') {
   ensureTemplateAuthor(actor);
+  const contentLanguage = normalizeContentLanguage(language);
   const normalizedTemplateId = positiveInteger(templateId, 'Template');
   const normalizedRevisionId = positiveInteger(revisionId, 'Template revision');
   const template = await repository.getTemplateDetail(normalizedTemplateId);
@@ -353,18 +572,28 @@ export async function updateTechnicalTemplateSection(repository, actor, template
   if (!revision || revision.status !== 'draft') {
     conflict('Only draft template revisions can be edited');
   }
-  const normalizedSection = normalizeTechnicalSectionInput(sectionKey, input);
-  const sectionExists = (revision.contentSchema?.sections || []).some((section) => section.key === normalizedSection.key);
-  if (!sectionExists) notFound('Template section not found');
+  const currentSection = (revision.contentSchema?.sections || []).find((section) => section.key === text(sectionKey));
+  if (!currentSection) notFound('Template section not found');
+  const normalizedSection = normalizeTechnicalSectionInput(sectionKey, input, contentLanguage, currentSection);
   if (normalizedSection.condition.operator !== 'always'
       && !revision.variables.some((variable) => variable.variableKey === normalizedSection.condition.variableKey)) {
     invalid('Conditional section variable is not assigned to this revision');
   }
   const publishedClauses = await repository.listClauses({ publishedOnly: true });
-  const publishedClauseIds = new Set(publishedClauses.map((clause) => clause.id));
-  if (normalizedSection.defaultClauseIds.some((clauseId) => !publishedClauseIds.has(clauseId))) {
-    invalid('Default clauses must reference published clause revisions');
+  const publishedClauseById = new Map(publishedClauses.map((clause) => [Number(clause.id), clause]));
+  if (normalizedSection.defaultClauseIds.some((clauseId) => (
+    publishedClauseById.get(Number(clauseId))?.language !== contentLanguage
+  ))) {
+    invalid('Default clauses must reference published clauses in the login language');
   }
+  const inactiveClauseIds = (currentSection.defaultClauseIds || []).map(Number).filter((clauseId) => {
+    const clauseLanguage = publishedClauseById.get(clauseId)?.language;
+    return ['en', 'zh'].includes(clauseLanguage) && clauseLanguage !== contentLanguage;
+  });
+  normalizedSection.defaultClauseIds = [...new Set([
+    ...inactiveClauseIds,
+    ...normalizedSection.defaultClauseIds.map(Number)
+  ])];
   const sections = revision.contentSchema.sections
     .filter((section) => section.key !== normalizedSection.key)
     .sort((left, right) => Number(left.sortOrder || 0) - Number(right.sortOrder || 0));
@@ -380,10 +609,10 @@ export async function updateTechnicalTemplateSection(repository, actor, template
   return saved;
 }
 
-export function normalizeTechnicalClauseInput(input, { includeCode = true } = {}) {
+export function normalizeTechnicalClauseInput(input, { includeCode = true, language = null } = {}) {
   const normalized = {
     title: requiredText(input.title, 'Clause title', 300),
-    language: normalizeLanguage(input.language),
+    language: language ? normalizeContentLanguage(language) : normalizeLanguage(input.language),
     productFamily: optionalText(input.productFamily, 'Product family', 200),
     productModel: optionalText(input.productModel, 'Product model', 200),
     application: optionalText(input.application, 'Application', 300),
@@ -397,14 +626,16 @@ export function normalizeTechnicalClauseInput(input, { includeCode = true } = {}
   return normalized;
 }
 
-export async function listTechnicalTemplates(repository, actor) {
+export async function listTechnicalTemplates(repository, actor, language = 'en') {
   ensureTemplateViewer(actor);
+  const contentLanguage = normalizeContentLanguage(language);
   const publishedOnly = !hasRole(actor, ROLES.ADMINISTRATOR)
     && !hasRole(actor, ROLES.TECHNICAL_MANAGER);
-  return repository.listTemplates({ publishedOnly });
+  const templates = await repository.listTemplates({ publishedOnly });
+  return templates.map((template) => localizedTemplate(template, contentLanguage));
 }
 
-export async function getTechnicalTemplateDetail(repository, actor, templateId) {
+export async function getTechnicalTemplateDetail(repository, actor, templateId, language = 'en') {
   ensureTemplateViewer(actor);
   const template = await repository.getTemplateDetail(positiveInteger(templateId, 'Template'));
   if (!template) {
@@ -413,19 +644,19 @@ export async function getTechnicalTemplateDetail(repository, actor, templateId) 
   if (!canViewTechnicalTemplate(actor, template)) {
     forbidden();
   }
-  return template;
+  return localizedTemplate(template, language);
 }
 
-export async function createTechnicalTemplate(repository, actor, input) {
+export async function createTechnicalTemplate(repository, actor, input, language = 'en') {
   ensureTemplateAuthor(actor);
-  return repository.createTemplate(normalizeTechnicalTemplateInput(input), Number(actor.id));
+  return repository.createTemplate(normalizeTechnicalTemplateInput(input, language), Number(actor.id));
 }
 
-export async function updateTechnicalTemplate(repository, actor, templateId, input) {
+export async function updateTechnicalTemplate(repository, actor, templateId, input, language = 'en') {
   ensureTemplateAuthor(actor);
   const updated = await repository.updateTemplate(
     positiveInteger(templateId, 'Template'),
-    normalizeTechnicalTemplateMetadataInput(input),
+    normalizeTechnicalTemplateMetadataInput(input, language),
     Number(actor.id)
   );
   if (!updated) notFound('Technical template not found');
@@ -496,16 +727,24 @@ export async function listTechnicalVariableDefinitions(repository, actor, option
   });
 }
 
-export async function createTechnicalVariableDefinition(repository, actor, input) {
+export async function createTechnicalVariableDefinition(repository, actor, input, language = null) {
   ensureVariableAdministrator(actor);
-  return repository.createVariableDefinition(normalizeVariableDefinitionInput(input), Number(actor.id));
+  return repository.createVariableDefinition(
+    normalizeVariableDefinitionInput(input, language),
+    Number(actor.id)
+  );
 }
 
-export async function updateTechnicalVariableDefinition(repository, actor, definitionId, input) {
+export async function updateTechnicalVariableDefinition(repository, actor, definitionId, input, language = null) {
   ensureVariableAdministrator(actor);
+  const normalizedDefinitionId = positiveInteger(definitionId, 'Variable definition');
+  const currentDefinition = language
+    ? await repository.findVariableDefinitionById(normalizedDefinitionId)
+    : null;
+  if (language && !currentDefinition) notFound('Variable definition not found');
   const updated = await repository.updateVariableDefinition(
-    positiveInteger(definitionId, 'Variable definition'),
-    normalizeVariableDefinitionInput(input),
+    normalizedDefinitionId,
+    normalizeVariableDefinitionInput(input, language, currentDefinition),
     Number(actor.id)
   );
   if (!updated) notFound('Variable definition not found');
@@ -522,17 +761,21 @@ export async function deactivateTechnicalVariableDefinition(repository, actor, d
   return updated;
 }
 
-export async function listTechnicalClauses(repository, actor) {
+export async function listTechnicalClauses(repository, actor, language = 'en') {
   ensureTemplateViewer(actor);
+  const contentLanguage = normalizeContentLanguage(language);
   const publishedOnly = !hasRole(actor, ROLES.ADMINISTRATOR)
     && !hasRole(actor, ROLES.TECHNICAL_MANAGER);
-  return repository.listClauses({ publishedOnly });
+  const clauses = await repository.listClauses({ publishedOnly });
+  return clauses.filter((clause) => clause.language === contentLanguage);
 }
 
-export async function getTechnicalClause(repository, actor, clauseId) {
+export async function getTechnicalClause(repository, actor, clauseId, language = 'en') {
   ensureTemplateViewer(actor);
+  const contentLanguage = normalizeContentLanguage(language);
   const clause = await repository.findClauseById(positiveInteger(clauseId, 'Clause'));
   if (!clause) notFound('Technical clause not found');
+  if (clause.language !== contentLanguage) notFound('Technical clause not found');
   if (!hasRole(actor, ROLES.ADMINISTRATOR)
       && !hasRole(actor, ROLES.TECHNICAL_MANAGER)
       && clause.status !== 'published') {
@@ -541,16 +784,26 @@ export async function getTechnicalClause(repository, actor, clauseId) {
   return clause;
 }
 
-export async function createTechnicalClause(repository, actor, input) {
+export async function createTechnicalClause(repository, actor, input, language = null) {
   ensureTemplateAuthor(actor);
-  return repository.createClause(normalizeTechnicalClauseInput(input), Number(actor.id));
+  return repository.createClause(
+    normalizeTechnicalClauseInput(input, { language }),
+    Number(actor.id)
+  );
 }
 
-export async function updateTechnicalClause(repository, actor, clauseId, input) {
+export async function updateTechnicalClause(repository, actor, clauseId, input, language = null) {
   ensureTemplateAuthor(actor);
+  const normalizedClauseId = positiveInteger(clauseId, 'Clause');
+  if (language) {
+    const existing = await repository.findClauseById(normalizedClauseId);
+    if (!existing || existing.language !== normalizeContentLanguage(language)) {
+      notFound('Technical clause not found');
+    }
+  }
   const updated = await repository.updateClause(
-    positiveInteger(clauseId, 'Clause'),
-    normalizeTechnicalClauseInput(input, { includeCode: false }),
+    normalizedClauseId,
+    normalizeTechnicalClauseInput(input, { includeCode: false, language }),
     Number(actor.id)
   );
   if (!updated) conflict('Only a draft clause can be edited');

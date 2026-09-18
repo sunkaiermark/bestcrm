@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import { ACTIONS } from '../domain/workflow.mjs';
+import { localizedTechnicalField } from '../domain/technicalTemplates.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { applyWorkflowAction, WorkflowValidationError } from '../services/workflowService.mjs';
 import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
@@ -148,7 +149,12 @@ export function opportunityTechnicalDraftRoutes({
         res.status(403).send('Forbidden');
         return;
       }
-      const templates = await technicalTemplateRepository.listTemplates({ publishedOnly: true });
+      const templates = (await technicalTemplateRepository.listTemplates({ publishedOnly: true }))
+        .map((template) => ({
+          ...template,
+          name: localizedTechnicalField(template, 'name', req.language) || template.templateCode,
+          application: localizedTechnicalField(template, 'application', req.language)
+        }));
       res.render('opportunity-technical-drafts/new', { opportunity, templates });
     } catch (error) {
       handleError(error, res, next);
@@ -163,7 +169,8 @@ export function opportunityTechnicalDraftRoutes({
         dependencies,
         req.currentUser,
         opportunity,
-        req.body.templateId
+        req.body.templateId,
+        req.language
       );
       res.redirect(`/opportunities/${opportunity.id}/technical-drafts/${draft.id}`);
     } catch (error) {
@@ -175,7 +182,8 @@ export function opportunityTechnicalDraftRoutes({
     try {
       const context = await loadDraftContext(dependencies, req, res);
       if (!context) return;
-      const clauses = await technicalTemplateRepository.listClauses({ publishedOnly: true });
+      const clauses = (await technicalTemplateRepository.listClauses({ publishedOnly: true }))
+        .filter((clause) => clause.language === context.draft.language);
       const canLead = canCreateOpportunityTechnicalDraft(req.currentUser, context.opportunity);
       const editableSectionKeys = new Set((context.draft.renderedContent?.sections || [])
         .filter((section) => canEditOpportunityTechnicalDraftSection(

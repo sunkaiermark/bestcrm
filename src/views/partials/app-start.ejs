@@ -477,6 +477,95 @@
         gap: 10px;
       }
 
+      .workbench-list {
+        align-items: start;
+        gap: 14px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+      }
+
+      .workbench-column {
+        --workbench-accent: #1e3a5f;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .workbench-column--action {
+        --workbench-accent: #b42318;
+        --workbench-hover: #fff7f7;
+      }
+
+      .workbench-column--plan {
+        --workbench-accent: #245b8a;
+        --workbench-hover: #f5f9ff;
+      }
+
+      .workbench-column--message {
+        --workbench-accent: #0f766e;
+        --workbench-hover: #f2fbf9;
+      }
+
+      .workbench-column > .workbench-column-heading {
+        background: var(--workbench-accent);
+        border-bottom: 0;
+        color: #ffffff;
+      }
+
+      .workbench-column > .list-body {
+        overflow: visible;
+        padding: 0;
+      }
+
+      .workbench-column .empty {
+        margin: 0;
+        padding: 18px 14px;
+      }
+
+      .workbench-card-list {
+        list-style: none;
+        margin: 0;
+        padding: 0;
+      }
+
+      .workbench-card {
+        border-bottom: 1px solid var(--line);
+        padding: 13px 14px;
+      }
+
+      .workbench-card:last-child {
+        border-bottom: 0;
+      }
+
+      .workbench-card:hover {
+        background: var(--workbench-hover, #f8fafc);
+      }
+
+      .workbench-card-fields {
+        display: grid;
+        gap: 10px 12px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin: 0;
+      }
+
+      .workbench-card-field {
+        min-width: 0;
+      }
+
+      .workbench-card-field--wide {
+        grid-column: 1 / -1;
+      }
+
+      .workbench-card-field dt {
+        color: var(--muted);
+        font-size: 12px;
+        font-weight: 700;
+        margin-bottom: 3px;
+      }
+
+      .workbench-card-field dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+
       .list-section h2,
       .content-section h2,
       .action-section h3 {
@@ -636,40 +725,6 @@
         }
       }
 
-      .todo-alert-heading {
-        background: #fee2e2;
-        border-bottom-color: #fecaca;
-        color: #991b1b;
-      }
-
-      .workbench-task-table {
-        min-width: 1080px;
-        table-layout: fixed;
-        width: 100%;
-      }
-
-      .workbench-task-table th {
-        font-size: 16px;
-        text-transform: none;
-      }
-
-      .workbench-task-table th:nth-child(1),
-      .workbench-task-table td:nth-child(1) { width: 23%; }
-      .workbench-task-table th:nth-child(2),
-      .workbench-task-table td:nth-child(2) { width: 20%; }
-      .workbench-task-table th:nth-child(3),
-      .workbench-task-table td:nth-child(3),
-      .workbench-task-table th:nth-child(4),
-      .workbench-task-table td:nth-child(4) { width: 12%; }
-      .workbench-task-table th:nth-child(5),
-      .workbench-task-table td:nth-child(5) { width: 13%; }
-      .workbench-task-table th:nth-child(6),
-      .workbench-task-table td:nth-child(6) { width: 20%; }
-
-      .workbench-task-table td {
-        vertical-align: top;
-      }
-
       .work-item-status {
         background: #e7f0f8;
         border-radius: 999px;
@@ -690,6 +745,12 @@
         color: var(--muted);
         display: block;
         margin-top: 4px;
+      }
+
+      @media (max-width: 1200px) {
+        .workbench-list {
+          grid-template-columns: minmax(0, 1fr);
+        }
       }
 
       .business-section > h2 {
@@ -1140,7 +1201,7 @@
       }
 
       .inquiry-list-table {
-        min-width: 1630px;
+        min-width: 1450px;
         table-layout: fixed;
         width: 100%;
       }
@@ -1169,6 +1230,8 @@
         border-right: 0;
       }
 
+      .content-fit-table.inquiry-list-table th:nth-child(4),
+      .content-fit-table.inquiry-list-table td:nth-child(4),
       .content-fit-table.inquiry-list-table th:nth-child(5),
       .content-fit-table.inquiry-list-table td:nth-child(5),
       .content-fit-table.inquiry-list-table th:nth-child(6),
@@ -1179,45 +1242,45 @@
       }
 
       .inquiry-list-table th:nth-child(1),
-      .inquiry-list-table td:nth-child(1) { width: 130px; }
+      .inquiry-list-table td:nth-child(1) { width: 120px; }
       .inquiry-list-table th:nth-child(2),
-      .inquiry-list-table td:nth-child(2) { width: 110px; }
+      .inquiry-list-table td:nth-child(2) { width: 105px; }
       .inquiry-list-table th:nth-child(3),
-      .inquiry-list-table td:nth-child(3) { width: 120px; }
+      .inquiry-list-table td:nth-child(3) { width: 85px; }
       .inquiry-list-table th:nth-child(4),
-      .inquiry-list-table td:nth-child(4) { width: 100px; }
+      .inquiry-list-table td:nth-child(4) { width: clamp(300px, 27vw, 480px); }
       .inquiry-list-table th:nth-child(5),
-      .inquiry-list-table td:nth-child(5) { width: clamp(360px, 30vw, 520px); }
+      .inquiry-list-table td:nth-child(5) { width: clamp(180px, 15vw, 270px); }
       .inquiry-list-table th:nth-child(6),
-      .inquiry-list-table td:nth-child(6) { width: clamp(200px, 17vw, 300px); }
+      .inquiry-list-table td:nth-child(6) { width: 175px; }
       .inquiry-list-table th:nth-child(7),
-      .inquiry-list-table td:nth-child(7) { width: 150px; }
+      .inquiry-list-table td:nth-child(7) { width: 140px; }
       .inquiry-list-table th:nth-child(8),
-      .inquiry-list-table td:nth-child(8) { width: 190px; }
+      .inquiry-list-table td:nth-child(8) { width: 95px; }
       .inquiry-list-table th:nth-child(9),
       .inquiry-list-table td:nth-child(9) { width: 120px; }
       .inquiry-list-table th:nth-child(10),
-      .inquiry-list-table td:nth-child(10) { width: 150px; }
-      .inquiry-list-table th:nth-child(11),
-      .inquiry-list-table td:nth-child(11) {
+      .inquiry-list-table td:nth-child(10) {
         overflow-wrap: normal;
         white-space: nowrap;
-        width: 100px;
+        width: 80px;
       }
 
+      .content-fit-table.inquiry-list-table th:nth-child(4),
+      .content-fit-table.inquiry-list-table td:nth-child(4),
       .content-fit-table.inquiry-list-table th:nth-child(5),
       .content-fit-table.inquiry-list-table td:nth-child(5),
       .content-fit-table.inquiry-list-table th:nth-child(6),
       .content-fit-table.inquiry-list-table td:nth-child(6),
-      .content-fit-table.inquiry-list-table th:nth-child(8),
-      .content-fit-table.inquiry-list-table td:nth-child(8) {
+      .content-fit-table.inquiry-list-table th:nth-child(7),
+      .content-fit-table.inquiry-list-table td:nth-child(7) {
         overflow: hidden;
         overflow-wrap: normal;
         text-overflow: ellipsis;
         white-space: nowrap;
       }
 
-      .content-fit-table.inquiry-list-table td:nth-child(5) .cell-link {
+      .content-fit-table.inquiry-list-table td:nth-child(4) .cell-link {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -2329,6 +2392,40 @@
         margin-bottom: 16px;
       }
 
+      .app-main.email-reader-page {
+        display: flex;
+        flex-direction: column;
+        height: 100vh;
+        overflow: hidden;
+        padding-bottom: 0;
+      }
+
+      .email-reader-shell {
+        display: grid;
+        flex: 1 1 auto;
+        grid-template-rows: auto minmax(0, 1fr);
+        min-height: 0;
+      }
+
+      .email-reader-head {
+        background: var(--bg);
+        border-bottom: 1px solid var(--line);
+        padding-bottom: 12px;
+        position: relative;
+        z-index: 2;
+      }
+
+      .email-reader-head .email-thread-context {
+        margin-bottom: 0;
+      }
+
+      .email-reader-scroll {
+        min-height: 0;
+        overflow-y: auto;
+        padding: 16px 4px 28px 0;
+        scrollbar-gutter: stable;
+      }
+
       .email-opportunity-link {
         align-items: end;
         background: #ffffff;
@@ -2467,14 +2564,66 @@
         gap: 12px;
         margin-bottom: 14px;
         padding: 12px 14px;
+        white-space: nowrap;
       }
 
       .email-mailbox-picker label {
+        display: block;
         font-weight: 700;
+        margin: 0;
+        min-width: 72px;
+        white-space: nowrap;
       }
 
       .email-mailbox-picker select {
         min-width: min(100%, 420px);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .email-category-filter {
+        align-items: center;
+        display: flex;
+        flex-wrap: nowrap;
+        gap: 18px;
+        margin: -6px 0 16px;
+        white-space: nowrap;
+      }
+
+      .email-category-filter label {
+        color: var(--muted);
+        display: block;
+        font-weight: 700;
+        margin: 0;
+        min-width: 88px;
+        white-space: nowrap;
+      }
+
+      .email-category-filter select {
+        min-width: 240px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        width: min(360px, 100%);
+      }
+
+      .email-category-badge {
+        background: #e6f3f1;
+        border: 1px solid #badbd5;
+        border-radius: 999px;
+        color: #0a7168;
+        display: inline-flex;
+        font-size: 12px;
+        font-weight: 700;
+        padding: 2px 8px;
+      }
+
+      .email-thread-head-status {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
       }
 
       .email-pending-definition {
@@ -2522,9 +2671,10 @@
       .email-triage-final-actions {
         display: grid;
         gap: 12px;
-        grid-template-columns: 180px 220px;
+        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
       }
 
+      .email-triage-final-actions > a,
       .email-triage-final-actions form,
       .email-triage-final-actions button {
         margin: 0;
@@ -2532,7 +2682,7 @@
       }
 
       .email-triage-spam-action {
-        grid-column: 2;
+        min-width: 220px;
       }
 
       .email-triage-more {
@@ -2582,7 +2732,7 @@
         align-items: center;
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
+        gap: 16px;
         margin: 0 0 16px;
         padding: 0;
       }
@@ -2653,6 +2803,7 @@
 
       .email-inbox-sender {
         font-weight: 600;
+        white-space: nowrap;
       }
 
       .email-inbox-main {
@@ -3087,6 +3238,22 @@
           padding: 16px;
         }
 
+        .app-main.email-reader-page {
+          height: auto;
+          min-height: 0;
+          overflow: visible;
+          padding-bottom: 16px;
+        }
+
+        .email-reader-shell {
+          display: block;
+        }
+
+        .email-reader-scroll {
+          overflow: visible;
+          padding: 16px 0 0;
+        }
+
         .email-conversation-summary {
           gap: 8px 10px;
           grid-template-columns: 38px minmax(0, 1fr);
@@ -3131,6 +3298,16 @@
           width: 100%;
         }
 
+        .email-category-filter {
+          align-items: stretch;
+          display: grid;
+        }
+
+        .email-category-filter select {
+          min-width: 0;
+          width: 100%;
+        }
+
         .email-triage-grid-row,
         .email-triage-final-actions,
         .email-triage-archive-form {
@@ -3138,7 +3315,7 @@
         }
 
         .email-triage-spam-action {
-          grid-column: 1;
+          min-width: 0;
         }
 
         .app-main.opportunity-email-page {
@@ -3381,19 +3558,20 @@
           white-space: nowrap;
         }
 
+        .content-fit-table.inquiry-list-table tbody td:nth-child(4),
         .content-fit-table.inquiry-list-table tbody td:nth-child(5),
         .content-fit-table.inquiry-list-table tbody td:nth-child(6),
         .content-fit-table.inquiry-list-table tbody td:nth-child(7),
-        .content-fit-table.inquiry-list-table tbody td:nth-child(8),
-        .content-fit-table.inquiry-list-table tbody td:nth-child(11) {
+        .content-fit-table.inquiry-list-table tbody td:nth-child(10) {
           border-right: 0;
           grid-column: 1 / -1;
         }
 
+        .content-fit-table.inquiry-list-table tbody td:nth-child(4),
         .content-fit-table.inquiry-list-table tbody td:nth-child(5),
         .content-fit-table.inquiry-list-table tbody td:nth-child(6),
-        .content-fit-table.inquiry-list-table tbody td:nth-child(8),
-        .content-fit-table.inquiry-list-table tbody td:nth-child(5) .cell-link {
+        .content-fit-table.inquiry-list-table tbody td:nth-child(7),
+        .content-fit-table.inquiry-list-table tbody td:nth-child(4) .cell-link {
           overflow: hidden;
           text-overflow: ellipsis;
           white-space: nowrap;
@@ -3407,11 +3585,11 @@
           padding: 0;
         }
 
-        .content-fit-table.inquiry-list-table tbody td:nth-child(11) {
+        .content-fit-table.inquiry-list-table tbody td:nth-child(10) {
           border-bottom: 0;
         }
 
-        .content-fit-table.inquiry-list-table tbody td:nth-child(11) .secondary-action {
+        .content-fit-table.inquiry-list-table tbody td:nth-child(10) .secondary-action {
           justify-content: center;
           width: 100%;
         }
@@ -3468,8 +3646,8 @@
   <body>
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>
     <% const canSeeSystemNav = Array.isArray(currentUser?.roles) && currentUser.roles.includes('administrator'); %>
-    <% const canSeeInquiryNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'sales_manager'].includes(role)); %>
-    <% const canSubmitLead = Array.isArray(currentUser?.roles) && currentUser.roles.includes('salesperson'); %>
+    <% const canSeeWebsiteFormsNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'sales_manager'].includes(role)); %>
+    <% const canSeeLeadNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'sales_manager', 'salesperson'].includes(role)); %>
     <% const canSeeTechnicalStandardsNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'technical_manager', 'quotation_engineer'].includes(role)); %>
     <% const canSeeEmailCenterNav = Boolean(typeof emailCenterEnabled !== 'undefined' && emailCenterEnabled); %>
     <div class="app-shell">
@@ -3487,13 +3665,13 @@
             <span><%= t('workbench') %></span>
             <span class="notification-badge" data-notification-badge hidden>0</span>
           </a>
-          <% if (canSeeInquiryNav) { %>
-            <a class="<%= navClass('inquiries') %>" href="/inquiries"><%= t('inquiries') %></a>
-          <% } %>
           <% if (canSeeEmailCenterNav) { %>
             <a class="<%= navClass('email-center') %>" href="/email-center"><%= t('emailCenter') %></a>
           <% } %>
-          <% if (canSubmitLead) { %>
+          <% if (canSeeWebsiteFormsNav) { %>
+            <a class="<%= navClass('inquiries') %>" href="/inquiries"><%= t('websiteForms') %></a>
+          <% } %>
+          <% if (canSeeLeadNav) { %>
             <a class="<%= navClass('lead-submissions') %>" href="/lead-submissions"><%= t('navLeadSubmissions') %></a>
           <% } %>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>

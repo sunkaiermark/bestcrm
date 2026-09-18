@@ -41,12 +41,12 @@
                 <select name="productCategoryCode" required>
                   <option value=""><%= t('selectProductCategory') %></option>
                   <% for (const category of productCategories) { %>
-                    <option value="<%= category.code %>" <%= template.productCategoryCode === category.code ? 'selected' : '' %>><%= language === 'zh' ? category.labelZh : `${category.labelEn} / ${category.labelZh}` %></option>
+                    <option value="<%= category.code %>" <%= template.productCategoryCode === category.code ? 'selected' : '' %>><%= t(`technicalProductCategory.${category.code}`) %></option>
                   <% } %>
                 </select>
               <% } else { %>
                 <% const category = productCategories.find((item) => item.code === template.productCategoryCode); %>
-                <input value="<%= language === 'zh' ? category.labelZh : `${category.labelEn} / ${category.labelZh}` %>" disabled>
+                <input value="<%= t(`technicalProductCategory.${category.code}`) %>" disabled>
                 <input type="hidden" name="productCategoryCode" value="<%= template.productCategoryCode %>">
               <% } %>
             </label>
@@ -63,21 +63,8 @@
           </label>
           <% if (mode === 'new') { %>
             <label>
-              <%= t('outputLanguage') %>
-              <select name="language" required>
-                <% for (const option of languages) { %>
-                  <option value="<%= option %>" <%= template.language === option ? 'selected' : '' %>><%= t(`templateLanguage.${option}`) %></option>
-                <% } %>
-              </select>
-            </label>
-            <label>
               <%= t('changeSummary') %>
               <textarea name="changeSummary" maxlength="2000" required><%= template.changeSummary || '' %></textarea>
-            </label>
-          <% } else { %>
-            <label>
-              <%= t('outputLanguage') %>
-              <input value="<%= t(`templateLanguage.${template.language}`) %>" disabled>
             </label>
           <% } %>
           <div class="inline-actions">

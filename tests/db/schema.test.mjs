@@ -60,6 +60,9 @@ const emailSpamRetentionAndPurgeMigrationPath = new URL('../../src/db/migrations
 const unifiedWorkItemsMigrationPath = new URL('../../src/db/migrations/059_unified_work_items.sql', import.meta.url);
 const projectExecutionsMigrationPath = new URL('../../src/db/migrations/060_project_executions.sql', import.meta.url);
 const opportunityTechnicalDocumentsMigrationPath = new URL('../../src/db/migrations/061_opportunity_technical_documents.sql', import.meta.url);
+const localizedTechnicalTemplateContentMigrationPath = new URL('../../src/db/migrations/062_localized_technical_template_content.sql', import.meta.url);
+const emailCenterLeadTriageMigrationPath = new URL('../../src/db/migrations/063_email_center_lead_triage.sql', import.meta.url);
+const emailReimportResetAuditsMigrationPath = new URL('../../src/db/migrations/064_email_reimport_reset_audits.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -800,6 +803,16 @@ test('opportunity technical document migration creates the controlled template m
   assert.match(sql, /BEFORE DELETE ON opportunity_equipment_items/);
 });
 
+test('localized technical template migration stores English and Chinese without combining rendered content', async () => {
+  const sql = await readFile(localizedTechnicalTemplateContentMigrationPath, 'utf8');
+  for (const column of ['name_en', 'name_zh', 'application_en', 'application_zh']) {
+    assert.match(sql, new RegExp(`ADD COLUMN IF NOT EXISTS ${column} text`));
+  }
+  assert.match(sql, /language = 'bilingual'/);
+  assert.match(sql, /CRM selects this field only for an English login session/);
+  assert.match(sql, /stored alongside but never rendered together with Chinese/);
+});
+
 test('opportunity technical plan migration stores the planned proposal submission date', async () => {
   const sql = await readFile(opportunityTechnicalPlanSubmitDateMigrationPath, 'utf8');
 
@@ -1045,6 +1058,18 @@ test('email center triage migration adds frozen pending workflow and immutable a
   assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
 });
 
+test('email center lead triage migration replaces new email inquiries with lead workflow states', async () => {
+  const sql = await readFile(emailCenterLeadTriageMigrationPath, 'utf8');
+
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS email_threads_triage_status_check/);
+  assert.match(sql, /'linked_lead'/);
+  assert.match(sql, /'converted_lead'/);
+  assert.match(sql, /email_thread_triage_events_event_type_check/);
+  assert.match(sql, /email_thread_triage_events_from_status_check/);
+  assert.match(sql, /email_thread_triage_events_to_status_check/);
+  assert.doesNotMatch(sql, /DELETE FROM|TRUNCATE/);
+});
+
 test('email purge migration keeps a permanent non-content audit and narrow delete guard', async () => {
   const sql = await readFile(emailSpamRetentionAndPurgeMigrationPath, 'utf8');
 
@@ -1057,4 +1082,18 @@ test('email purge migration keeps a permanent non-content audit and narrow delet
   assert.match(sql, /Email purge audit records are immutable/);
   assert.match(sql, /current_setting\('bestcrm\.email_purge', true\) = 'enabled'/);
   assert.doesNotMatch(sql, /subject text|text_body|html_body/);
+});
+
+test('email reimport reset migration keeps an immutable non-content operation audit', async () => {
+  const sql = await readFile(emailReimportResetAuditsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_reimport_reset_audits/);
+  assert.match(sql, /operation_id uuid PRIMARY KEY/);
+  assert.match(sql, /plan_sha256 char\(64\) NOT NULL UNIQUE/);
+  assert.match(sql, /backup_id text NOT NULL/);
+  assert.match(sql, /retained_email_inquiries bigint NOT NULL/);
+  assert.match(sql, /deleted_threads bigint NOT NULL/);
+  assert.match(sql, /reset_sync_states bigint NOT NULL/);
+  assert.match(sql, /Email reimport reset audit records are immutable/);
+  assert.doesNotMatch(sql, /subject text|text_body|html_body|from_address|to_recipients/);
 });

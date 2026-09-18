@@ -18,7 +18,7 @@ import {
 import { ROLES } from '../../src/domain/roles.mjs';
 import { STATUSES } from '../../src/domain/statuses.mjs';
 
-function buildRepositories({ customer, contact }) {
+function buildRepositories({ customer, contact, salespeople = [{ id: 7, isActive: true, roles: [ROLES.SALESPERSON] }] }) {
   const calls = [];
   return {
     calls,
@@ -32,6 +32,11 @@ function buildRepositories({ customer, contact }) {
       async getContactDetail(id) {
         calls.push(['getContact', Number(id)]);
         return contact;
+      }
+    },
+    userRepository: {
+      async listUsersByRole(role) {
+        return role === ROLES.SALESPERSON ? salespeople : [];
       }
     },
     opportunityRepository: {
@@ -128,6 +133,28 @@ test('createOpportunityDraft rejects direct opportunity creation', async () => {
   }), /Forbidden/);
 
   assert.deepEqual(repositories.calls, []);
+});
+
+test('sales manager can create a manual opportunity for an active sales owner', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7 },
+    contact: { id: 20, customerId: 10, customerOwnerUserId: 7 }
+  });
+
+  const opportunity = await createOpportunityDraft(repositories, {
+    id: 2,
+    roles: [ROLES.SALES_MANAGER]
+  }, {
+    title: 'Existing customer expansion',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Add one production line'
+  }, { manualEntry: true, salespersonId: 7 });
+
+  assert.equal(opportunity.originInquiryId, null);
+  assert.equal(opportunity.salespersonId, 7);
+  assert.equal(opportunity.status, STATUSES.DRAFT);
+  assert.equal(repositories.calls.at(-1)[0], 'createOpportunity');
 });
 
 test('canViewOpportunity allows owner assignees and administrator', () => {

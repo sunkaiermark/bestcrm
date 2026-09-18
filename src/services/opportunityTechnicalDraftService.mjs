@@ -1,5 +1,9 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
-import { opportunityTechnicalDraftLabel } from '../domain/technicalTemplates.mjs';
+import {
+  localizedTechnicalField,
+  opportunityTechnicalDraftLabel,
+  technicalContentLanguage
+} from '../domain/technicalTemplates.mjs';
 import {
   canViewOpportunity,
   isProjectLeadEngineer,
@@ -278,7 +282,10 @@ export function renderTechnicalDraftContent({
         condition: deepClone(section.condition || { operator: 'always', variableKey: '', value: '' }),
         bodyEn: current?.bodyEn ?? section.bodyEn ?? '',
         bodyZh: current?.bodyZh ?? section.bodyZh ?? '',
+        tableRowsEn: deepClone(current?.tableRowsEn ?? section.tableRowsEn ?? []),
+        tableRowsZh: deepClone(current?.tableRowsZh ?? section.tableRowsZh ?? []),
         tableRows: deepClone(current?.tableRows ?? section.tableRows ?? []),
+        layout: deepClone(current?.layout ?? section.layout ?? {}),
         standardChanged: Boolean(current?.standardChanged),
         lastEditedBy: current?.lastEditedBy || null,
         lastEditedAt: current?.lastEditedAt || null,
@@ -299,8 +306,10 @@ export function renderTechnicalDraftContent({
   };
 }
 
-function clauseSnapshotsForTemplate(contentSchema, clauses) {
-  const publishedById = new Map(clauses.filter((clause) => clause.status === 'published').map((clause) => [clause.id, clause]));
+function clauseSnapshotsForTemplate(contentSchema, clauses, language) {
+  const publishedById = new Map(clauses
+    .filter((clause) => clause.status === 'published' && clause.language === language)
+    .map((clause) => [clause.id, clause]));
   const snapshots = [];
   for (const section of contentSchema.sections || []) {
     for (const clauseId of section.defaultClauseIds || []) {
@@ -361,17 +370,18 @@ export async function buildOpportunityTechnicalDraftSnapshot(
   template,
   revision,
   {
-    language = template?.language,
+    language = 'en',
     actorUserId,
     overrides = {},
     context: providedContext = null,
     snapshotAt = new Date().toISOString()
   } = {}
 ) {
+  const contentLanguage = technicalContentLanguage(language);
   if (!template || template.isActive !== true
       || Number(template.currentPublishedRevisionId) !== Number(revision?.id)
       || revision?.status !== 'published'
-      || ![language, 'bilingual'].includes(template.language)) {
+      || ![contentLanguage, 'bilingual'].includes(template.language)) {
     conflict('Only a compatible active current published technical template can generate a project draft');
   }
   const context = providedContext
@@ -382,7 +392,7 @@ export async function buildOpportunityTechnicalDraftSnapshot(
   const prefilledValues = prefillTechnicalDraftVariables(variableSchema, context, template);
   const prefilledSources = technicalVariableSourceSnapshots(variableSchema, context, template, prefilledValues);
   const resolved = applyTechnicalVariableOverrides(variableSchema, prefilledValues, prefilledSources, overrides);
-  const selectedClauses = clauseSnapshotsForTemplate(revision.contentSchema, clauses);
+  const selectedClauses = clauseSnapshotsForTemplate(revision.contentSchema, clauses, contentLanguage);
   const validationIssues = validateTechnicalDraftVariables(variableSchema, resolved.values);
   const renderedContent = renderTechnicalDraftContent({
     contentSchema: revision.contentSchema,
@@ -393,9 +403,9 @@ export async function buildOpportunityTechnicalDraftSnapshot(
   return {
     opportunityId: opportunity.id,
     templateRevisionId: revision.id,
-    language,
+    language: contentLanguage,
     templateCodeSnapshot: template.templateCode,
-    templateNameSnapshot: template.name,
+    templateNameSnapshot: localizedTechnicalField(template, 'name', contentLanguage) || template.templateCode,
     templateRevisionNoSnapshot: revision.revisionNo,
     contentSchemaSnapshot: deepClone(revision.contentSchema),
     variableSchemaSnapshot: variableSchema,
@@ -411,6 +421,7 @@ export async function buildOpportunityTechnicalDraftSnapshot(
       contactId: opportunity.primaryContactId,
       templateId: template.id,
       templateRevisionId: revision.id,
+      language: contentLanguage,
       prefilledSources: variableSchema
         .filter((variable) => !isBlank(resolved.values[variable.variableKey]))
         .map((variable) => variable.sourceField),
@@ -421,7 +432,7 @@ export async function buildOpportunityTechnicalDraftSnapshot(
   };
 }
 
-export async function generateOpportunityTechnicalDraft(repositories, actor, opportunity, templateId) {
+export async function generateOpportunityTechnicalDraft(repositories, actor, opportunity, templateId, language = 'en') {
   ensureLead(actor, opportunity);
   const template = await repositories.technicalTemplateRepository.getTemplateDetail(positiveInteger(templateId, 'Template'));
   if (!template || template.isActive !== true || !template.currentPublishedRevisionId) {
@@ -436,7 +447,7 @@ export async function generateOpportunityTechnicalDraft(repositories, actor, opp
     opportunity,
     template,
     revision,
-    { language: template.language, actorUserId: actor.id }
+    { language: technicalContentLanguage(language), actorUserId: actor.id }
   );
   return repositories.opportunityTechnicalDraftRepository.createDraft(snapshot);
 }
@@ -490,17 +501,17 @@ export async function updateOpportunityTechnicalDraftSection(repository, actor, 
   const sourceSection = (draft.contentSchemaSnapshot?.sections || []).find((section) => section.key === sectionKey);
   const currentSection = (draft.renderedContent?.sections || []).find((section) => section.key === sectionKey);
   if (!sourceSection || !currentSection) notFound('Technical section not found');
-  const bodyEn = safeText(input.bodyEn, 'English section content');
-  const bodyZh = safeText(input.bodyZh, 'Chinese section content');
+  const contentLanguage = technicalContentLanguage(draft.language);
+  const activeSuffix = contentLanguage === 'zh' ? 'Zh' : 'En';
+  const body = safeText(input.body ?? input[`body${activeSuffix}`], 'Section content');
   const tableRows = normalizeTableRows(input.tableRows);
-  const standardChanged = bodyEn !== (sourceSection.bodyEn || '')
-    || bodyZh !== (sourceSection.bodyZh || '')
-    || JSON.stringify(tableRows) !== JSON.stringify(sourceSection.tableRows || []);
+  const sourceTableRows = sourceSection[`tableRows${activeSuffix}`] || [];
+  const standardChanged = body !== (sourceSection[`body${activeSuffix}`] || '')
+    || JSON.stringify(tableRows) !== JSON.stringify(sourceTableRows);
   const nextSections = draft.renderedContent.sections.map((section) => section.key === sectionKey ? {
     ...section,
-    bodyEn,
-    bodyZh,
-    tableRows,
+    [`body${activeSuffix}`]: body,
+    [`tableRows${activeSuffix}`]: tableRows,
     standardChanged,
     lastEditedBy: Number(actor.id),
     lastEditedAt: new Date().toISOString()
@@ -519,9 +530,11 @@ export async function updateOpportunityTechnicalDraftClauses(repositories, actor
   ensureEditableDraft(draft);
   const requestedIds = normalizeIdList(clauseIds);
   const clauses = await repositories.technicalTemplateRepository.listClauses({ publishedOnly: true });
-  const clausesById = new Map(clauses.map((clause) => [clause.id, clause]));
+  const clausesById = new Map(clauses
+    .filter((clause) => clause.language === draft.language)
+    .map((clause) => [clause.id, clause]));
   if (requestedIds.some((clauseId) => !clausesById.has(clauseId))) {
-    invalid('Only published standard clauses can be selected');
+    invalid('Only published standard clauses in the document language can be selected');
   }
   const defaultSectionByClauseId = new Map();
   for (const section of draft.contentSchemaSnapshot.sections || []) {
@@ -621,9 +634,13 @@ export function technicalDraftDisplayLabel(draft) {
 }
 
 export function technicalDraftSubmissionSummary(draft) {
+  const language = technicalContentLanguage(draft.language);
   const sections = (draft.renderedContent?.sections || [])
     .filter((section) => section.included !== false)
-    .map((section) => section.labelEn || section.labelZh || section.key)
+    .map((section) => section[language === 'zh' ? 'labelZh' : 'labelEn'] || section.key)
     .filter(Boolean);
+  if (language === 'zh') {
+    return `${technicalDraftLabel(draft)} 由 ${draft.templateCodeSnapshot} TPL-R${draft.templateRevisionNoSnapshot} 生成；章节：${sections.join('、')}`;
+  }
   return `${technicalDraftLabel(draft)} generated from ${draft.templateCodeSnapshot} TPL-R${draft.templateRevisionNoSnapshot}; sections: ${sections.join(', ')}`;
 }

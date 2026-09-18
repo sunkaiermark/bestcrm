@@ -95,7 +95,7 @@ test('email purge eligibility excludes every business relationship and outbound 
   assert.match(calls[0].sql, /thread\.customer_id IS NULL/);
   assert.match(calls[0].sql, /thread\.contact_id IS NULL/);
   assert.match(calls[0].sql, /outbound\.direction = 'outbound'/);
-  assert.match(calls[0].sql, /business_event\.event_type IN \('linked_opportunity', 'linked_inquiry', 'converted_inquiry'\)/);
+  assert.match(calls[0].sql, /business_event\.event_type IN \([\s\S]*'linked_opportunity'[\s\S]*'converted_lead'[\s\S]*'converted_inquiry'[\s\S]*\)/);
   assert.match(calls[0].sql, /opportunity_activity_links/);
   assert.match(calls[0].sql, /quotation_package_versions/);
 });
@@ -113,7 +113,7 @@ test('individual email deletion uses the same permanent business-history guard',
   assert.deepEqual(calls[0].params, [88]);
   assert.match(calls[0].sql, /thread\.inquiry_id IS NULL/);
   assert.match(calls[0].sql, /thread\.opportunity_id IS NULL/);
-  assert.match(calls[0].sql, /business_event\.event_type IN \('linked_opportunity', 'linked_inquiry', 'converted_inquiry'\)/);
+  assert.match(calls[0].sql, /business_event\.event_type IN \([\s\S]*'linked_opportunity'[\s\S]*'converted_lead'[\s\S]*'converted_inquiry'[\s\S]*\)/);
   assert.match(calls[0].sql, /outbound\.direction = 'outbound'/);
 });
 
@@ -182,6 +182,22 @@ test('email archive repository separates mailbox folders and includes CRM-native
   assert.match(calls[0].sql, /NOT EXISTS \([\s\S]*FROM email_message_mailbox_deliveries native_delivery/);
   assert.match(calls[0].sql, /direction_message\.direction = \$4/);
   assert.match(calls[0].sql, /direction_delivery\.id IS NULL[\s\S]*lower\(btrim\(thread\.mailbox_key\)\) = \$3/);
+});
+
+test('email archive repository filters one advisory rule category without changing folder scope', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) { calls.push({ sql: String(sql), params }); return { rows: [] }; }
+  });
+
+  await repository.listThreads({
+    archiveDisposition: 'active',
+    mailboxKey: 'sales@sunkaier.com',
+    classificationCategory: 'newsletter'
+  });
+
+  assert.deepEqual(calls[0].params, ['active', 'sales@sunkaier.com', 'newsletter']);
+  assert.match(calls[0].sql, /thread\.classification_category = \$3/);
 });
 
 test('email archive repository lists one opportunity using its indexed relationship', async () => {

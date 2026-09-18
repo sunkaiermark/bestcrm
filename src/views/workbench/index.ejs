@@ -64,132 +64,157 @@
           </div>
         </section>
 
-        <section class="workbench-list">
-          <article class="list-section">
-            <h2<% if (summary.actionItems.length > 0) { %> class="todo-alert-heading"<% } %>><%= t('needsMyAction') %></h2>
+        <section class="workbench-list workbench-columns">
+          <article class="list-section workbench-column workbench-column--action">
+            <h2 class="workbench-column-heading"><%= t('needsMyAction') %></h2>
             <div class="list-body">
               <% if (summary.actionItems.length === 0) { %>
                 <p class="empty"><%= t('noWorkItems') %></p>
               <% } else { %>
-                <table class="list-table workbench-task-table">
-                  <thead>
-                    <tr>
-                      <th><%= t('relatedOpportunity') %></th>
-                      <th><%= t('specificWork') %></th>
-                      <th><%= t('plannedStart') %></th>
-                      <th><%= t('deadline') %></th>
-                      <th><%= t('estimatedHoursWorkload') %></th>
-                      <th><%= t('kpiCompletionStandard') %></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const todo of summary.actionItems) { %>
-                      <% const isOverdue = todo.dueAt && new Date(todo.dueAt).getTime() < Date.now(); %>
-                      <tr>
-                        <td>
-                          <% if (todo.opportunityId) { %>
-                            <a href="/opportunities/<%= todo.opportunityId %>"><%= todo.opportunityNo %> - <%= todo.opportunityTitle %></a>
-                          <% } else { %>
-                            <span class="muted">\u2014</span>
-                          <% } %>
-                        </td>
-                        <td>
-                          <span class="work-item-status<%= isOverdue ? ' overdue' : '' %>"><%= isOverdue ? t('overdue') : workStatusLabel(todo.status) %></span>
-                          <strong><a href="<%= todo.actionUrl || `/opportunities/${todo.opportunityId}` %>"><%= todoTitleLabel(todo.title) %></a></strong>
-                          <% if (todo.description) { %><small class="work-item-description"><%= todo.description %></small><% } %>
-                        </td>
-                        <td><time datetime="<%= todo.plannedStartAt ? new Date(todo.plannedStartAt).toISOString() : '' %>"><%= formatWorkTime(todo.plannedStartAt) %></time></td>
-                        <td><time datetime="<%= todo.dueAt ? new Date(todo.dueAt).toISOString() : '' %>"><%= formatWorkTime(todo.dueAt) %></time></td>
-                        <td>
-                          <%= workEstimateLabel(todo) %>
-                          <% if (todo.estimateUrl) { %><small class="work-item-description"><a href="<%= todo.estimateUrl %>"><%= t('editWorkEstimate') %></a></small><% } %>
-                        </td>
-                        <td><%= workKpiLabel(todo) %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
+                <ol class="workbench-card-list">
+                  <% for (const todo of summary.actionItems) { %>
+                    <% const isOverdue = todo.dueAt && new Date(todo.dueAt).getTime() < Date.now(); %>
+                    <li class="workbench-card">
+                      <dl class="workbench-card-fields">
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('relatedOpportunity') %></dt>
+                          <dd>
+                           <% if (todo.opportunityId) { %>
+                             <a href="/opportunities/<%= todo.opportunityId %>"><%= todo.opportunityNo %> - <%= todo.opportunityTitle %></a>
+                           <% } else { %>
+                             <span class="muted">\u2014</span>
+                           <% } %>
+                          </dd>
+                        </div>
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('specificWork') %></dt>
+                          <dd>
+                            <span class="work-item-status<%= isOverdue ? ' overdue' : '' %>"><%= isOverdue ? t('overdue') : workStatusLabel(todo.status) %></span>
+                            <strong><a href="<%= todo.actionUrl || `/opportunities/${todo.opportunityId}` %>"><%= todoTitleLabel(todo.title) %></a></strong>
+                            <% if (todo.description) { %><small class="work-item-description"><%= todo.description %></small><% } %>
+                          </dd>
+                        </div>
+                        <div class="workbench-card-field">
+                          <dt><%= t('plannedStart') %></dt>
+                          <dd><time datetime="<%= todo.plannedStartAt ? new Date(todo.plannedStartAt).toISOString() : '' %>"><%= formatWorkTime(todo.plannedStartAt) %></time></dd>
+                        </div>
+                        <div class="workbench-card-field">
+                          <dt><%= t('deadline') %></dt>
+                          <dd><time datetime="<%= todo.dueAt ? new Date(todo.dueAt).toISOString() : '' %>"><%= formatWorkTime(todo.dueAt) %></time></dd>
+                        </div>
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('estimatedHoursWorkload') %></dt>
+                          <dd>
+                            <%= workEstimateLabel(todo) %>
+                            <% if (todo.estimateUrl) { %><small class="work-item-description"><a href="<%= todo.estimateUrl %>"><%= t('editWorkEstimate') %></a></small><% } %>
+                          </dd>
+                        </div>
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('kpiCompletionStandard') %></dt>
+                          <dd><%= workKpiLabel(todo) %></dd>
+                        </div>
+                      </dl>
+                    </li>
+                  <% } %>
+                </ol>
               <% } %>
             </div>
           </article>
 
-          <article class="list-section">
-            <h2><%= t('workPlan') %></h2>
+          <article class="list-section workbench-column workbench-column--plan">
+            <h2 class="workbench-column-heading"><%= t('workPlan') %></h2>
             <div class="list-body">
               <% if (summary.workPlans.length === 0) { %>
                 <p class="empty"><%= t('noWorkPlans') %></p>
               <% } else { %>
-                <table class="list-table workbench-task-table">
-                  <thead>
-                    <tr>
-                      <th><%= t('relatedBusiness') %></th>
-                      <th><%= t('specificWork') %></th>
-                      <th><%= t('plannedStart') %></th>
-                      <th><%= t('deadline') %></th>
-                      <th><%= t('estimatedHoursWorkload') %></th>
-                      <th><%= t('kpiCompletionStandard') %></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const item of summary.workPlans) { %>
-                      <tr>
-                        <td>
-                          <% if (item.opportunityId) { %>
-                            <a href="/opportunities/<%= item.opportunityId %>"><%= item.opportunityNo %> - <%= item.opportunityTitle %></a>
-                          <% } else if (item.customerName) { %>
-                            <%= item.customerName %>
-                          <% } else { %>
-                            <span class="muted">—</span>
-                          <% } %>
-                        </td>
-                        <td>
-                          <strong><a href="<%= item.actionUrl || '/workbench' %>"><%= todoTitleLabel(item.title) %></a></strong>
-                          <% if (item.description) { %><small class="work-item-description"><%= item.description %></small><% } %>
-                        </td>
-                        <td><%= formatWorkTime(item.plannedStartAt) %></td>
-                        <td><%= formatWorkTime(item.dueAt) %></td>
-                        <td>
-                          <%= workEstimateLabel(item) %>
-                          <% if (item.estimateUrl) { %><small class="work-item-description"><a href="<%= item.estimateUrl %>"><%= t('editWorkEstimate') %></a></small><% } %>
-                        </td>
-                        <td><%= workKpiLabel(item) %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
+                <ol class="workbench-card-list">
+                  <% for (const item of summary.workPlans) { %>
+                    <li class="workbench-card">
+                      <dl class="workbench-card-fields">
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('relatedBusiness') %></dt>
+                          <dd>
+                           <% if (item.opportunityId) { %>
+                             <a href="/opportunities/<%= item.opportunityId %>"><%= item.opportunityNo %> - <%= item.opportunityTitle %></a>
+                           <% } else if (item.customerName) { %>
+                             <%= item.customerName %>
+                           <% } else { %>
+                             <span class="muted">—</span>
+                           <% } %>
+                          </dd>
+                        </div>
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('specificWork') %></dt>
+                          <dd>
+                            <strong><a href="<%= item.actionUrl || '/workbench' %>"><%= todoTitleLabel(item.title) %></a></strong>
+                            <% if (item.description) { %><small class="work-item-description"><%= item.description %></small><% } %>
+                          </dd>
+                        </div>
+                        <div class="workbench-card-field">
+                          <dt><%= t('plannedStart') %></dt>
+                          <dd><%= formatWorkTime(item.plannedStartAt) %></dd>
+                        </div>
+                        <div class="workbench-card-field">
+                          <dt><%= t('deadline') %></dt>
+                          <dd><%= formatWorkTime(item.dueAt) %></dd>
+                        </div>
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('estimatedHoursWorkload') %></dt>
+                          <dd>
+                            <%= workEstimateLabel(item) %>
+                            <% if (item.estimateUrl) { %><small class="work-item-description"><a href="<%= item.estimateUrl %>"><%= t('editWorkEstimate') %></a></small><% } %>
+                          </dd>
+                        </div>
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('kpiCompletionStandard') %></dt>
+                          <dd><%= workKpiLabel(item) %></dd>
+                        </div>
+                      </dl>
+                    </li>
+                  <% } %>
+                </ol>
               <% } %>
             </div>
           </article>
 
-          <article class="list-section">
-            <h2><%= t('recentStatusMessages') %></h2>
+          <article class="list-section workbench-column workbench-column--message">
+            <h2 class="workbench-column-heading"><%= t('recentStatusMessages') %></h2>
             <% if (summary.statusMessages.length === 0) { %>
               <div class="list-body"><p class="empty"><%= t('noStatusMessages') %></p></div>
             <% } else { %>
               <div class="list-body">
-                <table class="list-table">
-                  <thead>
-                    <tr>
-                      <th><%= t('relatedBusiness') %></th>
-                      <th><%= t('statusMessage') %></th>
-                      <th><%= t('time') %></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <% for (const message of summary.statusMessages) { %>
-                      <tr>
-                        <% if (message.actionUrl) { %>
-                          <td><a href="<%= message.actionUrl %>"><%= businessTypeLabel(message.sourceType) %></a></td>
-                          <td><strong><%= message.title %></strong><% if (message.body) { %><small class="work-item-description"><%= message.body %></small><% } %></td>
-                        <% } else { %>
-                          <td><a href="/opportunities/<%= message.opportunityId %>"><%= message.opportunityNo %> - <%= message.opportunityTitle %></a></td>
-                          <td><span class="status"><%= workflowEventLabel(message.eventType) %></span> <span class="muted"><%= statusLabel(message.fromStatus) %> → <%= statusLabel(message.toStatus) %></span><% if (message.comment) { %><small class="work-item-description"><%= message.comment %></small><% } %></td>
-                        <% } %>
-                        <td><%= formatWorkTime(message.createdAt) %></td>
-                      </tr>
-                    <% } %>
-                  </tbody>
-                </table>
+                <ol class="workbench-card-list">
+                  <% for (const message of summary.statusMessages) { %>
+                    <li class="workbench-card">
+                      <dl class="workbench-card-fields">
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('relatedBusiness') %></dt>
+                          <dd>
+                         <% if (message.actionUrl) { %>
+                            <a href="<%= message.actionUrl %>"><%= businessTypeLabel(message.sourceType) %></a>
+                         <% } else { %>
+                            <a href="/opportunities/<%= message.opportunityId %>"><%= message.opportunityNo %> - <%= message.opportunityTitle %></a>
+                         <% } %>
+                          </dd>
+                        </div>
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('statusMessage') %></dt>
+                          <dd>
+                            <% if (message.actionUrl) { %>
+                              <strong><%= message.title %></strong><% if (message.body) { %><small class="work-item-description"><%= message.body %></small><% } %>
+                            <% } else { %>
+                              <span class="status"><%= workflowEventLabel(message.eventType) %></span> <span class="muted"><%= statusLabel(message.fromStatus) %> → <%= statusLabel(message.toStatus) %></span><% if (message.comment) { %><small class="work-item-description"><%= message.comment %></small><% } %>
+                            <% } %>
+                          </dd>
+                        </div>
+                        <div class="workbench-card-field workbench-card-field--wide">
+                          <dt><%= t('time') %></dt>
+                          <dd><%= formatWorkTime(message.createdAt) %></dd>
+                        </div>
+                      </dl>
+                    </li>
+                  <% } %>
+                </ol>
               </div>
             <% } %>
           </article>
