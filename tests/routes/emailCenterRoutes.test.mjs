@@ -14,16 +14,16 @@ function thread(overrides = {}) {
     opportunityId: null, opportunityNo: '', opportunityTitle: '', customerId: null, customerCode: '', customerName: '', contactId: null,
     contactCode: '', contactName: '',
     classificationCategory: 'inquiry',
-    triageStatus: 'pending', triageAssignedUserId: null, triageAssignedDisplayName: '', triageEvents: [],
+    archiveDisposition: 'active', triageStatus: 'pending', triageAssignedUserId: null, triageAssignedDisplayName: '', triageEvents: [],
     lastMessageAt: '2026-09-03T01:00:00Z', messageCount: 1, attachmentCount: 1, lastFromAddress: 'buyer@example.com',
     lastTextPreview: '<img src=x onerror=alert(1)> Need quote', messages: [{
       id: 11, threadId: 1, direction: 'inbound', messageId: 'rfq@example.com', inReplyTo: '',
       referenceIds: [], fromAddress: 'buyer@example.com', fromName: 'Buyer',
       toRecipients: [{ address: 'sales@sunkaier.com' }], ccRecipients: [], subject: 'RFQ',
-      textBody: '<script>alert(2)</script> Need quote', htmlBody: '<img src="https://tracker.example/pixel">',
+      textBody: '<script>alert(2)</script> Need quote', htmlBody: '<img src="cid:spec@example.com"><img src="https://tracker.example/pixel">',
       deliveryStatus: 'received', receivedAt: '2026-09-03T01:00:00Z', attachments: [{
         id: 21, messageId: 11, originalName: 'spec.pdf', storedPath: 'email-archive/spec.pdf',
-        mimeType: 'application/pdf', fileSize: 4, sha256: 'a'.repeat(64)
+        mimeType: 'application/pdf', fileSize: 4, sha256: 'a'.repeat(64), contentId: '<spec@example.com>'
       }], deliveryAttempts: []
     }],
     ...overrides
@@ -42,7 +42,11 @@ async function createAgent({
   onPurgeThread = null,
   purgeEligibleThreadIds = [1],
   spamCleanupSummary = { eligibleThreads: 0, messages: 0, attachments: 0, attachmentBytes: 0, rawMessages: 0, rawMessageBytes: 0 },
-  spamPurgeCandidates = []
+  nonBusinessCleanupSummary = { eligibleThreads: 0, messages: 0, attachments: 0, attachmentBytes: 0, rawMessages: 0, rawMessageBytes: 0 },
+  spamPurgeCandidates = [],
+  nonBusinessPurgeCandidates = [],
+  unlinkedOverrides = {},
+  linkedOverrides = {}
 }) {
   const passwordHash = await hashPassword('ChangeMe123!');
   const user = {
@@ -50,7 +54,7 @@ async function createAgent({
     emailSignatureName: `User ${userId}`, emailSignatureTitle: 'Project Engineer',
     email: `user${userId}@sunkaier.com`, passwordHash, isActive: true, roles
   };
-  const unlinked = thread();
+  const unlinked = thread(unlinkedOverrides);
   const linked = thread({
     id: 2,
     inquiryId: 9,
@@ -63,10 +67,13 @@ async function createAgent({
     contactId: 20,
     contactCode: 'CT000020',
     contactName: 'Alice',
-    triageStatus: 'linked_opportunity'
+    triageStatus: 'linked_opportunity',
+    ...linkedOverrides
   });
-  unlinked.purgeEligible = purgeEligibleThreadIds.includes(unlinked.id);
-  linked.purgeEligible = purgeEligibleThreadIds.includes(linked.id);
+  const purgeEligible = (item) => purgeEligibleThreadIds.includes(item.id)
+    && ['spam', 'archived'].includes(item.triageStatus);
+  unlinked.purgeEligible = purgeEligible(unlinked);
+  linked.purgeEligible = purgeEligible(linked);
   linked.messages = linked.messages.map((message) => ({ ...message, threadId: 2 }));
   linked.messages.push({
     ...linked.messages[0],
@@ -103,17 +110,27 @@ async function createAgent({
     async transitionThreadTriage(input) {
       if (unlinked.triageStatus !== input.expectedStatus) return null;
       unlinked.triageStatus = input.triageStatus;
+      unlinked.archiveDisposition = input.archiveDisposition;
+      unlinked.purgeEligible = purgeEligible(unlinked);
       return unlinked;
     },
     async createTriageEvent(input) {
       unlinked.triageEvents.push(input);
       return input;
     },
-    async getSpamCleanupSummary() { return spamCleanupSummary; },
-    async listSpamPurgeCandidates() { return spamPurgeCandidates; },
-    async isThreadPurgeEligible(id) { return purgeEligibleThreadIds.includes(Number(id)); },
+    async getCleanupSummary({ folder }) {
+      return folder === 'non_business' ? nonBusinessCleanupSummary : spamCleanupSummary;
+    },
+    async listCleanupCandidates({ folder }) {
+      return folder === 'non_business' ? nonBusinessPurgeCandidates : spamPurgeCandidates;
+    },
+    async isThreadPurgeEligible(id) {
+      const item = Number(id) === linked.id ? linked : Number(id) === unlinked.id ? unlinked : null;
+      return Boolean(item && purgeEligible(item));
+    },
     async purgeEmailThread(input) {
-      if (!purgeEligibleThreadIds.includes(Number(input.threadId))) return null;
+      const item = Number(input.threadId) === linked.id ? linked : Number(input.threadId) === unlinked.id ? unlinked : null;
+      if (!item || !purgeEligible(item)) return null;
       onPurgeThread?.(input);
       return {
         threadId: Number(input.threadId),
@@ -125,7 +142,9 @@ async function createAgent({
       };
     },
     async findAttachmentById(id) { return Number(id) === 21 ? unlinked.messages[0].attachments[0] : null; },
-    async findMessageById(id) { return Number(id) === 11 ? unlinked.messages[0] : null; }
+    async findMessageById(id) {
+      return [...unlinked.messages, ...linked.messages].find((message) => Number(message.id) === Number(id)) || null;
+    }
   };
   const app = createApp({
     databaseUrl: '', sessionSecret: 'test-secret', csrfProtection: false, emailCenter: { enabled: true },
@@ -195,6 +214,8 @@ test('sales manager sees mailbox-separated pending threads and plain-text escape
   assert.match(list.text, /2026-09-03 09:00/);
   assert.doesNotMatch(list.text, /GMT\+0800|China Standard Time|09:00:00/);
   assert.match(list.text, />垃圾邮件<\/a>/);
+  assert.match(list.text, />非业务邮件<\/a>/);
+  assert.doesNotMatch(list.text, />已关联<\/a>|>已归档<\/a>/);
   assert.match(list.text, /<label for="email-category">规则分类<\/label>/);
   assert.match(list.text, /<option value="marketing_spam">营销垃圾邮件<\/option>/);
   assert.match(list.text, /class="email-category-badge">潜在询价<\/span>/);
@@ -211,20 +232,32 @@ test('sales manager sees mailbox-separated pending threads and plain-text escape
   assert.match(detail.text, /\.app-main\.email-reader-page\s*\{[^}]*display:\s*flex;[^}]*height:\s*100vh;[^}]*overflow:\s*hidden;/);
   assert.match(detail.text, /\.email-reader-scroll\s*\{[^}]*overflow-y:\s*auto;/);
   assert.match(detail.text, /href="\/email-center\?mailbox=sales%40sunkaier\.com&folder=pending">← 返回邮件列表<\/a>/);
-  assert.match(detail.text, /class="email-triage-grid-row"[\s\S]*?<button type="submit">人工分拣<\/button>[\s\S]*?<select name="assignedUserId"/);
+  assert.doesNotMatch(detail.text, /name="assignedUserId"|\/assignment/);
   assert.match(detail.text, /<button type="submit">关联商机<\/button>[\s\S]*?<select name="opportunityId"/);
-  assert.match(detail.text, /class="email-triage-final-actions"[\s\S]*?新建线索[\s\S]*?标记为垃圾邮件/);
+  assert.match(detail.text, /class="email-triage-final-actions"[\s\S]*?新建线索[\s\S]*?标记为垃圾邮件[\s\S]*?标记为非业务邮件/);
   assert.doesNotMatch(detail.text, /关联询价|转为询价|name="inquiryId"|convert-inquiry/);
-  assert.match(detail.text, /<summary>其他处理<\/summary>/);
+  assert.doesNotMatch(detail.text, /<summary>其他处理<\/summary>/);
   assert.match(detail.text, /class="email-conversation-list"/);
   assert.match(detail.text, /<details class="email-conversation-item email-message-inbound" open>/);
   assert.match(detail.text, /class="email-conversation-summary"/);
   assert.match(detail.text, /class="email-message-details"/);
+  assert.match(detail.text, /class="email-html-body" src="\/email-center\/messages\/11\/content" sandbox=""/);
+  assert.match(detail.text, /class="email-plain-body email-reading-body"/);
+  assert.match(detail.text, /\.email-reading-body\s*\{[^}]*max-width:\s*none;/);
+  assert.match(detail.text, /@media[\s\S]*\.email-conversation-body\s*\{[^}]*padding:\s*14px;/);
   assert.match(detail.text, /class="email-attachment-chip" href="\/email-center\/attachments\/21\/download"/);
   assert.match(detail.text, /class="email-attachment-integrity"/);
   assert.match(detail.text, /&lt;script&gt;alert\(2\)&lt;\/script&gt; Need quote/);
   assert.doesNotMatch(detail.text, /tracker\.example\/pixel/);
   assert.match(detail.text, new RegExp('a'.repeat(64)));
+
+  const htmlContent = await agent.get('/email-center/messages/11/content');
+  assert.equal(htmlContent.status, 200);
+  assert.match(htmlContent.headers['content-security-policy'], /sandbox; default-src 'none'; img-src 'self' data:/);
+  assert.equal(htmlContent.headers['referrer-policy'], 'no-referrer');
+  assert.match(htmlContent.text, /src="\/email-center\/attachments\/21\/inline"/);
+  assert.doesNotMatch(htmlContent.text, /cid:spec@example\.com/);
+  assert.match(htmlContent.text, /https:\/\/tracker\.example\/pixel/);
 
   assert.equal((await agent.post('/email-center/threads/1/inquiry')).status, 404);
   assert.equal((await agent.post('/email-center/threads/1/convert-inquiry')).status, 404);
@@ -249,6 +282,8 @@ test('only an administrator sees and can invoke immediate permanent spam cleanup
     roles: [ROLES.ADMINISTRATOR],
     language: 'zh',
     purgeEligibleThreadIds: [1, 2],
+    unlinkedOverrides: { triageStatus: 'spam', archiveDisposition: 'spam' },
+    linkedOverrides: { triageStatus: 'spam', archiveDisposition: 'spam' },
     spamCleanupSummary: {
       eligibleThreads: 3,
       messages: 4,
@@ -281,7 +316,65 @@ test('only an administrator sees and can invoke immediate permanent spam cleanup
   assert.match(accepted.headers.location, /folder=spam/);
 });
 
-test('administrator can delete an eligible unlinked thread but linked mail stays protected', async () => {
+test('administrator can clean eligible non-business mail and restore a mistaken classification', async () => {
+  const purgeCalls = [];
+  const administrator = await createAgent({
+    userId: 1,
+    roles: [ROLES.ADMINISTRATOR],
+    language: 'zh',
+    purgeEligibleThreadIds: [1],
+    nonBusinessCleanupSummary: {
+      eligibleThreads: 1,
+      messages: 1,
+      attachments: 1,
+      attachmentBytes: 1048576,
+      rawMessages: 1,
+      rawMessageBytes: 1048576
+    },
+    nonBusinessPurgeCandidates: [{ threadId: 1, subject: 'System notice' }],
+    onPurgeThread: (input) => purgeCalls.push(input)
+  });
+
+  const marked = await administrator.post('/email-center/threads/1/disposition').type('form').send({
+    mailbox: 'sales@sunkaier.com',
+    from: 'pending',
+    action: 'non_business'
+  });
+  assert.equal(marked.status, 302);
+
+  const list = await administrator.get('/email-center?mailbox=sales%40sunkaier.com&folder=non_business');
+  assert.equal(list.status, 200);
+  assert.match(list.text, /非业务邮件清理/);
+  assert.match(list.text, /非业务邮件会话[^]*?<strong>1<\/strong>/);
+  assert.match(list.text, /2\.0 MB/);
+  assert.match(list.text, /action="\/email-center\/non_business\/purge"/);
+
+  const detail = await administrator.get('/email-center/threads/1?mailbox=sales%40sunkaier.com&from=non_business');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /如果该邮件实际与客户业务有关/);
+  assert.match(detail.text, /name="action" value="restore"/);
+
+  const restored = await administrator.post('/email-center/threads/1/disposition').type('form').send({
+    mailbox: 'sales@sunkaier.com',
+    from: 'non_business',
+    action: 'restore'
+  });
+  assert.equal(restored.status, 302);
+
+  const remade = await administrator.post('/email-center/threads/1/disposition').type('form').send({
+    action: 'non_business'
+  });
+  assert.equal(remade.status, 302);
+  const purged = await administrator.post('/email-center/non_business/purge').type('form').send({
+    mailbox: 'sales@sunkaier.com',
+    confirmation: 'DELETE'
+  });
+  assert.equal(purged.status, 302);
+  assert.match(purged.headers.location, /folder=non_business/);
+  assert.equal(purgeCalls.length, 1);
+});
+
+test('administrator can delete confirmed non-business mail but pending and linked mail stay protected', async () => {
   const manager = await createAgent({ userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh' });
   const managerDetail = await manager.get('/email-center/threads/1');
   assert.equal(managerDetail.status, 200);
@@ -296,28 +389,46 @@ test('administrator can delete an eligible unlinked thread but linked mail stays
   });
   const unlinkedDetail = await administrator.get('/email-center/threads/1');
   assert.equal(unlinkedDetail.status, 200);
-  assert.match(unlinkedDetail.text, /彻底删除邮件/);
-  assert.match(unlinkedDetail.text, /action="\/email-center\/threads\/1\/purge"/);
-  assert.match(unlinkedDetail.text, /id="email-delete"/);
+  assert.doesNotMatch(unlinkedDetail.text, /action="\/email-center\/threads\/1\/purge"/);
 
   const linkedDetail = await administrator.get('/email-center/threads/2');
   assert.equal(linkedDetail.status, 200);
   assert.doesNotMatch(linkedDetail.text, /action="\/email-center\/threads\/2\/purge"/);
 
-  const rejected = await administrator.post('/email-center/threads/1/purge').type('form').send({
+  const protectedPending = await administrator.post('/email-center/threads/1/purge').type('form').send({
     mailbox: 'sales@sunkaier.com',
     from: 'pending',
+    confirmation: 'DELETE'
+  });
+  assert.equal(protectedPending.status, 409);
+
+  const marked = await administrator.post('/email-center/threads/1/disposition').type('form').send({
+    mailbox: 'sales@sunkaier.com',
+    from: 'pending',
+    action: 'non_business'
+  });
+  assert.equal(marked.status, 302);
+
+  const eligibleDetail = await administrator.get('/email-center/threads/1?from=non_business');
+  assert.equal(eligibleDetail.status, 200);
+  assert.match(eligibleDetail.text, /彻底删除邮件/);
+  assert.match(eligibleDetail.text, /action="\/email-center\/threads\/1\/purge"/);
+  assert.match(eligibleDetail.text, /id="email-delete"/);
+
+  const rejected = await administrator.post('/email-center/threads/1/purge').type('form').send({
+    mailbox: 'sales@sunkaier.com',
+    from: 'non_business',
     confirmation: 'delete'
   });
   assert.equal(rejected.status, 400);
 
   const accepted = await administrator.post('/email-center/threads/1/purge').type('form').send({
     mailbox: 'sales@sunkaier.com',
-    from: 'pending',
+    from: 'non_business',
     confirmation: 'DELETE'
   });
   assert.equal(accepted.status, 302);
-  assert.equal(accepted.headers.location, '/email-center?mailbox=sales%40sunkaier.com&folder=pending');
+  assert.equal(accepted.headers.location, '/email-center?mailbox=sales%40sunkaier.com&folder=non_business');
   assert.equal(purgeCalls.length, 1);
 });
 
@@ -384,8 +495,15 @@ test('email attachment download enforces the same thread permission', async () =
     assert.equal(downloaded.headers['cache-control'], 'private, no-store');
     assert.equal(downloaded.headers['x-archive-sha256'], 'a'.repeat(64));
 
+    const inline = await manager.get('/email-center/attachments/21/inline');
+    assert.equal(inline.status, 200);
+    assert.match(inline.headers['content-disposition'], /^inline;.*spec\.pdf/);
+    assert.equal(inline.headers['cross-origin-resource-policy'], 'same-origin');
+    assert.equal(inline.headers['x-archive-sha256'], 'a'.repeat(64));
+
     const salesperson = await createAgent({ userId: 7, roles: [ROLES.SALESPERSON], uploadDir });
     assert.equal((await salesperson.get('/email-center/attachments/21/download')).status, 403);
+    assert.equal((await salesperson.get('/email-center/attachments/21/inline')).status, 403);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

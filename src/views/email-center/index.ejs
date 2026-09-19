@@ -19,7 +19,7 @@
           </form>
 
           <nav class="email-folder-tabs" aria-label="<%= t('emailArchiveFolders') %>">
-            <% for (const item of ['pending', 'inbox', 'sent', 'linked', 'archived', 'spam']) { %>
+            <% for (const item of ['pending', 'inbox', 'sent', 'spam', 'non_business']) { %>
               <a class="email-folder-tab<%= folder === item ? ' is-active' : '' %>" href="/email-center?mailbox=<%= encodeURIComponent(mailbox.key) %>&folder=<%= item %><%= category ? `&category=${encodeURIComponent(category)}` : '' %>"<% if (folder === item) { %> aria-current="page"<% } %>><%= t(`emailTriageFolder.${item}`) %></a>
             <% } %>
           </nav>
@@ -35,18 +35,18 @@
           </form>
 
           <% if (folder === 'pending') { %><p class="email-pending-definition"><%= t('emailPendingDefinition') %></p><% } %>
-          <% if (folder === 'spam' && spamCleanup) { %>
-            <section class="form-panel email-spam-cleanup" aria-label="<%= t('emailSpamCleanup') %>">
-              <h2><%= t('emailSpamCleanup') %></h2>
-              <p><%= t('emailSpamCleanupRule') %></p>
-              <p class="muted"><%= t('emailSpamCleanupEligible') %>: <strong><%= spamCleanup.eligibleThreads %></strong> · <%= t('messages') %>: <%= spamCleanup.messages %> · <%= t('attachments') %>: <%= spamCleanup.attachments %> · <%= t('emailSpamCleanupStorage') %>: <%= ((spamCleanup.attachmentBytes + spamCleanup.rawMessageBytes) / 1024 / 1024).toFixed(1) %> MB</p>
-              <% if (spamCleanupResult.purgedThreads || spamCleanupResult.fileFailures) { %><p class="status"><%= t('emailSpamCleanupCompleted') %>: <%= spamCleanupResult.purgedThreads %> · <%= t('messages') %>: <%= spamCleanupResult.purgedMessages %> · <%= (spamCleanupResult.purgedBytes / 1024 / 1024).toFixed(1) %> MB<% if (spamCleanupResult.fileFailures) { %> · <%= t('emailSpamCleanupFileFailures') %>: <%= spamCleanupResult.fileFailures %><% } %></p><% } %>
-              <% if (spamCleanup.eligibleThreads) { %>
-                <form class="inline-form" method="post" action="/email-center/spam/purge" onsubmit="return confirm('<%= t('emailSpamCleanupConfirm') %>')">
+          <% if (cleanup) { const isSpamCleanup = folder === 'spam'; %>
+            <section class="form-panel email-spam-cleanup" aria-label="<%= t(isSpamCleanup ? 'emailSpamCleanup' : 'emailNonBusinessCleanup') %>">
+              <h2><%= t(isSpamCleanup ? 'emailSpamCleanup' : 'emailNonBusinessCleanup') %></h2>
+              <p><%= t(isSpamCleanup ? 'emailSpamCleanupRule' : 'emailNonBusinessCleanupRule') %></p>
+              <p class="muted"><%= t(isSpamCleanup ? 'emailSpamCleanupEligible' : 'emailNonBusinessCleanupEligible') %>: <strong><%= cleanup.eligibleThreads %></strong> · <%= t('messages') %>: <%= cleanup.messages %> · <%= t('attachments') %>: <%= cleanup.attachments %> · <%= t('emailSpamCleanupStorage') %>: <%= ((cleanup.attachmentBytes + cleanup.rawMessageBytes) / 1024 / 1024).toFixed(1) %> MB</p>
+              <% if (cleanupResult.purgedThreads || cleanupResult.fileFailures) { %><p class="status"><%= t(isSpamCleanup ? 'emailSpamCleanupCompleted' : 'emailNonBusinessCleanupCompleted') %>: <%= cleanupResult.purgedThreads %> · <%= t('messages') %>: <%= cleanupResult.purgedMessages %> · <%= (cleanupResult.purgedBytes / 1024 / 1024).toFixed(1) %> MB<% if (cleanupResult.fileFailures) { %> · <%= t('emailSpamCleanupFileFailures') %>: <%= cleanupResult.fileFailures %><% } %></p><% } %>
+              <% if (cleanup.eligibleThreads) { %>
+                <form class="inline-form" method="post" action="/email-center/<%= folder %>/purge" onsubmit="return confirm('<%= t(isSpamCleanup ? 'emailSpamCleanupConfirm' : 'emailNonBusinessCleanupConfirm') %>')">
                   <%- csrfField() %>
                   <input type="hidden" name="mailbox" value="<%= mailbox.key %>">
                   <label><span><%= t('emailSpamCleanupTypeDelete') %></span><input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label>
-                  <button class="danger-action" type="submit"><%= t('emailSpamCleanupAction') %></button>
+                  <button class="danger-action" type="submit"><%= t(isSpamCleanup ? 'emailSpamCleanupAction' : 'emailNonBusinessCleanupAction') %></button>
                 </form>
               <% } %>
             </section>
@@ -70,7 +70,7 @@
                 <span class="email-inbox-attachment<%= thread.attachmentCount ? '' : ' is-empty' %>" title="<%= t('attachmentCount') %>"><% if (thread.attachmentCount) { %><span aria-hidden="true">📎</span> <%= thread.attachmentCount %><% } %></span>
                 <time class="email-inbox-time" datetime="<%= thread.lastMessageAt || '' %>"><%= formatEmailListDate(thread.lastMessageAt) %></time>
               </a>
-              <% if (folder === 'spam' && spamCleanup && thread.purgeEligible) { %>
+              <% if (['spam', 'non_business'].includes(folder) && cleanup && thread.purgeEligible) { %>
                 <a class="danger-action email-spam-row-delete" href="/email-center/threads/<%= thread.id %>?mailbox=<%= encodeURIComponent(mailbox.key) %>&from=spam<%= category ? `&category=${encodeURIComponent(category)}` : '' %>#email-delete"><%= t('emailSpamDeleteOneAction') %></a>
               <% } %>
             </div>

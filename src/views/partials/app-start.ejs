@@ -2631,7 +2631,10 @@
       }
 
       .email-conversation-body {
-        padding: 16px 20px 20px 70px;
+        box-sizing: border-box;
+        min-width: 0;
+        padding: 16px 20px 20px;
+        width: 100%;
       }
 
       .email-recipient-line {
@@ -2985,6 +2988,39 @@
         overflow-wrap: anywhere;
         padding: 0;
         white-space: pre-wrap;
+        width: 100%;
+      }
+
+      .email-reading-body {
+        max-width: none;
+        tab-size: 4;
+      }
+
+      .email-html-safety-note {
+        margin: 0 0 8px;
+      }
+
+      .email-html-body {
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        display: block;
+        height: clamp(420px, 64vh, 820px);
+        width: 100%;
+      }
+
+      .email-plain-fallback {
+        border-top: 1px solid var(--line);
+        margin-top: 14px;
+        padding-top: 10px;
+      }
+
+      .email-plain-fallback > summary {
+        color: var(--muted);
+        cursor: pointer;
+        font-weight: 700;
+        margin-bottom: 10px;
+        width: fit-content;
       }
 
       .email-attachment-list {
@@ -3400,7 +3436,12 @@
         }
 
         .email-conversation-body {
-          padding: 14px 14px 18px 60px;
+          padding: 14px;
+        }
+
+        .email-html-body {
+          height: 58vh;
+          min-height: 320px;
         }
 
         .email-opportunity-link {

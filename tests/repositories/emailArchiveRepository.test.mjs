@@ -97,6 +97,31 @@ test('spam cleanup includes every confirmed spam thread regardless of business-l
   assert.doesNotMatch(calls[0].sql, /quotation_package_versions/);
 });
 
+test('non-business cleanup includes only unlinked archived mail without outbound or historical business links', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [{
+        eligible_threads: '1', message_count: '1', attachment_count: '0', attachment_bytes: '0',
+        raw_message_count: '1', raw_message_bytes: '120'
+      }] };
+    }
+  });
+
+  const summary = await repository.getCleanupSummary({
+    mailboxKey: 'sales@sunkaier.com',
+    folder: 'non_business'
+  });
+
+  assert.equal(summary.eligibleThreads, 1);
+  assert.match(calls[0].sql, /thread\.archive_disposition = 'archived'/);
+  assert.match(calls[0].sql, /thread\.triage_status = 'archived'/);
+  assert.match(calls[0].sql, /thread\.opportunity_id IS NULL/);
+  assert.match(calls[0].sql, /outbound\.direction = 'outbound'/);
+  assert.match(calls[0].sql, /business_event\.event_type IN/);
+});
+
 test('individual email deletion allows confirmed spam and keeps the non-spam business guard', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({
@@ -108,7 +133,7 @@ test('individual email deletion allows confirmed spam and keeps the non-spam bus
 
   assert.equal(await repository.isThreadPurgeEligible(88), true);
   assert.deepEqual(calls[0].params, [88]);
-  assert.match(calls[0].sql, /OR \(\s*thread\.archive_disposition = 'spam'/);
+  assert.match(calls[0].sql, /thread\.archive_disposition = 'spam'[\s\S]*OR \([\s\S]*thread\.archive_disposition = 'archived'/);
   assert.match(calls[0].sql, /thread\.triage_status = 'spam'/);
   assert.match(calls[0].sql, /thread\.inquiry_id IS NULL/);
   assert.match(calls[0].sql, /thread\.opportunity_id IS NULL/);
@@ -125,7 +150,7 @@ test('email purge repository writes the audit before deleting the isolated email
       if (statement.includes('FOR UPDATE OF thread')) {
         return { rows: [{
           thread_id: '8', mailbox_key: 'sales@sunkaier.com', subject: 'SEO spam',
-          triage_status: 'pending', archive_disposition: 'active', last_message_at: '2026-08-01T00:00:00Z',
+          triage_status: 'archived', archive_disposition: 'archived', last_message_at: '2026-08-01T00:00:00Z',
           message_count: '1', attachment_count: '1',
           attachment_bytes: '50', attachment_paths: ['email-archive/spam.pdf'],
           raw_message_ids: [81], raw_message_paths: ['email-raw/spam.eml'], raw_message_count: '1',
@@ -599,4 +624,39 @@ test('outbound archive state keeps immutable content while delivery attempts inc
   assert.match(calls[2].sql, /delivery_status = 'pending'/);
   assert.match(calls[3].sql, /MAX\(attempt_number\)/);
   assert.equal(calls[3].params.length, 5);
+});
+
+test('imported sent mail can bind immutable raw EML evidence after an earlier parsed-only import', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [messageRow({
+        id: '13',
+        direction: 'outbound',
+        delivery_status: 'sent',
+        raw_message_id: '81',
+        raw_eml_stored_path: 'email-raw/sales/sent.eml',
+        raw_eml_file_size: '100',
+        raw_eml_sha256: 'a'.repeat(64)
+      })] };
+    }
+  });
+
+  const linked = await repository.linkImportedOutboundMessageRawArchive({
+    messageId: 13,
+    rawMessageId: 81,
+    rawEmlStoredPath: 'email-raw/sales/sent.eml',
+    rawEmlFileSize: 100,
+    rawEmlSha256: 'a'.repeat(64),
+    importedAt: '2026-09-19T00:00:00Z'
+  });
+
+  assert.equal(linked.rawMessageId, 81);
+  assert.match(calls[0].sql, /direction = 'outbound'/);
+  assert.match(calls[0].sql, /delivery_status = 'sent'/);
+  assert.match(calls[0].sql, /raw_message_id IS NULL/);
+  assert.deepEqual(calls[0].params, [
+    13, 81, 'email-raw/sales/sent.eml', 100, 'a'.repeat(64), '2026-09-19T00:00:00Z'
+  ]);
 });

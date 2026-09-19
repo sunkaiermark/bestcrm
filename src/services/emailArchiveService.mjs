@@ -350,9 +350,22 @@ export async function archiveImportedOutboundEmailRecord(repositories, parsed, o
 
   const existing = await emailArchiveRepository.findMessageIdentity(message);
   if (existing) {
-    const rawMessage = options.rawCapture
-      ? await persistRawEmailCapture(emailArchiveRepository, options.rawCapture)
-      : null;
+    let rawMessage = null;
+    if (options.rawCapture) {
+      rawMessage = await persistRawEmailCapture(emailArchiveRepository, options.rawCapture);
+      if (!existing.rawMessageId && typeof emailArchiveRepository.linkImportedOutboundMessageRawArchive === 'function') {
+        const linked = await emailArchiveRepository.linkImportedOutboundMessageRawArchive({
+          messageId: existing.id,
+          rawMessageId: rawMessage.id,
+          rawEmlStoredPath: rawMessage.storedPath,
+          rawEmlFileSize: rawMessage.fileSize,
+          rawEmlSha256: rawMessage.sha256,
+          importedAt: new Date().toISOString()
+        });
+        if (!linked) throw new EmailRawIdentityConflictError('Existing sent email could not bind raw evidence');
+        Object.assign(existing, linked);
+      }
+    }
     await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage?.id);
     await recordMailboxDelivery(emailArchiveRepository, message, existing, rawMessage, 'outbound');
     return {
@@ -394,7 +407,12 @@ export async function archiveImportedOutboundEmailRecord(repositories, parsed, o
   const archivedMessage = await emailArchiveRepository.createImportedOutboundMessage({
     ...message,
     threadId: thread.id,
-    authoredBy
+    authoredBy,
+    rawMessageId: rawMessage?.id || null,
+    rawEmlStoredPath: rawMessage?.storedPath || null,
+    rawEmlFileSize: rawMessage?.fileSize || null,
+    rawEmlSha256: rawMessage?.sha256 || null,
+    importedAt: rawMessage ? new Date().toISOString() : null
   });
   if (!archivedMessage) throw new EmailArchiveDuplicateRaceError();
   await recordMailboxDelivery(emailArchiveRepository, message, archivedMessage, rawMessage, 'outbound');
@@ -703,6 +721,20 @@ export async function linkEmailThreadToOpportunity(dependencies, actor, threadId
   return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
 }
 
+export async function getVisibleEmailMessage(dependencies, actor, messageId) {
+  const message = await dependencies.emailArchiveRepository.findMessageById(messageId);
+  if (!message) throw new EmailArchiveError('Email message not found', 404);
+  const thread = await dependencies.emailArchiveRepository.findThreadById(message.threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) {
+    throw new EmailArchiveError('Forbidden', 403);
+  }
+  const attachments = typeof dependencies.emailArchiveRepository.listAttachmentsByMessage === 'function'
+    ? await dependencies.emailArchiveRepository.listAttachmentsByMessage(message.id)
+    : (Array.isArray(message.attachments) ? message.attachments : []);
+  return { ...message, attachments };
+}
+
 function inboundSourceMessage(thread) {
   const messages = Array.isArray(thread?.messages) ? thread.messages : [];
   return [...messages].reverse().find((message) => message.direction === 'inbound') || null;
@@ -910,7 +942,7 @@ export async function convertEmailThreadToInquiry(dependencies, actor, threadId)
 }
 
 export async function setEmailThreadDisposition(dependencies, actor, threadId, action, note = '') {
-  const target = action === 'archive'
+  const target = ['archive', 'non_business'].includes(action)
     ? { eventType: 'archived', triageStatus: 'archived', archiveDisposition: 'archived' }
     : action === 'spam'
       ? { eventType: 'spam', triageStatus: 'spam', archiveDisposition: 'spam' }
@@ -919,7 +951,7 @@ export async function setEmailThreadDisposition(dependencies, actor, threadId, a
             eventType: 'reopened',
             triageStatus: 'pending',
             archiveDisposition: 'active',
-            allowedFromStatuses: ['spam']
+            allowedFromStatuses: ['spam', 'archived']
           }
       : null;
   if (!target) throw new EmailArchiveError('Invalid email triage action', 400);
@@ -939,8 +971,15 @@ export async function setEmailThreadDisposition(dependencies, actor, threadId, a
 }
 
 export async function getEmailSpamCleanupSummary(dependencies, actor, mailboxKey = '') {
+  return getEmailCleanupSummary(dependencies, actor, mailboxKey, 'spam');
+}
+
+export async function getEmailCleanupSummary(dependencies, actor, mailboxKey = '', folder = 'spam') {
   if (!canPurgeEmailSpam(actor)) throw new EmailArchiveError('Forbidden', 403);
-  if (typeof dependencies.emailArchiveRepository?.getSpamCleanupSummary !== 'function') {
+  const normalizedFolder = folder === 'non_business' ? 'non_business' : 'spam';
+  const repository = dependencies.emailArchiveRepository;
+  if (typeof repository?.getCleanupSummary !== 'function'
+      && !(normalizedFolder === 'spam' && typeof repository?.getSpamCleanupSummary === 'function')) {
     return {
       eligibleThreads: 0,
       messages: 0,
@@ -950,9 +989,10 @@ export async function getEmailSpamCleanupSummary(dependencies, actor, mailboxKey
       rawMessageBytes: 0
     };
   }
-  const summary = await dependencies.emailArchiveRepository.getSpamCleanupSummary({
-    mailboxKey: text(mailboxKey).toLowerCase()
-  });
+  const input = { mailboxKey: text(mailboxKey).toLowerCase(), folder: normalizedFolder };
+  const summary = typeof repository.getCleanupSummary === 'function'
+    ? await repository.getCleanupSummary(input)
+    : await repository.getSpamCleanupSummary({ mailboxKey: input.mailboxKey });
   return summary;
 }
 
@@ -977,22 +1017,33 @@ async function removePurgedEmailFiles(uploadDir, candidate) {
 }
 
 export async function purgeEligibleEmailSpam(dependencies, actor, input = {}) {
+  return purgeEligibleEmailFolder(dependencies, actor, { ...input, folder: 'spam' });
+}
+
+export async function purgeEligibleEmailFolder(dependencies, actor, input = {}) {
   if (!canPurgeEmailSpam(actor)) throw new EmailArchiveError('Forbidden', 403);
+  const folder = input.folder === 'non_business' ? 'non_business' : 'spam';
   if (text(input.confirmation) !== 'DELETE') {
-    throw new EmailArchiveError('Type DELETE to confirm permanent spam cleanup', 400);
+    throw new EmailArchiveError('Type DELETE to confirm permanent email cleanup', 400);
   }
-  if (typeof dependencies.emailArchiveRepository?.listSpamPurgeCandidates !== 'function') {
-    throw new EmailArchiveError('Spam cleanup is unavailable', 503);
+  const repository = dependencies.emailArchiveRepository;
+  if (typeof repository?.listCleanupCandidates !== 'function'
+      && !(folder === 'spam' && typeof repository?.listSpamPurgeCandidates === 'function')) {
+    throw new EmailArchiveError('Email cleanup is unavailable', 503);
   }
   const mailboxKey = text(input.mailboxKey).toLowerCase();
   const seenThreadIds = new Set();
   const purged = [];
   const fileFailures = [];
   while (true) {
-    const candidates = await dependencies.emailArchiveRepository.listSpamPurgeCandidates({
+    const candidateInput = {
       mailboxKey,
+      folder,
       limit: 100
-    });
+    };
+    const candidates = typeof repository.listCleanupCandidates === 'function'
+      ? await repository.listCleanupCandidates(candidateInput)
+      : await repository.listSpamPurgeCandidates(candidateInput);
     const newCandidates = candidates.filter((candidate) => !seenThreadIds.has(Number(candidate.threadId)));
     if (!newCandidates.length) break;
     for (const listedCandidate of newCandidates) {
@@ -1003,7 +1054,9 @@ export async function purgeEligibleEmailSpam(dependencies, actor, input = {}) {
           threadId: listedCandidate.threadId,
           actorUserId: actor.id,
           subjectSha256,
-          reason: 'administrator-confirmed permanent deletion from the spam list'
+          reason: folder === 'spam'
+            ? 'administrator-confirmed permanent deletion from the spam list'
+            : 'administrator-confirmed permanent deletion from the non-business mail list'
         })
       ));
       if (!candidate) continue;
@@ -1049,12 +1102,12 @@ export async function purgeEmailThread(dependencies, actor, threadId, input = {}
       subjectSha256,
       reason: thread.triageStatus === 'spam' && thread.archiveDisposition === 'spam'
         ? 'administrator-confirmed permanent deletion from the spam list'
-        : 'administrator-confirmed unlinked email; no current or historical business links and no outbound messages'
+        : 'administrator-confirmed permanent deletion from the non-business mail list'
     })
   ));
   if (!candidate) {
     throw new EmailArchiveError(
-      'Non-spam email is protected because it has a business relationship, outbound message, or historical business link',
+      'Only confirmed spam or eligible non-business mail can be permanently deleted',
       409
     );
   }

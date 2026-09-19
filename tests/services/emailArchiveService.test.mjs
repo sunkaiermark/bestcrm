@@ -12,6 +12,7 @@ import {
   convertEmailThreadToLead,
   convertEmailThreadToInquiry,
   createOpportunityFromEmailThread,
+  getEmailCleanupSummary,
   getEmailThreadIntakeContext,
   getEmailSpamCleanupSummary,
   getVisibleEmailThread,
@@ -21,6 +22,7 @@ import {
   listVisibleEmailMailboxes,
   listVisibleEmailThreads,
   purgeEmailThread,
+  purgeEligibleEmailFolder,
   purgeEligibleEmailSpam,
   resolveVisibleEmailMailbox,
   setEmailThreadDisposition,
@@ -265,14 +267,66 @@ test('imported sent mail joins the referenced opportunity thread and records its
   assert.equal(result.duplicate, false);
   assert.equal(captured.message.threadId, 4);
   assert.equal(captured.message.authoredBy, 7);
-  assert.equal(captured.message.rawMessageId, undefined);
-  assert.equal(captured.message.rawEmlStoredPath, undefined);
+  assert.equal(captured.message.rawMessageId, 81);
+  assert.equal(captured.message.rawEmlStoredPath, 'email-raw/markyang/sent-12.eml');
+  assert.equal(captured.message.rawEmlFileSize, 128);
+  assert.equal(captured.message.rawEmlSha256, 'a'.repeat(64));
+  assert.ok(captured.message.importedAt);
   assert.equal(captured.delivery.direction, 'outbound');
   assert.equal(captured.delivery.mailboxKey, 'markyang@sunkaier.com');
   assert.equal(captured.delivery.rawMessageId, 81);
   assert.equal(captured.rawProcessing.rawMessageId, 81);
   assert.equal(captured.rawProcessing.outcome, 'succeeded');
   assert.deepEqual(captured.touch, [4, '2026-09-03T02:00:00Z']);
+});
+
+test('duplicate imported sent mail binds newly captured raw evidence before recording delivery', async () => {
+  const captured = {};
+  const existing = {
+    id: 13,
+    threadId: 4,
+    direction: 'outbound',
+    rawMessageId: null
+  };
+  const rawCapture = {
+    mailboxKey: 'sales@sunkaier.com',
+    providerName: 'imap',
+    providerMailbox: 'Sent',
+    providerUidValidity: '5',
+    providerUid: 22,
+    storedPath: 'email-raw/sales/sent-22.eml',
+    fileSize: 256,
+    sha256: 'b'.repeat(64),
+    scan: { engine: 'test', verdict: 'clean' }
+  };
+  const result = await archiveImportedOutboundEmailRecord({
+    contactRepository: {},
+    emailArchiveRepository: {
+      async findMessageIdentity() { return existing; },
+      async createRawMessage(input) { return { rawMessage: { id: 82, ...input }, created: true }; },
+      async createRawScanAttempt(input) { return input; },
+      async createRawProcessingAttempt(input) { return input; },
+      async linkImportedOutboundMessageRawArchive(input) {
+        captured.binding = input;
+        return { ...existing, rawMessageId: input.rawMessageId, rawEmlStoredPath: input.rawEmlStoredPath };
+      },
+      async createMailboxDelivery(input) { captured.delivery = input; return input; },
+      async findThreadById() { return { id: 4, opportunityId: 20 }; }
+    }
+  }, parsed({
+    mailboxKey: 'sales@sunkaier.com',
+    messageId: 'sent-22@example.com',
+    providerMailbox: 'Sent',
+    providerUid: 22,
+    fromAddress: 'sales@sunkaier.com',
+    receivedAt: null,
+    sentAt: '2026-09-03T02:00:00Z'
+  }), { rawCapture });
+
+  assert.equal(result.duplicate, true);
+  assert.equal(captured.binding.rawMessageId, 82);
+  assert.equal(captured.binding.rawEmlStoredPath, rawCapture.storedPath);
+  assert.equal(captured.delivery.rawMessageId, 82);
 });
 
 test('archived attachments retain checksum and independent email-archive file', async () => {
@@ -830,6 +884,49 @@ test('spam cleanup summary is administrator-only and immediate during system deb
   assert.deepEqual(calls[0], {
     mailboxKey: 'sales@sunkaier.com'
   });
+});
+
+test('non-business cleanup uses the separate folder scope and administrator guard', async () => {
+  const calls = [];
+  const dependencies = {
+    emailArchiveRepository: {
+      async getCleanupSummary(input) {
+        calls.push(input);
+        return { eligibleThreads: 2, messages: 3, attachments: 0, attachmentBytes: 0, rawMessages: 3, rawMessageBytes: 600 };
+      },
+      async listCleanupCandidates(input) {
+        calls.push(input);
+        return calls.filter((item) => item.limit).length === 1
+          ? [{ threadId: 8, subject: 'System notice' }]
+          : [];
+      },
+      async purgeEmailThread(input) {
+        calls.push(input);
+        return {
+          threadId: 8,
+          messageCount: 1,
+          attachmentBytes: 0,
+          rawMessageBytes: 200,
+          attachmentPaths: [],
+          rawMessagePaths: []
+        };
+      }
+    },
+    uploadDir: './var/uploads'
+  };
+
+  const actor = { id: 1, roles: [ROLES.ADMINISTRATOR] };
+  const summary = await getEmailCleanupSummary(dependencies, actor, 'Sales@Sunkaier.com', 'non_business');
+  assert.equal(summary.eligibleThreads, 2);
+  assert.deepEqual(calls[0], { mailboxKey: 'sales@sunkaier.com', folder: 'non_business' });
+
+  const purged = await purgeEligibleEmailFolder(dependencies, actor, {
+    mailboxKey: 'sales@sunkaier.com',
+    folder: 'non_business',
+    confirmation: 'DELETE'
+  });
+  assert.equal(purged.purgedThreads, 1);
+  assert.match(calls.find((item) => item.reason)?.reason || '', /non-business mail list/);
 });
 
 test('administrator spam purge requires typed confirmation and continues until every listed spam thread is gone', async () => {

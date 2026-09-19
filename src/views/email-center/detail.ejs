@@ -26,17 +26,6 @@
         <% if (canTriage) { %>
           <section class="email-triage-panel" aria-label="<%= t('emailManualTriage') %>">
             <div class="email-triage-grid">
-            <% if (thread.triageStatus === 'pending' && triageAssignees.length) { %>
-              <form class="email-triage-grid-row" method="post" action="/email-center/threads/<%= thread.id %>/assignment">
-                <%- csrfField() %>
-                <input type="hidden" name="mailbox" value="<%= backMailbox %>">
-                <input type="hidden" name="from" value="<%= backFolder %>">
-                <input type="hidden" name="category" value="<%= backCategory %>">
-                <button type="submit"><%= t('emailManualTriage') %></button>
-                <select name="assignedUserId" aria-label="<%= t('emailSelectReviewer') %>" required><option value=""><%= t('emailSelectReviewer') %></option><% for (const user of triageAssignees) { %><option value="<%= user.id %>"<%= Number(thread.triageAssignedUserId) === Number(user.id) ? ' selected' : '' %>><%= user.displayName %></option><% } %></select>
-              </form>
-            <% } %>
-
             <% if (!thread.opportunityId && linkableOpportunities.length) { %>
               <form class="email-triage-grid-row" method="post" action="/email-center/threads/<%= thread.id %>/opportunity">
                 <%- csrfField() %>
@@ -59,33 +48,28 @@
                   <input type="hidden" name="action" value="spam">
                   <button class="danger-action" type="submit"><%= t('emailSpamAction') %></button>
                 </form>
+                <form method="post" action="/email-center/threads/<%= thread.id %>/disposition">
+                  <%- csrfField() %>
+                  <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+                  <input type="hidden" name="from" value="<%= backFolder %>">
+                  <input type="hidden" name="category" value="<%= backCategory %>">
+                  <input type="hidden" name="action" value="non_business">
+                  <button class="secondary-action" type="submit"><%= t('emailNonBusinessAction') %></button>
+                </form>
               </div>
             </div>
-
-            <details class="email-triage-more">
-              <summary><%= t('emailOtherActions') %></summary>
-              <form class="email-triage-archive-form" method="post" action="/email-center/threads/<%= thread.id %>/disposition">
-                <%- csrfField() %>
-                <input type="hidden" name="mailbox" value="<%= backMailbox %>">
-                <input type="hidden" name="from" value="<%= backFolder %>">
-                <input type="hidden" name="category" value="<%= backCategory %>">
-                <input type="hidden" name="action" value="archive">
-                <label><span><%= t('emailTriageNote') %></span><input type="text" name="note" maxlength="1000"></label>
-                <button class="secondary-action" type="submit"><%= t('emailArchiveAction') %></button>
-              </form>
-            </details>
           </section>
         <% } %>
 
-        <% if (thread.triageStatus === 'spam') { %>
+        <% if (['spam', 'archived'].includes(thread.triageStatus)) { const isSpam = thread.triageStatus === 'spam'; %>
           <section class="form-panel email-spam-restore">
-            <p><%= t('emailSpamRestoreHelp') %></p>
+            <p><%= t(isSpam ? 'emailSpamRestoreHelp' : 'emailNonBusinessRestoreHelp') %></p>
             <form method="post" action="/email-center/threads/<%= thread.id %>/disposition">
               <%- csrfField() %>
               <input type="hidden" name="mailbox" value="<%= backMailbox %>">
-              <input type="hidden" name="from" value="spam">
+              <input type="hidden" name="from" value="<%= isSpam ? 'spam' : 'non_business' %>">
               <input type="hidden" name="action" value="restore">
-              <button type="submit"><%= t('emailSpamRestoreAction') %></button>
+              <button type="submit"><%= t(isSpam ? 'emailSpamRestoreAction' : 'emailNonBusinessRestoreAction') %></button>
             </form>
           </section>
         <% } %>
@@ -115,8 +99,13 @@
               <div class="email-conversation-body">
                 <div class="email-recipient-line"><%= t('emailTo') %>: <%= recipients(message.toRecipients) || '-' %><% if (message.ccRecipients.length) { %> · <%= t('emailCc') %>: <%= recipients(message.ccRecipients) %><% } %></div>
                 <details class="email-message-details"><summary><%= t('emailMessageDetails') %></summary><dl class="detail-grid"><div><dt><%= t('emailFrom') %></dt><dd><%= message.fromName ? `${message.fromName} <${message.fromAddress}>` : message.fromAddress %></dd></div><div><dt><%= t('emailDate') %></dt><dd><%= formatEmailListDate(messageDate) %></dd></div><div><dt><%= t('emailTo') %></dt><dd><%= recipients(message.toRecipients) || '-' %></dd></div><div><dt><%= t('emailCc') %></dt><dd><%= recipients(message.ccRecipients) || '-' %></dd></div><div><dt>Message-ID</dt><dd><%= message.messageId || '-' %></dd></div><div><dt>In-Reply-To</dt><dd><%= message.inReplyTo || '-' %></dd></div></dl></details>
-                <pre class="email-plain-body"><%= message.textBody %></pre>
-                <% if (message.htmlBody) { %><p class="muted"><%= t('htmlEmailBlockedNotice') %></p><% } %>
+                <% if (message.htmlBody) { %>
+                  <p class="muted email-html-safety-note"><%= t('htmlEmailBlockedNotice') %></p>
+                  <iframe class="email-html-body" src="/email-center/messages/<%= message.id %>/content" sandbox="" referrerpolicy="no-referrer" loading="lazy" title="<%= t('emailHtmlContent') %>"></iframe>
+                  <% if (message.textBody) { %><details class="email-plain-fallback"><summary><%= t('emailPlainTextVersion') %></summary><pre class="email-plain-body email-reading-body"><%= formatPlainEmailForReading(message.textBody) %></pre></details><% } %>
+                <% } else { %>
+                  <pre class="email-plain-body email-reading-body"><%= formatPlainEmailForReading(message.textBody) %></pre>
+                <% } %>
                 <% if (message.attachments.length) { %><div class="email-attachment-list"><strong><%= t('attachments') %></strong><div class="email-attachment-chips"><% for (const attachment of message.attachments) { %><a class="email-attachment-chip" href="/email-center/attachments/<%= attachment.id %>/download"><span aria-hidden="true">📎</span><span><%= attachment.originalName %></span><small><%= attachment.fileSize %> B</small></a><% } %></div><details class="email-attachment-integrity"><summary><%= t('emailAttachmentIntegrity') %></summary><% for (const attachment of message.attachments) { %><p><%= attachment.originalName %> · SHA-256 <code><%= attachment.sha256 %></code></p><% } %></details></div><% } %>
               </div>
             </details>

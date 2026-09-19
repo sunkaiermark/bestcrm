@@ -330,19 +330,27 @@ const confirmedSpamEligibility = `
   AND thread.triage_status = 'spam'
 `;
 
-const emailPurgeBusinessEligibility = `
-  (
-    (
-      ${emailPurgeNonInquiryEligibility}
-      AND ${strictEmailInquiryEligibility}
-    )
-    OR (${confirmedSpamEligibility})
-  )
-`;
-
 const spamPurgeEligibility = `
   ${confirmedSpamEligibility}
 `;
+
+const confirmedNonBusinessEligibility = `
+  thread.archive_disposition = 'archived'
+  AND thread.triage_status = 'archived'
+  AND ${emailPurgeNonInquiryEligibility}
+  AND ${strictEmailInquiryEligibility}
+`;
+
+const emailPurgeBusinessEligibility = `
+  (
+    (${confirmedSpamEligibility})
+    OR (${confirmedNonBusinessEligibility})
+  )
+`;
+
+function cleanupPurgeEligibility(folder) {
+  return folder === 'non_business' ? confirmedNonBusinessEligibility : spamPurgeEligibility;
+}
 
 const threadSelect = `
   SELECT
@@ -1104,12 +1112,13 @@ export function createEmailArchiveRepository(queryTarget) {
       return mapThreadRow(result.rows[0]);
     },
 
-    async getSpamCleanupSummary({ mailboxKey = '' }) {
+    async getCleanupSummary({ mailboxKey = '', folder = 'spam' }) {
+      const cleanupEligibility = cleanupPurgeEligibility(folder);
       const result = await queryTarget.query(`
         WITH eligible AS (
           SELECT thread.id
           FROM email_threads thread
-          WHERE ${spamPurgeEligibility}
+          WHERE ${cleanupEligibility}
             AND (
               $1 = ''
               OR lower(btrim(thread.mailbox_key)) = $1
@@ -1158,7 +1167,12 @@ export function createEmailArchiveRepository(queryTarget) {
       return mapSpamCleanupSummary(result.rows[0]);
     },
 
-    async listSpamPurgeCandidates({ mailboxKey = '', limit = 100 }) {
+    async getSpamCleanupSummary(input = {}) {
+      return this.getCleanupSummary({ ...input, folder: 'spam' });
+    },
+
+    async listCleanupCandidates({ mailboxKey = '', folder = 'spam', limit = 100 }) {
+      const cleanupEligibility = cleanupPurgeEligibility(folder);
       const result = await queryTarget.query(`
         SELECT
           thread.id AS thread_id,
@@ -1168,7 +1182,7 @@ export function createEmailArchiveRepository(queryTarget) {
           thread.archive_disposition,
           thread.last_message_at
         FROM email_threads thread
-        WHERE ${spamPurgeEligibility}
+        WHERE ${cleanupEligibility}
           AND (
             $1 = ''
             OR lower(btrim(thread.mailbox_key)) = $1
@@ -1185,6 +1199,10 @@ export function createEmailArchiveRepository(queryTarget) {
         LIMIT $2
       `, [text(mailboxKey).trim().toLowerCase(), Math.max(1, Math.min(Number(limit) || 100, 100))]);
       return result.rows.map(mapEmailPurgeCandidate);
+    },
+
+    async listSpamPurgeCandidates(input = {}) {
+      return this.listCleanupCandidates({ ...input, folder: 'spam' });
     },
 
     async isThreadPurgeEligible(threadId) {
@@ -1469,6 +1487,31 @@ export function createEmailArchiveRepository(queryTarget) {
           imported_at = COALESCE(imported_at, $6)
         WHERE id = $1
           AND direction = 'inbound'
+          AND raw_message_id IS NULL
+        RETURNING *
+      `, [
+        input.messageId,
+        input.rawMessageId,
+        input.rawEmlStoredPath,
+        input.rawEmlFileSize,
+        input.rawEmlSha256,
+        input.importedAt
+      ]);
+      return mapMessageRow(result.rows[0]);
+    },
+
+    async linkImportedOutboundMessageRawArchive(input) {
+      const result = await queryTarget.query(`
+        UPDATE email_messages
+        SET
+          raw_message_id = $2,
+          raw_eml_stored_path = $3,
+          raw_eml_file_size = $4,
+          raw_eml_sha256 = $5,
+          imported_at = COALESCE(imported_at, $6)
+        WHERE id = $1
+          AND direction = 'outbound'
+          AND delivery_status = 'sent'
           AND raw_message_id IS NULL
         RETURNING *
       `, [
