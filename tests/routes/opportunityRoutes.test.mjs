@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { existsSync } from 'node:fs';
-import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import request from 'supertest';
@@ -3141,9 +3142,12 @@ test('page form uploads attachment metadata and stores file', async () => {
     assert.equal(uploadedAttachments[0].originalName, 'quote.txt');
     assert.equal(uploadedAttachments[0].mimeType, 'text/plain');
     assert.equal(uploadedAttachments[0].fileSize, 10);
+    assert.equal(uploadedAttachments[0].sha256, createHash('sha256').update('quote file').digest('hex'));
     assert.equal(uploadedAttachments[0].uploadedBy, 3);
     assert.match(uploadedAttachments[0].storedPath, /\.txt$/);
-    assert.equal(existsSync(path.resolve(uploadDir, uploadedAttachments[0].storedPath)), true);
+    const storedFilePath = path.resolve(uploadDir, uploadedAttachments[0].storedPath);
+    assert.equal(existsSync(storedFilePath), true);
+    assert.deepEqual(await readFile(storedFilePath), Buffer.from('quote file'));
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -142,6 +143,7 @@ test('salesperson submits a manager-assigned lead with one supporting file', asy
     assert.equal(attachmentCall[1].inquiryId, 11);
     assert.equal(attachmentCall[1].sourceIndex, 0);
     assert.equal(attachmentCall[1].originalName, 'process.txt');
+    assert.equal(attachmentCall[1].sha256, createHash('sha256').update('process data').digest('hex'));
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

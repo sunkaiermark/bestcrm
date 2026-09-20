@@ -280,7 +280,7 @@ git commit -m "feat: persist attachment evidence identity"
 - Modify: `tests/routes/leadSubmissionRoutes.test.mjs`
 - Modify: `tests/routes/opportunityRoutes.test.mjs`
 
-- [ ] **Step 1: Write failing service and route tests**
+- [x] **Step 1: Write failing service and route tests**
 
 Cover:
 
@@ -291,11 +291,11 @@ Cover:
 - inquiry-to-opportunity copy persists the copied file hash and `sourceInquiryAttachmentId`;
 - copied digest must equal the source digest when the source is already verified.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run the focused new/existing route and service tests. Expected: hash/source assertions fail.
 
-- [ ] **Step 3: Implement creation orchestration**
+- [x] **Step 3: Implement creation orchestration**
 
 Export from `attachmentIntegrityService.mjs`:
 
@@ -314,7 +314,7 @@ The creation function derives a safe relative path, inspects final bytes, passes
 repository, and removes `file.path` only if the database insert fails. Update direct upload, manual
 lead upload, email extraction, and copy code to pass verified digests.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run:
 
@@ -324,7 +324,7 @@ node --test tests/services/attachmentIntegrityService.test.mjs tests/services/em
 
 Expected: zero failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/services/attachmentIntegrityService.mjs src/services/emailInquiryAttachmentService.mjs src/routes/leadSubmissionRoutes.mjs src/routes/opportunityRoutes.mjs tests/services/attachmentIntegrityService.test.mjs tests/services/emailInquiryAttachmentService.test.mjs tests/routes/leadSubmissionRoutes.test.mjs tests/routes/opportunityRoutes.test.mjs

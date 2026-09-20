@@ -79,7 +79,8 @@ export async function storeEmailInquiryAttachments({
         storedPath: file.storedPath,
         mimeType: attachment.contentType || 'application/octet-stream',
         fileSize: file.fileSize,
-        cid: attachment.cid || attachment.contentId || ''
+        cid: attachment.cid || attachment.contentId || '',
+        sha256: file.sha256
       });
       if (record) {
         stored.push(record);
@@ -118,6 +119,9 @@ export async function copyInquiryAttachmentsToOpportunity({
       prefix: 'converted-inquiries'
     });
     try {
+      if (inquiryAttachment.sha256 && inquiryAttachment.sha256 !== file.sha256) {
+        throw new Error('Copied inquiry attachment digest does not match its source');
+      }
       const attachment = await attachmentRepository.createAttachment({
         opportunityId,
         category: 'requirement',
@@ -125,7 +129,9 @@ export async function copyInquiryAttachmentsToOpportunity({
         storedPath: file.storedPath,
         mimeType: inquiryAttachment.mimeType || 'application/octet-stream',
         fileSize: file.fileSize,
-        uploadedBy: actor.id
+        uploadedBy: actor.id,
+        sourceInquiryAttachmentId: inquiryAttachment.id,
+        sha256: file.sha256
       });
       copied.push(attachment);
     } catch (error) {

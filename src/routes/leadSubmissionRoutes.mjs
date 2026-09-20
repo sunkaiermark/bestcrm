@@ -8,7 +8,10 @@ import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
 import { SALES_LEAD_SOURCE_CHANNELS } from '../domain/inquiries.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
-import { resolveStoredPath } from '../services/attachmentFileService.mjs';
+import {
+  inspectStoredAttachmentFile,
+  resolveStoredPath
+} from '../services/attachmentFileService.mjs';
 import {
   convertEmailThreadToLead,
   EmailArchiveError,
@@ -177,14 +180,17 @@ export function leadSubmissionRoutes({
           )).lead
         : await submitSalesLead({ inquiryRepository, userRepository }, req.currentUser, req.body);
       if (req.file && !inquiry.wasDuplicate) {
+        const storedPath = storedPathForFile(uploadDir, req.file);
+        const inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath });
         await inquiryAttachmentRepository.createAttachment({
           inquiryId: inquiry.id,
           sourceIndex: 0,
           originalName: normalizeUploadedFilename(req.file.originalname),
-          storedPath: storedPathForFile(uploadDir, req.file),
+          storedPath,
           mimeType: req.file.mimetype || 'application/octet-stream',
-          fileSize: req.file.size,
-          cid: ''
+          fileSize: inspected.fileSize,
+          cid: '',
+          sha256: inspected.sha256
         });
       } else if (req.file) {
         await removeUploadedFile(req.file);

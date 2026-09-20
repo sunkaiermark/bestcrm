@@ -62,10 +62,12 @@ function attachmentFileError(code) {
 
 async function sha256File(filePath) {
   const hash = createHash('sha256');
+  let fileSize = 0;
   for await (const chunk of createReadStream(filePath)) {
     hash.update(chunk);
+    fileSize += chunk.length;
   }
-  return hash.digest('hex');
+  return { fileSize, sha256: hash.digest('hex') };
 }
 
 export async function inspectStoredAttachmentFile({ uploadDir, storedPath }) {
@@ -73,10 +75,11 @@ export async function inspectStoredAttachmentFile({ uploadDir, storedPath }) {
   if (!absolutePath) throw attachmentFileError('invalid_stored_path');
   const fileStat = await stat(absolutePath);
   if (!fileStat.isFile()) throw attachmentFileError('not_a_file');
+  const inspected = await sha256File(absolutePath);
   return {
     absolutePath,
-    fileSize: fileStat.size,
-    sha256: await sha256File(absolutePath)
+    fileSize: inspected.fileSize,
+    sha256: inspected.sha256
   };
 }
 

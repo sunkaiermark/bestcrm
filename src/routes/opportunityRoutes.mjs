@@ -15,6 +15,8 @@ import {
   EmailArchiveError,
   getEmailThreadIntakeContext
 } from '../services/emailArchiveService.mjs';
+import { resolveStoredPath } from '../services/attachmentFileService.mjs';
+import { persistUploadedOpportunityAttachment } from '../services/attachmentIntegrityService.mjs';
 import {
   archiveOpportunity,
   canArchiveOpportunity,
@@ -34,7 +36,6 @@ import { createSupplementalRequirementUpdate } from '../services/requirementUpda
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import { attachmentPreviewKind, extractDocxPlainText, renderDxfPreview } from '../utils/attachmentPreview.mjs';
 import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
-import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import { createMessageLabeler, createWorkflowButtonLabeler, createWorkflowFieldLabeler, createWorkflowTitleLabeler } from '../utils/i18n.mjs';
 
 function opportunityVisibilityFilter(user) {
@@ -599,21 +600,6 @@ function uploadAttachmentOrSendLimitError(upload, maxUploadMb) {
 
 function normalizeAttachmentCategory(category) {
   return attachmentCategories.has(category) ? category : 'other';
-}
-
-function storedPathForFile(uploadDir, file) {
-  return path.relative(path.resolve(uploadDir), file.path).split(path.sep).join('/');
-}
-
-function resolveStoredPath(uploadDir, storedPath) {
-  const uploadRoot = path.resolve(uploadDir);
-  const resolved = path.resolve(uploadRoot, storedPath);
-  const normalizedRoot = uploadRoot.toLowerCase();
-  const normalizedResolved = resolved.toLowerCase();
-  if (normalizedResolved !== normalizedRoot && !normalizedResolved.startsWith(`${normalizedRoot}${path.sep}`)) {
-    return null;
-  }
-  return resolved;
 }
 
 function previewMimeType(mimeType) {
@@ -1387,14 +1373,13 @@ export function opportunityRoutes({
         res.status(403).send('Attachment upload is not allowed for this section');
         return;
       }
-      await attachmentRepository.createAttachment({
+      await persistUploadedOpportunityAttachment({
+        attachmentRepository,
+        uploadDir,
+        file: req.file,
         opportunityId: req.opportunity.id,
         category,
-        originalName: normalizeUploadedFilename(req.file.originalname),
-        storedPath: storedPathForFile(uploadDir, req.file),
-        mimeType: req.file.mimetype || 'application/octet-stream',
-        fileSize: req.file.size,
-        uploadedBy: req.currentUser.id
+        actorUserId: req.currentUser.id
       });
       res.redirect(`/opportunities/${req.opportunity.id}`);
     } catch (error) {
