@@ -508,22 +508,22 @@ git commit -m "feat: durably purge provisional attachments"
 - Modify: `tests/smoke/server.test.mjs`
 - Modify: `tests/services/releaseCandidateWorkflow.test.mjs`
 
-- [ ] **Step 1: Write failing wiring tests**
+- [x] **Step 1: Write failing wiring tests**
 
 Assert the app starts exactly one attachment cleanup loop when a pool is available, supports an
 injected disabled option for tests, and does not start it without a database.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run smoke/release tests. Expected: missing worker wiring assertions fail.
 
-- [ ] **Step 3: Wire repository and loop**
+- [x] **Step 3: Wire repository and loop**
 
 Instantiate `attachmentIntegrityRepository`, inject it into inquiry routes/services, start
 `startInquiryAttachmentPurgeFileCleanupLoop`, store the handle in `app.locals`, and preserve test
 dependency injection.
 
-- [ ] **Step 4: Verify GREEN and commit**
+- [x] **Step 4: Verify GREEN and commit**
 
 ```powershell
 node --test tests/smoke/server.test.mjs tests/services/releaseCandidateWorkflow.test.mjs

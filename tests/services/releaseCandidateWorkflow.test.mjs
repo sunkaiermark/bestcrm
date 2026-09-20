@@ -25,6 +25,7 @@ import {
 } from '../../src/services/quotationPackageService.mjs';
 import { createCustomerEmailDraft } from '../../src/services/customerEmailService.mjs';
 import { archiveInboundEmailRecord } from '../../src/services/emailArchiveService.mjs';
+import { createApp } from '../../src/server.mjs';
 
 const sales = {
   id: 1, displayName: 'Steven Yang', emailSignatureName: 'Steven Yang',
@@ -456,4 +457,28 @@ test('release candidate completes lead-to-inquiry-to-engineering-to-QP-V2-email-
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
+});
+
+test('release candidate server keeps the inquiry cleanup worker independently injectable', () => {
+  const repository = {};
+  const cleanupHandle = { stop() {} };
+  let starts = 0;
+  const app = createApp({
+    databaseUrl: '',
+    sessionSecret: 'test-secret',
+    pool: { query() { throw new Error('unexpected query'); } },
+    sessionStore: undefined,
+    userRepository: {},
+    attachmentIntegrityRepository: repository,
+    emailPurgeFileCleanupEnabled: false,
+    startInquiryAttachmentPurgeFileCleanupLoop(dependencies) {
+      starts += 1;
+      assert.equal(dependencies.attachmentIntegrityRepository, repository);
+      return cleanupHandle;
+    }
+  });
+
+  assert.equal(starts, 1);
+  assert.equal(app.locals.inquiryAttachmentPurgeFileCleanup, cleanupHandle);
+  assert.equal(app.locals.emailPurgeFileCleanup, null);
 });

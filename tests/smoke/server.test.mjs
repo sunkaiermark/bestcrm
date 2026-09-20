@@ -113,6 +113,7 @@ test('a database-backed app starts the durable email purge file cleanup loop', (
     sessionStore: undefined,
     userRepository: {},
     emailArchiveRepository: repository,
+    inquiryAttachmentPurgeFileCleanupEnabled: false,
     uploadDir: 'C:/bestcrm-test-uploads',
     startEmailPurgeFileCleanupLoop(dependencies, options) {
       starts.push({ dependencies, options });
@@ -124,6 +125,58 @@ test('a database-backed app starts the durable email purge file cleanup loop', (
   assert.equal(starts[0].dependencies.emailArchiveRepository, repository);
   assert.equal(starts[0].dependencies.uploadDir, 'C:/bestcrm-test-uploads');
   assert.equal(app.locals.emailPurgeFileCleanup, cleanupHandle);
+});
+
+test('a database-backed app starts exactly one durable inquiry attachment cleanup loop', () => {
+  const starts = [];
+  const repository = {};
+  const cleanupHandle = { stop() {} };
+  const app = createApp({
+    databaseUrl: '',
+    sessionSecret: 'test-secret',
+    pool: { query() { throw new Error('unexpected query'); } },
+    sessionStore: undefined,
+    userRepository: {},
+    attachmentIntegrityRepository: repository,
+    emailPurgeFileCleanupEnabled: false,
+    uploadDir: 'C:/bestcrm-test-uploads',
+    startInquiryAttachmentPurgeFileCleanupLoop(dependencies, options) {
+      starts.push({ dependencies, options });
+      return cleanupHandle;
+    }
+  });
+
+  assert.equal(starts.length, 1);
+  assert.equal(starts[0].dependencies.attachmentIntegrityRepository, repository);
+  assert.equal(starts[0].dependencies.uploadDir, 'C:/bestcrm-test-uploads');
+  assert.equal(app.locals.inquiryAttachmentPurgeFileCleanup, cleanupHandle);
+});
+
+test('inquiry attachment cleanup loop can be disabled and never starts without a database', () => {
+  let starts = 0;
+  const starter = () => {
+    starts += 1;
+    return { stop() {} };
+  };
+  const disabled = createApp({
+    databaseUrl: '',
+    sessionSecret: 'test-secret',
+    pool: { query() { throw new Error('unexpected query'); } },
+    sessionStore: undefined,
+    userRepository: {},
+    inquiryAttachmentPurgeFileCleanupEnabled: false,
+    emailPurgeFileCleanupEnabled: false,
+    startInquiryAttachmentPurgeFileCleanupLoop: starter
+  });
+  const noDatabase = createApp({
+    databaseUrl: '',
+    sessionSecret: 'test-secret',
+    startInquiryAttachmentPurgeFileCleanupLoop: starter
+  });
+
+  assert.equal(starts, 0);
+  assert.equal(disabled.locals.inquiryAttachmentPurgeFileCleanup, null);
+  assert.equal(noDatabase.locals.inquiryAttachmentPurgeFileCleanup, null);
 });
 
 test('server entrypoint starts an HTTP listener when run directly', async (t) => {

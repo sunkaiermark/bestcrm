@@ -13,6 +13,7 @@ import { writeMaintenance } from './middleware/writeMaintenance.mjs';
 import { submissionGuard } from './middleware/submissionGuard.mjs';
 import { createTrustedDeviceIntegration } from './middleware/trustedDevice.mjs';
 import { createAttachmentRepository } from './repositories/attachmentRepository.mjs';
+import { createAttachmentIntegrityRepository } from './repositories/attachmentIntegrityRepository.mjs';
 import { createApprovalSettingRepository } from './repositories/approvalSettingRepository.mjs';
 import { createCommercialQuoteRepository } from './repositories/commercialQuoteRepository.mjs';
 import { createContractApprovalRepository } from './repositories/contractApprovalRepository.mjs';
@@ -72,6 +73,7 @@ import { createTotpService } from './services/totpService.mjs';
 import { createTrustedDeviceService } from './services/trustedDeviceService.mjs';
 import { createCustomerEmailTransport } from './services/customerEmailService.mjs';
 import { startEmailPurgeFileCleanupLoop } from './services/emailPurgeFileCleanupService.mjs';
+import { startInquiryAttachmentPurgeFileCleanupLoop } from './services/inquiryAttachmentPurgeFileCleanupService.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -647,7 +649,9 @@ export function createApp(options = {}) {
   const inquiryAttachmentRepository = options.inquiryAttachmentRepository || (pool
     ? createInquiryAttachmentRepository(pool)
     : emptyInquiryAttachmentRepository);
-  const attachmentIntegrityRepository = options.attachmentIntegrityRepository || null;
+  const attachmentIntegrityRepository = 'attachmentIntegrityRepository' in options
+    ? options.attachmentIntegrityRepository
+    : pool ? createAttachmentIntegrityRepository(pool) : null;
   const inquiryCustomerApprovalRepository = options.inquiryCustomerApprovalRepository || (pool
     ? createInquiryCustomerApprovalRepository(pool)
     : emptyInquiryCustomerApprovalRepository);
@@ -694,6 +698,17 @@ export function createApp(options = {}) {
   app.locals.emailPurgeFileCleanup = pool && options.emailPurgeFileCleanupEnabled !== false
     ? purgeFileCleanupStarter({
         emailArchiveRepository,
+        uploadDir: config.uploadDir
+      }, {
+        logger: options.logger || console
+      })
+    : null;
+  const inquiryAttachmentPurgeFileCleanupStarter = options.startInquiryAttachmentPurgeFileCleanupLoop
+    || startInquiryAttachmentPurgeFileCleanupLoop;
+  app.locals.inquiryAttachmentPurgeFileCleanup = pool
+    && options.inquiryAttachmentPurgeFileCleanupEnabled !== false
+    ? inquiryAttachmentPurgeFileCleanupStarter({
+        attachmentIntegrityRepository,
         uploadDir: config.uploadDir
       }, {
         logger: options.logger || console
