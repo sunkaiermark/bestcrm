@@ -864,7 +864,7 @@ test('contact code prefix migration converts existing codes and configures immut
   assert.match(sql, /contact_code ~ '\^L\[0-9\]\{6\}\$'/);
 
   const triggerDrop = sql.indexOf('DROP TRIGGER IF EXISTS contacts_protect_contact_code');
-  const conversion = sql.indexOf("UPDATE contacts\nSET contact_code = 'L'");
+  const conversion = sql.search(/UPDATE contacts\r?\nSET contact_code = 'L'/);
   const triggerRestore = sql.lastIndexOf('CREATE TRIGGER contacts_protect_contact_code');
   assert.ok(triggerDrop >= 0 && triggerDrop < conversion);
   assert.ok(triggerRestore > conversion);
