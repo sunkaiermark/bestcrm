@@ -543,12 +543,12 @@ git commit -m "feat: run attachment cleanup worker"
 - Modify: `src/repositories/attachmentIntegrityRepository.mjs`
 - Modify: `package.json`
 
-- [ ] **Step 1: Write failing audit tests**
+- [x] **Step 1: Write failing audit tests**
 
 Use temporary directories and fake rows to cover healthy, unverified, missing, unsafe, non-file,
 wrong-size, wrong-hash, duplicate-path, lifecycle error, and restricted orphan-candidate cases.
 
-- [ ] **Step 2: Verify RED and implement audit**
+- [x] **Step 2: Verify RED and implement audit**
 
 The result shape is stable JSON:
 
@@ -563,12 +563,12 @@ The result shape is stable JSON:
 
 No audit code calls an update/delete repository method.
 
-- [ ] **Step 3: Write failing backfill tests**
+- [x] **Step 3: Write failing backfill tests**
 
 Cover dry-run default, healthy apply, unsafe/missing/size mismatch refusal, row identity changed
 between read and lock, bounded batches, and idempotent rerun.
 
-- [ ] **Step 4: Verify RED and implement backfill**
+- [x] **Step 4: Verify RED and implement backfill**
 
 Export:
 
@@ -579,7 +579,7 @@ backfillLegacyAttachmentHashes({ repository, uploadDir, apply = false, batchSize
 Apply mode enables only `bestcrm.attachment_hash_backfill` inside each row/batch transaction. It
 does not validate the final historical `NOT NULL` constraint.
 
-- [ ] **Step 5: Add CLI commands and verify GREEN**
+- [x] **Step 5: Add CLI commands and verify GREEN**
 
 ```json
 "attachment:integrity:audit": "node scripts/audit-attachment-integrity.mjs",
@@ -588,7 +588,7 @@ does not validate the final historical `NOT NULL` constraint.
 
 Run focused audit/backfill tests. Expected: zero failures.
 
-- [ ] **Step 6: Commit**
+- [x] **Step 6: Commit**
 
 ```powershell
 git add src/services/attachmentIntegrityAuditService.mjs src/services/attachmentIntegrityBackfillService.mjs src/repositories/attachmentIntegrityRepository.mjs scripts/audit-attachment-integrity.mjs scripts/backfill-attachment-integrity.mjs tests/services/attachmentIntegrityAuditService.test.mjs tests/services/attachmentIntegrityBackfillService.test.mjs package.json

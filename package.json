@@ -27,6 +27,8 @@
     "email:reset:execute": "node scripts/execute-email-reimport-reset.mjs",
     "email:classify": "node scripts/classify-email-inquiries.mjs",
     "email:cleanup-attachments": "node scripts/cleanup-email-inquiry-attachments.mjs",
+    "attachment:integrity:audit": "node scripts/audit-attachment-integrity.mjs",
+    "attachment:integrity:backfill": "node scripts/backfill-attachment-integrity.mjs",
     "notifications:deliver": "node scripts/deliver-notifications.mjs",
     "notifications:deliver:once": "node scripts/deliver-notifications.mjs --once",
     "notifications:generate-vapid": "node scripts/generate-vapid-keys.mjs",

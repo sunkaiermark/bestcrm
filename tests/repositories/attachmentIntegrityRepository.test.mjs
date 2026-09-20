@@ -146,3 +146,74 @@ test('cleanup repository methods use guarded leases and retain the permanent aud
   assert.ok(calls.some((call) => /INSERT INTO inquiry_attachment_purge_events[\s\S]*'completed'/i.test(call.sql)));
   assert.ok(calls.every((call) => !/DELETE FROM inquiry_attachment_purge_audits/i.test(call.sql)));
 });
+
+test('integrity inventory maps opportunity lifecycle, inquiry protection, and all known file paths', async () => {
+  const calls = [];
+  const repository = createAttachmentIntegrityRepository({
+    async query(sql) {
+      const statement = String(sql);
+      calls.push(statement);
+      if (/FROM attachments attachment/i.test(statement)) return { rows: [{
+        model: 'opportunity_attachment', id: '1', stored_path: '2026/09/a.pdf', file_size: '5',
+        sha256: 'a'.repeat(64), retired_at: null, retired_by: null, retirement_reason: '',
+        replaced_by_attachment_id: null, replacement_valid: true,
+        protected_business_history: true, purge_eligible: false
+      }] };
+      if (/FROM inquiry_attachments attachment/i.test(statement)) return { rows: [{
+        model: 'inquiry_attachment', id: '2', stored_path: 'email-inquiries/b.pdf', file_size: '7',
+        sha256: null, retired_at: null, retired_by: null, retirement_reason: '',
+        replaced_by_attachment_id: null, replacement_valid: true,
+        protected_business_history: true, purge_eligible: false
+      }] };
+      if (/known_paths/i.test(statement)) return { rows: [{ stored_path: 'email-raw/a.eml' }] };
+      return { rows: [] };
+    }
+  });
+
+  const records = await repository.listAttachmentIntegrityRecords();
+  assert.equal(records.length, 2);
+  assert.equal(records[0].replacementValid, true);
+  assert.equal(records[1].protectedBusinessHistory, true);
+  assert.ok(calls.some((sql) => /replacement\.opportunity_id = attachment\.opportunity_id/i.test(sql)));
+  assert.ok(calls.some((sql) => /opportunity\.origin_inquiry_id = inquiry\.id/i.test(sql)));
+  assert.deepEqual(await repository.listKnownAttachmentStoredPaths(), ['email-raw/a.eml']);
+});
+
+test('legacy inventory is bounded and guarded backfill accepts only unchanged null-digest identity', async () => {
+  const calls = [];
+  const client = {
+    async query(sql, params = []) {
+      const statement = String(sql);
+      calls.push({ sql: statement, params });
+      if (/WITH legacy_records/i.test(statement)) return { rows: [{
+        model: 'inquiry_attachment', id: '2', stored_path: 'email-inquiries/b.pdf', file_size: '7'
+      }] };
+      if (/UPDATE inquiry_attachments/i.test(statement)) return { rows: [{ id: '2' }], rowCount: 1 };
+      return { rows: [], rowCount: 1 };
+    },
+    release() {}
+  };
+  const repository = createAttachmentIntegrityRepository({
+    async connect() { return client; },
+    query: client.query
+  });
+
+  const candidates = await repository.listLegacyAttachmentHashCandidates({
+    afterModel: 'inquiry_attachment', afterId: 1, limit: 25
+  });
+  assert.deepEqual(candidates, [{
+    model: 'inquiry_attachment', id: 2, storedPath: 'email-inquiries/b.pdf', fileSize: 7
+  }]);
+  assert.deepEqual(calls[0].params, ['inquiry_attachment', 1, 25]);
+
+  assert.equal(await repository.backfillAttachmentHash({
+    model: 'inquiry_attachment', id: 2, expectedStoredPath: 'email-inquiries/b.pdf',
+    expectedFileSize: 7, sha256: 'b'.repeat(64)
+  }), true);
+  const guardIndex = calls.findIndex((call) => /bestcrm\.attachment_hash_backfill/.test(call.sql));
+  const updateIndex = calls.findIndex((call) => /UPDATE inquiry_attachments/i.test(call.sql));
+  assert.ok(guardIndex > 0 && guardIndex < updateIndex);
+  assert.match(calls[updateIndex].sql, /sha256 IS NULL/);
+  assert.match(calls[updateIndex].sql, /stored_path = \$3/);
+  assert.match(calls[updateIndex].sql, /file_size = \$4/);
+});

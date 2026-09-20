@@ -55,6 +55,34 @@ function mapPurgeFileJob(row) {
   };
 }
 
+function mapIntegrityRecord(row) {
+  return {
+    model: text(row.model),
+    id: Number(row.id),
+    storedPath: text(row.stored_path),
+    fileSize: Number(row.file_size),
+    sha256: row.sha256 || null,
+    retiredAt: row.retired_at || null,
+    retiredBy: row.retired_by === null || row.retired_by === undefined ? null : Number(row.retired_by),
+    retirementReason: text(row.retirement_reason),
+    replacedByAttachmentId: row.replaced_by_attachment_id === null || row.replaced_by_attachment_id === undefined
+      ? null
+      : Number(row.replaced_by_attachment_id),
+    replacementValid: row.replacement_valid === true,
+    protectedBusinessHistory: row.protected_business_history === true,
+    purgeEligible: row.purge_eligible === true
+  };
+}
+
+function mapLegacyHashCandidate(row) {
+  return {
+    model: text(row.model),
+    id: Number(row.id),
+    storedPath: text(row.stored_path),
+    fileSize: Number(row.file_size)
+  };
+}
+
 async function withTransaction(pool, callback) {
   const client = typeof pool.connect === 'function' ? await pool.connect() : pool;
   try {
@@ -361,6 +389,162 @@ export function createAttachmentIntegrityRepository(pool, options = {}) {
         WHERE $1::bigint[] IS NULL OR job.purge_audit_id = ANY($1::bigint[])
       `, [purgeAuditIds]);
       return Number(result.rows[0]?.count || 0);
+    },
+
+    async listAttachmentIntegrityRecords() {
+      const opportunityResult = await pool.query(`
+        SELECT
+          'opportunity_attachment'::text AS model,
+          attachment.id,
+          attachment.stored_path,
+          attachment.file_size,
+          attachment.sha256,
+          attachment.retired_at,
+          attachment.retired_by,
+          attachment.retirement_reason,
+          attachment.replaced_by_attachment_id,
+          CASE
+            WHEN attachment.replaced_by_attachment_id IS NULL THEN true
+            ELSE replacement.id IS NOT NULL
+              AND replacement.opportunity_id = attachment.opportunity_id
+              AND replacement.retired_at IS NULL
+          END AS replacement_valid,
+          true AS protected_business_history,
+          false AS purge_eligible
+        FROM attachments attachment
+        LEFT JOIN attachments replacement
+          ON replacement.id = attachment.replaced_by_attachment_id
+        ORDER BY attachment.id
+      `);
+      const inquiryResult = await pool.query(`
+        SELECT
+          'inquiry_attachment'::text AS model,
+          attachment.id,
+          attachment.stored_path,
+          attachment.file_size,
+          attachment.sha256,
+          NULL::timestamptz AS retired_at,
+          NULL::bigint AS retired_by,
+          ''::text AS retirement_reason,
+          NULL::bigint AS replaced_by_attachment_id,
+          true AS replacement_valid,
+          (
+            inquiry.converted_opportunity_id IS NOT NULL
+            OR inquiry.matched_customer_id IS NOT NULL
+            OR inquiry.matched_contact_id IS NOT NULL
+            OR EXISTS (
+              SELECT 1 FROM opportunities opportunity
+              WHERE opportunity.origin_inquiry_id = inquiry.id
+            )
+            OR EXISTS (
+              SELECT 1 FROM inquiry_customer_approvals approval
+              WHERE approval.inquiry_id = inquiry.id
+            )
+            OR EXISTS (
+              SELECT 1 FROM email_threads thread
+              WHERE thread.inquiry_id = inquiry.id
+                AND (
+                  thread.opportunity_id IS NOT NULL
+                  OR thread.customer_id IS NOT NULL
+                  OR thread.contact_id IS NOT NULL
+                )
+            )
+          ) AS protected_business_history,
+          false AS purge_eligible
+        FROM inquiry_attachments attachment
+        JOIN inquiries inquiry ON inquiry.id = attachment.inquiry_id
+        ORDER BY attachment.id
+      `);
+      return [...opportunityResult.rows, ...inquiryResult.rows].map(mapIntegrityRecord);
+    },
+
+    async listKnownAttachmentStoredPaths() {
+      const result = await pool.query(`
+        WITH known_paths AS (
+          SELECT stored_path FROM attachments
+          UNION
+          SELECT stored_path FROM inquiry_attachments
+          UNION
+          SELECT stored_path FROM email_attachments
+          UNION
+          SELECT stored_path FROM email_raw_messages
+          UNION
+          SELECT raw_eml_stored_path AS stored_path
+          FROM email_messages
+          WHERE raw_eml_stored_path IS NOT NULL
+          UNION
+          SELECT stored_path FROM email_outbound_mime_artifacts
+          UNION
+          SELECT stored_path FROM email_purge_file_jobs
+          UNION
+          SELECT stored_path FROM inquiry_attachment_purge_file_jobs
+        )
+        SELECT stored_path
+        FROM known_paths
+        WHERE btrim(stored_path) <> ''
+        ORDER BY stored_path
+      `);
+      return result.rows.map((row) => text(row.stored_path)).filter(Boolean);
+    },
+
+    async listLegacyAttachmentHashCandidates(input = {}) {
+      const limit = Math.max(1, Math.min(Number(input.limit) || 100, 1000));
+      const afterModel = text(input.afterModel);
+      const afterId = Math.max(0, Number(input.afterId) || 0);
+      const result = await pool.query(`
+        WITH legacy_records AS (
+          SELECT
+            'inquiry_attachment'::text AS model,
+            id,
+            stored_path,
+            file_size
+          FROM inquiry_attachments
+          WHERE sha256 IS NULL
+          UNION ALL
+          SELECT
+            'opportunity_attachment'::text AS model,
+            id,
+            stored_path,
+            file_size
+          FROM attachments
+          WHERE sha256 IS NULL
+        )
+        SELECT model, id, stored_path, file_size
+        FROM legacy_records
+        WHERE model > $1
+          OR (model = $1 AND id > $2)
+        ORDER BY model, id
+        LIMIT $3
+      `, [afterModel, afterId, limit]);
+      return result.rows.map(mapLegacyHashCandidate);
+    },
+
+    async backfillAttachmentHash(input) {
+      if (!['opportunity_attachment', 'inquiry_attachment'].includes(input.model)) {
+        throw repositoryError('invalid_input', 'Unknown attachment model');
+      }
+      if (!validSha256(input.sha256)) {
+        throw repositoryError('invalid_input', 'sha256 must be a lowercase SHA-256 digest');
+      }
+      const tableName = input.model === 'opportunity_attachment' ? 'attachments' : 'inquiry_attachments';
+      return withTransaction(pool, async (client) => {
+        await client.query(`SELECT set_config('bestcrm.attachment_hash_backfill', 'enabled', true)`);
+        const result = await client.query(`
+          UPDATE ${tableName}
+          SET sha256 = $2
+          WHERE id = $1
+            AND sha256 IS NULL
+            AND stored_path = $3
+            AND file_size = $4
+          RETURNING id
+        `, [
+          positiveId(input.id, 'id'),
+          text(input.sha256),
+          text(input.expectedStoredPath),
+          Number(input.expectedFileSize)
+        ]);
+        return Number(result.rowCount || 0) === 1;
+      });
     }
   };
 }
