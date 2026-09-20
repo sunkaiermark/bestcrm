@@ -605,17 +605,17 @@ git commit -m "feat: audit legacy attachment integrity"
 - Modify: `scripts/verify-email-raw-restore.mjs`
 - Modify: `tests/scripts/backupArtifacts.test.mjs`
 
-- [ ] **Step 1: Write failing inventory and backup tests**
+- [x] **Step 1: Write failing inventory and backup tests**
 
 Require sorted JSONL rows containing model, record ID, path, size, SHA-256, and lifecycle state.
 Reject duplicate/unsafe paths, unverified rows when strict mode is requested, archive omissions,
 wrong restored size, and wrong restored hash.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run both script test files. Expected: missing inventory exporter/parser failures.
 
-- [ ] **Step 3: Implement exporter and backup integration**
+- [x] **Step 3: Implement exporter and backup integration**
 
 The backup script runs the exporter after `pg_dump` while writes remain paused, writes
 `attachment-evidence-files.jsonl`, records its checksum/count/bytes/unverified count in
@@ -624,7 +624,7 @@ The backup script runs the exporter after `pg_dump` while writes remain paused, 
 `verifyBackupArtifacts` preserves backward compatibility for older backups without this inventory;
 new backups containing its manifest checksum must verify every listed archived/restored file.
 
-- [ ] **Step 4: Verify GREEN and shell syntax**
+- [x] **Step 4: Verify GREEN and shell syntax**
 
 ```powershell
 node --test tests/scripts/attachmentEvidenceInventory.test.mjs tests/scripts/backupArtifacts.test.mjs

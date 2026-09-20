@@ -2,6 +2,8 @@ import path from 'node:path';
 import { Pool } from 'pg';
 import { verifyBackupArtifacts } from './verify-backup-artifacts.mjs';
 import { auditEmailRawArchive } from '../src/services/emailRawArchiveAuditService.mjs';
+import { createAttachmentIntegrityRepository } from '../src/repositories/attachmentIntegrityRepository.mjs';
+import { auditAttachmentIntegrity } from '../src/services/attachmentIntegrityAuditService.mjs';
 import { isMainModule } from '../src/utils/moduleEntry.mjs';
 
 export async function verifyEmailRawRestore({
@@ -13,6 +15,7 @@ export async function verifyEmailRawRestore({
   if (!backupDir || !restoreDir) throw new Error('backupDir and restoreDir are required');
   const backup = await verifyBackupArtifacts({ backupDir, restoreDir });
   let databaseAudit = null;
+  let attachmentIntegrityAudit = null;
   if (databaseUrl) {
     const pool = new Pool({ connectionString: databaseUrl });
     try {
@@ -20,6 +23,12 @@ export async function verifyEmailRawRestore({
         queryTarget: pool,
         uploadDir: path.join(path.resolve(restoreDir), backup.uploadDirectoryName)
       });
+      if (backup.hasAttachmentEvidenceInventory) {
+        attachmentIntegrityAudit = await auditAttachmentIntegrity({
+          repository: createAttachmentIntegrityRepository(pool),
+          uploadDir: path.join(path.resolve(restoreDir), backup.uploadDirectoryName)
+        });
+      }
     } finally {
       await pool.end();
     }
@@ -32,8 +41,11 @@ export async function verifyEmailRawRestore({
       || (requireComplete && !databaseAudit.readyToRebuildEmailEvidence)) {
       throw new Error('Restored email evidence database/file audit failed');
     }
+    if (attachmentIntegrityAudit && !attachmentIntegrityAudit.ok) {
+      throw new Error('Restored attachment evidence database/file audit failed');
+    }
   }
-  return { backup, databaseAudit };
+  return { backup, databaseAudit, attachmentIntegrityAudit };
 }
 
 function parseArguments(argv) {

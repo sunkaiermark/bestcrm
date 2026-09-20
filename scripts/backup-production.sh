@@ -14,6 +14,8 @@ RAW_EMAIL_DIR="$UPLOAD_DIR/email-raw"
 RAW_EMAIL_INVENTORY="$BACKUP_PATH/email-raw-files.sha256"
 OUTBOUND_MIME_DIR="$UPLOAD_DIR/email-outbound"
 EMAIL_EVIDENCE_INVENTORY="$BACKUP_PATH/email-evidence-files.sha256"
+ATTACHMENT_EVIDENCE_INVENTORY="$BACKUP_PATH/attachment-evidence-files.jsonl"
+ATTACHMENT_EVIDENCE_EXPORTER="${BESTCRM_ATTACHMENT_EVIDENCE_EXPORTER:-$SCRIPT_DIR/export-attachment-evidence-inventory.mjs}"
 ALLOW_APP_DURING_BACKUP="${BESTCRM_ALLOW_APP_DURING_BACKUP:-false}"
 MAINTENANCE_FLAG="${BESTCRM_WRITE_MAINTENANCE_FLAG:-/run/bestcrm/write-maintenance}"
 BACKUP_STARTED=false
@@ -35,6 +37,11 @@ fi
 
 if [ ! -f "$ENV_READER" ]; then
   echo "Missing safe environment reader: $ENV_READER" >&2
+  exit 1
+fi
+
+if [ ! -f "$ATTACHMENT_EVIDENCE_EXPORTER" ]; then
+  echo "Missing attachment evidence exporter: $ATTACHMENT_EVIDENCE_EXPORTER" >&2
   exit 1
 fi
 
@@ -69,6 +76,15 @@ mkdir "$BACKUP_PATH"
 BACKUP_STARTED=true
 
 pg_dump "$DATABASE_URL" > "$BACKUP_PATH/database.sql"
+
+ATTACHMENT_EVIDENCE_SUMMARY="$(
+  node "$ATTACHMENT_EVIDENCE_EXPORTER" \
+    --output "$ATTACHMENT_EVIDENCE_INVENTORY" \
+    --upload-dir "$UPLOAD_DIR"
+)"
+ATTACHMENT_EVIDENCE_FILE_COUNT="$(node -e 'const v=JSON.parse(process.argv[1]); process.stdout.write(String(v.fileCount));' "$ATTACHMENT_EVIDENCE_SUMMARY")"
+ATTACHMENT_EVIDENCE_SIZE_BYTES="$(node -e 'const v=JSON.parse(process.argv[1]); process.stdout.write(String(v.totalBytes));' "$ATTACHMENT_EVIDENCE_SUMMARY")"
+ATTACHMENT_EVIDENCE_UNVERIFIED_COUNT="$(node -e 'const v=JSON.parse(process.argv[1]); process.stdout.write(String(v.unverifiedCount));' "$ATTACHMENT_EVIDENCE_SUMMARY")"
 
 if [ -d "$UPLOAD_DIR" ]; then
   UPLOAD_BASENAME="$(basename "$UPLOAD_DIR")"
@@ -131,6 +147,7 @@ DATABASE_SHA256="$(sha256sum "$BACKUP_PATH/database.sql" | awk '{print $1}')"
 UPLOADS_SHA256="$(sha256sum "$BACKUP_PATH/uploads.tar.gz" | awk '{print $1}')"
 RAW_EMAIL_INVENTORY_SHA256="$(sha256sum "$RAW_EMAIL_INVENTORY" | awk '{print $1}')"
 EMAIL_EVIDENCE_INVENTORY_SHA256="$(sha256sum "$EMAIL_EVIDENCE_INVENTORY" | awk '{print $1}')"
+ATTACHMENT_EVIDENCE_INVENTORY_SHA256="$(sha256sum "$ATTACHMENT_EVIDENCE_INVENTORY" | awk '{print $1}')"
 ENV_SHA256=""
 if [ -f "$BACKUP_PATH/bestcrm.env" ]; then
   ENV_SHA256="$(sha256sum "$BACKUP_PATH/bestcrm.env" | awk '{print $1}')"
@@ -161,6 +178,10 @@ raw_email_size_bytes=$RAW_EMAIL_SIZE_BYTES
 email_evidence_inventory_sha256=$EMAIL_EVIDENCE_INVENTORY_SHA256
 email_evidence_file_count=$EMAIL_EVIDENCE_FILE_COUNT
 email_evidence_size_bytes=$EMAIL_EVIDENCE_SIZE_BYTES
+attachment_evidence_inventory_sha256=$ATTACHMENT_EVIDENCE_INVENTORY_SHA256
+attachment_evidence_file_count=$ATTACHMENT_EVIDENCE_FILE_COUNT
+attachment_evidence_size_bytes=$ATTACHMENT_EVIDENCE_SIZE_BYTES
+attachment_evidence_unverified_count=$ATTACHMENT_EVIDENCE_UNVERIFIED_COUNT
 env_sha256=$ENV_SHA256
 MANIFEST
 

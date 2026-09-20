@@ -74,6 +74,7 @@ test('backup verifier checks database and upload hashes before isolated extracti
     });
     assert.equal(restoreOnly.backup.emailEvidenceFilesVerified, 2);
     assert.equal(restoreOnly.databaseAudit, null);
+    assert.equal(restoreOnly.attachmentIntegrityAudit, null);
 
     await rm(path.join(sourceDir, 'uploads', ...outboundMimeStoredPath.split('/')), { force: true });
     await execFileAsync('tar', ['-czf', uploadsPath, '-C', sourceDir, 'uploads'], { windowsHide: true });
@@ -140,6 +141,92 @@ test('backup verifier remains compatible with legacy raw-email-only inventories'
   }
 });
 
+test('backup verifier validates the new attachment evidence inventory after isolated restore', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'bestcrm-attachment-backup-test-'));
+  const backupDir = path.join(root, 'backup');
+  const sourceDir = path.join(root, 'source');
+  const restoreDir = path.join(root, 'restore');
+  const storedPath = '2026/09/evidence.pdf';
+  const content = Buffer.from('business attachment evidence');
+  try {
+    await mkdir(path.dirname(path.join(sourceDir, 'uploads', ...storedPath.split('/'))), { recursive: true });
+    await mkdir(backupDir, { recursive: true });
+    await writeFile(path.join(sourceDir, 'uploads', ...storedPath.split('/')), content);
+    const database = Buffer.from('-- PostgreSQL database dump\nCREATE TABLE attachments(id bigint);\n');
+    await writeFile(path.join(backupDir, 'database.sql'), database);
+    await execFileAsync('tar', ['-czf', path.join(backupDir, 'uploads.tar.gz'), '-C', sourceDir, 'uploads'], { windowsHide: true });
+    await writeFile(path.join(backupDir, 'email-raw-files.sha256'), '');
+    const inventory = `${JSON.stringify({
+      model: 'opportunity_attachment', recordId: 5, storedPath, size: content.length,
+      sha256: sha256(content), lifecycleState: 'active', verified: true
+    })}\n`;
+    await writeFile(path.join(backupDir, 'attachment-evidence-files.jsonl'), inventory);
+    const uploads = await readFile(path.join(backupDir, 'uploads.tar.gz'));
+    await writeFile(path.join(backupDir, 'manifest.txt'), [
+      'upload_dir=/var/bestcrm/uploads',
+      `database_sha256=${sha256(database)}`,
+      `uploads_sha256=${sha256(uploads)}`,
+      `raw_email_inventory_sha256=${sha256('')}`,
+      'raw_email_file_count=0',
+      'raw_email_size_bytes=0',
+      `attachment_evidence_inventory_sha256=${sha256(inventory)}`,
+      'attachment_evidence_file_count=1',
+      `attachment_evidence_size_bytes=${content.length}`,
+      'attachment_evidence_unverified_count=0',
+      ''
+    ].join('\n'));
+    const refreshArchive = async () => {
+      await execFileAsync('tar', [
+        '-czf', path.join(backupDir, 'uploads.tar.gz'), '-C', sourceDir, 'uploads'
+      ], { windowsHide: true });
+      const refreshedUploadsSha = sha256(await readFile(path.join(backupDir, 'uploads.tar.gz')));
+      const manifestPath = path.join(backupDir, 'manifest.txt');
+      const manifestText = await readFile(manifestPath, 'utf8');
+      await writeFile(
+        manifestPath,
+        manifestText.replace(/^uploads_sha256=.*$/m, `uploads_sha256=${refreshedUploadsSha}`)
+      );
+    };
+
+    const result = await verifyBackupArtifacts({ backupDir, restoreDir });
+    assert.equal(result.attachmentEvidenceFilesVerified, 1);
+    assert.equal(result.attachmentEvidenceBytesVerified, content.length);
+    assert.equal(result.attachmentEvidenceEntries[0].lifecycleState, 'active');
+
+    await rm(path.join(sourceDir, 'uploads', ...storedPath.split('/')), { force: true });
+    await refreshArchive();
+    await assert.rejects(
+      () => verifyBackupArtifacts({ backupDir }),
+      /Attachment evidence file is missing from upload archive/
+    );
+
+    await writeFile(
+      path.join(sourceDir, 'uploads', ...storedPath.split('/')),
+      Buffer.alloc(content.length, 'x')
+    );
+    await refreshArchive();
+    await assert.rejects(
+      () => verifyBackupArtifacts({ backupDir, restoreDir: path.join(root, 'wrong-hash-restore') }),
+      /Restored attachment evidence checksum mismatch/
+    );
+
+    await writeFile(path.join(sourceDir, 'uploads', ...storedPath.split('/')), content);
+    await refreshArchive();
+
+    const invalidSize = inventory.replace(`"size":${content.length}`, `"size":${content.length + 1}`);
+    await writeFile(path.join(backupDir, 'attachment-evidence-files.jsonl'), invalidSize);
+    await writeFile(path.join(backupDir, 'manifest.txt'), (await readFile(path.join(backupDir, 'manifest.txt'), 'utf8'))
+      .replace(sha256(inventory), sha256(invalidSize))
+      .replace(`attachment_evidence_size_bytes=${content.length}`, `attachment_evidence_size_bytes=${content.length + 1}`));
+    await assert.rejects(
+      () => verifyBackupArtifacts({ backupDir, restoreDir: path.join(root, 'invalid-restore') }),
+      /Restored attachment evidence size mismatch/
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('production backup and rollback scripts record and enforce artifact checksums', async () => {
   const root = path.resolve(import.meta.dirname, '..', '..');
   const backupScript = await readFile(path.join(root, 'scripts', 'backup-production.sh'), 'utf8');
@@ -155,6 +242,9 @@ test('production backup and rollback scripts record and enforce artifact checksu
   assert.match(backupScript, /raw_email_inventory_sha256=\$RAW_EMAIL_INVENTORY_SHA256/);
   assert.match(backupScript, /email_evidence_inventory_sha256=\$EMAIL_EVIDENCE_INVENTORY_SHA256/);
   assert.match(backupScript, /email-evidence-files\.sha256/);
+  assert.match(backupScript, /attachment-evidence-files\.jsonl/);
+  assert.match(backupScript, /export-attachment-evidence-inventory\.mjs/);
+  assert.match(backupScript, /attachment_evidence_inventory_sha256=\$ATTACHMENT_EVIDENCE_INVENTORY_SHA256/);
   assert.match(backupScript, /email-outbound/);
   assert.match(backupScript, /systemctl is-active --quiet bestcrm-email-backfill\.service/);
   assert.match(backupScript, /Email intake is active; stop it before creating a consistent database\/file backup/);

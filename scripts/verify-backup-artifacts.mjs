@@ -65,6 +65,72 @@ function parseEmailEvidenceInventory(value, { legacyRawOnly = false } = {}) {
   });
 }
 
+const attachmentEvidenceLifecycle = new Map([
+  ['opportunity_attachment', new Set(['active', 'retired'])],
+  ['inquiry_attachment', new Set(['retained'])],
+  ['inquiry_attachment_purge_job', new Set(['pending', 'processing', 'failed'])]
+]);
+
+export function parseAttachmentEvidenceInventory(value) {
+  const seenPaths = new Set();
+  const seenRecords = new Set();
+  return String(value || '').split(/\r?\n/).flatMap((line, index) => {
+    if (!line) return [];
+    let entry;
+    try {
+      entry = JSON.parse(line);
+    } catch {
+      throw new Error(`Invalid attachment evidence inventory JSON at line ${index + 1}`);
+    }
+    if (!entry || Array.isArray(entry) || typeof entry !== 'object') {
+      throw new Error(`Invalid attachment evidence inventory entry at line ${index + 1}`);
+    }
+    const model = String(entry.model ?? '');
+    const allowedLifecycle = attachmentEvidenceLifecycle.get(model);
+    if (!allowedLifecycle) throw new Error(`Invalid attachment evidence model: ${model}`);
+    if (!Number.isSafeInteger(entry.recordId) || entry.recordId <= 0) {
+      throw new Error(`Invalid attachment evidence record id at line ${index + 1}`);
+    }
+    if (typeof entry.storedPath !== 'string' || !entry.storedPath || entry.storedPath.includes('\\')) {
+      throw new Error(`Unsafe attachment evidence path: ${entry.storedPath ?? ''}`);
+    }
+    assertSafeTarEntries([entry.storedPath]);
+    if (/[\0-\x1f\x7f]/.test(entry.storedPath)) {
+      throw new Error(`Unsafe attachment evidence path: ${entry.storedPath}`);
+    }
+    if (seenPaths.has(entry.storedPath)) {
+      throw new Error(`Duplicate attachment evidence path: ${entry.storedPath}`);
+    }
+    seenPaths.add(entry.storedPath);
+    const recordKey = `${model}:${entry.recordId}`;
+    if (seenRecords.has(recordKey)) {
+      throw new Error(`Duplicate attachment evidence record: ${recordKey}`);
+    }
+    seenRecords.add(recordKey);
+    if (!Number.isSafeInteger(entry.size) || entry.size < 0) {
+      throw new Error(`Invalid attachment evidence size: ${entry.storedPath}`);
+    }
+    if (!shaPattern.test(entry.sha256 || '')) {
+      throw new Error(`Invalid attachment evidence checksum: ${entry.storedPath}`);
+    }
+    if (!allowedLifecycle.has(entry.lifecycleState)) {
+      throw new Error(`Invalid attachment evidence lifecycle state: ${entry.lifecycleState ?? ''}`);
+    }
+    if (typeof entry.verified !== 'boolean') {
+      throw new Error(`Invalid attachment evidence verification state: ${entry.storedPath}`);
+    }
+    return [{
+      model,
+      recordId: entry.recordId,
+      storedPath: entry.storedPath,
+      size: entry.size,
+      sha256: entry.sha256,
+      lifecycleState: entry.lifecycleState,
+      verified: entry.verified
+    }];
+  });
+}
+
 async function fileExists(filePath) {
   try {
     await access(filePath);
@@ -81,6 +147,7 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
   const uploadsPath = path.join(directory, 'uploads.tar.gz');
   const emailEvidenceInventoryPath = path.join(directory, 'email-evidence-files.sha256');
   const legacyRawEmailInventoryPath = path.join(directory, 'email-raw-files.sha256');
+  const attachmentEvidenceInventoryPath = path.join(directory, 'attachment-evidence-files.jsonl');
   const manifestPath = path.join(directory, 'manifest.txt');
   const hasCombinedEvidenceInventory = await fileExists(emailEvidenceInventoryPath);
   const inventoryPath = hasCombinedEvidenceInventory
@@ -90,6 +157,15 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
   const databaseStats = await stat(databasePath);
   if (databaseStats.size < 32) throw new Error('Database backup is empty or incomplete');
   const manifest = parseManifest(await readFile(manifestPath, 'utf8'));
+  const hasAttachmentEvidenceFile = await fileExists(attachmentEvidenceInventoryPath);
+  const hasAttachmentEvidenceManifest = Object.hasOwn(
+    manifest,
+    'attachment_evidence_inventory_sha256'
+  );
+  const hasAttachmentEvidenceInventory = hasAttachmentEvidenceFile || hasAttachmentEvidenceManifest;
+  if (hasAttachmentEvidenceInventory && !hasAttachmentEvidenceFile) {
+    throw new Error('Attachment evidence inventory file is missing');
+  }
   const expectedDatabaseSha = requireChecksum(manifest, 'database_sha256');
   const expectedUploadsSha = requireChecksum(manifest, 'uploads_sha256');
   const inventoryShaKey = hasCombinedEvidenceInventory
@@ -105,6 +181,51 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
   if (uploadsSha256 !== expectedUploadsSha) throw new Error('Upload backup checksum mismatch');
   if (emailEvidenceInventorySha256 !== expectedEvidenceInventorySha) {
     throw new Error('Email evidence inventory checksum mismatch');
+  }
+  let attachmentEvidenceInventorySha256 = null;
+  let attachmentEvidenceEntries = [];
+  let expectedAttachmentEvidenceBytes = 0;
+  let expectedAttachmentEvidenceUnverifiedCount = 0;
+  if (hasAttachmentEvidenceInventory) {
+    const expectedAttachmentInventorySha = requireChecksum(
+      manifest,
+      'attachment_evidence_inventory_sha256'
+    );
+    attachmentEvidenceInventorySha256 = await sha256File(attachmentEvidenceInventoryPath);
+    if (attachmentEvidenceInventorySha256 !== expectedAttachmentInventorySha) {
+      throw new Error('Attachment evidence inventory checksum mismatch');
+    }
+    attachmentEvidenceEntries = parseAttachmentEvidenceInventory(
+      await readFile(attachmentEvidenceInventoryPath, 'utf8')
+    );
+    const expectedAttachmentEvidenceCount = Number(manifest.attachment_evidence_file_count);
+    if (!Number.isSafeInteger(expectedAttachmentEvidenceCount) || expectedAttachmentEvidenceCount < 0) {
+      throw new Error('Backup manifest has an invalid attachment_evidence_file_count');
+    }
+    if (attachmentEvidenceEntries.length !== expectedAttachmentEvidenceCount) {
+      throw new Error('Attachment evidence inventory count mismatch');
+    }
+    expectedAttachmentEvidenceBytes = Number(manifest.attachment_evidence_size_bytes);
+    if (!Number.isSafeInteger(expectedAttachmentEvidenceBytes) || expectedAttachmentEvidenceBytes < 0) {
+      throw new Error('Backup manifest has an invalid attachment_evidence_size_bytes');
+    }
+    const inventoryBytes = attachmentEvidenceEntries.reduce((total, entry) => total + entry.size, 0);
+    if (inventoryBytes !== expectedAttachmentEvidenceBytes) {
+      throw new Error('Attachment evidence inventory byte count mismatch');
+    }
+    expectedAttachmentEvidenceUnverifiedCount = Number(
+      manifest.attachment_evidence_unverified_count
+    );
+    if (
+      !Number.isSafeInteger(expectedAttachmentEvidenceUnverifiedCount)
+      || expectedAttachmentEvidenceUnverifiedCount < 0
+    ) {
+      throw new Error('Backup manifest has an invalid attachment_evidence_unverified_count');
+    }
+    const inventoryUnverifiedCount = attachmentEvidenceEntries.filter((entry) => !entry.verified).length;
+    if (inventoryUnverifiedCount !== expectedAttachmentEvidenceUnverifiedCount) {
+      throw new Error('Attachment evidence inventory unverified count mismatch');
+    }
   }
   const emailEvidenceEntries = parseEmailEvidenceInventory(await readFile(inventoryPath, 'utf8'), {
     legacyRawOnly: !hasCombinedEvidenceInventory
@@ -144,6 +265,11 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
       throw new Error(`Email evidence file is missing from upload archive: ${entry.storedPath}`);
     }
   }
+  for (const entry of attachmentEvidenceEntries) {
+    if (!archivedEntries.has(`${uploadDirectoryName}/${entry.storedPath}`)) {
+      throw new Error(`Attachment evidence file is missing from upload archive: ${entry.storedPath}`);
+    }
+  }
   const rawEmailEntries = emailEvidenceEntries.filter((entry) => entry.storedPath.startsWith('email-raw/'));
   const outboundMimeEntries = emailEvidenceEntries.filter((entry) => entry.storedPath.startsWith('email-outbound/'));
   let emailEvidenceFilesVerified = 0;
@@ -152,6 +278,8 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
   let rawEmailBytesVerified = 0;
   let outboundMimeFilesVerified = 0;
   let outboundMimeBytesVerified = 0;
+  let attachmentEvidenceFilesVerified = 0;
+  let attachmentEvidenceBytesVerified = 0;
   if (restoreDir) {
     const target = path.resolve(restoreDir);
     await mkdir(target, { recursive: true });
@@ -175,6 +303,25 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
     if (emailEvidenceBytesVerified !== expectedEvidenceBytes) {
       throw new Error('Restored email evidence byte count differs from manifest');
     }
+    for (const entry of attachmentEvidenceEntries) {
+      const restoredPath = path.join(target, uploadDirectoryName, ...entry.storedPath.split('/'));
+      const restoredSha256 = await sha256File(restoredPath);
+      const restoredBytes = (await stat(restoredPath)).size;
+      if (restoredBytes !== entry.size) {
+        throw new Error(
+          `Restored attachment evidence size mismatch: ${entry.storedPath} `
+          + `(expected ${entry.size}, received ${restoredBytes})`
+        );
+      }
+      if (restoredSha256 !== entry.sha256) {
+        throw new Error(`Restored attachment evidence checksum mismatch: ${entry.storedPath}`);
+      }
+      attachmentEvidenceFilesVerified += 1;
+      attachmentEvidenceBytesVerified += restoredBytes;
+    }
+    if (attachmentEvidenceBytesVerified !== expectedAttachmentEvidenceBytes) {
+      throw new Error('Restored attachment evidence byte count differs from manifest');
+    }
   }
   return {
     backupDir: directory,
@@ -192,6 +339,12 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
     outboundMimeEntries,
     outboundMimeFilesVerified,
     outboundMimeBytesVerified,
+    hasAttachmentEvidenceInventory,
+    attachmentEvidenceInventorySha256,
+    attachmentEvidenceEntries,
+    attachmentEvidenceFilesVerified,
+    attachmentEvidenceBytesVerified,
+    attachmentEvidenceUnverifiedCount: expectedAttachmentEvidenceUnverifiedCount,
     uploadDirectoryName,
     uploadEntries: entries,
     restoredTo: restoreDir ? path.resolve(restoreDir) : null
