@@ -397,12 +397,12 @@ git commit -m "feat: retain opportunity attachment history"
 - Modify: `tests/services/emailReimportResetExecutionService.test.mjs`
 - Modify: `tests/routes/inquiryRoutes.test.mjs`
 
-- [ ] **Step 1: Write failing migration tests**
+- [x] **Step 1: Write failing migration tests**
 
 Require immutable `inquiry_attachment_purge_audits`, append-only purge events, retryable cleanup
 jobs with leases, safe relative paths, size/hash identity, and guarded mutation settings.
 
-- [ ] **Step 2: Verify RED and create migration 068**
+- [x] **Step 2: Verify RED and create migration 068**
 
 Run schema tests, observe missing migration failure, then implement:
 
@@ -452,18 +452,18 @@ aggregate identity digest. It stores no filename or file content. Events are app
 identity is immutable; lease/status fields and successful job deletion require
 `bestcrm.inquiry_attachment_file_cleanup=enabled`.
 
-- [ ] **Step 3: Write failing repository/service tests**
+- [x] **Step 3: Write failing repository/service tests**
 
 Cover atomic planning, converted/business rejection, guarded cascade deletion, worker retry after a
 simulated crash, already-missing idempotence, wrong-size/hash fail-closed behavior, and permanent
 audit retention after successful job removal.
 
-- [ ] **Step 4: Verify RED**
+- [x] **Step 4: Verify RED**
 
 Run repository, purge worker, inquiry service, and cleanup service tests. Expected: missing APIs and
 old inline deletion behavior fail.
 
-- [ ] **Step 5: Implement guarded purge transaction and worker**
+- [x] **Step 5: Implement guarded purge transaction and worker**
 
 Repository APIs:
 
@@ -480,7 +480,7 @@ business-linked records, inserts audit/jobs, enables the transaction-local delet
 the intended attachment rows/inquiry. The worker verifies path, size, and hash before deletion and
 uses leases/retries like the existing email purge worker.
 
-- [ ] **Step 6: Replace inline deletion callers**
+- [x] **Step 6: Replace inline deletion callers**
 
 `deleteInquiry` and archived/spam attachment cleanup enqueue jobs; they no longer remove files in
 the request or script process. Update the cleanup CLI to construct/inject the repository.
@@ -490,11 +490,11 @@ design and enables `bestcrm.inquiry_attachment_purge` only inside its serializab
 transaction. Add a regression assertion for that guard; do not route reset files into the ordinary
 worker or weaken its dedicated confirmation/backup requirements.
 
-- [ ] **Step 7: Verify GREEN**
+- [x] **Step 7: Verify GREEN**
 
 Run all focused purge/inquiry tests. Expected: zero failures.
 
-- [ ] **Step 8: Commit**
+- [x] **Step 8: Commit**
 
 ```powershell
 git add src/db/migrations/068_inquiry_attachment_purge_jobs.sql src/repositories/attachmentIntegrityRepository.mjs src/services/inquiryAttachmentPurgeFileCleanupService.mjs src/services/inquiryService.mjs src/services/emailInquiryAttachmentCleanupService.mjs src/services/emailReimportResetExecutionService.mjs scripts/cleanup-email-inquiry-attachments.mjs tests/db/schema.test.mjs tests/repositories/attachmentIntegrityRepository.test.mjs tests/services/inquiryAttachmentPurgeFileCleanupService.test.mjs tests/services/inquiryService.test.mjs tests/services/emailInquiryAttachmentCleanupService.test.mjs tests/services/emailReimportResetExecutionService.test.mjs tests/routes/inquiryRoutes.test.mjs

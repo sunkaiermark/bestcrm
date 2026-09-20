@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -8,15 +8,6 @@ import {
   listNonInquiryEmailAttachmentCandidates,
   nonInquiryEmailAttachmentCleanupStatuses
 } from '../../src/services/emailInquiryAttachmentCleanupService.mjs';
-
-async function exists(filePath) {
-  try {
-    await access(filePath);
-    return true;
-  } catch {
-    return false;
-  }
-}
 
 function candidateRows() {
   return [
@@ -26,7 +17,8 @@ function candidateRows() {
       inquiry_status: 'archived',
       original_name: 'notice.pdf',
       stored_path: 'email-inquiries/notice.pdf',
-      file_size: 1200
+      file_size: 1200,
+      sha256: 'a'.repeat(64)
     },
     {
       id: 12,
@@ -34,7 +26,8 @@ function candidateRows() {
       inquiry_status: 'spam',
       original_name: 'seo.pdf',
       stored_path: 'email-inquiries/seo.pdf',
-      file_size: 800
+      file_size: 800,
+      sha256: 'b'.repeat(64)
     }
   ];
 }
@@ -86,8 +79,10 @@ test('cleanupNonInquiryEmailAttachments dry-run summarizes without deleting file
       mode: 'dry-run',
       candidates: 1,
       bytes: 1200,
-      deletedRecords: 0,
-      deletedFiles: 0,
+      plannedInquiries: 0,
+      purgedRecords: 0,
+      queuedFiles: 0,
+      purgeAuditIds: [],
       skipped: []
     });
     assert.equal(await readFile(filePath, 'utf8'), 'keep-this-file');
@@ -97,19 +92,25 @@ test('cleanupNonInquiryEmailAttachments dry-run summarizes without deleting file
   }
 });
 
-test('cleanupNonInquiryEmailAttachments apply removes files before deleting attachment rows', async () => {
+test('cleanupNonInquiryEmailAttachments apply durably plans file cleanup without unlinking inline', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-cleanup-apply-'));
   const fileA = path.join(uploadDir, 'email-inquiries', 'notice.pdf');
   const fileB = path.join(uploadDir, 'email-inquiries', 'seo.pdf');
   const calls = [];
   const queryTarget = {
-    async query(sql, params) {
-      if (/DELETE FROM inquiry_attachments/i.test(sql)) {
-        calls.push(['delete', params[0], await exists(fileA), await exists(fileB)]);
-        return { rows: [{ id: 11 }, { id: 12 }], rowCount: 2 };
-      }
+    async query() {
       calls.push(['select']);
       return { rows: candidateRows() };
+    }
+  };
+  const attachmentIntegrityRepository = {
+    async planInquiryAttachmentPurge(input) {
+      calls.push(['plan', input]);
+      return {
+        purgeAuditId: input.inquiryId + 100,
+        attachmentCount: 1,
+        fileJobCount: 1
+      };
     }
   };
 
@@ -120,7 +121,8 @@ test('cleanupNonInquiryEmailAttachments apply removes files before deleting atta
 
     const result = await cleanupNonInquiryEmailAttachments({
       queryTarget,
-      uploadDir,
+      attachmentIntegrityRepository,
+      actorUserId: 99,
       apply: true
     });
 
@@ -128,16 +130,29 @@ test('cleanupNonInquiryEmailAttachments apply removes files before deleting atta
       mode: 'apply',
       candidates: 2,
       bytes: 2000,
-      deletedRecords: 2,
-      deletedFiles: 2,
+      plannedInquiries: 2,
+      purgedRecords: 2,
+      queuedFiles: 2,
+      purgeAuditIds: [121, 122],
       skipped: []
     });
     assert.deepEqual(calls, [
       ['select'],
-      ['delete', [11, 12], false, false]
+      ['plan', {
+        inquiryId: 21,
+        actorUserId: 99,
+        reason: 'non_business_email_attachment_cleanup:archived',
+        deleteInquiry: false
+      }],
+      ['plan', {
+        inquiryId: 22,
+        actorUserId: 99,
+        reason: 'non_business_email_attachment_cleanup:spam',
+        deleteInquiry: false
+      }]
     ]);
-    assert.equal(await exists(fileA), false);
-    assert.equal(await exists(fileB), false);
+    assert.equal(await readFile(fileA, 'utf8'), 'notice');
+    assert.equal(await readFile(fileB, 'utf8'), 'seo');
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

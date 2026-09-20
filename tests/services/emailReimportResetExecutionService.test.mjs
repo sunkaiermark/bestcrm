@@ -94,6 +94,9 @@ test('email reset execution deletes exact audited ids in dependency order and re
   const statements = [];
   const expectedHash = 'c'.repeat(64);
   const stagingEvents = [];
+  const resetPlan = planResult(expectedHash);
+  resetPlan.plan.delete.inquiryAttachmentIds = ['7'];
+  resetPlan.audit.inquiries.deleteCandidateAttachments = 1;
   const result = await executeEmailReimportReset({
     pool: fakePool(async (sql, params = []) => {
       const statement = String(sql);
@@ -108,7 +111,7 @@ test('email reset execution deletes exact audited ids in dependency order and re
     backupId: '20260918-120000',
     confirmation: EMAIL_REIMPORT_RESET_CONFIRMATION,
     executedBy: 'test',
-    planBuilder: async () => planResult(expectedHash),
+    planBuilder: async () => resetPlan,
     fileStager: async () => ({
       async markDatabaseCommitted() { stagingEvents.push('committed'); },
       async remove() { stagingEvents.push('removed'); },
@@ -124,10 +127,14 @@ test('email reset execution deletes exact audited ids in dependency order and re
     'email_messages',
     'email_threads',
     'email_raw_messages',
+    'inquiry_attachments',
     'inquiries',
     'email_imap_sync_states'
   ]);
   assert.ok(statements.some((sql) => /INSERT INTO email_reimport_reset_audits/i.test(sql)));
+  const inquiryPurgeGuardIndex = statements.findIndex((sql) => /bestcrm\.inquiry_attachment_purge/.test(sql));
+  const inquiryAttachmentDeleteIndex = statements.findIndex((sql) => /DELETE FROM\s+inquiry_attachments/i.test(sql));
+  assert.ok(inquiryPurgeGuardIndex > 0 && inquiryPurgeGuardIndex < inquiryAttachmentDeleteIndex);
   assert.deepEqual(stagingEvents, ['committed', 'removed']);
   assert.equal(result.planSha256, expectedHash);
   assert.equal(result.quarantineCleanupPending, false);

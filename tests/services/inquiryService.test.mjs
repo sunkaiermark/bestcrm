@@ -10,6 +10,7 @@ import {
   canViewInquiry,
   convertInquiryToOpportunity,
   createInquiry,
+  deleteInquiry,
   inquiryAssignableUsers,
   markInquiryAsSpam,
   inquiryListFilterFor,
@@ -685,4 +686,31 @@ test('markInquiryAsSpam records the final spam disposition', async () => {
   }, { reviewNote: 'SEO solicitation' });
   assert.equal(calls[0][1].status, 'spam');
   assert.equal(calls[0][1].reviewNote, 'SEO solicitation');
+});
+
+test('deleteInquiry plans one durable guarded purge and never deletes files inline', async () => {
+  const calls = [];
+  const result = await deleteInquiry({
+    attachmentIntegrityRepository: {
+      async planInquiryAttachmentPurge(input) {
+        calls.push(input);
+        return { purgeAuditId: 91, fileJobCount: 2, inquiryDeleted: true };
+      }
+    }
+  }, administrator, { id: 21 });
+
+  assert.deepEqual(calls, [{
+    inquiryId: 21,
+    actorUserId: 99,
+    reason: 'administrator_deleted_provisional_inquiry',
+    deleteInquiry: true
+  }]);
+  assert.deepEqual(result, { purgeAuditId: 91, fileJobCount: 2, inquiryDeleted: true });
+});
+
+test('deleteInquiry keeps the administrator permission boundary', async () => {
+  await assert.rejects(
+    () => deleteInquiry({ attachmentIntegrityRepository: {} }, salesManager, { id: 21 }),
+    /Forbidden/
+  );
 });

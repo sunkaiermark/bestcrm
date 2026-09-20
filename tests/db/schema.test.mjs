@@ -66,6 +66,7 @@ const emailReimportResetAuditsMigrationPath = new URL('../../src/db/migrations/0
 const emailPurgeFileJobsMigrationPath = new URL('../../src/db/migrations/065_email_purge_file_jobs.sql', import.meta.url);
 const emailOutboundMimeArtifactsMigrationPath = new URL('../../src/db/migrations/066_email_outbound_mime_artifacts.sql', import.meta.url);
 const legacyAttachmentIntegrityMigrationPath = new URL('../../src/db/migrations/067_legacy_attachment_integrity.sql', import.meta.url);
+const inquiryAttachmentPurgeJobsMigrationPath = new URL('../../src/db/migrations/068_inquiry_attachment_purge_jobs.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -1151,4 +1152,27 @@ test('legacy attachment integrity migration protects hashes and opportunity hist
   assert.match(sql, /current_setting\('bestcrm\.attachment_hash_backfill', true\) = 'enabled'/);
   assert.match(sql, /current_setting\('bestcrm\.inquiry_attachment_purge', true\) = 'enabled'/);
   assert.match(sql, /Opportunity attachment events are append-only/);
+});
+
+test('inquiry attachment purge migration preserves permanent audit and guarded cleanup jobs', async () => {
+  const sql = await readFile(inquiryAttachmentPurgeJobsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_attachment_purge_audits/);
+  assert.match(sql, /operation_id uuid NOT NULL UNIQUE/);
+  assert.match(sql, /identity_digest char\(64\) NOT NULL/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_attachment_purge_events/);
+  assert.match(sql, /event_type text NOT NULL CHECK \(event_type IN \('planned', 'completed', 'failed'\)\)/);
+  assert.match(sql, /Inquiry attachment purge audits are immutable/);
+  assert.match(sql, /Inquiry attachment purge events are append-only/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_attachment_purge_file_jobs/);
+  assert.match(sql, /expected_size bigint NOT NULL CHECK \(expected_size >= 0\)/);
+  assert.match(sql, /expected_sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /lease_owner text/);
+  assert.match(sql, /lease_expires_at timestamptz/);
+  assert.match(sql, /Inquiry attachment purge file job identity is immutable/);
+  assert.match(sql, /current_setting\('bestcrm\.inquiry_attachment_file_cleanup', true\) = 'enabled'/);
+  assert.match(sql, /stored_path NOT LIKE '\/\%'/);
+  assert.match(sql, /stored_path NOT LIKE '\\\\\%'/);
+  assert.doesNotMatch(sql, /original_name|file_content|bytea/i);
 });

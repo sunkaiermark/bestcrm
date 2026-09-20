@@ -253,6 +253,7 @@ export async function executeEmailReimportReset({
     });
 
     await client.query(`SELECT set_config('bestcrm.email_purge', 'enabled', true)`);
+    await client.query(`SELECT set_config('bestcrm.inquiry_attachment_purge', 'enabled', true)`);
     const deletedCounts = {};
     for (const [tableName, key] of deletionOrder) {
       deletedCounts[key] = await deleteExactIds(client, tableName, result.plan.delete[key] || []);

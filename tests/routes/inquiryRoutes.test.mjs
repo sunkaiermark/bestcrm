@@ -55,6 +55,7 @@ async function createLoggedInAgent(options = {}) {
     language,
     inquiryRepository: inquiryRepositoryOverrides = {},
     inquiryAttachmentRepository: inquiryAttachmentRepositoryOverrides = {},
+    attachmentIntegrityRepository: attachmentIntegrityRepositoryOverrides = {},
     inquiryCustomerApprovalRepository: inquiryCustomerApprovalRepositoryOverrides = {},
     customerRepository: customerRepositoryOverrides = {},
     contactRepository: contactRepositoryOverrides = {},
@@ -210,6 +211,13 @@ async function createLoggedInAgent(options = {}) {
         return { id: 60, ...input };
       },
       ...attachmentRepositoryOverrides
+    },
+    attachmentIntegrityRepository: {
+      async planInquiryAttachmentPurge(input) {
+        calls.push(['planInquiryAttachmentPurge', input]);
+        return { purgeAuditId: 91, attachmentCount: 1, fileJobCount: 1, inquiryDeleted: true };
+      },
+      ...attachmentIntegrityRepositoryOverrides
     },
     uploadDir
   });
@@ -917,7 +925,7 @@ test('sales manager can finish an inquiry as customer, contact, or spam', async 
   assert.equal(spamFlow.calls.find((call) => call[0] === 'markDisposition')[2].status, 'spam');
 });
 
-test('only an administrator can delete an inquiry and its stored inquiry attachment', async () => {
+test('only an administrator can durably plan deletion of an inquiry and its stored attachment', async () => {
   const salesManagerFlow = await createLoggedInAgent();
   const forbidden = await salesManagerFlow.agent.post('/inquiries/11/delete').type('form').send({});
   assert.equal(forbidden.status, 403);
@@ -945,8 +953,16 @@ test('only an administrator can delete an inquiry and its stored inquiry attachm
     const deleted = await adminFlow.agent.post('/inquiries/11/delete').type('form').send({});
     assert.equal(deleted.status, 302);
     assert.equal(deleted.headers.location, '/inquiries');
-    assert.deepEqual(adminFlow.calls.find((call) => call[0] === 'deleteInquiry'), ['deleteInquiry', 11]);
-    await assert.rejects(() => readFile(fullPath), /ENOENT/);
+    assert.deepEqual(adminFlow.calls.find((call) => call[0] === 'planInquiryAttachmentPurge'), [
+      'planInquiryAttachmentPurge',
+      {
+        inquiryId: 11,
+        actorUserId: 99,
+        reason: 'administrator_deleted_provisional_inquiry',
+        deleteInquiry: true
+      }
+    ]);
+    assert.equal(await readFile(fullPath, 'utf8'), 'delete me');
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

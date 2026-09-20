@@ -647,6 +647,7 @@ export function createApp(options = {}) {
   const inquiryAttachmentRepository = options.inquiryAttachmentRepository || (pool
     ? createInquiryAttachmentRepository(pool)
     : emptyInquiryAttachmentRepository);
+  const attachmentIntegrityRepository = options.attachmentIntegrityRepository || null;
   const inquiryCustomerApprovalRepository = options.inquiryCustomerApprovalRepository || (pool
     ? createInquiryCustomerApprovalRepository(pool)
     : emptyInquiryCustomerApprovalRepository);
@@ -831,6 +832,7 @@ export function createApp(options = {}) {
   app.use(inquiryRoutes({
     inquiryRepository,
     inquiryAttachmentRepository,
+    attachmentIntegrityRepository,
     inquiryCustomerApprovalRepository,
     customerRepository,
     contactRepository,

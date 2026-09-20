@@ -239,6 +239,7 @@ async function handleInquiryActionError(error, dependencies, req, res, next, inq
 export function inquiryRoutes({
   inquiryRepository,
   inquiryAttachmentRepository,
+  attachmentIntegrityRepository,
   inquiryCustomerApprovalRepository,
   customerRepository,
   contactRepository,
@@ -252,6 +253,7 @@ export function inquiryRoutes({
   const dependencies = {
     inquiryRepository,
     inquiryAttachmentRepository,
+    attachmentIntegrityRepository,
     inquiryCustomerApprovalRepository,
     customerRepository,
     contactRepository,

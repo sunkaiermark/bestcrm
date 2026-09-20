@@ -13,7 +13,6 @@ import { ROLES, hasRole } from '../domain/roles.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
 import { createContact } from './contactService.mjs';
 import { canMaintainCustomer, createCustomer } from './customerService.mjs';
-import { removeStoredAttachmentFile, resolveStoredPath } from './attachmentFileService.mjs';
 import { copyInquiryAttachmentsToOpportunity } from './emailInquiryAttachmentService.mjs';
 import { createOpportunityDraft } from './opportunityService.mjs';
 
@@ -732,23 +731,19 @@ export async function markInquiryAsSpam(inquiryRepository, actor, inquiry, input
   });
 }
 
-export async function deleteInquiry({ inquiryRepository, inquiryAttachmentRepository, uploadDir }, actor, inquiry) {
+export async function deleteInquiry({ attachmentIntegrityRepository }, actor, inquiry) {
   if (!canDeleteInquiry(actor)) {
     forbidden();
   }
-  const attachments = typeof inquiryAttachmentRepository?.listByInquiry === 'function'
-    ? await inquiryAttachmentRepository.listByInquiry(inquiry.id)
-    : [];
-  const deleted = await inquiryRepository.deleteById(inquiry.id);
-  if (!deleted) {
-    throw new Error('Inquiry not found');
+  if (typeof attachmentIntegrityRepository?.planInquiryAttachmentPurge !== 'function') {
+    throw new Error('Inquiry attachment purge repository is not configured');
   }
-  for (const attachment of attachments) {
-    const filePath = resolveStoredPath(uploadDir || './var/uploads', attachment.storedPath);
-    if (filePath) {
-      await removeStoredAttachmentFile(filePath);
-    }
-  }
+  return attachmentIntegrityRepository.planInquiryAttachmentPurge({
+    inquiryId: inquiry.id,
+    actorUserId: actor.id,
+    reason: 'administrator_deleted_provisional_inquiry',
+    deleteInquiry: true
+  });
 }
 
 export const inquiryFormOptions = {
