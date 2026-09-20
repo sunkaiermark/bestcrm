@@ -645,7 +645,7 @@ git commit -m "feat: verify attachment backup evidence"
 **Files:**
 - Modify only if a test exposes a scoped defect; every defect requires a failing regression test first.
 
-- [ ] **Step 1: Run focused attachment suite**
+- [x] **Step 1: Run focused attachment suite**
 
 ```powershell
 node --test --test-concurrency=1 tests/db/schema.test.mjs tests/repositories/attachmentRepository.test.mjs tests/repositories/inquiryAttachmentRepository.test.mjs tests/repositories/attachmentIntegrityRepository.test.mjs tests/services/attachmentFileService.test.mjs tests/services/attachmentIntegrityService.test.mjs tests/services/emailInquiryAttachmentService.test.mjs tests/services/inquiryAttachmentPurgeFileCleanupService.test.mjs tests/services/attachmentIntegrityAuditService.test.mjs tests/services/attachmentIntegrityBackfillService.test.mjs tests/services/inquiryService.test.mjs tests/services/emailInquiryAttachmentCleanupService.test.mjs tests/routes/leadSubmissionRoutes.test.mjs tests/routes/inquiryRoutes.test.mjs tests/routes/opportunityRoutes.test.mjs tests/scripts/attachmentEvidenceInventory.test.mjs tests/scripts/backupArtifacts.test.mjs tests/smoke/server.test.mjs tests/services/releaseCandidateWorkflow.test.mjs
@@ -653,7 +653,7 @@ node --test --test-concurrency=1 tests/db/schema.test.mjs tests/repositories/att
 
 Expected: zero failures.
 
-- [ ] **Step 2: Run syntax checks**
+- [x] **Step 2: Run syntax checks**
 
 ```powershell
 node --check src/services/attachmentIntegrityService.mjs
@@ -666,7 +666,7 @@ node --check scripts/export-attachment-evidence-inventory.mjs
 
 Expected: all commands exit 0.
 
-- [ ] **Step 3: Run the complete suite sequentially**
+- [x] **Step 3: Run the complete suite sequentially**
 
 ```powershell
 node --test --test-concurrency=1 --test-reporter=dot "tests/**/*.test.mjs"
@@ -674,7 +674,7 @@ node --test --test-concurrency=1 --test-reporter=dot "tests/**/*.test.mjs"
 
 Expected: zero failures.
 
-- [ ] **Step 4: Inspect scope**
+- [x] **Step 4: Inspect scope**
 
 ```powershell
 git diff --check
@@ -685,7 +685,15 @@ git log --oneline --decorate -12
 Expected: only intended attachment-integrity files/commits; `.playwright-cli/` and `tmp/` remain
 untracked and untouched.
 
-- [ ] **Step 5: Stop and report**
+- [x] **Step 5: Stop and report**
 
 Report exact test counts, commits, remaining transitional risks, and changed files. Do not push,
 connect to Singapore, run production audit/backfill, migrate, restart services, or deploy.
+
+Acceptance evidence recorded on 2026-09-21:
+
+- focused attachment suite: 252 tests passed, 0 failed;
+- complete sequential suite: 1,024 tests passed, 0 failed;
+- Node syntax and production backup/rollback Bash syntax checks exited 0;
+- implementation remained local; no production connection, migration, audit/backfill, restart, push,
+  or deployment was performed.
