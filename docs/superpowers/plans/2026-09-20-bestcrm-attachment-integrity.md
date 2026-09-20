@@ -216,7 +216,7 @@ git commit -m "feat: hash stored attachment bytes"
 - Modify: `scripts/verify-opportunity-record-guardrails.mjs`
 - Modify: `scripts/verify-opportunity-activity-spine.mjs`
 
-- [ ] **Step 1: Write failing repository tests**
+- [x] **Step 1: Write failing repository tests**
 
 Require `sha256` on insert, map lifecycle fields, filter normal lists, retain history, and perform
 single-transition retirement:
@@ -234,11 +234,11 @@ For new quotation-package source selection, require `a.retired_at IS NULL`; froz
 queries must continue reading a previously selected attachment after retirement. Update both
 database verification scripts to insert a deterministic valid digest with attachment fixtures.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run the two repository test files. Expected: failures for missing fields/methods.
 
-- [ ] **Step 3: Implement repository APIs**
+- [x] **Step 3: Implement repository APIs**
 
 `attachmentRepository` must expose:
 
@@ -257,11 +257,11 @@ the replacement and retirement/linkage of the original commit or fail together. 
 source ID, retirement fields, and replacement ID.
 `inquiryAttachmentRepository.createAttachment` accepts and persists `sha256`.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run both repository tests. Expected: zero failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/repositories/attachmentRepository.mjs src/repositories/inquiryAttachmentRepository.mjs src/repositories/quotationPackageRepository.mjs tests/repositories/attachmentRepository.test.mjs tests/repositories/inquiryAttachmentRepository.test.mjs tests/repositories/quotationPackageRepository.test.mjs scripts/verify-opportunity-record-guardrails.mjs scripts/verify-opportunity-activity-spine.mjs

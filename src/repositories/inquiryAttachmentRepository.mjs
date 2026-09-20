@@ -12,6 +12,7 @@ function mapInquiryAttachmentRow(row) {
     storedPath: row.stored_path,
     mimeType: row.mime_type,
     fileSize: Number(row.file_size),
+    sha256: row.sha256 || null,
     cid: row.cid || '',
     uploadedAt: row.uploaded_at
   };
@@ -26,6 +27,7 @@ const inquiryAttachmentSelect = `
     stored_path,
     mime_type,
     file_size,
+    sha256,
     cid,
     uploaded_at
   FROM inquiry_attachments
@@ -42,9 +44,10 @@ export function createInquiryAttachmentRepository(queryTarget) {
           stored_path,
           mime_type,
           file_size,
-          cid
+          cid,
+          sha256
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         ON CONFLICT (inquiry_id, source_index)
         DO NOTHING
         RETURNING *
@@ -55,7 +58,8 @@ export function createInquiryAttachmentRepository(queryTarget) {
         input.storedPath,
         input.mimeType,
         input.fileSize,
-        input.cid || ''
+        input.cid || '',
+        input.sha256
       ]);
       return mapInquiryAttachmentRow(result.rows[0]);
     },

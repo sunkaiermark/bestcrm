@@ -162,8 +162,8 @@ async function verify() {
 
     const attachment = await client.query(`
       INSERT INTO attachments (
-        opportunity_id, category, original_name, stored_path, mime_type, file_size, uploaded_by
-      ) VALUES ($1, 'requirement', 'process-data.pdf', $2, 'application/pdf', 2048, $3)
+        opportunity_id, category, original_name, stored_path, mime_type, file_size, uploaded_by, sha256
+      ) VALUES ($1, 'requirement', 'process-data.pdf', $2, 'application/pdf', 2048, $3, repeat('a', 64))
       RETURNING id
     `, [opportunityId, `opportunity/${suffix}/process-data.pdf`, actorId]);
 

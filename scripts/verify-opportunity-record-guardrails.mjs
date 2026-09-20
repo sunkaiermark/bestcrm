@@ -114,8 +114,8 @@ async function verify() {
 
     await client.query(`
       INSERT INTO attachments (
-        opportunity_id, category, original_name, stored_path, mime_type, file_size, uploaded_by
-      ) VALUES ($1, 'requirement', 'guardrail.txt', $2, 'text/plain', 16, $3)
+        opportunity_id, category, original_name, stored_path, mime_type, file_size, uploaded_by, sha256
+      ) VALUES ($1, 'requirement', 'guardrail.txt', $2, 'text/plain', 16, $3, repeat('a', 64))
     `, [opportunityId, `guardrail/${uniqueSuffix}/guardrail.txt`, actorUserId]);
     await client.query(`
       INSERT INTO requirement_updates (opportunity_id, requirement_text, reason, created_by)

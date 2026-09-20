@@ -84,6 +84,37 @@ test('customer email falls back to legacy frozen attachments before controlled o
   assert.equal(sources[0].sourceType, 'technical_solution_document');
   assert.equal(target.queries.length, 2);
   assert.match(target.queries[1].sql, /FROM quotation_package_attachments/);
+  assert.doesNotMatch(target.queries[1].sql, /retired_at IS NULL/);
+});
+
+test('new package creation selects only active hash-bound commercial attachments', async () => {
+  const target = fakeTarget([
+    { rows: [{
+      technical_id: '41', technical_status: 'approved', technical_version_no: '2',
+      quote_id: '31', quote_status: 'approved', quote_version_no: '3', total_price: '120000',
+      payment_terms: '30/60/10', validity_date: '2026-12-31'
+    }] },
+    { rows: [{
+      id: '61', original_name: 'TS-V2.pdf', mime_type: 'application/pdf',
+      byte_size: '4', sha256: 'a'.repeat(64)
+    }] },
+    { rows: [{
+      id: '71', original_name: 'quote.pdf', stored_path: '2026/09/quote.pdf',
+      mime_type: 'application/pdf', file_size: '4', sha256: 'b'.repeat(64)
+    }] },
+    { rows: [] }
+  ]);
+  const repository = createQuotationPackageRepository(target);
+
+  const context = await repository.getCreationContext({
+    opportunityId: 20,
+    technicalSolutionVersionId: 41,
+    commercialQuoteId: 31
+  });
+
+  assert.equal(context.commercialAttachments[0].sha256, 'b'.repeat(64));
+  assert.match(target.queries[2].sql, /a\.sha256/);
+  assert.match(target.queries[2].sql, /a\.retired_at IS NULL/);
 });
 
 test('historical package mapping retains frozen legacy workspace and commercial-version bindings', async () => {
@@ -98,6 +129,7 @@ test('historical package mapping retains frozen legacy workspace and commercial-
   assert.equal(detail.commercialDraftId, 42);
   assert.equal(detail.commercialDraftVersionNo, 3);
   assert.equal(detail.reviewSourcePackageId, 49);
+  assert.doesNotMatch(target.queries[1].sql, /retired_at IS NULL/);
 });
 
 test('sent transition supersedes the former sent package and acceptance links opportunity', async () => {

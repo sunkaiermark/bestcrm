@@ -336,7 +336,7 @@ export function createQuotationPackageRepository(queryTarget) {
           ORDER BY format ASC, id ASC
         `, [technicalSolutionVersionId]),
         queryTarget.query(`
-          SELECT a.id, a.original_name, a.stored_path, a.mime_type, a.file_size
+          SELECT a.id, a.original_name, a.stored_path, a.mime_type, a.file_size, a.sha256
           FROM attachments a
           JOIN opportunity_material_versions mv ON mv.id = a.opportunity_material_version_id
           JOIN commercial_quotes cq
@@ -345,6 +345,7 @@ export function createQuotationPackageRepository(queryTarget) {
           WHERE cq.id = $1
             AND mv.material_type = 'commercial_quote'
             AND mv.status = 'approved'
+            AND a.retired_at IS NULL
           ORDER BY a.uploaded_at ASC, a.id ASC
         `, [commercialQuoteId]),
         queryTarget.query(`
@@ -388,7 +389,8 @@ export function createQuotationPackageRepository(queryTarget) {
           originalName: attachment.original_name,
           storedPath: attachment.stored_path,
           mimeType: attachment.mime_type,
-          byteSize: Number(attachment.file_size)
+          byteSize: Number(attachment.file_size),
+          sha256: attachment.sha256
         }))
       };
     },
