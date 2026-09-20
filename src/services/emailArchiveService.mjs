@@ -7,7 +7,11 @@ import {
   canViewOpportunity,
   createOpportunityDraft
 } from './opportunityService.mjs';
-import { removeStoredAttachmentFile, resolveStoredPath, storeAttachmentBuffer } from './attachmentFileService.mjs';
+import { removeStoredAttachmentFile, storeAttachmentBuffer } from './attachmentFileService.mjs';
+import {
+  processEmailPurgeFileJobs,
+  supportsEmailPurgeFileCleanup
+} from './emailPurgeFileCleanupService.mjs';
 import {
   EmailRawIdentityConflictError,
   EmailRawMalwareError,
@@ -350,24 +354,19 @@ export async function archiveImportedOutboundEmailRecord(repositories, parsed, o
 
   const existing = await emailArchiveRepository.findMessageIdentity(message);
   if (existing) {
-    let rawMessage = null;
-    if (options.rawCapture) {
-      rawMessage = await persistRawEmailCapture(emailArchiveRepository, options.rawCapture);
-      if (!existing.rawMessageId && typeof emailArchiveRepository.linkImportedOutboundMessageRawArchive === 'function') {
-        const linked = await emailArchiveRepository.linkImportedOutboundMessageRawArchive({
-          messageId: existing.id,
-          rawMessageId: rawMessage.id,
-          rawEmlStoredPath: rawMessage.storedPath,
-          rawEmlFileSize: rawMessage.fileSize,
-          rawEmlSha256: rawMessage.sha256,
-          importedAt: new Date().toISOString()
-        });
-        if (!linked) throw new EmailRawIdentityConflictError('Existing sent email could not bind raw evidence');
-        Object.assign(existing, linked);
-      }
-    }
+    const rawMessage = options.rawCapture
+      ? await persistRawEmailCapture(emailArchiveRepository, options.rawCapture)
+      : null;
     await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage?.id);
     await recordMailboxDelivery(emailArchiveRepository, message, existing, rawMessage, 'outbound');
+    if (typeof emailArchiveRepository.reconcileOutboundSentObservation === 'function') {
+      const reconciled = await emailArchiveRepository.reconcileOutboundSentObservation({
+        messageId: existing.id,
+        providerMessageId: message.providerMessageId || message.messageId || '',
+        sentAt: message.sentAt
+      });
+      if (reconciled) Object.assign(existing, reconciled);
+    }
     return {
       duplicate: true,
       message: existing,
@@ -408,14 +407,21 @@ export async function archiveImportedOutboundEmailRecord(repositories, parsed, o
     ...message,
     threadId: thread.id,
     authoredBy,
-    rawMessageId: rawMessage?.id || null,
-    rawEmlStoredPath: rawMessage?.storedPath || null,
-    rawEmlFileSize: rawMessage?.fileSize || null,
-    rawEmlSha256: rawMessage?.sha256 || null,
-    importedAt: rawMessage ? new Date().toISOString() : null
+    rawMessageId: null,
+    rawEmlStoredPath: null,
+    rawEmlFileSize: null,
+    rawEmlSha256: null,
+    importedAt: null
   });
   if (!archivedMessage) throw new EmailArchiveDuplicateRaceError();
   await recordMailboxDelivery(emailArchiveRepository, message, archivedMessage, rawMessage, 'outbound');
+  if (typeof emailArchiveRepository.reconcileOutboundSentObservation === 'function') {
+    await emailArchiveRepository.reconcileOutboundSentObservation({
+      messageId: archivedMessage.id,
+      providerMessageId: message.providerMessageId || message.messageId || '',
+      sentAt: message.sentAt
+    });
+  }
   if (thread.lastMessageAt !== message.sentAt) {
     await emailArchiveRepository.touchThread(thread.id, message.sentAt);
   }
@@ -529,16 +535,14 @@ async function opportunityForThread(dependencies, thread) {
 }
 
 export async function canViewEmailThread(dependencies, actor, thread) {
-  if (hasRole(actor, ROLES.ADMINISTRATOR)) return true;
   const mailboxOwnerUserIds = Array.isArray(thread?.mailboxOwnerUserIds)
     ? thread.mailboxOwnerUserIds.map(Number).filter((value) => value > 0)
     : [Number(thread?.mailboxOwnerUserId || 0)].filter((value) => value > 0);
-  const isPersonalMailbox = mailboxOwnerUserIds.length > 0;
   const hasSharedMailboxDelivery = thread?.hasSharedMailboxDelivery === true
-    || text(thread?.mailboxKey).toLowerCase() === 'sales@sunkaier.com';
-  if (mailboxOwnerUserIds.includes(Number(actor?.id))) return true;
+    || text(thread?.mailboxKey).toLowerCase() === text(dependencies.sharedAddress || 'sales@sunkaier.com').toLowerCase();
+  if (mailboxOwnerUserIds.length > 0 && !hasSharedMailboxDelivery) return false;
   if (!thread?.opportunityId) {
-    return hasSharedMailboxDelivery || !isPersonalMailbox ? canAccessInquiryInbox(actor) : false;
+    return canAccessInquiryInbox(actor);
   }
   const opportunity = await opportunityForThread(dependencies, thread);
   return Boolean(opportunity && canViewOpportunity(actor, opportunity));
@@ -557,33 +561,14 @@ export async function listVisibleEmailThreads(dependencies, actor, filter = {}) 
 
 export async function listVisibleEmailMailboxes(dependencies, actor) {
   const sharedAddress = text(dependencies.sharedAddress || 'sales@sunkaier.com').toLowerCase();
-  const assignments = typeof dependencies.emailArchiveRepository.listActivePersonalMailboxAssignments === 'function'
-    ? await dependencies.emailArchiveRepository.listActivePersonalMailboxAssignments()
-    : [];
-  const mailboxes = [];
-  if (canAccessInquiryInbox(actor)) {
-    mailboxes.push({
-      key: sharedAddress,
-      label: sharedAddress,
-      type: 'shared',
-      ownerUserId: null,
-      ownerDisplayName: ''
-    });
-  }
-  for (const assignment of assignments) {
-    const isAdministrator = hasRole(actor, ROLES.ADMINISTRATOR);
-    const isOwner = Number(assignment.userId) === Number(actor?.id);
-    if (!isAdministrator && !isOwner) continue;
-    if (assignment.mailboxAddress === sharedAddress) continue;
-    mailboxes.push({
-      key: assignment.mailboxAddress,
-      label: assignment.mailboxAddress,
-      type: 'personal',
-      ownerUserId: assignment.userId,
-      ownerDisplayName: assignment.displayName
-    });
-  }
-  return mailboxes;
+  if (!actor?.id || !sharedAddress) return [];
+  return [{
+    key: sharedAddress,
+    label: sharedAddress,
+    type: 'shared',
+    ownerUserId: null,
+    ownerDisplayName: ''
+  }];
 }
 
 export async function resolveVisibleEmailMailbox(dependencies, actor, mailboxKey = '') {
@@ -996,24 +981,32 @@ export async function getEmailCleanupSummary(dependencies, actor, mailboxKey = '
   return summary;
 }
 
-async function removePurgedEmailFiles(uploadDir, candidate) {
-  const failures = [];
-  for (const storedPath of [...new Set([
-    ...(candidate.attachmentPaths || []),
-    ...(candidate.rawMessagePaths || [])
-  ])]) {
-    const filePath = resolveStoredPath(uploadDir, storedPath);
-    if (!filePath) {
-      failures.push({ storedPath, reason: 'invalid_path' });
-      continue;
-    }
-    try {
-      await removeStoredAttachmentFile(filePath);
-    } catch (error) {
-      failures.push({ storedPath, reason: text(error?.message) || 'delete_failed' });
-    }
+async function processPurgedEmailFiles(dependencies, candidates) {
+  const purgeAuditIds = candidates
+    .map((candidate) => Number(candidate?.purgeAuditId))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (!purgeAuditIds.length) {
+    return { fileFailures: [], fileCleanupPending: 0 };
   }
-  return failures;
+  const processor = dependencies.processEmailPurgeFileJobs || processEmailPurgeFileJobs;
+  try {
+    const result = await processor(dependencies, { purgeAuditIds });
+    return {
+      fileFailures: Array.isArray(result?.failures) ? result.failures : [],
+      fileCleanupPending: Number(result?.pending || 0)
+    };
+  } catch {
+    return {
+      fileFailures: purgeAuditIds.map((purgeAuditId) => ({
+        purgeAuditId,
+        reason: 'cleanup_deferred'
+      })),
+      fileCleanupPending: candidates.reduce(
+        (total, candidate) => total + Number(candidate?.fileJobCount || 0),
+        0
+      )
+    };
+  }
 }
 
 export async function purgeEligibleEmailSpam(dependencies, actor, input = {}) {
@@ -1030,6 +1023,9 @@ export async function purgeEligibleEmailFolder(dependencies, actor, input = {}) 
   if (typeof repository?.listCleanupCandidates !== 'function'
       && !(folder === 'spam' && typeof repository?.listSpamPurgeCandidates === 'function')) {
     throw new EmailArchiveError('Email cleanup is unavailable', 503);
+  }
+  if (!supportsEmailPurgeFileCleanup(repository)) {
+    throw new EmailArchiveError('Durable email file cleanup is unavailable', 503);
   }
   const mailboxKey = text(input.mailboxKey).toLowerCase();
   const seenThreadIds = new Set();
@@ -1061,10 +1057,18 @@ export async function purgeEligibleEmailFolder(dependencies, actor, input = {}) 
       ));
       if (!candidate) continue;
       purged.push(candidate);
-      const failures = await removePurgedEmailFiles(dependencies.uploadDir || './var/uploads', candidate);
-      fileFailures.push(...failures.map((failure) => ({ threadId: candidate.threadId, ...failure })));
+      const cleanup = await processPurgedEmailFiles(dependencies, [candidate]);
+      fileFailures.push(...cleanup.fileFailures.map((failure) => ({
+        threadId: candidate.threadId,
+        ...failure
+      })));
     }
   }
+  const purgeAuditIds = purged.map((candidate) => candidate.purgeAuditId);
+  const fileCleanupPending = purgeAuditIds.length
+    && typeof repository.countEmailPurgeFileJobs === 'function'
+    ? await repository.countEmailPurgeFileJobs({ purgeAuditIds })
+    : 0;
   return {
     candidates: seenThreadIds.size,
     purgedThreads: purged.length,
@@ -1073,7 +1077,8 @@ export async function purgeEligibleEmailFolder(dependencies, actor, input = {}) 
       (total, candidate) => total + candidate.attachmentBytes + candidate.rawMessageBytes,
       0
     ),
-    fileFailures
+    fileFailures,
+    fileCleanupPending
   };
 }
 
@@ -1090,6 +1095,9 @@ export async function purgeEmailThread(dependencies, actor, threadId, input = {}
   }
   if (typeof dependencies.emailArchiveRepository?.purgeEmailThread !== 'function') {
     throw new EmailArchiveError('Email deletion is unavailable', 503);
+  }
+  if (!supportsEmailPurgeFileCleanup(dependencies.emailArchiveRepository)) {
+    throw new EmailArchiveError('Durable email file cleanup is unavailable', 503);
   }
   const thread = await dependencies.emailArchiveRepository.findThreadById(threadId);
   if (!thread) throw new EmailArchiveError('Email thread not found', 404);
@@ -1111,12 +1119,13 @@ export async function purgeEmailThread(dependencies, actor, threadId, input = {}
       409
     );
   }
-  const fileFailures = await removePurgedEmailFiles(dependencies.uploadDir || './var/uploads', candidate);
+  const cleanup = await processPurgedEmailFiles(dependencies, [candidate]);
   return {
     purgedThreads: 1,
     purgedMessages: candidate.messageCount,
     purgedBytes: candidate.attachmentBytes + candidate.rawMessageBytes,
-    fileFailures
+    fileFailures: cleanup.fileFailures,
+    fileCleanupPending: cleanup.fileCleanupPending
   };
 }
 

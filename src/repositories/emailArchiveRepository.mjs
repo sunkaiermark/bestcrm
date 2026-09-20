@@ -248,6 +248,19 @@ function mapDeliveryAttemptRow(row) {
   };
 }
 
+function mapOutboundMimeArtifactRow(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    messageId: Number(row.message_id),
+    storedPath: text(row.stored_path),
+    fileSize: Number(row.file_size),
+    sha256: text(row.sha256),
+    rfcMessageId: text(row.rfc_message_id),
+    createdAt: row.created_at
+  };
+}
+
 function mapSpamCleanupSummary(row = {}) {
   return {
     eligibleThreads: Number(row.eligible_threads || 0),
@@ -275,9 +288,29 @@ function mapEmailPurgeCandidate(row) {
     rawMessageBytes: Number(row.raw_message_bytes || 0),
     triageEventCount: Number(row.triage_event_count || 0),
     assignmentEventCount: Number(row.assignment_event_count || 0),
-    attachmentPaths: jsonArray(row.attachment_paths).map(text).filter(Boolean),
-    rawMessagePaths: jsonArray(row.raw_message_paths).map(text).filter(Boolean),
     rawMessageIds: jsonArray(row.raw_message_ids).map(Number).filter((value) => Number.isInteger(value) && value > 0)
+  };
+}
+
+function mapEmailPurgeFileJob(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id),
+    purgeAuditId: Number(row.purge_audit_id),
+    fileKind: text(row.file_kind),
+    storedPath: text(row.stored_path),
+    expectedSize: Number(row.expected_size),
+    expectedSha256: text(row.expected_sha256),
+    status: text(row.status),
+    attemptCount: Number(row.attempt_count || 0),
+    availableAt: row.available_at,
+    leaseOwner: text(row.lease_owner),
+    leaseExpiresAt: row.lease_expires_at,
+    lastAttemptAt: row.last_attempt_at,
+    lastErrorCode: text(row.last_error_code),
+    lastErrorDetail: text(row.last_error_detail),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
   };
 }
 
@@ -1240,32 +1273,11 @@ export function createEmailArchiveRepository(queryTarget) {
             WHERE message.thread_id = thread.id
           ), 0) AS attachment_bytes,
           COALESCE((
-            SELECT jsonb_agg(attachment.stored_path ORDER BY attachment.id)
-            FROM email_attachments attachment
-            JOIN email_messages message ON message.id = attachment.message_id
-            WHERE message.thread_id = thread.id
-          ), '[]'::jsonb) AS attachment_paths,
-          COALESCE((
             SELECT jsonb_agg(raw.id ORDER BY raw.id)
             FROM email_raw_messages raw
             JOIN email_messages message ON message.raw_message_id = raw.id
             WHERE message.thread_id = thread.id
           ), '[]'::jsonb) AS raw_message_ids,
-          COALESCE((
-            SELECT jsonb_agg(raw_file.stored_path ORDER BY raw_file.sort_id)
-            FROM (
-              SELECT raw.id * 2 AS sort_id, raw.stored_path
-              FROM email_raw_messages raw
-              JOIN email_messages message ON message.raw_message_id = raw.id
-              WHERE message.thread_id = thread.id
-              UNION ALL
-              SELECT message.id * 2 + 1 AS sort_id, message.raw_eml_stored_path AS stored_path
-              FROM email_messages message
-              WHERE message.thread_id = thread.id
-                AND message.raw_message_id IS NULL
-                AND message.raw_eml_stored_path IS NOT NULL
-            ) raw_file
-          ), '[]'::jsonb) AS raw_message_paths,
           (
             SELECT count(*)
             FROM (
@@ -1307,7 +1319,7 @@ export function createEmailArchiveRepository(queryTarget) {
       if (!candidate) return null;
 
       await queryTarget.query(`SELECT set_config('bestcrm.email_purge', 'enabled', true)`);
-      await queryTarget.query(`
+      const auditResult = await queryTarget.query(`
         INSERT INTO email_purge_audits (
           thread_id,
           mailbox_key,
@@ -1326,6 +1338,7 @@ export function createEmailArchiveRepository(queryTarget) {
           purge_reason
         )
         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        RETURNING id
       `, [
         candidate.threadId,
         candidate.mailboxKey,
@@ -1343,6 +1356,72 @@ export function createEmailArchiveRepository(queryTarget) {
         input.actorUserId,
         input.reason
       ]);
+      const purgeAuditId = Number(auditResult.rows[0]?.id);
+      if (!Number.isInteger(purgeAuditId) || purgeAuditId <= 0) {
+        throw new Error('Email purge audit could not be created');
+      }
+
+      const attachmentJobs = await queryTarget.query(`
+        INSERT INTO email_purge_file_jobs (
+          purge_audit_id,
+          file_kind,
+          stored_path,
+          expected_size,
+          expected_sha256
+        )
+        SELECT DISTINCT ON (attachment.stored_path)
+          $2,
+          'attachment',
+          attachment.stored_path,
+          attachment.file_size,
+          attachment.sha256
+        FROM email_attachments attachment
+        JOIN email_messages message ON message.id = attachment.message_id
+        WHERE message.thread_id = $1
+          AND NOT EXISTS (
+            SELECT 1
+            FROM email_attachments other_attachment
+            JOIN email_messages other_message ON other_message.id = other_attachment.message_id
+            WHERE other_attachment.stored_path = attachment.stored_path
+              AND other_message.thread_id <> $1
+          )
+        ORDER BY attachment.stored_path, attachment.id
+        ON CONFLICT (purge_audit_id, stored_path) DO NOTHING
+      `, [candidate.threadId, purgeAuditId]);
+      const rawEmailJobs = await queryTarget.query(`
+        WITH purge_files AS (
+          SELECT raw.id * 2 AS sort_id, raw.stored_path, raw.file_size, raw.sha256
+          FROM email_raw_messages raw
+          JOIN email_messages message ON message.raw_message_id = raw.id
+          WHERE message.thread_id = $1
+          UNION ALL
+          SELECT
+            message.id * 2 + 1 AS sort_id,
+            message.raw_eml_stored_path AS stored_path,
+            message.raw_eml_file_size AS file_size,
+            message.raw_eml_sha256 AS sha256
+          FROM email_messages message
+          WHERE message.thread_id = $1
+            AND message.raw_message_id IS NULL
+            AND message.raw_eml_stored_path IS NOT NULL
+        )
+        INSERT INTO email_purge_file_jobs (
+          purge_audit_id,
+          file_kind,
+          stored_path,
+          expected_size,
+          expected_sha256
+        )
+        SELECT DISTINCT ON (purge_file.stored_path)
+          $2,
+          'raw_email',
+          purge_file.stored_path,
+          purge_file.file_size,
+          purge_file.sha256
+        FROM purge_files purge_file
+        ORDER BY purge_file.stored_path, purge_file.sort_id
+        ON CONFLICT (purge_audit_id, stored_path) DO NOTHING
+      `, [candidate.threadId, purgeAuditId]);
 
       await queryTarget.query(`
         DELETE FROM email_attachment_scan_attempts
@@ -1377,7 +1456,99 @@ export function createEmailArchiveRepository(queryTarget) {
         await queryTarget.query(`DELETE FROM email_raw_processing_attempts WHERE raw_message_id = ANY($1::bigint[])`, [candidate.rawMessageIds]);
         await queryTarget.query(`DELETE FROM email_raw_messages WHERE id = ANY($1::bigint[])`, [candidate.rawMessageIds]);
       }
-      return candidate;
+      return {
+        ...candidate,
+        purgeAuditId,
+        fileJobCount: Number(attachmentJobs.rowCount || 0) + Number(rawEmailJobs.rowCount || 0)
+      };
+    },
+
+    async claimEmailPurgeFileJobs(input = {}) {
+      const limit = Math.max(1, Math.min(Number(input.limit) || 50, 200));
+      const leaseSeconds = Math.max(30, Math.min(Number(input.leaseSeconds) || 300, 3600));
+      const purgeAuditIds = Array.isArray(input.purgeAuditIds) && input.purgeAuditIds.length
+        ? input.purgeAuditIds.map(Number).filter((id) => Number.isInteger(id) && id > 0)
+        : null;
+      const result = await queryTarget.query(`
+        WITH claimable AS (
+          SELECT job.id
+          FROM email_purge_file_jobs job
+          WHERE (
+              (job.status = 'pending' AND job.available_at <= now())
+              OR
+              (job.status = 'processing' AND job.lease_expires_at <= now())
+            )
+            AND ($4::bigint[] IS NULL OR job.purge_audit_id = ANY($4::bigint[]))
+          ORDER BY job.available_at, job.id
+          FOR UPDATE SKIP LOCKED
+          LIMIT $2
+        )
+        UPDATE email_purge_file_jobs job
+        SET
+          status = 'processing',
+          attempt_count = job.attempt_count + 1,
+          lease_owner = $1,
+          lease_expires_at = now() + ($3::integer * interval '1 second'),
+          last_attempt_at = now(),
+          updated_at = now()
+        FROM claimable
+        WHERE job.id = claimable.id
+        RETURNING job.*
+      `, [input.workerId, limit, leaseSeconds, purgeAuditIds]);
+      return result.rows.map(mapEmailPurgeFileJob);
+    },
+
+    async completeEmailPurgeFileJob(input) {
+      const result = await queryTarget.query(`
+        WITH cleanup_setting AS MATERIALIZED (
+          SELECT set_config('bestcrm.email_purge_file_cleanup', 'enabled', true)
+        )
+        DELETE FROM email_purge_file_jobs job
+        USING cleanup_setting
+        WHERE job.id = $1
+          AND job.status = 'processing'
+          AND job.lease_owner = $2
+        RETURNING job.id
+      `, [input.jobId, input.workerId]);
+      return result.rowCount === 1;
+    },
+
+    async failEmailPurgeFileJob(input) {
+      const retryDelaySeconds = Math.max(30, Math.min(Number(input.retryDelaySeconds) || 60, 3600));
+      const result = await queryTarget.query(`
+        UPDATE email_purge_file_jobs
+        SET
+          status = 'pending',
+          available_at = now() + ($3::integer * interval '1 second'),
+          lease_owner = NULL,
+          lease_expires_at = NULL,
+          last_error_code = left($4, 80),
+          last_error_detail = left($5, 500),
+          updated_at = now()
+        WHERE id = $1
+          AND status = 'processing'
+          AND lease_owner = $2
+        RETURNING id
+      `, [
+        input.jobId,
+        input.workerId,
+        retryDelaySeconds,
+        text(input.errorCode),
+        text(input.errorDetail)
+      ]);
+      return result.rowCount === 1;
+    },
+
+    async countEmailPurgeFileJobs(input = {}) {
+      const purgeAuditIds = Array.isArray(input.purgeAuditIds) && input.purgeAuditIds.length
+        ? input.purgeAuditIds.map(Number).filter((id) => Number.isInteger(id) && id > 0)
+        : null;
+      const result = await queryTarget.query(`
+        SELECT count(*) AS count
+        FROM email_purge_file_jobs job
+        WHERE $1::bigint[] IS NULL OR job.purge_audit_id = ANY($1::bigint[])
+      `, [purgeAuditIds]);
+      return Number(result.rows[0]?.count || 0);
     },
 
     async createTriageEvent(input) {
@@ -1500,29 +1671,76 @@ export function createEmailArchiveRepository(queryTarget) {
       return mapMessageRow(result.rows[0]);
     },
 
-    async linkImportedOutboundMessageRawArchive(input) {
+    async reconcileOutboundSentObservation(input) {
       const result = await queryTarget.query(`
         UPDATE email_messages
         SET
-          raw_message_id = $2,
-          raw_eml_stored_path = $3,
-          raw_eml_file_size = $4,
-          raw_eml_sha256 = $5,
-          imported_at = COALESCE(imported_at, $6)
+          delivery_status = 'sent',
+          provider_message_id = CASE
+            WHEN btrim(provider_message_id) = '' THEN $2
+            ELSE provider_message_id
+          END,
+          sent_at = COALESCE(sent_at, $3),
+          failure_code = '',
+          failure_detail = ''
         WHERE id = $1
           AND direction = 'outbound'
-          AND delivery_status = 'sent'
-          AND raw_message_id IS NULL
+          AND delivery_status = 'pending'
         RETURNING *
       `, [
         input.messageId,
-        input.rawMessageId,
-        input.rawEmlStoredPath,
-        input.rawEmlFileSize,
-        input.rawEmlSha256,
-        input.importedAt
+        input.providerMessageId || '',
+        input.sentAt || null
       ]);
       return mapMessageRow(result.rows[0]);
+    },
+
+    async findOutboundMimeArtifact(messageId) {
+      const result = await queryTarget.query(`
+        SELECT *
+        FROM email_outbound_mime_artifacts
+        WHERE message_id = $1
+        LIMIT 1
+      `, [messageId]);
+      return mapOutboundMimeArtifactRow(result.rows[0]);
+    },
+
+    async createOutboundMimeArtifact(input) {
+      const inserted = await queryTarget.query(`
+        INSERT INTO email_outbound_mime_artifacts (
+          message_id,
+          stored_path,
+          file_size,
+          sha256,
+          rfc_message_id
+        )
+        VALUES ($1, $2, $3, $4, $5)
+        ON CONFLICT (message_id) DO NOTHING
+        RETURNING *
+      `, [
+        input.messageId,
+        input.storedPath,
+        input.fileSize,
+        input.sha256,
+        input.rfcMessageId
+      ]);
+      if (inserted.rows[0]) return mapOutboundMimeArtifactRow(inserted.rows[0]);
+
+      const existingResult = await queryTarget.query(`
+        SELECT *
+        FROM email_outbound_mime_artifacts
+        WHERE message_id = $1
+        LIMIT 1
+      `, [input.messageId]);
+      const existing = mapOutboundMimeArtifactRow(existingResult.rows[0]);
+      if (!existing
+        || existing.storedPath !== input.storedPath
+        || existing.fileSize !== Number(input.fileSize)
+        || existing.sha256 !== input.sha256
+        || existing.rfcMessageId !== input.rfcMessageId) {
+        throw new Error('Outbound MIME artifact identity conflict');
+      }
+      return existing;
     },
 
     async createOutboundMessage(input) {
@@ -1546,7 +1764,7 @@ export function createEmailArchiveRepository(queryTarget) {
           delivery_status,
           authored_by
         )
-        VALUES ($1, 'outbound', $2, $3, $4::jsonb, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12, '', $13::jsonb, $14, $15)
+        VALUES ($1, 'outbound', $2, $3, $4::jsonb, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12, $13, $14::jsonb, $15, $16)
         RETURNING *
       `, [
         input.threadId,
@@ -1561,6 +1779,7 @@ export function createEmailArchiveRepository(queryTarget) {
         JSON.stringify(input.ccRecipients || []),
         input.subject || '',
         input.textBody || '',
+        input.htmlBody || '',
         JSON.stringify(input.safeHeaders || {}),
         input.deliveryStatus,
         input.authoredBy

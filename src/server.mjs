@@ -71,6 +71,7 @@ import { createTechnicalMaterialDocumentService } from './services/technicalMate
 import { createTotpService } from './services/totpService.mjs';
 import { createTrustedDeviceService } from './services/trustedDeviceService.mjs';
 import { createCustomerEmailTransport } from './services/customerEmailService.mjs';
+import { startEmailPurgeFileCleanupLoop } from './services/emailPurgeFileCleanupService.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
 
@@ -687,6 +688,16 @@ export function createApp(options = {}) {
     || (config.customerEmail?.enabled ? createCustomerEmailTransport(config.customerEmail.smtp) : null);
   const sessionStore = 'sessionStore' in options ? options.sessionStore : createSessionStore(pool);
   const app = express();
+  const purgeFileCleanupStarter = options.startEmailPurgeFileCleanupLoop
+    || startEmailPurgeFileCleanupLoop;
+  app.locals.emailPurgeFileCleanup = pool && options.emailPurgeFileCleanupEnabled !== false
+    ? purgeFileCleanupStarter({
+        emailArchiveRepository,
+        uploadDir: config.uploadDir
+      }, {
+        logger: options.logger || console
+      })
+    : null;
   app.set('trust proxy', 'loopback');
   const configuredWebPushPublicKey = config.notificationDelivery?.webPush?.publicKey
     && config.notificationDelivery?.webPush?.privateKey

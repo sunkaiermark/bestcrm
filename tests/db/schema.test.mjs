@@ -63,6 +63,8 @@ const opportunityTechnicalDocumentsMigrationPath = new URL('../../src/db/migrati
 const localizedTechnicalTemplateContentMigrationPath = new URL('../../src/db/migrations/062_localized_technical_template_content.sql', import.meta.url);
 const emailCenterLeadTriageMigrationPath = new URL('../../src/db/migrations/063_email_center_lead_triage.sql', import.meta.url);
 const emailReimportResetAuditsMigrationPath = new URL('../../src/db/migrations/064_email_reimport_reset_audits.sql', import.meta.url);
+const emailPurgeFileJobsMigrationPath = new URL('../../src/db/migrations/065_email_purge_file_jobs.sql', import.meta.url);
+const emailOutboundMimeArtifactsMigrationPath = new URL('../../src/db/migrations/066_email_outbound_mime_artifacts.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -1096,4 +1098,41 @@ test('email reimport reset migration keeps an immutable non-content operation au
   assert.match(sql, /reset_sync_states bigint NOT NULL/);
   assert.match(sql, /Email reimport reset audit records are immutable/);
   assert.doesNotMatch(sql, /subject text|text_body|html_body|from_address|to_recipients/);
+});
+
+test('email purge file jobs survive process failure and expose only guarded cleanup state', async () => {
+  const sql = await readFile(emailPurgeFileJobsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_purge_file_jobs/);
+  assert.match(sql, /purge_audit_id bigint NOT NULL REFERENCES email_purge_audits\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /stored_path text NOT NULL/);
+  assert.match(sql, /expected_size bigint NOT NULL/);
+  assert.match(sql, /expected_sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /lease_owner text/);
+  assert.match(sql, /lease_expires_at timestamptz/);
+  assert.match(sql, /WHERE status = 'pending'/);
+  assert.match(sql, /WHERE status = 'processing'/);
+  assert.match(sql, /current_setting\('bestcrm\.email_purge_file_cleanup', true\) = 'enabled'/);
+  assert.match(sql, /Email purge file job identity is immutable/);
+  assert.doesNotMatch(sql, /subject text|text_body|html_body|from_address|to_recipients/);
+});
+
+test('outbound MIME artifact migration creates one immutable hash-bound file identity per message', async () => {
+  const sql = await readFile(emailOutboundMimeArtifactsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_outbound_mime_artifacts/);
+  assert.match(sql, /message_id bigint NOT NULL UNIQUE REFERENCES email_messages\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /stored_path LIKE 'email-outbound\/%'/);
+  assert.match(sql, /file_size bigint NOT NULL CHECK \(file_size > 0\)/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL CHECK \(sha256 ~ '\^\[0-9a-f\]\{64\}\$'\)/);
+  assert.match(sql, /rfc_message_id text NOT NULL CHECK \(btrim\(rfc_message_id\) <> ''\)/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION bestcrm_validate_email_outbound_mime_artifact/);
+  assert.match(sql, /SELECT direction, message_id/);
+  assert.match(sql, /Only outbound messages can own generated MIME artifacts/);
+  assert.match(sql, /Outbound MIME Message-ID must match the canonical message/);
+  assert.match(sql, /CREATE TRIGGER email_outbound_mime_artifacts_validate/);
+  assert.match(sql, /CREATE TRIGGER email_outbound_mime_artifacts_no_change/);
+  assert.match(sql, /Outbound MIME artifacts are immutable/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
 });

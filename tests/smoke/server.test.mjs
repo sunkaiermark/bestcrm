@@ -102,6 +102,30 @@ test('GET /assets/sunkaier-logo-login.png serves the login logo', async () => {
   assert.match(response.headers['content-type'], /image\/png/);
 });
 
+test('a database-backed app starts the durable email purge file cleanup loop', () => {
+  const starts = [];
+  const repository = {};
+  const cleanupHandle = { stop() {} };
+  const app = createApp({
+    databaseUrl: '',
+    sessionSecret: 'test-secret',
+    pool: { query() { throw new Error('unexpected query'); } },
+    sessionStore: undefined,
+    userRepository: {},
+    emailArchiveRepository: repository,
+    uploadDir: 'C:/bestcrm-test-uploads',
+    startEmailPurgeFileCleanupLoop(dependencies, options) {
+      starts.push({ dependencies, options });
+      return cleanupHandle;
+    }
+  });
+
+  assert.equal(starts.length, 1);
+  assert.equal(starts[0].dependencies.emailArchiveRepository, repository);
+  assert.equal(starts[0].dependencies.uploadDir, 'C:/bestcrm-test-uploads');
+  assert.equal(app.locals.emailPurgeFileCleanup, cleanupHandle);
+});
+
 test('server entrypoint starts an HTTP listener when run directly', async (t) => {
   const child = spawn(process.execPath, ['src/server.mjs'], {
     cwd: projectRoot,

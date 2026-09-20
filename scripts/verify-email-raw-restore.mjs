@@ -26,8 +26,11 @@ export async function verifyEmailRawRestore({
     if (databaseAudit.mismatches.length
       || databaseAudit.unexpectedFiles.length
       || databaseAudit.rawWithoutCleanScan
-      || (requireComplete && !databaseAudit.readyToEnforceRawNotNull)) {
-      throw new Error('Restored raw email database/file audit failed');
+      || databaseAudit.outboundMimeMismatches.length
+      || databaseAudit.outboundMimeUnexpectedFiles.length
+      || databaseAudit.outboundSentWithoutMime
+      || (requireComplete && !databaseAudit.readyToRebuildEmailEvidence)) {
+      throw new Error('Restored email evidence database/file audit failed');
     }
   }
   return { backup, databaseAudit };

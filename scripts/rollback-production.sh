@@ -102,6 +102,7 @@ if [ "$MODE" = "full" ]; then
   DB_BACKUP="$BACKUP_PATH/database.sql"
   UPLOAD_BACKUP="$BACKUP_PATH/uploads.tar.gz"
   BACKUP_MANIFEST="$BACKUP_PATH/manifest.txt"
+  EMAIL_EVIDENCE_INVENTORY="$BACKUP_PATH/email-evidence-files.sha256"
   RAW_EMAIL_INVENTORY="$BACKUP_PATH/email-raw-files.sha256"
   RELEASE_DIR="$RELEASES_DIR/$VERSION"
   if [ ! -f "$DB_BACKUP" ]; then
@@ -116,8 +117,10 @@ if [ "$MODE" = "full" ]; then
     echo "Missing backup manifest: $BACKUP_MANIFEST" >&2
     exit 1
   fi
-  if [ ! -f "$RAW_EMAIL_INVENTORY" ] && [ "${BESTCRM_ALLOW_LEGACY_BACKUP:-}" != "yes" ]; then
-    echo "Missing raw email inventory: $RAW_EMAIL_INVENTORY" >&2
+  if [ ! -f "$EMAIL_EVIDENCE_INVENTORY" ] \
+      && [ ! -f "$RAW_EMAIL_INVENTORY" ] \
+      && [ "${BESTCRM_ALLOW_LEGACY_BACKUP:-}" != "yes" ]; then
+    echo "Missing email evidence inventory: $EMAIL_EVIDENCE_INVENTORY" >&2
     exit 1
   fi
   if [ ! -d "$RELEASE_DIR" ]; then
@@ -144,7 +147,9 @@ if [ "$MODE" = "full" ]; then
 
   verify_backup_checksum "$DB_BACKUP" "$BACKUP_MANIFEST" database_sha256 "Database backup"
   verify_backup_checksum "$UPLOAD_BACKUP" "$BACKUP_MANIFEST" uploads_sha256 "Upload backup"
-  if [ -f "$RAW_EMAIL_INVENTORY" ]; then
+  if [ -f "$EMAIL_EVIDENCE_INVENTORY" ]; then
+    verify_backup_checksum "$EMAIL_EVIDENCE_INVENTORY" "$BACKUP_MANIFEST" email_evidence_inventory_sha256 "Email evidence inventory"
+  elif [ -f "$RAW_EMAIL_INVENTORY" ]; then
     verify_backup_checksum "$RAW_EMAIL_INVENTORY" "$BACKUP_MANIFEST" raw_email_inventory_sha256 "Raw email inventory"
   fi
   tar -tzf "$UPLOAD_BACKUP" >/dev/null

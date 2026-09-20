@@ -19,7 +19,11 @@ test('raw archive audit reconciles database indexes, clean scans, and immutable 
     await writeFile(path.join(uploadDir, ...storedPath.split('/')), content);
     let call = 0;
     const queryTarget = {
-      async query() {
+      async query(sql) {
+        if (sql.includes('outbound_sent_messages')) {
+          return { rows: [{ outbound_sent_messages: 0, outbound_sent_without_mime: 0 }] };
+        }
+        if (sql.includes('email_outbound_mime_artifacts artifact')) return { rows: [] };
         call += 1;
         return call === 1
           ? { rows: [{
@@ -50,7 +54,11 @@ test('raw archive audit reports missing, tampered, and unindexed files without d
     await writeFile(unexpectedPath, 'orphan');
     let call = 0;
     const queryTarget = {
-      async query() {
+      async query(sql) {
+        if (sql.includes('outbound_sent_messages')) {
+          return { rows: [{ outbound_sent_messages: 0, outbound_sent_without_mime: 0 }] };
+        }
+        if (sql.includes('email_outbound_mime_artifacts artifact')) return { rows: [] };
         call += 1;
         return call === 1
           ? { rows: [{
@@ -82,7 +90,11 @@ test('raw archive audit lists indexed divergent Message-ID evidence for manual i
     await writeFile(path.join(uploadDir, ...storedPath.split('/')), content);
     let call = 0;
     const queryTarget = {
-      async query() {
+      async query(sql) {
+        if (sql.includes('outbound_sent_messages')) {
+          return { rows: [{ outbound_sent_messages: 0, outbound_sent_without_mime: 0 }] };
+        }
+        if (sql.includes('email_outbound_mime_artifacts artifact')) return { rows: [] };
         call += 1;
         return call === 1
           ? { rows: [{
@@ -108,6 +120,95 @@ test('raw archive audit lists indexed divergent Message-ID evidence for manual i
       storedPath
     }]);
     assert.equal(result.rawWithoutCleanScan, 0);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('email evidence audit verifies canonical outbound MIME and rebuild readiness', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-evidence-audit-'));
+  const outboundPath = `email-outbound/${'a'.repeat(64)}/${'b'.repeat(16)}.eml`;
+  const outboundContent = Buffer.from('Message-ID: <crm-1@sunkaier.com>\r\n\r\nSent body');
+  try {
+    await mkdir(path.dirname(path.join(uploadDir, ...outboundPath.split('/'))), { recursive: true });
+    await writeFile(path.join(uploadDir, ...outboundPath.split('/')), outboundContent);
+    const queryTarget = {
+      async query(sql) {
+        if (sql.includes('FROM email_raw_messages raw')) return { rows: [] };
+        if (sql.includes('inbound_messages')) {
+          return { rows: [{ inbound_messages: 0, inbound_missing_raw: 0 }] };
+        }
+        if (sql.includes('email_raw_malware_events')) {
+          return { rows: [{ malware_security_events: 0 }] };
+        }
+        if (sql.includes('outbound_sent_messages')) {
+          return { rows: [{ outbound_sent_messages: 1, outbound_sent_without_mime: 0 }] };
+        }
+        if (sql.includes('email_outbound_mime_artifacts artifact')) {
+          return { rows: [{
+            id: '31', message_id: '91', stored_path: outboundPath,
+            file_size: String(outboundContent.length), sha256: sha256(outboundContent),
+            rfc_message_id: '<crm-1@sunkaier.com>', canonical_message_id: '<crm-1@sunkaier.com>'
+          }] };
+        }
+        throw new Error(`Unexpected audit query: ${sql}`);
+      }
+    };
+
+    const result = await auditEmailRawArchive({ queryTarget, uploadDir });
+    assert.equal(result.outboundMimeArtifacts, 1);
+    assert.equal(result.outboundMimeVerified, 1);
+    assert.deepEqual(result.outboundMimeMismatches, []);
+    assert.deepEqual(result.outboundMimeUnexpectedFiles, []);
+    assert.equal(result.outboundSentMessages, 1);
+    assert.equal(result.outboundSentWithoutMime, 0);
+    assert.equal(result.readyToRebuildEmailEvidence, true);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('email evidence audit reports missing, wrong-size, wrong-hash, and sent-without-MIME failures', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-evidence-audit-fail-'));
+  const missingPath = `email-outbound/${'1'.repeat(64)}/${'a'.repeat(16)}.eml`;
+  const wrongSizePath = `email-outbound/${'2'.repeat(64)}/${'b'.repeat(16)}.eml`;
+  const wrongHashPath = `email-outbound/${'3'.repeat(64)}/${'c'.repeat(16)}.eml`;
+  try {
+    await mkdir(path.dirname(path.join(uploadDir, ...wrongSizePath.split('/'))), { recursive: true });
+    await mkdir(path.dirname(path.join(uploadDir, ...wrongHashPath.split('/'))), { recursive: true });
+    await writeFile(path.join(uploadDir, ...wrongSizePath.split('/')), 'size');
+    await writeFile(path.join(uploadDir, ...wrongHashPath.split('/')), 'same-size');
+    const rows = [
+      { id: '41', message_id: '101', stored_path: missingPath, file_size: '7', sha256: sha256('missing'), rfc_message_id: '<m1>', canonical_message_id: '<m1>' },
+      { id: '42', message_id: '102', stored_path: wrongSizePath, file_size: '99', sha256: sha256('size'), rfc_message_id: '<m2>', canonical_message_id: '<m2>' },
+      { id: '43', message_id: '103', stored_path: wrongHashPath, file_size: String(Buffer.byteLength('same-size')), sha256: sha256('different'), rfc_message_id: '<m3>', canonical_message_id: '<m3>' }
+    ];
+    const queryTarget = {
+      async query(sql) {
+        if (sql.includes('FROM email_raw_messages raw')) return { rows: [] };
+        if (sql.includes('inbound_messages')) {
+          return { rows: [{ inbound_messages: 0, inbound_missing_raw: 0 }] };
+        }
+        if (sql.includes('email_raw_malware_events')) {
+          return { rows: [{ malware_security_events: 0 }] };
+        }
+        if (sql.includes('outbound_sent_messages')) {
+          return { rows: [{ outbound_sent_messages: 4, outbound_sent_without_mime: 1 }] };
+        }
+        if (sql.includes('email_outbound_mime_artifacts artifact')) return { rows };
+        throw new Error(`Unexpected audit query: ${sql}`);
+      }
+    };
+
+    const result = await auditEmailRawArchive({ queryTarget, uploadDir });
+    assert.deepEqual(result.outboundMimeMismatches, [
+      { id: 41, messageId: 101, storedPath: missingPath, reason: 'missing_file' },
+      { id: 42, messageId: 102, storedPath: wrongSizePath, reason: 'size_mismatch' },
+      { id: 43, messageId: 103, storedPath: wrongHashPath, reason: 'sha256_mismatch' }
+    ]);
+    assert.equal(result.outboundMimeVerified, 0);
+    assert.equal(result.outboundSentWithoutMime, 1);
+    assert.equal(result.readyToRebuildEmailEvidence, false);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

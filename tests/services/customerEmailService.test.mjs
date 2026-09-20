@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import { simpleParser } from 'mailparser';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
   buildPersonalEmailIdentity,
@@ -66,6 +67,7 @@ function createDependencies(uploadDir, options = {}) {
   const attachments = [];
   const attempts = [];
   const sentPackages = [];
+  const outboundMimeArtifacts = [];
   const parent = {
     id: 10,
     threadId: 1,
@@ -123,10 +125,23 @@ function createDependencies(uploadDir, options = {}) {
       return attachment;
     },
     async listAttachmentsByMessage(id) { return attachments.filter((item) => item.messageId === Number(id)); },
+    async findOutboundMimeArtifact(id) {
+      return outboundMimeArtifacts.find((item) => item.messageId === Number(id)) || null;
+    },
+    async createOutboundMimeArtifact(input) {
+      const existing = outboundMimeArtifacts.find((item) => item.messageId === Number(input.messageId));
+      if (existing) return existing;
+      const artifact = { id: outboundMimeArtifacts.length + 1, ...input };
+      outboundMimeArtifacts.push(artifact);
+      return artifact;
+    },
     async touchThread(id, at) { thread.lastMessageAt = at; return thread; },
     async claimOutboundForSend(id) {
       const message = messages.find((item) => item.id === Number(id));
       if (!message || !['draft', 'failed'].includes(message.deliveryStatus)) return null;
+      if (!outboundMimeArtifacts.some((item) => item.messageId === Number(id))) {
+        throw new Error('Outbound MIME must be archived before the message is claimed');
+      }
       message.deliveryStatus = 'pending';
       message.failureCode = '';
       message.failureDetail = '';
@@ -194,13 +209,13 @@ function createDependencies(uploadDir, options = {}) {
       async listTeamMembersByOpportunity() { return options.teamMembers || []; }
     },
     quotationPackageRepository,
-    transport: options.transport || { async sendMail(message) { return { messageId: message.messageId }; } },
+    transport: options.transport || { async sendMail() { return { messageId: '<provider-default@example.com>' }; } },
     sharedAddress: 'sales@sunkaier.com',
     uploadDir,
     maxUploadMb: 5,
     now: () => '2026-09-03T10:00:00.000Z',
     randomUUID: () => '00000000-0000-4000-8000-000000000009',
-    state: { thread, messages, attachments, attempts, sentPackages, packageVersion }
+    state: { thread, messages, attachments, attempts, sentPackages, outboundMimeArtifacts, packageVersion }
   };
 }
 
@@ -271,23 +286,38 @@ test('fake SMTP receives fixed shared sender, personal signature, reply headers,
 
     assert.equal(result.deliveryStatus, 'sent');
     assert.equal(sent.length, 1);
-    assert.deepEqual(sent[0].from, { name: 'Steven Yang | SUNKAIER', address: 'sales@sunkaier.com' });
-    assert.match(sent[0].text, /Steven Yang\nSales Manager\nSUNKAIER Asia Pacific Pte\. Ltd\./);
-    assert.match(sent[0].text, /W: www\.sunkaier\.com/);
-    assert.match(sent[0].text, /CONFIDENTIALITY NOTICE:/);
-    assert.match(sent[0].html, /Steven Yang/);
-    assert.match(sent[0].html, /src="cid:sunkaier-signature-logo@sunkaier\.com"/);
-    assert.match(sent[0].html, /Attached is our approved quotation\./);
-    assert.equal(sent[0].messageId, '<bestcrm-00000000-0000-4000-8000-000000000009@sunkaier.com>');
-    assert.equal(sent[0].inReplyTo, '<buyer-1@example.com>');
-    assert.deepEqual(sent[0].references, ['<root@example.com>', '<buyer-1@example.com>']);
-    assert.equal(sent[0].attachments[0].filename, 'QP-V2.pdf');
-    const inlineLogo = sent[0].attachments.at(-1);
+    assert.deepEqual(sent[0].envelope, {
+      from: 'sales@sunkaier.com',
+      to: ['buyer@example.com', 'procurement@example.com']
+    });
+    assert.equal(Buffer.isBuffer(sent[0].raw), true);
+    const parsed = await simpleParser(sent[0].raw);
+    assert.deepEqual(parsed.from.value[0], { address: 'sales@sunkaier.com', name: 'Steven Yang | SUNKAIER' });
+    assert.deepEqual(parsed.to.value.map((item) => item.address), ['buyer@example.com']);
+    assert.deepEqual(parsed.cc.value.map((item) => item.address), ['procurement@example.com']);
+    assert.equal(parsed.subject, 'Re: Mixer RFQ');
+    assert.match(parsed.text, /Steven Yang\nSales Manager\nSUNKAIER Asia Pacific Pte\. Ltd\./);
+    assert.match(parsed.text, /W: www\.sunkaier\.com/);
+    assert.match(parsed.text, /CONFIDENTIALITY NOTICE:/);
+    assert.match(parsed.html, /Steven Yang/);
+    assert.match(parsed.html, /src="data:image\/png;base64,/);
+    assert.match(sent[0].raw.toString('utf8'), /Content-ID: <sunkaier-signature-logo@sunkaier\.com>/i);
+    assert.match(parsed.html, /Attached is our approved quotation\./);
+    assert.equal(parsed.messageId, '<bestcrm-00000000-0000-4000-8000-000000000009@sunkaier.com>');
+    assert.equal(parsed.inReplyTo, '<buyer-1@example.com>');
+    assert.deepEqual(parsed.references, ['<root@example.com>', '<buyer-1@example.com>']);
+    const quotationAttachment = parsed.attachments.find((item) => item.filename === 'QP-V2.pdf');
+    assert.deepEqual(quotationAttachment.content, Buffer.from('approved quotation'));
+    const inlineLogo = parsed.attachments.find((item) => item.filename === 'sunkaier-logo.png');
     assert.equal(inlineLogo.filename, 'sunkaier-logo.png');
     assert.equal(inlineLogo.contentType, 'image/png');
-    assert.match(inlineLogo.path, /src[\\/]public[\\/]assets[\\/]sunkaier-logo-email\.png$/);
-    assert.equal(inlineLogo.cid, 'sunkaier-signature-logo@sunkaier.com');
+    assert.equal(inlineLogo.contentId, '<sunkaier-signature-logo@sunkaier.com>');
     assert.equal(inlineLogo.contentDisposition, 'inline');
+    assert.equal(dependencies.state.outboundMimeArtifacts.length, 1);
+    const artifact = dependencies.state.outboundMimeArtifacts[0];
+    assert.equal(artifact.rfcMessageId, parsed.messageId);
+    assert.equal(artifact.fileSize, sent[0].raw.length);
+    assert.equal(artifact.sha256, createHash('sha256').update(sent[0].raw).digest('hex'));
     assert.equal(dependencies.state.sentPackages.length, 1);
     assert.equal(dependencies.state.sentPackages[0].sentEmailMessageId, result.id);
     assert.equal(dependencies.state.attempts[0].status, 'sent');
@@ -317,12 +347,14 @@ test('unapproved quotation package is rejected before an outbound archive record
 test('failed delivery retries the same archived formal quotation message without creating another version', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));
   let fail = true;
+  const submittedRaw = [];
   try {
     const dependencies = createDependencies(uploadDir, {
       transport: {
         async sendMail(message) {
+          submittedRaw.push(Buffer.from(message.raw));
           if (fail) throw Object.assign(new Error('temporary SMTP rejection'), { code: 'ETEMP' });
-          return { messageId: message.messageId };
+          return { messageId: '<provider-retry@example.com>' };
         }
       }
     });
@@ -344,6 +376,13 @@ test('failed delivery retries the same archived formal quotation message without
     assert.equal(dependencies.state.messages.filter((item) => item.direction === 'outbound').length, 1);
     assert.deepEqual(dependencies.state.attempts.map((item) => item.status), ['failed', 'sent']);
     assert.equal(dependencies.state.sentPackages.length, 1);
+    assert.equal(dependencies.state.outboundMimeArtifacts.length, 1);
+    assert.equal(submittedRaw.length, 2);
+    assert.deepEqual(submittedRaw[1], submittedRaw[0]);
+    assert.equal(
+      dependencies.state.outboundMimeArtifacts[0].sha256,
+      createHash('sha256').update(submittedRaw[0]).digest('hex')
+    );
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

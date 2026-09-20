@@ -78,6 +78,30 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
     SELECT count(*)::integer AS malware_security_events
     FROM email_raw_malware_events
   `);
+  const outboundMimeResult = await queryTarget.query(`
+    SELECT
+      artifact.id,
+      artifact.message_id,
+      artifact.stored_path,
+      artifact.file_size,
+      artifact.sha256,
+      artifact.rfc_message_id,
+      message.message_id AS canonical_message_id
+    FROM email_outbound_mime_artifacts artifact
+    JOIN email_messages message ON message.id = artifact.message_id
+    ORDER BY artifact.id
+  `);
+  const outboundCoverage = await queryTarget.query(`
+    SELECT
+      count(*)::integer AS outbound_sent_messages,
+      count(*) FILTER (WHERE artifact.message_id IS NULL)::integer AS outbound_sent_without_mime
+    FROM email_messages message
+    LEFT JOIN email_outbound_mime_artifacts artifact ON artifact.message_id = message.id
+    WHERE message.direction = 'outbound'
+      AND message.delivery_status = 'sent'
+      AND btrim(message.provider_mailbox) = ''
+      AND message.provider_uid IS NULL
+  `);
   const uploadRoot = path.resolve(uploadDir);
   const indexedPaths = new Set();
   const mismatches = [];
@@ -110,6 +134,10 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
     }
     try {
       const fileStat = await stat(absolutePath);
+      if (!fileStat.isFile()) {
+        mismatches.push({ id: Number(row.id), storedPath, reason: 'not_regular_file' });
+        continue;
+      }
       if (fileStat.size !== Number(row.file_size)) {
         mismatches.push({ id: Number(row.id), storedPath, reason: 'size_mismatch' });
         continue;
@@ -136,6 +164,61 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
   const inboundMessages = Number(coverage.rows[0]?.inbound_messages || 0);
   const inboundMissingRaw = Number(coverage.rows[0]?.inbound_missing_raw || 0);
   const malwareSecurityEvents = Number(malwareCoverage.rows[0]?.malware_security_events || 0);
+  const outboundMimeIndexedPaths = new Set();
+  const outboundMimeMismatches = [];
+  let outboundMimeVerified = 0;
+  for (const row of outboundMimeResult.rows) {
+    const storedPath = String(row.stored_path || '');
+    const mismatchBase = {
+      id: Number(row.id),
+      messageId: Number(row.message_id),
+      storedPath
+    };
+    outboundMimeIndexedPaths.add(storedPath);
+    if (String(row.rfc_message_id || '').trim() !== String(row.canonical_message_id || '').trim()) {
+      outboundMimeMismatches.push({ ...mismatchBase, reason: 'message_id_mismatch' });
+      continue;
+    }
+    const absolutePath = path.resolve(uploadRoot, ...storedPath.split('/'));
+    const outboundRoot = path.resolve(uploadRoot, 'email-outbound');
+    if (!storedPath.startsWith('email-outbound/')
+        || !absolutePath.toLowerCase().startsWith(`${outboundRoot}${path.sep}`.toLowerCase())) {
+      outboundMimeMismatches.push({ ...mismatchBase, reason: 'path_escape' });
+      continue;
+    }
+    try {
+      const fileStat = await stat(absolutePath);
+      if (!fileStat.isFile()) {
+        outboundMimeMismatches.push({ ...mismatchBase, reason: 'not_regular_file' });
+        continue;
+      }
+      if (fileStat.size !== Number(row.file_size)) {
+        outboundMimeMismatches.push({ ...mismatchBase, reason: 'size_mismatch' });
+        continue;
+      }
+      if (await sha256File(absolutePath) !== row.sha256) {
+        outboundMimeMismatches.push({ ...mismatchBase, reason: 'sha256_mismatch' });
+        continue;
+      }
+      outboundMimeVerified += 1;
+    } catch (error) {
+      outboundMimeMismatches.push({
+        ...mismatchBase,
+        reason: error?.code === 'ENOENT' ? 'missing_file' : 'read_error'
+      });
+    }
+  }
+  const outboundMimeDiskFiles = await listEmlFiles(path.join(uploadRoot, 'email-outbound'));
+  const outboundMimeUnexpectedFiles = outboundMimeDiskFiles
+    .map((relative) => `email-outbound/${relative}`)
+    .filter((storedPath) => !outboundMimeIndexedPaths.has(storedPath))
+    .sort();
+  const outboundSentMessages = Number(outboundCoverage.rows[0]?.outbound_sent_messages || 0);
+  const outboundSentWithoutMime = Number(outboundCoverage.rows[0]?.outbound_sent_without_mime || 0);
+  const readyToEnforceRawNotNull = inboundMissingRaw === 0
+    && mismatches.length === 0
+    && unexpectedFiles.length === 0
+    && rawWithoutCleanScan === 0;
   return {
     indexedRawMessages: result.rows.length,
     verifiedFiles,
@@ -147,9 +230,17 @@ export async function auditEmailRawArchive({ queryTarget, uploadDir }) {
     inboundMessages,
     inboundMissingRaw,
     malwareSecurityEvents,
-    readyToEnforceRawNotNull: inboundMissingRaw === 0
-      && mismatches.length === 0
-      && unexpectedFiles.length === 0
-      && rawWithoutCleanScan === 0
+    readyToEnforceRawNotNull,
+    outboundMimeArtifacts: outboundMimeResult.rows.length,
+    outboundMimeVerified,
+    outboundMimeMismatches,
+    outboundMimeUnexpectedFiles,
+    outboundSentMessages,
+    outboundSentWithoutMime,
+    readyToRebuildEmailEvidence: readyToEnforceRawNotNull
+      && rawWithoutMessage === 0
+      && outboundMimeMismatches.length === 0
+      && outboundMimeUnexpectedFiles.length === 0
+      && outboundSentWithoutMime === 0
   };
 }

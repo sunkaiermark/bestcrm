@@ -23,11 +23,15 @@ test('backup verifier checks database and upload hashes before isolated extracti
   try {
     await mkdir(path.join(sourceDir, 'uploads', 'email-archive'), { recursive: true });
     await mkdir(path.join(sourceDir, 'uploads', 'email-raw', 'mailbox-hash', '44'), { recursive: true });
+    await mkdir(path.join(sourceDir, 'uploads', 'email-outbound', 'message-hash'), { recursive: true });
     await mkdir(backupDir, { recursive: true });
     await writeFile(path.join(sourceDir, 'uploads', 'email-archive', 'message.txt'), 'archived customer message');
     const rawEmail = Buffer.from('From: buyer@example.com\r\nSubject: RFQ\r\n\r\nNeed quote');
     const rawEmailStoredPath = 'email-raw/mailbox-hash/44/7-raw.eml';
     await writeFile(path.join(sourceDir, 'uploads', ...rawEmailStoredPath.split('/')), rawEmail);
+    const outboundMime = Buffer.from('Message-ID: <crm-1@sunkaier.com>\r\nSubject: Quotation\r\n\r\nSent reply');
+    const outboundMimeStoredPath = 'email-outbound/message-hash/abc123.eml';
+    await writeFile(path.join(sourceDir, 'uploads', ...outboundMimeStoredPath.split('/')), outboundMime);
     await writeFile(path.join(sourceDir, 'uploads', 'QP-V2.pdf'), 'approved quotation');
     const database = Buffer.from('-- PostgreSQL database dump\nCREATE TABLE email_messages(id bigint);\n');
     const databasePath = path.join(backupDir, 'database.sql');
@@ -35,36 +39,102 @@ test('backup verifier checks database and upload hashes before isolated extracti
     await writeFile(databasePath, database);
     await execFileAsync('tar', ['-czf', uploadsPath, '-C', sourceDir, 'uploads'], { windowsHide: true });
     const uploads = await readFile(uploadsPath);
-    const rawInventory = `${sha256(rawEmail)}  ${rawEmailStoredPath}\n`;
-    await writeFile(path.join(backupDir, 'email-raw-files.sha256'), rawInventory);
-    await writeFile(path.join(backupDir, 'manifest.txt'), [
+    const emailEvidenceInventory = [
+      `${sha256(outboundMime)}  ${outboundMimeStoredPath}`,
+      `${sha256(rawEmail)}  ${rawEmailStoredPath}`,
+      ''
+    ].join('\n');
+    await writeFile(path.join(backupDir, 'email-evidence-files.sha256'), emailEvidenceInventory);
+    const writeManifest = async (uploadsSha256) => writeFile(path.join(backupDir, 'manifest.txt'), [
       'backup_id=local-rehearsal',
       'upload_dir=/var/bestcrm/uploads',
       `database_sha256=${sha256(database)}`,
+      `uploads_sha256=${uploadsSha256}`,
+      `email_evidence_inventory_sha256=${sha256(emailEvidenceInventory)}`,
+      'email_evidence_file_count=2',
+      `email_evidence_size_bytes=${rawEmail.length + outboundMime.length}`,
+      ''
+    ].join('\n'));
+    await writeManifest(sha256(uploads));
+
+    const result = await verifyBackupArtifacts({ backupDir, restoreDir });
+    assert.equal(result.databaseSha256, sha256(database));
+    assert.ok(result.uploadEntries.includes('uploads/email-archive/message.txt'));
+    assert.equal(result.emailEvidenceFilesVerified, 2);
+    assert.equal(result.emailEvidenceBytesVerified, rawEmail.length + outboundMime.length);
+    assert.equal(result.rawEmailFilesVerified, 1);
+    assert.equal(result.outboundMimeFilesVerified, 1);
+    assert.deepEqual(result.rawEmailEntries, [{ sha256: sha256(rawEmail), storedPath: rawEmailStoredPath }]);
+    assert.equal(await readFile(path.join(restoreDir, 'uploads', ...rawEmailStoredPath.split('/')), 'utf8'), rawEmail.toString());
+    assert.equal(await readFile(path.join(restoreDir, 'uploads', ...outboundMimeStoredPath.split('/')), 'utf8'), outboundMime.toString());
+    assert.equal(await readFile(path.join(restoreDir, 'uploads', 'QP-V2.pdf'), 'utf8'), 'approved quotation');
+    const restoreOnly = await verifyEmailRawRestore({
+      backupDir,
+      restoreDir: path.join(root, 'second-restore')
+    });
+    assert.equal(restoreOnly.backup.emailEvidenceFilesVerified, 2);
+    assert.equal(restoreOnly.databaseAudit, null);
+
+    await rm(path.join(sourceDir, 'uploads', ...outboundMimeStoredPath.split('/')), { force: true });
+    await execFileAsync('tar', ['-czf', uploadsPath, '-C', sourceDir, 'uploads'], { windowsHide: true });
+    await writeManifest(sha256(await readFile(uploadsPath)));
+    await assert.rejects(
+      () => verifyBackupArtifacts({ backupDir }),
+      /Upload archive email evidence count differs from inventory/
+    );
+
+    await writeFile(
+      path.join(sourceDir, 'uploads', ...outboundMimeStoredPath.split('/')),
+      Buffer.from('Message-ID: <crm-1@sunkaier.com>\r\n\r\nTampered')
+    );
+    await execFileAsync('tar', ['-czf', uploadsPath, '-C', sourceDir, 'uploads'], { windowsHide: true });
+    await writeManifest(sha256(await readFile(uploadsPath)));
+    await assert.rejects(
+      () => verifyBackupArtifacts({ backupDir, restoreDir: path.join(root, 'tampered-restore') }),
+      /Restored email evidence checksum mismatch/
+    );
+
+    await writeFile(databasePath, `${database.toString()}-- tampered\n`);
+    await assert.rejects(() => verifyBackupArtifacts({ backupDir }), /Database backup checksum mismatch/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('backup verifier remains compatible with legacy raw-email-only inventories', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'bestcrm-legacy-backup-test-'));
+  const backupDir = path.join(root, 'backup');
+  const sourceDir = path.join(root, 'source');
+  const restoreDir = path.join(root, 'restore');
+  try {
+    const storedPath = 'email-raw/mailbox/55/9-legacy.eml';
+    const rawEmail = Buffer.from('Message-ID: <legacy@example.com>\r\n\r\nLegacy');
+    await mkdir(path.dirname(path.join(sourceDir, 'uploads', ...storedPath.split('/'))), { recursive: true });
+    await mkdir(backupDir, { recursive: true });
+    await writeFile(path.join(sourceDir, 'uploads', ...storedPath.split('/')), rawEmail);
+    const database = Buffer.from('-- PostgreSQL database dump\nCREATE TABLE legacy_email(id bigint);\n');
+    const databasePath = path.join(backupDir, 'database.sql');
+    const uploadsPath = path.join(backupDir, 'uploads.tar.gz');
+    await writeFile(databasePath, database);
+    await execFileAsync('tar', ['-czf', uploadsPath, '-C', sourceDir, 'uploads'], { windowsHide: true });
+    const uploads = await readFile(uploadsPath);
+    const inventory = `${sha256(rawEmail)}  ${storedPath}\n`;
+    await writeFile(path.join(backupDir, 'email-raw-files.sha256'), inventory);
+    await writeFile(path.join(backupDir, 'manifest.txt'), [
+      'upload_dir=/var/bestcrm/uploads',
+      `database_sha256=${sha256(database)}`,
       `uploads_sha256=${sha256(uploads)}`,
-      `raw_email_inventory_sha256=${sha256(rawInventory)}`,
+      `raw_email_inventory_sha256=${sha256(inventory)}`,
       'raw_email_file_count=1',
       `raw_email_size_bytes=${rawEmail.length}`,
       ''
     ].join('\n'));
 
     const result = await verifyBackupArtifacts({ backupDir, restoreDir });
-    assert.equal(result.databaseSha256, sha256(database));
-    assert.ok(result.uploadEntries.includes('uploads/email-archive/message.txt'));
+    assert.equal(result.inventoryFormat, 'legacy-email-raw');
+    assert.equal(result.emailEvidenceFilesVerified, 1);
     assert.equal(result.rawEmailFilesVerified, 1);
-    assert.equal(result.rawEmailBytesVerified, rawEmail.length);
-    assert.deepEqual(result.rawEmailEntries, [{ sha256: sha256(rawEmail), storedPath: rawEmailStoredPath }]);
-    assert.equal(await readFile(path.join(restoreDir, 'uploads', ...rawEmailStoredPath.split('/')), 'utf8'), rawEmail.toString());
-    assert.equal(await readFile(path.join(restoreDir, 'uploads', 'QP-V2.pdf'), 'utf8'), 'approved quotation');
-    const restoreOnly = await verifyEmailRawRestore({
-      backupDir,
-      restoreDir: path.join(root, 'second-restore')
-    });
-    assert.equal(restoreOnly.backup.rawEmailFilesVerified, 1);
-    assert.equal(restoreOnly.databaseAudit, null);
-
-    await writeFile(databasePath, `${database.toString()}-- tampered\n`);
-    await assert.rejects(() => verifyBackupArtifacts({ backupDir }), /Database backup checksum mismatch/);
+    assert.equal(result.outboundMimeFilesVerified, 0);
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -83,7 +153,9 @@ test('production backup and rollback scripts record and enforce artifact checksu
   assert.match(backupScript, /database_sha256=\$DATABASE_SHA256/);
   assert.match(backupScript, /uploads_sha256=\$UPLOADS_SHA256/);
   assert.match(backupScript, /raw_email_inventory_sha256=\$RAW_EMAIL_INVENTORY_SHA256/);
-  assert.match(backupScript, /email-raw-files\.sha256/);
+  assert.match(backupScript, /email_evidence_inventory_sha256=\$EMAIL_EVIDENCE_INVENTORY_SHA256/);
+  assert.match(backupScript, /email-evidence-files\.sha256/);
+  assert.match(backupScript, /email-outbound/);
   assert.match(backupScript, /systemctl is-active --quiet bestcrm-email-backfill\.service/);
   assert.match(backupScript, /Email intake is active; stop it before creating a consistent database\/file backup/);
   assert.match(backupScript, /BESTCRM_ALLOW_APP_DURING_BACKUP/);
@@ -95,7 +167,7 @@ test('production backup and rollback scripts record and enforce artifact checksu
   assert.match(retentionScript, /entry\.isDirectory\(\)/);
   assert.match(rollbackScript, /verify_backup_checksum "\$DB_BACKUP"/);
   assert.match(rollbackScript, /verify_backup_checksum "\$UPLOAD_BACKUP"/);
-  assert.match(rollbackScript, /verify_backup_checksum "\$RAW_EMAIL_INVENTORY"/);
+  assert.match(rollbackScript, /verify_backup_checksum "\$EMAIL_EVIDENCE_INVENTORY"/);
   assert.match(rollbackScript, /tar -tzf "\$UPLOAD_BACKUP"/);
   assert.match(rollbackScript, /BESTCRM_ALLOW_LEGACY_BACKUP/);
 });

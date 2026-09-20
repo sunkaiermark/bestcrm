@@ -45,7 +45,7 @@ function createAcceptanceState() {
   return {
     inquiry: null, customer: null, contact: null, opportunity: null, technicalDraft: null,
     packages: [], packageAttachments: new Map(), threads: [], messages: [], emailAttachments: [],
-    deliveryAttempts: [], sentMail: [], workflowEvents: [], todos: [], materialVersions: [],
+    deliveryAttempts: [], sentMail: [], outboundMimeArtifacts: [], workflowEvents: [], todos: [], materialVersions: [],
     technicalSolution: null, commercialQuote: null, acceptedPackageId: null
   };
 }
@@ -314,9 +314,22 @@ function createEmailRepository(state) {
     async touchThread(id, lastMessageAt) { const thread = await this.findThreadById(id); thread.lastMessageAt = lastMessageAt; return thread; },
     async createAttachment(input) { const attachment = { id: state.emailAttachments.length + 1, ...input }; state.emailAttachments.push(attachment); return attachment; },
     async listAttachmentsByMessage(id) { return state.emailAttachments.filter((item) => item.messageId === Number(id)); },
+    async findOutboundMimeArtifact(id) {
+      return state.outboundMimeArtifacts.find((item) => item.messageId === Number(id)) || null;
+    },
+    async createOutboundMimeArtifact(input) {
+      const existing = state.outboundMimeArtifacts.find((item) => item.messageId === Number(input.messageId));
+      if (existing) return existing;
+      const artifact = { id: state.outboundMimeArtifacts.length + 1, ...input };
+      state.outboundMimeArtifacts.push(artifact);
+      return artifact;
+    },
     async claimOutboundForSend(id) {
       const message = await this.findMessageById(id);
       if (!message || !['draft', 'failed'].includes(message.deliveryStatus)) return null;
+      if (!state.outboundMimeArtifacts.some((item) => item.messageId === Number(id))) {
+        throw new Error('Outbound MIME must be archived before the message is claimed');
+      }
       message.deliveryStatus = 'pending';
       return message;
     },
@@ -388,7 +401,12 @@ test('release candidate completes lead-to-inquiry-to-engineering-to-QP-V2-email-
       emailArchiveRepository, quotationPackageRepository, inquiryRepository: core.inquiryRepository,
       opportunityRepository: core.opportunityRepository,
       opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return state.opportunity.teamMembers; } },
-      transport: { async sendMail(message) { state.sentMail.push(message); return { messageId: message.messageId }; } },
+      transport: {
+        async sendMail(message) {
+          state.sentMail.push(message);
+          return { messageId: `<provider-${state.sentMail.length}@sunkaier.com>` };
+        }
+      },
       sharedAddress: 'sales@sunkaier.com', uploadDir, maxUploadMb: 25,
       now: () => '2026-09-03T12:00:00.000Z', randomUUID: () => `00000000-0000-4000-8000-00000000000${state.sentMail.length + 1}`
     };
@@ -410,7 +428,13 @@ test('release candidate completes lead-to-inquiry-to-engineering-to-QP-V2-email-
     });
     assert.equal(q1Approved.status, 'superseded');
     assert.equal(q2Approved.status, 'sent');
-    assert.equal(state.sentMail.at(-1).from.address, 'sales@sunkaier.com');
+    assert.equal(state.sentMail.at(-1).envelope.from, 'sales@sunkaier.com');
+    assert.equal(Buffer.isBuffer(state.sentMail.at(-1).raw), true);
+    assert.equal(state.outboundMimeArtifacts.length, 2);
+    assert.equal(
+      state.outboundMimeArtifacts.find((item) => item.messageId === sentV2.id).sha256,
+      sha256(state.sentMail.at(-1).raw)
+    );
 
     const reply = await archiveInboundEmailRecord({ emailArchiveRepository, inquiryRepository: core.inquiryRepository }, {
       message: {

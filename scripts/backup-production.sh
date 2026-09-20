@@ -12,6 +12,8 @@ STAMP="$(date +%Y%m%d-%H%M%S)"
 BACKUP_PATH="$BACKUP_DIR/$STAMP"
 RAW_EMAIL_DIR="$UPLOAD_DIR/email-raw"
 RAW_EMAIL_INVENTORY="$BACKUP_PATH/email-raw-files.sha256"
+OUTBOUND_MIME_DIR="$UPLOAD_DIR/email-outbound"
+EMAIL_EVIDENCE_INVENTORY="$BACKUP_PATH/email-evidence-files.sha256"
 ALLOW_APP_DURING_BACKUP="${BESTCRM_ALLOW_APP_DURING_BACKUP:-false}"
 MAINTENANCE_FLAG="${BESTCRM_WRITE_MAINTENANCE_FLAG:-/run/bestcrm/write-maintenance}"
 BACKUP_STARTED=false
@@ -69,11 +71,41 @@ BACKUP_STARTED=true
 pg_dump "$DATABASE_URL" > "$BACKUP_PATH/database.sql"
 
 if [ -d "$UPLOAD_DIR" ]; then
-  tar -C "$(dirname "$UPLOAD_DIR")" -czf "$BACKUP_PATH/uploads.tar.gz" "$(basename "$UPLOAD_DIR")"
+  UPLOAD_BASENAME="$(basename "$UPLOAD_DIR")"
+  tar -C "$(dirname "$UPLOAD_DIR")" \
+    --exclude="$UPLOAD_BASENAME/email-raw/.staging" \
+    --exclude="$UPLOAD_BASENAME/email-outbound/.staging" \
+    -czf "$BACKUP_PATH/uploads.tar.gz" "$UPLOAD_BASENAME"
 else
   echo "Upload directory not found, creating empty upload archive: $UPLOAD_DIR" >&2
   tar -czf "$BACKUP_PATH/uploads.tar.gz" --files-from /dev/null
 fi
+
+if [ -d "$UPLOAD_DIR" ]; then
+  (
+    cd "$UPLOAD_DIR"
+    for evidence_dir in email-raw email-outbound; do
+      if [ -d "$evidence_dir" ]; then
+        find "$evidence_dir" -type f -name '*.eml' ! -path "$evidence_dir/.staging/*" -print0
+      fi
+    done \
+      | LC_ALL=C sort -z \
+      | xargs -0 -r sha256sum
+  ) > "$EMAIL_EVIDENCE_INVENTORY"
+else
+  : > "$EMAIL_EVIDENCE_INVENTORY"
+fi
+
+EMAIL_EVIDENCE_FILE_COUNT=0
+EMAIL_EVIDENCE_SIZE_BYTES=0
+for evidence_dir in "$RAW_EMAIL_DIR" "$OUTBOUND_MIME_DIR"; do
+  if [ -d "$evidence_dir" ]; then
+    evidence_count="$(find "$evidence_dir" -type f -name '*.eml' ! -path "$evidence_dir/.staging/*" | wc -l)"
+    evidence_bytes="$(find "$evidence_dir" -type f -name '*.eml' ! -path "$evidence_dir/.staging/*" -printf '%s\n' | awk '{total += $1} END {print total + 0}')"
+    EMAIL_EVIDENCE_FILE_COUNT=$((EMAIL_EVIDENCE_FILE_COUNT + evidence_count))
+    EMAIL_EVIDENCE_SIZE_BYTES=$((EMAIL_EVIDENCE_SIZE_BYTES + evidence_bytes))
+  fi
+done
 
 if [ -d "$RAW_EMAIL_DIR" ]; then
   (
@@ -98,6 +130,7 @@ fi
 DATABASE_SHA256="$(sha256sum "$BACKUP_PATH/database.sql" | awk '{print $1}')"
 UPLOADS_SHA256="$(sha256sum "$BACKUP_PATH/uploads.tar.gz" | awk '{print $1}')"
 RAW_EMAIL_INVENTORY_SHA256="$(sha256sum "$RAW_EMAIL_INVENTORY" | awk '{print $1}')"
+EMAIL_EVIDENCE_INVENTORY_SHA256="$(sha256sum "$EMAIL_EVIDENCE_INVENTORY" | awk '{print $1}')"
 ENV_SHA256=""
 if [ -f "$BACKUP_PATH/bestcrm.env" ]; then
   ENV_SHA256="$(sha256sum "$BACKUP_PATH/bestcrm.env" | awk '{print $1}')"
@@ -125,6 +158,9 @@ uploads_sha256=$UPLOADS_SHA256
 raw_email_inventory_sha256=$RAW_EMAIL_INVENTORY_SHA256
 raw_email_file_count=$RAW_EMAIL_FILE_COUNT
 raw_email_size_bytes=$RAW_EMAIL_SIZE_BYTES
+email_evidence_inventory_sha256=$EMAIL_EVIDENCE_INVENTORY_SHA256
+email_evidence_file_count=$EMAIL_EVIDENCE_FILE_COUNT
+email_evidence_size_bytes=$EMAIL_EVIDENCE_SIZE_BYTES
 env_sha256=$ENV_SHA256
 MANIFEST
 

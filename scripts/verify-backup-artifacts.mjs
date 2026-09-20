@@ -46,58 +46,81 @@ function requireChecksum(manifest, key) {
   return value;
 }
 
-function parseRawEmailInventory(value) {
+function parseEmailEvidenceInventory(value, { legacyRawOnly = false } = {}) {
   const seenPaths = new Set();
   return String(value || '').split(/\r?\n/).flatMap((line) => {
     if (!line) return [];
-    const match = line.match(/^([a-f0-9]{64})  (email-raw\/.+\.eml)$/);
-    if (!match) throw new Error(`Invalid raw email inventory entry: ${line}`);
-    assertSafeTarEntries([match[2]]);
-    if (match[2].startsWith('email-raw/.staging/')) {
-      throw new Error('Raw email staging files must not enter backups');
+    const match = line.match(/^([a-f0-9]{64})  ((?:email-raw|email-outbound)\/.+\.eml)$/);
+    if (!match || (legacyRawOnly && !match[2].startsWith('email-raw/'))) {
+      throw new Error(`Invalid email evidence inventory entry: ${line}`);
     }
-    if (seenPaths.has(match[2])) throw new Error(`Duplicate raw email inventory path: ${match[2]}`);
+    assertSafeTarEntries([match[2]]);
+    if (match[2].startsWith('email-raw/.staging/')
+        || match[2].startsWith('email-outbound/.staging/')) {
+      throw new Error('Email evidence staging files must not enter backups');
+    }
+    if (seenPaths.has(match[2])) throw new Error(`Duplicate email evidence inventory path: ${match[2]}`);
     seenPaths.add(match[2]);
     return [{ sha256: match[1], storedPath: match[2] }];
   });
+}
+
+async function fileExists(filePath) {
+  try {
+    await access(filePath);
+    return true;
+  } catch (error) {
+    if (error?.code === 'ENOENT') return false;
+    throw error;
+  }
 }
 
 export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
   const directory = path.resolve(backupDir || '');
   const databasePath = path.join(directory, 'database.sql');
   const uploadsPath = path.join(directory, 'uploads.tar.gz');
-  const rawEmailInventoryPath = path.join(directory, 'email-raw-files.sha256');
+  const emailEvidenceInventoryPath = path.join(directory, 'email-evidence-files.sha256');
+  const legacyRawEmailInventoryPath = path.join(directory, 'email-raw-files.sha256');
   const manifestPath = path.join(directory, 'manifest.txt');
-  await Promise.all([
-    access(databasePath), access(uploadsPath), access(rawEmailInventoryPath), access(manifestPath)
-  ]);
+  const hasCombinedEvidenceInventory = await fileExists(emailEvidenceInventoryPath);
+  const inventoryPath = hasCombinedEvidenceInventory
+    ? emailEvidenceInventoryPath
+    : legacyRawEmailInventoryPath;
+  await Promise.all([access(databasePath), access(uploadsPath), access(inventoryPath), access(manifestPath)]);
   const databaseStats = await stat(databasePath);
   if (databaseStats.size < 32) throw new Error('Database backup is empty or incomplete');
   const manifest = parseManifest(await readFile(manifestPath, 'utf8'));
   const expectedDatabaseSha = requireChecksum(manifest, 'database_sha256');
   const expectedUploadsSha = requireChecksum(manifest, 'uploads_sha256');
-  const expectedRawInventorySha = requireChecksum(manifest, 'raw_email_inventory_sha256');
-  const [databaseSha256, uploadsSha256, rawEmailInventorySha256] = await Promise.all([
+  const inventoryShaKey = hasCombinedEvidenceInventory
+    ? 'email_evidence_inventory_sha256'
+    : 'raw_email_inventory_sha256';
+  const expectedEvidenceInventorySha = requireChecksum(manifest, inventoryShaKey);
+  const [databaseSha256, uploadsSha256, emailEvidenceInventorySha256] = await Promise.all([
     sha256File(databasePath),
     sha256File(uploadsPath),
-    sha256File(rawEmailInventoryPath)
+    sha256File(inventoryPath)
   ]);
   if (databaseSha256 !== expectedDatabaseSha) throw new Error('Database backup checksum mismatch');
   if (uploadsSha256 !== expectedUploadsSha) throw new Error('Upload backup checksum mismatch');
-  if (rawEmailInventorySha256 !== expectedRawInventorySha) {
-    throw new Error('Raw email inventory checksum mismatch');
+  if (emailEvidenceInventorySha256 !== expectedEvidenceInventorySha) {
+    throw new Error('Email evidence inventory checksum mismatch');
   }
-  const rawEmailEntries = parseRawEmailInventory(await readFile(rawEmailInventoryPath, 'utf8'));
-  const expectedRawCount = Number(manifest.raw_email_file_count);
-  if (!Number.isSafeInteger(expectedRawCount) || expectedRawCount < 0) {
-    throw new Error('Backup manifest has an invalid raw_email_file_count');
+  const emailEvidenceEntries = parseEmailEvidenceInventory(await readFile(inventoryPath, 'utf8'), {
+    legacyRawOnly: !hasCombinedEvidenceInventory
+  });
+  const countKey = hasCombinedEvidenceInventory ? 'email_evidence_file_count' : 'raw_email_file_count';
+  const expectedEvidenceCount = Number(manifest[countKey]);
+  if (!Number.isSafeInteger(expectedEvidenceCount) || expectedEvidenceCount < 0) {
+    throw new Error(`Backup manifest has an invalid ${countKey}`);
   }
-  if (rawEmailEntries.length !== expectedRawCount) {
-    throw new Error('Raw email inventory count mismatch');
+  if (emailEvidenceEntries.length !== expectedEvidenceCount) {
+    throw new Error('Email evidence inventory count mismatch');
   }
-  const expectedRawBytes = Number(manifest.raw_email_size_bytes);
-  if (!Number.isSafeInteger(expectedRawBytes) || expectedRawBytes < 0) {
-    throw new Error('Backup manifest has an invalid raw_email_size_bytes');
+  const sizeKey = hasCombinedEvidenceInventory ? 'email_evidence_size_bytes' : 'raw_email_size_bytes';
+  const expectedEvidenceBytes = Number(manifest[sizeKey]);
+  if (!Number.isSafeInteger(expectedEvidenceBytes) || expectedEvidenceBytes < 0) {
+    throw new Error(`Backup manifest has an invalid ${sizeKey}`);
   }
   const { stdout } = await execFileAsync('tar', ['-tzf', uploadsPath], {
     encoding: 'utf8', windowsHide: true, maxBuffer: 20 * 1024 * 1024
@@ -106,35 +129,51 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
   assertSafeTarEntries(entries);
   const uploadDirectoryName = path.posix.basename(String(manifest.upload_dir || 'uploads').replaceAll('\\', '/'));
   const archivedEntries = new Set(entries);
-  const archivedRawEmails = entries.filter((entry) => (
-    entry.startsWith(`${uploadDirectoryName}/email-raw/`)
+  const archivedEmailEvidence = entries.filter((entry) => (
+    (entry.startsWith(`${uploadDirectoryName}/email-raw/`)
+      || entry.startsWith(`${uploadDirectoryName}/email-outbound/`))
     && entry.endsWith('.eml')
     && !entry.startsWith(`${uploadDirectoryName}/email-raw/.staging/`)
+    && !entry.startsWith(`${uploadDirectoryName}/email-outbound/.staging/`)
   ));
-  if (archivedRawEmails.length !== rawEmailEntries.length) {
-    throw new Error('Upload archive raw email count differs from inventory');
+  if (archivedEmailEvidence.length !== emailEvidenceEntries.length) {
+    throw new Error('Upload archive email evidence count differs from inventory');
   }
-  for (const entry of rawEmailEntries) {
+  for (const entry of emailEvidenceEntries) {
     if (!archivedEntries.has(`${uploadDirectoryName}/${entry.storedPath}`)) {
-      throw new Error(`Raw email file is missing from upload archive: ${entry.storedPath}`);
+      throw new Error(`Email evidence file is missing from upload archive: ${entry.storedPath}`);
     }
   }
+  const rawEmailEntries = emailEvidenceEntries.filter((entry) => entry.storedPath.startsWith('email-raw/'));
+  const outboundMimeEntries = emailEvidenceEntries.filter((entry) => entry.storedPath.startsWith('email-outbound/'));
+  let emailEvidenceFilesVerified = 0;
+  let emailEvidenceBytesVerified = 0;
   let rawEmailFilesVerified = 0;
   let rawEmailBytesVerified = 0;
+  let outboundMimeFilesVerified = 0;
+  let outboundMimeBytesVerified = 0;
   if (restoreDir) {
     const target = path.resolve(restoreDir);
     await mkdir(target, { recursive: true });
     await execFileAsync('tar', ['-xzf', uploadsPath, '-C', target], { windowsHide: true });
-    for (const entry of rawEmailEntries) {
+    for (const entry of emailEvidenceEntries) {
       const restoredPath = path.join(target, uploadDirectoryName, ...entry.storedPath.split('/'));
       if (await sha256File(restoredPath) !== entry.sha256) {
-        throw new Error(`Restored raw email checksum mismatch: ${entry.storedPath}`);
+        throw new Error(`Restored email evidence checksum mismatch: ${entry.storedPath}`);
       }
-      rawEmailBytesVerified += (await stat(restoredPath)).size;
-      rawEmailFilesVerified += 1;
+      const restoredBytes = (await stat(restoredPath)).size;
+      emailEvidenceBytesVerified += restoredBytes;
+      emailEvidenceFilesVerified += 1;
+      if (entry.storedPath.startsWith('email-raw/')) {
+        rawEmailBytesVerified += restoredBytes;
+        rawEmailFilesVerified += 1;
+      } else {
+        outboundMimeBytesVerified += restoredBytes;
+        outboundMimeFilesVerified += 1;
+      }
     }
-    if (rawEmailBytesVerified !== expectedRawBytes) {
-      throw new Error('Restored raw email byte count differs from manifest');
+    if (emailEvidenceBytesVerified !== expectedEvidenceBytes) {
+      throw new Error('Restored email evidence byte count differs from manifest');
     }
   }
   return {
@@ -142,10 +181,17 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
     databaseBytes: databaseStats.size,
     databaseSha256,
     uploadsSha256,
-    rawEmailInventorySha256,
+    inventoryFormat: hasCombinedEvidenceInventory ? 'email-evidence' : 'legacy-email-raw',
+    emailEvidenceInventorySha256,
+    emailEvidenceEntries,
+    emailEvidenceFilesVerified,
+    emailEvidenceBytesVerified,
     rawEmailEntries,
     rawEmailFilesVerified,
     rawEmailBytesVerified,
+    outboundMimeEntries,
+    outboundMimeFilesVerified,
+    outboundMimeBytesVerified,
     uploadDirectoryName,
     uploadEntries: entries,
     restoredTo: restoreDir ? path.resolve(restoreDir) : null

@@ -6,6 +6,7 @@ import { canAccessInquiryInbox } from './inquiryService.mjs';
 import { canViewOpportunity } from './opportunityService.mjs';
 import { resolveStoredPath } from './attachmentFileService.mjs';
 import { storeEmailArchiveAttachments } from './emailArchiveService.mjs';
+import { prepareOutboundMimeArtifact } from './emailOutboundMimeService.mjs';
 
 const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 const COMPANY_ADDRESS = '2 Venture Drive, #10-30, Vision Exchange, Singapore 608526';
@@ -400,6 +401,52 @@ async function finalizeDelivery(dependencies, input) {
   return work(dependencies);
 }
 
+async function buildRawMime(mailOptions, dependencies) {
+  if (typeof dependencies.buildRawMime === 'function') {
+    return Buffer.from(await dependencies.buildRawMime(mailOptions));
+  }
+  const imported = await import('nodemailer');
+  const nodemailer = imported.default || imported;
+  const streamTransport = nodemailer.createTransport({
+    streamTransport: true,
+    buffer: true,
+    newline: 'unix'
+  });
+  const result = await streamTransport.sendMail(mailOptions);
+  return Buffer.from(result.message);
+}
+
+async function outboundMailOptions(dependencies, message) {
+  const attachments = await dependencies.emailArchiveRepository.listAttachmentsByMessage(message.id);
+  const mailAttachments = attachments.map((attachment) => {
+    const attachmentPath = resolveStoredPath(dependencies.uploadDir, attachment.storedPath);
+    if (!attachmentPath) throw new CustomerEmailError(`Archived attachment is unavailable: ${attachment.originalName}`, 409);
+    return { filename: attachment.originalName, contentType: attachment.mimeType, path: attachmentPath };
+  });
+  if (message.htmlBody) {
+    mailAttachments.push({
+      filename: 'sunkaier-logo.png',
+      contentType: 'image/png',
+      path: SIGNATURE_LOGO_PATH,
+      cid: SIGNATURE_LOGO_CID,
+      contentDisposition: 'inline'
+    });
+  }
+  return {
+    from: { name: message.fromName, address: message.fromAddress },
+    to: message.toRecipients,
+    cc: message.ccRecipients,
+    subject: message.subject,
+    text: message.textBody,
+    html: message.htmlBody || undefined,
+    messageId: message.messageId,
+    inReplyTo: message.inReplyTo || undefined,
+    references: message.referenceIds.length ? message.referenceIds : undefined,
+    headers: message.safeHeaders || {},
+    attachments: mailAttachments
+  };
+}
+
 export async function sendCustomerEmail(dependencies, actor, messageId) {
   const original = await dependencies.emailArchiveRepository.findMessageById(positiveId(messageId));
   if (!original || original.direction !== 'outbound') throw new CustomerEmailError('Outbound email not found', 404);
@@ -410,37 +457,38 @@ export async function sendCustomerEmail(dependencies, actor, messageId) {
     await approvedQuotationPackage(dependencies, context.opportunity, original.quotationPackageVersionId);
   }
   if (!dependencies.transport?.sendMail) throw new CustomerEmailError('Customer SMTP transport is not configured', 503);
+  if (!['draft', 'failed'].includes(original.deliveryStatus)) {
+    throw new CustomerEmailError('Only draft or failed email can be sent', 409);
+  }
+
+  let artifact;
+  try {
+    const existingArtifact = await dependencies.emailArchiveRepository.findOutboundMimeArtifact(original.id);
+    let rawMime;
+    if (!existingArtifact) {
+      rawMime = await buildRawMime(await outboundMailOptions(dependencies, original), dependencies);
+    }
+    artifact = await prepareOutboundMimeArtifact({
+      message: original,
+      rawMime,
+      uploadDir: dependencies.uploadDir,
+      emailArchiveRepository: dependencies.emailArchiveRepository
+    });
+  } catch (error) {
+    if (error instanceof CustomerEmailError) throw error;
+    throw new CustomerEmailError(`Email evidence preparation failed: ${safeError(error)}`, 500);
+  }
 
   const claimed = await dependencies.emailArchiveRepository.claimOutboundForSend(original.id);
   if (!claimed) throw new CustomerEmailError('Only draft or failed email can be sent', 409);
   let result;
   try {
-    const attachments = await dependencies.emailArchiveRepository.listAttachmentsByMessage(claimed.id);
-    const mailAttachments = attachments.map((attachment) => {
-      const attachmentPath = resolveStoredPath(dependencies.uploadDir, attachment.storedPath);
-      if (!attachmentPath) throw new CustomerEmailError(`Archived attachment is unavailable: ${attachment.originalName}`, 409);
-      return { filename: attachment.originalName, contentType: attachment.mimeType, path: attachmentPath };
-    });
-    if (claimed.htmlBody) {
-      mailAttachments.push({
-        filename: 'sunkaier-logo.png',
-        contentType: 'image/png',
-        path: SIGNATURE_LOGO_PATH,
-        cid: SIGNATURE_LOGO_CID,
-        contentDisposition: 'inline'
-      });
-    }
     result = await dependencies.transport.sendMail({
-      from: { name: claimed.fromName, address: claimed.fromAddress },
-      to: claimed.toRecipients,
-      cc: claimed.ccRecipients,
-      subject: claimed.subject,
-      text: claimed.textBody,
-      html: claimed.htmlBody || undefined,
-      messageId: claimed.messageId,
-      inReplyTo: claimed.inReplyTo || undefined,
-      references: claimed.referenceIds.length ? claimed.referenceIds : undefined,
-      attachments: mailAttachments
+      envelope: {
+        from: claimed.fromAddress,
+        to: [...claimed.toRecipients, ...claimed.ccRecipients].map((item) => item.address)
+      },
+      raw: artifact.rawMime
     });
   } catch (error) {
     const detail = safeError(error);

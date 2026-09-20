@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -260,6 +261,7 @@ test('imported sent mail joins the referenced opportunity thread and records its
         return { id: 13, ...input, direction: 'outbound' };
       },
       async createMailboxDelivery(input) { captured.delivery = input; return input; },
+      async reconcileOutboundSentObservation(input) { captured.reconciliation = input; return null; },
       async touchThread(id, at) { captured.touch = [id, at]; }
     }
   }, candidate, { rawCapture });
@@ -267,25 +269,26 @@ test('imported sent mail joins the referenced opportunity thread and records its
   assert.equal(result.duplicate, false);
   assert.equal(captured.message.threadId, 4);
   assert.equal(captured.message.authoredBy, 7);
-  assert.equal(captured.message.rawMessageId, 81);
-  assert.equal(captured.message.rawEmlStoredPath, 'email-raw/markyang/sent-12.eml');
-  assert.equal(captured.message.rawEmlFileSize, 128);
-  assert.equal(captured.message.rawEmlSha256, 'a'.repeat(64));
-  assert.ok(captured.message.importedAt);
+  assert.equal(captured.message.rawMessageId, null);
+  assert.equal(captured.message.rawEmlStoredPath, null);
+  assert.equal(captured.message.rawEmlFileSize, null);
+  assert.equal(captured.message.rawEmlSha256, null);
   assert.equal(captured.delivery.direction, 'outbound');
   assert.equal(captured.delivery.mailboxKey, 'markyang@sunkaier.com');
   assert.equal(captured.delivery.rawMessageId, 81);
   assert.equal(captured.rawProcessing.rawMessageId, 81);
   assert.equal(captured.rawProcessing.outcome, 'succeeded');
+  assert.equal(captured.reconciliation.messageId, 13);
   assert.deepEqual(captured.touch, [4, '2026-09-03T02:00:00Z']);
 });
 
-test('duplicate imported sent mail binds newly captured raw evidence before recording delivery', async () => {
+test('duplicate imported sent mail keeps provider raw evidence on delivery and reconciles pending state', async () => {
   const captured = {};
   const existing = {
     id: 13,
     threadId: 4,
     direction: 'outbound',
+    deliveryStatus: 'pending',
     rawMessageId: null
   };
   const rawCapture = {
@@ -306,11 +309,11 @@ test('duplicate imported sent mail binds newly captured raw evidence before reco
       async createRawMessage(input) { return { rawMessage: { id: 82, ...input }, created: true }; },
       async createRawScanAttempt(input) { return input; },
       async createRawProcessingAttempt(input) { return input; },
-      async linkImportedOutboundMessageRawArchive(input) {
-        captured.binding = input;
-        return { ...existing, rawMessageId: input.rawMessageId, rawEmlStoredPath: input.rawEmlStoredPath };
-      },
       async createMailboxDelivery(input) { captured.delivery = input; return input; },
+      async reconcileOutboundSentObservation(input) {
+        captured.reconciliation = input;
+        return { ...existing, deliveryStatus: 'sent' };
+      },
       async findThreadById() { return { id: 4, opportunityId: 20 }; }
     }
   }, parsed({
@@ -324,9 +327,10 @@ test('duplicate imported sent mail binds newly captured raw evidence before reco
   }), { rawCapture });
 
   assert.equal(result.duplicate, true);
-  assert.equal(captured.binding.rawMessageId, 82);
-  assert.equal(captured.binding.rawEmlStoredPath, rawCapture.storedPath);
+  assert.equal(captured.binding, undefined);
   assert.equal(captured.delivery.rawMessageId, 82);
+  assert.equal(captured.reconciliation.messageId, 13);
+  assert.equal(captured.reconciliation.providerMessageId, 'sent-22@example.com');
 });
 
 test('archived attachments retain checksum and independent email-archive file', async () => {
@@ -428,7 +432,7 @@ test('attachment file remains recoverable when scan evidence insert fails after 
   }
 });
 
-test('thread visibility keeps shared unlinked mail manager-only and personal unlinked mail owner-only', async () => {
+test('thread visibility keeps shared mail role-scoped and hides personal-only mail from every CRM user', async () => {
   const unlinked = { id: 1, inquiryId: 8, opportunityId: null };
   const linked = { id: 2, inquiryId: 9, opportunityId: 20 };
   const personal = { id: 3, mailboxOwnerUserId: 7, inquiryId: null, opportunityId: null };
@@ -454,16 +458,20 @@ test('thread visibility keeps shared unlinked mail manager-only and personal unl
   const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
   const otherSalesperson = { id: 8, roles: [ROLES.SALESPERSON] };
   const manager = { id: 2, roles: [ROLES.SALES_MANAGER] };
-  assert.deepEqual((await listVisibleEmailThreads(dependencies, salesperson)).map((item) => item.id), [2, 3]);
+  assert.deepEqual((await listVisibleEmailThreads(dependencies, salesperson)).map((item) => item.id), [2]);
   assert.deepEqual((await listVisibleEmailThreads(dependencies, otherSalesperson)).map((item) => item.id), []);
   assert.deepEqual((await listVisibleEmailThreads(dependencies, manager)).map((item) => item.id), [1, 2]);
   await assert.rejects(() => getVisibleEmailThread(dependencies, salesperson, 1), /Forbidden/);
   assert.equal((await getVisibleEmailThread(dependencies, salesperson, 2)).id, 2);
-  assert.equal((await getVisibleEmailThread(dependencies, salesperson, 3)).id, 3);
+  await assert.rejects(() => getVisibleEmailThread(dependencies, salesperson, 3), /Forbidden/);
   await assert.rejects(() => getVisibleEmailThread(dependencies, manager, 3), /Forbidden/);
+  await assert.rejects(
+    () => getVisibleEmailThread(dependencies, { id: 1, roles: [ROLES.ADMINISTRATOR] }, 3),
+    /Forbidden/
+  );
 });
 
-test('one deduplicated thread remains visible to every personal mailbox that received it', async () => {
+test('a personal-only deduplicated thread stays outside the CRM mailbox boundary', async () => {
   const sharedDelivery = {
     id: 3,
     mailboxOwnerUserIds: [7, 8],
@@ -474,8 +482,8 @@ test('one deduplicated thread remains visible to every personal mailbox that rec
     emailArchiveRepository: { async listThreads() { return [sharedDelivery]; } }
   };
 
-  assert.equal((await listVisibleEmailThreads(dependencies, { id: 7, roles: [ROLES.SALESPERSON] })).length, 1);
-  assert.equal((await listVisibleEmailThreads(dependencies, { id: 8, roles: [ROLES.SALESPERSON] })).length, 1);
+  assert.equal((await listVisibleEmailThreads(dependencies, { id: 7, roles: [ROLES.SALESPERSON] })).length, 0);
+  assert.equal((await listVisibleEmailThreads(dependencies, { id: 8, roles: [ROLES.SALESPERSON] })).length, 0);
   assert.equal((await listVisibleEmailThreads(dependencies, { id: 9, roles: [ROLES.SALESPERSON] })).length, 0);
 });
 
@@ -492,14 +500,22 @@ test('a shared mailbox delivery keeps manager visibility after the message is de
     emailArchiveRepository: { async listThreads() { return [sharedDelivery]; } }
   };
 
-  assert.equal((await listVisibleEmailThreads(dependencies, { id: 7, roles: [ROLES.SALESPERSON] })).length, 1);
+  assert.equal((await listVisibleEmailThreads(dependencies, { id: 7, roles: [ROLES.SALESPERSON] })).length, 0);
   assert.equal((await listVisibleEmailThreads(dependencies, { id: 2, roles: [ROLES.SALES_MANAGER] })).length, 1);
   assert.equal((await listVisibleEmailThreads(dependencies, { id: 8, roles: [ROLES.SALESPERSON] })).length, 0);
 });
 
-test('manual opportunity linking is limited to visible active opportunities and cannot be changed', async () => {
-  const actor = { id: 7, roles: [ROLES.SALESPERSON] };
-  const thread = { id: 3, mailboxOwnerUserId: 7, inquiryId: null, opportunityId: null, triageStatus: 'pending' };
+test('manual opportunity linking is limited to a manager-visible shared mailbox opportunity and cannot be changed', async () => {
+  const actor = { id: 2, roles: [ROLES.SALES_MANAGER] };
+  const thread = {
+    id: 3,
+    mailboxKey: 'sales@sunkaier.com',
+    mailboxOwnerUserIds: [],
+    hasSharedMailboxDelivery: true,
+    inquiryId: null,
+    opportunityId: null,
+    triageStatus: 'pending'
+  };
   const opportunity = {
     id: 20,
     salespersonId: 7,
@@ -537,7 +553,7 @@ test('manual opportunity linking is limited to visible active opportunities and 
   };
 
   assert.equal((await listEmailLinkableOpportunities(dependencies, actor)).length, 1);
-  assert.deepEqual(listFilter, { archiveScope: 'active', visibleToUserId: 7 });
+  assert.deepEqual(listFilter, { archiveScope: 'active', visibleToUserId: 2 });
   assert.equal((await linkEmailThreadToOpportunity(dependencies, actor, 3, 20)).opportunityId, 20);
   assert.deepEqual(linked, [3, 20]);
   await assert.rejects(
@@ -560,7 +576,7 @@ test('thread visibility forwards the requested archive folder without changing R
   assert.deepEqual(receivedFilter, { archiveDisposition: 'spam' });
 });
 
-test('mailbox picker keeps shared and personal mailbox boundaries role-scoped', async () => {
+test('mailbox picker exposes only the shared business mailbox to every CRM user', async () => {
   const dependencies = {
     sharedAddress: 'sales@sunkaier.com',
     emailArchiveRepository: {
@@ -576,15 +592,11 @@ test('mailbox picker keeps shared and personal mailbox boundaries role-scoped', 
   const manager = await listVisibleEmailMailboxes(dependencies, { id: 2, roles: [ROLES.SALES_MANAGER] });
   assert.deepEqual(manager.map((mailbox) => mailbox.key), ['sales@sunkaier.com']);
   const owner = await listVisibleEmailMailboxes(dependencies, { id: 7, roles: [ROLES.SALESPERSON] });
-  assert.deepEqual(owner.map((mailbox) => mailbox.key), ['markyang@sunkaier.com']);
+  assert.deepEqual(owner.map((mailbox) => mailbox.key), ['sales@sunkaier.com']);
   const administrator = await listVisibleEmailMailboxes(dependencies, { id: 1, roles: [ROLES.ADMINISTRATOR] });
-  assert.deepEqual(administrator.map((mailbox) => mailbox.key), [
-    'sales@sunkaier.com',
-    'markyang@sunkaier.com',
-    'helena@sunkaier.com'
-  ]);
+  assert.deepEqual(administrator.map((mailbox) => mailbox.key), ['sales@sunkaier.com']);
   await assert.rejects(
-    () => resolveVisibleEmailMailbox(dependencies, { id: 7, roles: [ROLES.SALESPERSON] }, 'helena@sunkaier.com'),
+    () => resolveVisibleEmailMailbox(dependencies, { id: 1, roles: [ROLES.ADMINISTRATOR] }, 'helena@sunkaier.com'),
     (error) => error.statusCode === 403
   );
 });
@@ -904,13 +916,17 @@ test('non-business cleanup uses the separate folder scope and administrator guar
         calls.push(input);
         return {
           threadId: 8,
+          purgeAuditId: 91,
+          fileJobCount: 0,
           messageCount: 1,
           attachmentBytes: 0,
-          rawMessageBytes: 200,
-          attachmentPaths: [],
-          rawMessagePaths: []
+          rawMessageBytes: 200
         };
-      }
+      },
+      async claimEmailPurgeFileJobs() { return []; },
+      async completeEmailPurgeFileJob() { return true; },
+      async failEmailPurgeFileJob() { return true; },
+      async countEmailPurgeFileJobs() { return 0; }
     },
     uploadDir: './var/uploads'
   };
@@ -933,12 +949,15 @@ test('administrator spam purge requires typed confirmation and continues until e
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-spam-purge-'));
   const attachmentPath = 'email-archive/spam.pdf';
   const rawPath = 'email-raw/spam.eml';
+  const attachmentContent = 'spam attachment';
+  const rawContent = 'raw spam';
   await mkdir(path.join(uploadDir, 'email-archive'), { recursive: true });
   await mkdir(path.join(uploadDir, 'email-raw'), { recursive: true });
-  await writeFile(path.join(uploadDir, attachmentPath), 'spam attachment');
-  await writeFile(path.join(uploadDir, rawPath), 'raw spam');
+  await writeFile(path.join(uploadDir, attachmentPath), attachmentContent);
+  await writeFile(path.join(uploadDir, rawPath), rawContent);
   const administrator = { id: 1, roles: [ROLES.ADMINISTRATOR] };
   const purgeCalls = [];
+  const fileJobs = [];
   let listCalls = 0;
   const repository = {
     async listSpamPurgeCandidates(input) {
@@ -950,28 +969,76 @@ test('administrator spam purge requires typed confirmation and continues until e
     },
     async purgeEmailThread(input) {
       purgeCalls.push(input);
+      const purgeAuditId = 90 + Number(input.threadId);
       if (Number(input.threadId) === 9) {
         return {
           threadId: 9,
+          purgeAuditId,
+          fileJobCount: 0,
           messageCount: 1,
           attachmentCount: 0,
           attachmentBytes: 0,
           rawMessageCount: 0,
-          rawMessageBytes: 0,
-          attachmentPaths: [],
-          rawMessagePaths: []
+          rawMessageBytes: 0
         };
       }
+      fileJobs.push(
+        {
+          id: 1,
+          purgeAuditId,
+          storedPath: attachmentPath,
+          expectedSize: Buffer.byteLength(attachmentContent),
+          expectedSha256: createHash('sha256').update(attachmentContent).digest('hex'),
+          status: 'pending',
+          attemptCount: 0
+        },
+        {
+          id: 2,
+          purgeAuditId,
+          storedPath: rawPath,
+          expectedSize: Buffer.byteLength(rawContent),
+          expectedSha256: createHash('sha256').update(rawContent).digest('hex'),
+          status: 'pending',
+          attemptCount: 0
+        }
+      );
       return {
         threadId: 8,
+        purgeAuditId,
+        fileJobCount: 2,
         messageCount: 1,
         attachmentCount: 1,
         attachmentBytes: 15,
         rawMessageCount: 1,
-        rawMessageBytes: 8,
-        attachmentPaths: [attachmentPath],
-        rawMessagePaths: [rawPath]
+        rawMessageBytes: 8
       };
+    },
+    async claimEmailPurgeFileJobs({ workerId, purgeAuditIds, limit }) {
+      const claimed = fileJobs
+        .filter((job) => job.status === 'pending' && purgeAuditIds.includes(job.purgeAuditId))
+        .slice(0, limit);
+      for (const job of claimed) {
+        job.status = 'processing';
+        job.leaseOwner = workerId;
+        job.attemptCount += 1;
+      }
+      return claimed.map((job) => ({ ...job }));
+    },
+    async completeEmailPurgeFileJob({ jobId, workerId }) {
+      const index = fileJobs.findIndex((job) => job.id === jobId && job.leaseOwner === workerId);
+      if (index < 0) return false;
+      fileJobs.splice(index, 1);
+      return true;
+    },
+    async failEmailPurgeFileJob({ jobId, workerId }) {
+      const job = fileJobs.find((item) => item.id === jobId && item.leaseOwner === workerId);
+      if (!job) return false;
+      job.status = 'pending';
+      job.leaseOwner = '';
+      return true;
+    },
+    async countEmailPurgeFileJobs({ purgeAuditIds }) {
+      return fileJobs.filter((job) => purgeAuditIds.includes(job.purgeAuditId)).length;
     }
   };
   const dependencies = {
@@ -1004,6 +1071,27 @@ test('administrator spam purge requires typed confirmation and continues until e
   }
 });
 
+test('permanent email deletion refuses to start without the durable file cleanup queue', async () => {
+  let purgeCalled = false;
+  const dependencies = {
+    emailArchiveRepository: {
+      async listSpamPurgeCandidates() { return [{ threadId: 8, subject: 'spam' }]; },
+      async purgeEmailThread() {
+        purgeCalled = true;
+        return null;
+      }
+    }
+  };
+
+  await assert.rejects(
+    () => purgeEligibleEmailSpam(dependencies, { id: 1, roles: [ROLES.ADMINISTRATOR] }, {
+      confirmation: 'DELETE'
+    }),
+    (error) => error.statusCode === 503 && /Durable email file cleanup/.test(error.message)
+  );
+  assert.equal(purgeCalled, false);
+});
+
 test('administrator may immediately delete only a repository-approved unlinked inbound thread', async () => {
   const administrator = { id: 1, roles: [ROLES.ADMINISTRATOR] };
   const manager = { id: 2, roles: [ROLES.SALES_MANAGER] };
@@ -1027,13 +1115,17 @@ test('administrator may immediately delete only a repository-approved unlinked i
       assert.match(input.subjectSha256, /^[0-9a-f]{64}$/);
       return {
         threadId: 8,
+        purgeAuditId: 91,
+        fileJobCount: 0,
         messageCount: 1,
         attachmentBytes: 0,
-        rawMessageBytes: 0,
-        attachmentPaths: [],
-        rawMessagePaths: []
+        rawMessageBytes: 0
       };
-    }
+    },
+    async claimEmailPurgeFileJobs() { return []; },
+    async completeEmailPurgeFileJob() { return true; },
+    async failEmailPurgeFileJob() { return true; },
+    async countEmailPurgeFileJobs() { return 0; }
   };
   const dependencies = {
     emailArchiveRepository: repository,

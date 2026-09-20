@@ -152,10 +152,13 @@ test('email purge repository writes the audit before deleting the isolated email
           thread_id: '8', mailbox_key: 'sales@sunkaier.com', subject: 'SEO spam',
           triage_status: 'archived', archive_disposition: 'archived', last_message_at: '2026-08-01T00:00:00Z',
           message_count: '1', attachment_count: '1',
-          attachment_bytes: '50', attachment_paths: ['email-archive/spam.pdf'],
-          raw_message_ids: [81], raw_message_paths: ['email-raw/spam.eml'], raw_message_count: '1',
+          attachment_bytes: '50',
+          raw_message_ids: [81], raw_message_count: '1',
           raw_message_bytes: '70', triage_event_count: '1', assignment_event_count: '0'
         }] };
+      }
+      if (statement.includes('INSERT INTO email_purge_audits')) {
+        return { rows: [{ id: '91' }], rowCount: 1 };
       }
       return { rows: [], rowCount: 1 };
     }
@@ -169,18 +172,68 @@ test('email purge repository writes the audit before deleting the isolated email
   });
 
   assert.equal(purged.threadId, 8);
-  assert.deepEqual(purged.attachmentPaths, ['email-archive/spam.pdf']);
-  assert.deepEqual(purged.rawMessagePaths, ['email-raw/spam.eml']);
+  assert.equal(purged.purgeAuditId, 91);
+  assert.equal(purged.fileJobCount, 2);
   const statements = calls.map((call) => call.sql);
   const auditIndex = statements.findIndex((sql) => sql.includes('INSERT INTO email_purge_audits'));
+  const attachmentJobIndex = statements.findIndex((sql) => sql.includes("'attachment'"));
+  const rawJobIndex = statements.findIndex((sql) => sql.includes("'raw_email'"));
   const messageDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_messages WHERE'));
   const threadDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_threads WHERE'));
   const rawDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_raw_messages WHERE'));
   assert.ok(auditIndex > 0);
-  assert.ok(messageDeleteIndex > auditIndex);
+  assert.ok(attachmentJobIndex > auditIndex);
+  assert.ok(rawJobIndex > attachmentJobIndex);
+  assert.ok(messageDeleteIndex > rawJobIndex);
   assert.ok(threadDeleteIndex > messageDeleteIndex);
   assert.ok(rawDeleteIndex > threadDeleteIndex);
   assert.match(statements[1], /set_config\('bestcrm\.email_purge', 'enabled', true\)/);
+});
+
+test('email purge file jobs use leased skip-locked claims and guarded completion', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      const statement = String(sql);
+      calls.push({ sql: statement, params });
+      if (statement.includes('RETURNING job.*')) {
+        return { rows: [{
+          id: '3', purge_audit_id: '91', file_kind: 'raw_email', stored_path: 'email-raw/spam.eml',
+          expected_size: '70', expected_sha256: 'a'.repeat(64), status: 'processing', attempt_count: '2'
+        }] };
+      }
+      if (statement.includes('SELECT count(*) AS count')) return { rows: [{ count: '1' }] };
+      return { rows: [{ id: '3' }], rowCount: 1 };
+    }
+  });
+
+  const jobs = await repository.claimEmailPurgeFileJobs({
+    workerId: 'worker-1',
+    purgeAuditIds: [91],
+    limit: 10,
+    leaseSeconds: 120
+  });
+  assert.equal(jobs[0].storedPath, 'email-raw/spam.eml');
+  assert.equal(jobs[0].expectedSize, 70);
+  assert.equal(jobs[0].attemptCount, 2);
+  assert.match(calls[0].sql, /FOR UPDATE SKIP LOCKED/);
+  assert.match(calls[0].sql, /lease_expires_at <= now\(\)/);
+  assert.deepEqual(calls[0].params, ['worker-1', 10, 120, [91]]);
+
+  assert.equal(await repository.completeEmailPurgeFileJob({ jobId: 3, workerId: 'worker-1' }), true);
+  assert.match(calls[1].sql, /WITH cleanup_setting AS MATERIALIZED/);
+  assert.match(calls[1].sql, /set_config\('bestcrm\.email_purge_file_cleanup', 'enabled', true\)/);
+
+  assert.equal(await repository.failEmailPurgeFileJob({
+    jobId: 3,
+    workerId: 'worker-1',
+    errorCode: 'file_hash_mismatch',
+    errorDetail: 'safe detail',
+    retryDelaySeconds: 90
+  }), true);
+  assert.match(calls[2].sql, /status = 'pending'/);
+  assert.match(calls[2].sql, /available_at = now\(\) \+ \(\$3::integer \* interval '1 second'\)/);
+  assert.equal(await repository.countEmailPurgeFileJobs({ purgeAuditIds: [91] }), 1);
 });
 
 test('email archive repository separates mailbox folders and includes CRM-native sent mail', async () => {
@@ -599,6 +652,7 @@ test('outbound archive state keeps immutable content while delivery attempts inc
     ccRecipients: [],
     subject: 'Quotation',
     textBody: 'Frozen body',
+    htmlBody: '<p>Frozen body</p>',
     safeHeaders: {},
     deliveryStatus: 'draft',
     authoredBy: 7
@@ -620,13 +674,14 @@ test('outbound archive state keeps immutable content while delivery attempts inc
   assert.match(calls[0].sql, /INSERT INTO email_messages/);
   assert.match(calls[0].sql, /quotation_package_version_id/);
   assert.equal(calls[0].params[5], 51);
+  assert.equal(calls[0].params[12], '<p>Frozen body</p>');
   assert.match(calls[1].sql, /delivery_status IN \('draft', 'failed'\)/);
   assert.match(calls[2].sql, /delivery_status = 'pending'/);
   assert.match(calls[3].sql, /MAX\(attempt_number\)/);
   assert.equal(calls[3].params.length, 5);
 });
 
-test('imported sent mail can bind immutable raw EML evidence after an earlier parsed-only import', async () => {
+test('Sent-folder observation reconciles a pending outbound message without changing its content identity', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({
     async query(sql, params) {
@@ -635,28 +690,87 @@ test('imported sent mail can bind immutable raw EML evidence after an earlier pa
         id: '13',
         direction: 'outbound',
         delivery_status: 'sent',
-        raw_message_id: '81',
-        raw_eml_stored_path: 'email-raw/sales/sent.eml',
-        raw_eml_file_size: '100',
-        raw_eml_sha256: 'a'.repeat(64)
+        provider_message_id: '<provider-13@example.com>',
+        sent_at: '2026-09-19T00:00:00Z'
       })] };
     }
   });
 
-  const linked = await repository.linkImportedOutboundMessageRawArchive({
+  const reconciled = await repository.reconcileOutboundSentObservation({
     messageId: 13,
-    rawMessageId: 81,
-    rawEmlStoredPath: 'email-raw/sales/sent.eml',
-    rawEmlFileSize: 100,
-    rawEmlSha256: 'a'.repeat(64),
-    importedAt: '2026-09-19T00:00:00Z'
+    providerMessageId: '<provider-13@example.com>',
+    sentAt: '2026-09-19T00:00:00Z'
   });
 
-  assert.equal(linked.rawMessageId, 81);
+  assert.equal(reconciled.deliveryStatus, 'sent');
   assert.match(calls[0].sql, /direction = 'outbound'/);
-  assert.match(calls[0].sql, /delivery_status = 'sent'/);
-  assert.match(calls[0].sql, /raw_message_id IS NULL/);
-  assert.deepEqual(calls[0].params, [
-    13, 81, 'email-raw/sales/sent.eml', 100, 'a'.repeat(64), '2026-09-19T00:00:00Z'
-  ]);
+  assert.match(calls[0].sql, /delivery_status = 'pending'/);
+  assert.doesNotMatch(calls[0].sql, /raw_message_id/);
+  assert.deepEqual(calls[0].params, [13, '<provider-13@example.com>', '2026-09-19T00:00:00Z']);
+});
+
+test('outbound MIME artifact creation is idempotent only for the same immutable identity', async () => {
+  const artifactRow = {
+    id: '31',
+    message_id: '22',
+    stored_path: 'email-outbound/22/abc.eml',
+    file_size: '120',
+    sha256: 'a'.repeat(64),
+    rfc_message_id: '<bestcrm-22@sunkaier.com>',
+    created_at: '2026-09-20T01:00:00Z'
+  };
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      if (String(sql).includes('INSERT INTO email_outbound_mime_artifacts')) return { rows: [] };
+      return { rows: [artifactRow] };
+    }
+  });
+
+  const artifact = await repository.createOutboundMimeArtifact({
+    messageId: 22,
+    storedPath: artifactRow.stored_path,
+    fileSize: 120,
+    sha256: artifactRow.sha256,
+    rfcMessageId: artifactRow.rfc_message_id
+  });
+
+  assert.equal(artifact.id, 31);
+  assert.equal(artifact.messageId, 22);
+  assert.equal(artifact.fileSize, 120);
+  assert.equal(artifact.sha256, 'a'.repeat(64));
+  assert.match(calls[0].sql, /ON CONFLICT \(message_id\) DO NOTHING/);
+  assert.match(calls[1].sql, /FROM email_outbound_mime_artifacts/);
+
+  await assert.rejects(() => repository.createOutboundMimeArtifact({
+    messageId: 22,
+    storedPath: artifactRow.stored_path,
+    fileSize: 121,
+    sha256: artifactRow.sha256,
+    rfcMessageId: artifactRow.rfc_message_id
+  }), /Outbound MIME artifact identity conflict/);
+});
+
+test('outbound MIME artifact lookup maps the database identity', async () => {
+  const repository = createEmailArchiveRepository({
+    async query() {
+      return { rows: [{
+        id: '31', message_id: '22', stored_path: 'email-outbound/22/abc.eml',
+        file_size: '120', sha256: 'b'.repeat(64),
+        rfc_message_id: '<bestcrm-22@sunkaier.com>', created_at: '2026-09-20T01:00:00Z'
+      }] };
+    }
+  });
+
+  const artifact = await repository.findOutboundMimeArtifact(22);
+  assert.deepEqual(artifact, {
+    id: 31,
+    messageId: 22,
+    storedPath: 'email-outbound/22/abc.eml',
+    fileSize: 120,
+    sha256: 'b'.repeat(64),
+    rfcMessageId: '<bestcrm-22@sunkaier.com>',
+    createdAt: '2026-09-20T01:00:00Z'
+  });
 });

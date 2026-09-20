@@ -134,13 +134,17 @@ async function createAgent({
       onPurgeThread?.(input);
       return {
         threadId: Number(input.threadId),
+        purgeAuditId: 900 + Number(input.threadId),
+        fileJobCount: 0,
         messageCount: 1,
         attachmentBytes: 0,
-        rawMessageBytes: 0,
-        attachmentPaths: [],
-        rawMessagePaths: []
+        rawMessageBytes: 0
       };
     },
+    async claimEmailPurgeFileJobs() { return []; },
+    async completeEmailPurgeFileJob() { return true; },
+    async failEmailPurgeFileJob() { return true; },
+    async countEmailPurgeFileJobs() { return 0; },
     async findAttachmentById(id) { return Number(id) === 21 ? unlinked.messages[0].attachments[0] : null; },
     async findMessageById(id) {
       return [...unlinked.messages, ...linked.messages].find((message) => Number(message.id) === Number(id)) || null;
@@ -187,7 +191,7 @@ test('enabled email center requires login', async () => {
   assert.equal(response.headers.location, '/login');
 });
 
-test('sales manager sees mailbox-separated pending threads and plain-text escaped message content', async () => {
+test('sales manager sees the shared mailbox pending threads and plain-text escaped message content', async () => {
   const agent = await createAgent({
     userId: 2,
     roles: [ROLES.SALES_MANAGER],
@@ -473,7 +477,9 @@ test('salesperson sees assigned opportunity mail but direct unlinked mail access
   const agent = await createAgent({ userId: 7, roles: [ROLES.SALESPERSON] });
   const list = await agent.get('/email-center');
   assert.equal(list.status, 200);
-  assert.match(list.text, /\/email-center\/threads\/2\?mailbox=user7%40sunkaier\.com&from=pending/);
+  assert.match(list.text, /Shared mailbox · sales@sunkaier\.com/);
+  assert.doesNotMatch(list.text, /Personal mailbox/);
+  assert.match(list.text, /\/email-center\/threads\/2\?mailbox=sales%40sunkaier\.com&from=pending/);
   assert.doesNotMatch(list.text, /Mixer Project|C000010|Acme Co|CT000020|Alice/);
   assert.doesNotMatch(list.text, /Protected unlinked email/);
   assert.equal((await agent.get('/email-center/threads/1')).status, 403);
