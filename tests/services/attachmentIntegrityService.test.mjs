@@ -7,6 +7,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
   persistUploadedOpportunityAttachment,
+  replaceOpportunityAttachment,
   retireOpportunityAttachment
 } from '../../src/services/attachmentIntegrityService.mjs';
 
@@ -100,4 +101,62 @@ test('retireOpportunityAttachment forwards the actor and rejects repeated retire
     actorUserId: 7,
     reason: 'Again'
   }), /already retired/);
+});
+
+test('replaceOpportunityAttachment sends one verified replacement payload to the atomic repository API', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-opportunity-replace-'));
+  const filePath = path.join(uploadDir, 'replacement.pdf');
+  const content = Buffer.from('replacement bytes');
+  await writeFile(filePath, content);
+  let replaceInput = null;
+  try {
+    const replaced = await replaceOpportunityAttachment({
+      attachmentRepository: {
+        async replaceAttachment(input) {
+          replaceInput = input;
+          return { id: 56, ...input.replacement };
+        }
+      },
+      uploadDir,
+      file: { path: filePath, originalname: 'replacement.pdf', mimetype: 'application/pdf' },
+      originalAttachment: { id: 55, opportunityId: 30, category: 'commercial_quote' },
+      actorUserId: 9,
+      reason: 'Corrected file'
+    });
+
+    assert.equal(replaced.id, 56);
+    assert.equal(replaceInput.originalAttachmentId, 55);
+    assert.equal(replaceInput.replacement.opportunityId, 30);
+    assert.equal(replaceInput.replacement.category, 'commercial_quote');
+    assert.equal(replaceInput.replacement.fileSize, content.length);
+    assert.equal(replaceInput.replacement.sha256, createHash('sha256').update(content).digest('hex'));
+    assert.equal(existsSync(filePath), true);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('failed atomic replacement removes only the newly uploaded replacement file', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-opportunity-replace-fail-'));
+  const replacementPath = path.join(uploadDir, 'replacement.pdf');
+  const originalPath = path.join(uploadDir, 'original.pdf');
+  await writeFile(replacementPath, 'replacement bytes');
+  await writeFile(originalPath, 'original evidence');
+  try {
+    await assert.rejects(() => replaceOpportunityAttachment({
+      attachmentRepository: {
+        async replaceAttachment() { throw new Error('atomic replacement failed'); }
+      },
+      uploadDir,
+      file: { path: replacementPath, originalname: 'replacement.pdf', mimetype: 'application/pdf' },
+      originalAttachment: { id: 55, opportunityId: 30, category: 'commercial_quote' },
+      actorUserId: 9,
+      reason: 'Corrected file'
+    }), /atomic replacement failed/);
+
+    assert.equal(existsSync(replacementPath), false);
+    assert.equal(existsSync(originalPath), true);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
 });

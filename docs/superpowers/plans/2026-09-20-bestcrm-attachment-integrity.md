@@ -339,7 +339,7 @@ git commit -m "feat: verify attachment writes"
 - Modify: `tests/services/attachmentIntegrityService.test.mjs`
 - Modify: `tests/routes/opportunityRoutes.test.mjs`
 
-- [ ] **Step 1: Write failing retirement tests**
+- [x] **Step 1: Write failing retirement tests**
 
 Assert that the existing delete route calls `retireById`, leaves the file on disk, preserves current
 permission checks, rejects repeated retirement, and removes the attachment from the active list.
@@ -348,11 +348,11 @@ Add a service-level replacement test that sends one verified replacement payload
 atomic `replaceAttachment` method and removes only the newly created file if that database statement
 fails.
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run the two focused test files. Expected: existing hard-delete behavior fails the new assertions.
 
-- [ ] **Step 3: Implement retirement/replacement**
+- [x] **Step 3: Implement retirement/replacement**
 
 The route keeps its URL for compatibility but changes the call:
 
@@ -368,11 +368,11 @@ await retireOpportunityAttachment({
 Do not call `rm` for retirement. Implement the replacement service API without adding a new UI
 button in this slice.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run the focused tests. Expected: zero failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/services/attachmentIntegrityService.mjs src/routes/opportunityRoutes.mjs tests/services/attachmentIntegrityService.test.mjs tests/routes/opportunityRoutes.test.mjs

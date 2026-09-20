@@ -16,7 +16,10 @@ import {
   getEmailThreadIntakeContext
 } from '../services/emailArchiveService.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
-import { persistUploadedOpportunityAttachment } from '../services/attachmentIntegrityService.mjs';
+import {
+  persistUploadedOpportunityAttachment,
+  retireOpportunityAttachment
+} from '../services/attachmentIntegrityService.mjs';
 import {
   archiveOpportunity,
   canArchiveOpportunity,
@@ -1408,15 +1411,18 @@ export function opportunityRoutes({
         res.status(403).send('Attachment cannot be deleted after submission');
         return;
       }
-      const filePath = resolveStoredPath(uploadDir, attachment.storedPath);
-      if (!filePath) {
-        res.status(404).send('Attachment not found');
-        return;
-      }
-      await attachmentRepository.deleteById(attachment.id);
-      await rm(filePath, { force: true });
+      await retireOpportunityAttachment({
+        attachmentRepository,
+        attachmentId: attachment.id,
+        actorUserId: req.currentUser.id,
+        reason: String(req.body.reason || 'removed_from_active_view').trim() || 'removed_from_active_view'
+      });
       res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
+      if (Number.isInteger(error?.statusCode)) {
+        res.status(error.statusCode).send(error.message);
+        return;
+      }
       next(error);
     }
   });

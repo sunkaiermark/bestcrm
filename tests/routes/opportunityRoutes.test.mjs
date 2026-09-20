@@ -2578,11 +2578,11 @@ test('submitted opportunity hides and blocks requirement material deletion', asy
   }
 });
 
-test('draft opportunity deletes requirement material metadata and stored file', async () => {
+test('draft opportunity retires requirement material while preserving its stored file', async () => {
   const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-delete-requirement-'));
   try {
     await writeFile(path.join(uploadDir, 'requirement.txt'), 'draft requirement', 'utf8');
-    const deletedIds = [];
+    const retirementCalls = [];
     const attachment = {
       id: 55,
       opportunityId: 30,
@@ -2604,9 +2604,9 @@ test('draft opportunity deletes requirement material metadata and stored file', 
         async createAttachment() {
           throw new Error('not used');
         },
-        async deleteById(id) {
-          deletedIds.push(Number(id));
-          return { rowCount: 1 };
+        async retireById(input) {
+          retirementCalls.push(input);
+          return { ...attachment, retiredAt: '2026-09-21T00:00:00.000Z' };
         },
         async findById() {
           return attachment;
@@ -2618,8 +2618,49 @@ test('draft opportunity deletes requirement material metadata and stored file', 
 
     assert.equal(response.status, 302);
     assert.equal(response.headers.location, '/opportunities/30');
-    assert.deepEqual(deletedIds, [55]);
-    assert.equal(existsSync(path.join(uploadDir, 'requirement.txt')), false);
+    assert.deepEqual(retirementCalls, [{
+      id: 55,
+      actorUserId: 7,
+      reason: 'removed_from_active_view',
+      replacedByAttachmentId: null
+    }]);
+    assert.equal(existsSync(path.join(uploadDir, 'requirement.txt')), true);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('attachment retirement rejects an already retired row without removing its file', async () => {
+  const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-retire-repeat-'));
+  const filePath = path.join(uploadDir, 'requirement.txt');
+  await writeFile(filePath, 'preserved requirement', 'utf8');
+  const attachment = {
+    id: 55,
+    opportunityId: 30,
+    category: 'requirement',
+    originalName: 'requirement.txt',
+    storedPath: 'requirement.txt',
+    mimeType: 'text/plain',
+    fileSize: 21,
+    uploadedBy: 7,
+    retiredAt: '2026-09-21T00:00:00.000Z'
+  };
+  try {
+    const { agent } = await createLoggedInAgent({
+      uploadDir,
+      attachmentRepository: {
+        async listByOpportunity() { return []; },
+        async createAttachment() { throw new Error('not used'); },
+        async findById() { return attachment; },
+        async retireById() { return null; }
+      }
+    });
+
+    const response = await agent.post('/opportunities/30/attachments/55/delete').type('form').send();
+
+    assert.equal(response.status, 409);
+    assert.match(response.text, /already retired/);
+    assert.equal(existsSync(filePath), true);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
@@ -2677,11 +2718,11 @@ test('commercial quote in progress shows quote attachments as dated rows with de
   assert.match(quoteSection, /onsubmit="return confirm\('Delete this commercial quote file\?'\)"/);
 });
 
-test('commercial quote in progress deletes quote attachment metadata and stored file', async () => {
+test('commercial quote in progress retires quote metadata and preserves the stored file', async () => {
   const uploadDir = await mkdtemp(path.join(os.tmpdir(), 'bestcrm-delete-commercial-quote-'));
   try {
     await writeFile(path.join(uploadDir, 'quote.txt'), 'quote file', 'utf8');
-    const deletedIds = [];
+    const retirementCalls = [];
     const attachment = {
       id: 55,
       opportunityId: 30,
@@ -2714,9 +2755,9 @@ test('commercial quote in progress deletes quote attachment metadata and stored 
         async createAttachment() {
           throw new Error('not used');
         },
-        async deleteById(id) {
-          deletedIds.push(Number(id));
-          return { rowCount: 1 };
+        async retireById(input) {
+          retirementCalls.push(input);
+          return { ...attachment, retiredAt: '2026-09-21T00:00:00.000Z' };
         },
         async findById() {
           return attachment;
@@ -2728,8 +2769,13 @@ test('commercial quote in progress deletes quote attachment metadata and stored 
 
     assert.equal(response.status, 302);
     assert.equal(response.headers.location, '/opportunities/30');
-    assert.deepEqual(deletedIds, [55]);
-    assert.equal(existsSync(path.join(uploadDir, 'quote.txt')), false);
+    assert.deepEqual(retirementCalls, [{
+      id: 55,
+      actorUserId: 3,
+      reason: 'removed_from_active_view',
+      replacedByAttachmentId: null
+    }]);
+    assert.equal(existsSync(path.join(uploadDir, 'quote.txt')), true);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

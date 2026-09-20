@@ -76,3 +76,50 @@ export async function retireOpportunityAttachment({
   }
   return retired;
 }
+
+export async function replaceOpportunityAttachment({
+  attachmentRepository,
+  uploadDir,
+  file,
+  originalAttachment,
+  actorUserId,
+  reason
+}) {
+  if (typeof attachmentRepository?.replaceAttachment !== 'function') {
+    throw new Error('Attachment repository is unavailable');
+  }
+  if (!originalAttachment?.id || !originalAttachment?.opportunityId || !originalAttachment?.category) {
+    throw new Error('Original attachment is required');
+  }
+
+  const storedPath = uploadedStoredPath(uploadDir, file);
+  const cleanupPath = ownedUploadedPath(uploadDir, file, storedPath);
+  try {
+    const inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath });
+    const replaced = await attachmentRepository.replaceAttachment({
+      originalAttachmentId: originalAttachment.id,
+      actorUserId,
+      reason,
+      replacement: {
+        opportunityId: originalAttachment.opportunityId,
+        category: originalAttachment.category,
+        originalName: normalizeUploadedFilename(file.originalname),
+        storedPath,
+        mimeType: file.mimetype || 'application/octet-stream',
+        fileSize: inspected.fileSize,
+        uploadedBy: actorUserId,
+        sourceInquiryAttachmentId: null,
+        sha256: inspected.sha256
+      }
+    });
+    if (!replaced) {
+      const error = new Error('Attachment was not found or is already retired');
+      error.statusCode = 409;
+      throw error;
+    }
+    return replaced;
+  } catch (error) {
+    await removeStoredAttachmentFile(cleanupPath);
+    throw error;
+  }
+}
