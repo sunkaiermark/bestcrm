@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { createReadStream } from 'node:fs';
+import { createReadStream, existsSync } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import {
   removeStoredAttachmentFile,
@@ -27,6 +27,14 @@ function cleanupError(code, message) {
   return error;
 }
 
+function writeMaintenanceActive(options) {
+  const flagPath = text(options.writeMaintenanceFlagPath);
+  const flagExists = typeof options.writeMaintenanceFlagExists === 'function'
+    ? options.writeMaintenanceFlagExists
+    : existsSync;
+  return Boolean(flagPath) && flagExists(flagPath);
+}
+
 function safeErrorCode(error) {
   return text(error?.code || error?.name || 'cleanup_failed').slice(0, 80);
 }
@@ -46,7 +54,8 @@ async function fileSha256(filePath) {
   return hash.digest('hex');
 }
 
-async function verifyAndRemoveFile(uploadDir, job) {
+async function verifyAndRemoveFile(uploadDir, job, shouldPause) {
+  if (shouldPause()) throw cleanupError('write_maintenance_active', 'Backup write maintenance is active');
   const filePath = resolveStoredPath(uploadDir, job.storedPath);
   if (!filePath) throw cleanupError('invalid_stored_path', 'Stored path is invalid');
 
@@ -65,6 +74,7 @@ async function verifyAndRemoveFile(uploadDir, job) {
   if (digest !== text(job.expectedSha256).toLowerCase()) {
     throw cleanupError('file_hash_mismatch', 'Stored file hash mismatch');
   }
+  if (shouldPause()) throw cleanupError('write_maintenance_active', 'Backup write maintenance is active');
   await removeStoredAttachmentFile(filePath);
   return { alreadyMissing: false };
 }
@@ -96,10 +106,16 @@ export async function processEmailPurgeFileJobs(dependencies, options = {}) {
     completed: 0,
     alreadyMissing: 0,
     failed: 0,
-    failures: []
+    failures: [],
+    paused: false
   };
 
+  batches:
   for (let batch = 0; batch < maxBatches; batch += 1) {
+    if (writeMaintenanceActive(options)) {
+      result.paused = true;
+      break;
+    }
     const jobs = await repository.claimEmailPurgeFileJobs({
       workerId,
       limit: batchSize,
@@ -110,7 +126,11 @@ export async function processEmailPurgeFileJobs(dependencies, options = {}) {
     result.claimed += jobs.length;
     for (const job of jobs) {
       try {
-        const removal = await verifyAndRemoveFile(uploadDir, job);
+        const removal = await verifyAndRemoveFile(
+          uploadDir,
+          job,
+          () => writeMaintenanceActive(options)
+        );
         const completed = await repository.completeEmailPurgeFileJob({
           jobId: job.id,
           workerId
@@ -123,6 +143,10 @@ export async function processEmailPurgeFileJobs(dependencies, options = {}) {
         result.completed += 1;
         if (removal.alreadyMissing) result.alreadyMissing += 1;
       } catch (error) {
+        if (error?.code === 'write_maintenance_active') {
+          result.paused = true;
+          break batches;
+        }
         const retryDelaySeconds = Math.min(
           3600,
           30 * (2 ** Math.min(Math.max(Number(job.attemptCount || 1) - 1, 0), 7))

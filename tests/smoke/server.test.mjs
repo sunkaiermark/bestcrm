@@ -115,6 +115,7 @@ test('a database-backed app starts the durable email purge file cleanup loop', (
     emailArchiveRepository: repository,
     inquiryAttachmentPurgeFileCleanupEnabled: false,
     uploadDir: 'C:/bestcrm-test-uploads',
+    writeMaintenanceFlagPath: 'C:/bestcrm-test/write-maintenance',
     startEmailPurgeFileCleanupLoop(dependencies, options) {
       starts.push({ dependencies, options });
       return cleanupHandle;
@@ -124,6 +125,7 @@ test('a database-backed app starts the durable email purge file cleanup loop', (
   assert.equal(starts.length, 1);
   assert.equal(starts[0].dependencies.emailArchiveRepository, repository);
   assert.equal(starts[0].dependencies.uploadDir, 'C:/bestcrm-test-uploads');
+  assert.equal(starts[0].options.writeMaintenanceFlagPath, 'C:/bestcrm-test/write-maintenance');
   assert.equal(app.locals.emailPurgeFileCleanup, cleanupHandle);
 });
 
@@ -140,6 +142,7 @@ test('a database-backed app starts exactly one durable inquiry attachment cleanu
     attachmentIntegrityRepository: repository,
     emailPurgeFileCleanupEnabled: false,
     uploadDir: 'C:/bestcrm-test-uploads',
+    writeMaintenanceFlagPath: 'C:/bestcrm-test/write-maintenance',
     startInquiryAttachmentPurgeFileCleanupLoop(dependencies, options) {
       starts.push({ dependencies, options });
       return cleanupHandle;
@@ -149,6 +152,7 @@ test('a database-backed app starts exactly one durable inquiry attachment cleanu
   assert.equal(starts.length, 1);
   assert.equal(starts[0].dependencies.attachmentIntegrityRepository, repository);
   assert.equal(starts[0].dependencies.uploadDir, 'C:/bestcrm-test-uploads');
+  assert.equal(starts[0].options.writeMaintenanceFlagPath, 'C:/bestcrm-test/write-maintenance');
   assert.equal(app.locals.inquiryAttachmentPurgeFileCleanup, cleanupHandle);
 });
 

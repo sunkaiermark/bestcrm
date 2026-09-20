@@ -633,7 +633,7 @@ node --test tests/scripts/attachmentEvidenceInventory.test.mjs tests/scripts/bac
 
 Expected: zero test failures and Bash exit code 0.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add scripts/export-attachment-evidence-inventory.mjs scripts/backup-production.sh scripts/verify-backup-artifacts.mjs scripts/verify-email-raw-restore.mjs tests/scripts/attachmentEvidenceInventory.test.mjs tests/scripts/backupArtifacts.test.mjs

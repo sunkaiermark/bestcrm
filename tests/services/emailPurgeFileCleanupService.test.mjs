@@ -186,3 +186,37 @@ test('a queued job finishes after restart when the process stopped after unlink 
     await rm(uploadDir, { recursive: true, force: true });
   }
 });
+
+test('email purge worker pauses before unlink when backup write maintenance becomes active', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-purge-maintenance-'));
+  const storedPath = 'email-raw/maintenance.eml';
+  const content = 'preserve email evidence during backup';
+  await mkdir(path.dirname(path.join(uploadDir, storedPath)), { recursive: true });
+  await writeFile(path.join(uploadDir, storedPath), content);
+  const repository = createQueueRepository([{
+    id: 5, purgeAuditId: 95, storedPath,
+    expectedSize: Buffer.byteLength(content), expectedSha256: sha256(content)
+  }]);
+  let maintenanceChecks = 0;
+  try {
+    const result = await processEmailPurgeFileJobs({
+      emailArchiveRepository: repository, uploadDir
+    }, {
+      workerId: 'maintenance-worker',
+      purgeAuditIds: [95],
+      writeMaintenanceFlagPath: '/run/bestcrm/write-maintenance',
+      writeMaintenanceFlagExists() {
+        maintenanceChecks += 1;
+        return maintenanceChecks >= 3;
+      }
+    });
+    assert.equal(result.paused, true);
+    assert.equal(result.completed, 0);
+    assert.equal(result.failed, 0);
+    assert.equal(repository.jobs.length, 1);
+    assert.equal(repository.jobs[0].status, 'processing');
+    assert.equal(await readFile(path.join(uploadDir, storedPath), 'utf8'), content);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});

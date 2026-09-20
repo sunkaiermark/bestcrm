@@ -1,4 +1,5 @@
 import { randomUUID } from 'node:crypto';
+import { existsSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import { inspectStoredAttachmentFile } from './attachmentFileService.mjs';
 
@@ -23,6 +24,14 @@ function cleanupError(code, message) {
   return error;
 }
 
+function writeMaintenanceActive(options) {
+  const flagPath = text(options.writeMaintenanceFlagPath);
+  const flagExists = typeof options.writeMaintenanceFlagExists === 'function'
+    ? options.writeMaintenanceFlagExists
+    : existsSync;
+  return Boolean(flagPath) && flagExists(flagPath);
+}
+
 function safeErrorCode(error) {
   return text(error?.code || error?.name || 'cleanup_failed').slice(0, 80);
 }
@@ -36,7 +45,8 @@ function safeErrorDetail(error) {
   return 'Stored inquiry attachment could not be removed';
 }
 
-async function verifyAndRemoveFile(uploadDir, job) {
+async function verifyAndRemoveFile(uploadDir, job, shouldPause) {
+  if (shouldPause()) throw cleanupError('write_maintenance_active', 'Backup write maintenance is active');
   let inspected;
   try {
     inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath: job.storedPath });
@@ -50,6 +60,7 @@ async function verifyAndRemoveFile(uploadDir, job) {
   if (text(inspected.sha256).toLowerCase() !== text(job.expectedSha256).toLowerCase()) {
     throw cleanupError('file_hash_mismatch', 'Stored file hash mismatch');
   }
+  if (shouldPause()) throw cleanupError('write_maintenance_active', 'Backup write maintenance is active');
   await rm(inspected.absolutePath);
   return { alreadyMissing: false };
 }
@@ -81,10 +92,16 @@ export async function processInquiryAttachmentPurgeFileJobs(dependencies, option
     completed: 0,
     alreadyMissing: 0,
     failed: 0,
-    failures: []
+    failures: [],
+    paused: false
   };
 
+  batches:
   for (let batch = 0; batch < maxBatches; batch += 1) {
+    if (writeMaintenanceActive(options)) {
+      result.paused = true;
+      break;
+    }
     const jobs = await repository.claimInquiryAttachmentPurgeJobs({
       workerId,
       limit: batchSize,
@@ -95,7 +112,11 @@ export async function processInquiryAttachmentPurgeFileJobs(dependencies, option
     result.claimed += jobs.length;
     for (const job of jobs) {
       try {
-        const removal = await verifyAndRemoveFile(uploadDir, job);
+        const removal = await verifyAndRemoveFile(
+          uploadDir,
+          job,
+          () => writeMaintenanceActive(options)
+        );
         const completed = await repository.completeInquiryAttachmentPurgeJob({
           jobId: job.id,
           workerId
@@ -108,6 +129,10 @@ export async function processInquiryAttachmentPurgeFileJobs(dependencies, option
         result.completed += 1;
         if (removal.alreadyMissing) result.alreadyMissing += 1;
       } catch (error) {
+        if (error?.code === 'write_maintenance_active') {
+          result.paused = true;
+          break batches;
+        }
         const retryDelaySeconds = Math.min(
           3600,
           30 * (2 ** Math.min(Math.max(Number(job.attemptCount || 1) - 1, 0), 7))

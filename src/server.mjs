@@ -700,7 +700,9 @@ export function createApp(options = {}) {
         emailArchiveRepository,
         uploadDir: config.uploadDir
       }, {
-        logger: options.logger || console
+        logger: options.logger || console,
+        writeMaintenanceFlagPath: options.writeMaintenanceFlagPath ?? config.writeMaintenanceFlagPath,
+        writeMaintenanceFlagExists: options.writeMaintenanceFlagExists
       })
     : null;
   const inquiryAttachmentPurgeFileCleanupStarter = options.startInquiryAttachmentPurgeFileCleanupLoop
@@ -711,7 +713,9 @@ export function createApp(options = {}) {
         attachmentIntegrityRepository,
         uploadDir: config.uploadDir
       }, {
-        logger: options.logger || console
+        logger: options.logger || console,
+        writeMaintenanceFlagPath: options.writeMaintenanceFlagPath ?? config.writeMaintenanceFlagPath,
+        writeMaintenanceFlagExists: options.writeMaintenanceFlagExists
       })
     : null;
   app.set('trust proxy', 'loopback');
