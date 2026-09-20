@@ -59,7 +59,7 @@
 - Create: `src/db/migrations/067_legacy_attachment_integrity.sql`
 - Modify: `tests/db/schema.test.mjs`
 
-- [ ] **Step 1: Write the failing schema test**
+- [x] **Step 1: Write the failing schema test**
 
 Add `legacyAttachmentIntegrityMigrationPath` and assert the exact contract:
 
@@ -79,7 +79,7 @@ test('legacy attachment integrity migration protects hashes and opportunity hist
 });
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run:
 
@@ -89,7 +89,7 @@ node --test tests/db/schema.test.mjs
 
 Expected: FAIL because migration 067 does not exist.
 
-- [ ] **Step 3: Create migration 067**
+- [x] **Step 3: Create migration 067**
 
 Implement these database-level rules:
 
@@ -128,11 +128,11 @@ foreign keys, lifecycle consistency checks, replacement validation, an append-on
 - generate `created`, `legacy_hash_verified`, `retired`, and `replaced` events from triggers;
 - reject all event updates/deletes.
 
-- [ ] **Step 4: Verify GREEN**
+- [x] **Step 4: Verify GREEN**
 
 Run the schema test again. Expected: PASS.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/db/migrations/067_legacy_attachment_integrity.sql tests/db/schema.test.mjs

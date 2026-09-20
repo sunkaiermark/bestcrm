@@ -65,6 +65,7 @@ const emailCenterLeadTriageMigrationPath = new URL('../../src/db/migrations/063_
 const emailReimportResetAuditsMigrationPath = new URL('../../src/db/migrations/064_email_reimport_reset_audits.sql', import.meta.url);
 const emailPurgeFileJobsMigrationPath = new URL('../../src/db/migrations/065_email_purge_file_jobs.sql', import.meta.url);
 const emailOutboundMimeArtifactsMigrationPath = new URL('../../src/db/migrations/066_email_outbound_mime_artifacts.sql', import.meta.url);
+const legacyAttachmentIntegrityMigrationPath = new URL('../../src/db/migrations/067_legacy_attachment_integrity.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -1135,4 +1136,19 @@ test('outbound MIME artifact migration creates one immutable hash-bound file ide
   assert.match(sql, /CREATE TRIGGER email_outbound_mime_artifacts_no_change/);
   assert.match(sql, /Outbound MIME artifacts are immutable/);
   assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
+});
+
+test('legacy attachment integrity migration protects hashes and opportunity history', async () => {
+  const sql = await readFile(legacyAttachmentIntegrityMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS sha256 char\(64\)/);
+  assert.match(sql, /attachments_sha256_required[\s\S]*NOT VALID/);
+  assert.match(sql, /inquiry_attachments_sha256_required[\s\S]*NOT VALID/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_attachment_events/);
+  assert.match(sql, /event_type IN \('created', 'legacy_hash_verified', 'retired', 'replaced'\)/);
+  assert.match(sql, /Opportunity attachments cannot be deleted/);
+  assert.match(sql, /Inquiry attachment identity is immutable/);
+  assert.match(sql, /current_setting\('bestcrm\.attachment_hash_backfill', true\) = 'enabled'/);
+  assert.match(sql, /current_setting\('bestcrm\.inquiry_attachment_purge', true\) = 'enabled'/);
+  assert.match(sql, /Opportunity attachment events are append-only/);
 });
