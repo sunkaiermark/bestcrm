@@ -145,7 +145,7 @@ git commit -m "feat: protect legacy attachment evidence"
 - Modify: `src/services/attachmentFileService.mjs`
 - Create: `tests/services/attachmentFileService.test.mjs`
 
-- [ ] **Step 1: Write failing helper tests**
+- [x] **Step 1: Write failing helper tests**
 
 Test healthy files, unsafe paths, missing paths, and store/copy return values:
 
@@ -163,12 +163,12 @@ test('inspectStoredAttachmentFile returns final byte size and sha256', async () 
 });
 ```
 
-- [ ] **Step 2: Verify RED**
+- [x] **Step 2: Verify RED**
 
 Run `node --test tests/services/attachmentFileService.test.mjs`.
 Expected: FAIL because `inspectStoredAttachmentFile` and returned hashes do not exist.
 
-- [ ] **Step 3: Implement streaming SHA-256**
+- [x] **Step 3: Implement streaming SHA-256**
 
 Export:
 
@@ -189,7 +189,7 @@ export async function inspectStoredAttachmentFile({ uploadDir, storedPath }) {
 Make `storeAttachmentBuffer` and `copyStoredAttachmentFile` return the digest of the actual final
 file. Preserve existing return fields.
 
-- [ ] **Step 4: Verify GREEN and regressions**
+- [x] **Step 4: Verify GREEN and regressions**
 
 ```powershell
 node --test tests/services/attachmentFileService.test.mjs tests/services/emailArchiveService.test.mjs tests/services/emailOutboundMimeService.test.mjs
@@ -197,7 +197,7 @@ node --test tests/services/attachmentFileService.test.mjs tests/services/emailAr
 
 Expected: zero failures.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```powershell
 git add src/services/attachmentFileService.mjs tests/services/attachmentFileService.test.mjs
