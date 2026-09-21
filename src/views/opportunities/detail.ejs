@@ -243,6 +243,14 @@
                       <th scope="row"><%= t('estimatedAmount') %></th>
                       <td><%= opportunity.estimatedAmount ?? '' %></td>
                     </tr>
+                    <% if (opportunity.originInquiryId) { %>
+                      <tr>
+                        <th scope="row"><%= t('sourceLead') %></th>
+                        <td><a href="/lead-submissions/<%= opportunity.originInquiryId %>"><%= t('viewSourceLead') %> #<%= opportunity.originInquiryId %></a></td>
+                        <th scope="row"></th>
+                        <td></td>
+                      </tr>
+                    <% } %>
                     <tr>
                       <th scope="row"><%= t('customer') %></th>
                       <td><a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %></a></td>

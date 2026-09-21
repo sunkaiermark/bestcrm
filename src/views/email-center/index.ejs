@@ -41,14 +41,13 @@
               <p><%= t(isSpamCleanup ? 'emailSpamCleanupRule' : 'emailNonBusinessCleanupRule') %></p>
               <p class="muted"><%= t(isSpamCleanup ? 'emailSpamCleanupEligible' : 'emailNonBusinessCleanupEligible') %>: <strong><%= cleanup.eligibleThreads %></strong> · <%= t('messages') %>: <%= cleanup.messages %> · <%= t('attachments') %>: <%= cleanup.attachments %> · <%= t('emailSpamCleanupStorage') %>: <%= ((cleanup.attachmentBytes + cleanup.rawMessageBytes) / 1024 / 1024).toFixed(1) %> MB</p>
               <% if (cleanupResult.purgedThreads || cleanupResult.fileFailures) { %><p class="status"><%= t(isSpamCleanup ? 'emailSpamCleanupCompleted' : 'emailNonBusinessCleanupCompleted') %>: <%= cleanupResult.purgedThreads %> · <%= t('messages') %>: <%= cleanupResult.purgedMessages %> · <%= (cleanupResult.purgedBytes / 1024 / 1024).toFixed(1) %> MB<% if (cleanupResult.fileFailures) { %> · <%= t('emailSpamCleanupFileFailures') %>: <%= cleanupResult.fileFailures %><% } %></p><% } %>
-              <% if (cleanup.eligibleThreads) { %>
-                <form class="inline-form" method="post" action="/email-center/<%= folder %>/purge" onsubmit="return confirm('<%= t(isSpamCleanup ? 'emailSpamCleanupConfirm' : 'emailNonBusinessCleanupConfirm') %>')">
-                  <%- csrfField() %>
-                  <input type="hidden" name="mailbox" value="<%= mailbox.key %>">
-                  <label><span><%= t('emailSpamCleanupTypeDelete') %></span><input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label>
-                  <button class="danger-action" type="submit"><%= t(isSpamCleanup ? 'emailSpamCleanupAction' : 'emailNonBusinessCleanupAction') %></button>
-                </form>
-              <% } %>
+              <form class="inline-form" method="post" action="/email-center/<%= folder %>/purge" onsubmit="return confirm('<%= t(isSpamCleanup ? 'emailSpamCleanupConfirm' : 'emailNonBusinessCleanupConfirm') %>')">
+                <%- csrfField() %>
+                <input type="hidden" name="mailbox" value="<%= mailbox.key %>">
+                <label><span><%= t('emailSpamCleanupTypeDelete') %></span><input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"<%= cleanup.eligibleThreads ? '' : ' disabled' %>></label>
+                <button class="danger-action" type="submit"<%= cleanup.eligibleThreads ? '' : ' disabled' %>><%= t(isSpamCleanup ? 'emailSpamCleanupAction' : 'emailNonBusinessCleanupAction') %></button>
+              </form>
+              <% if (!cleanup.eligibleThreads) { %><p class="warning-text email-delete-empty-reason"><%= t('emailCleanupNoEligibleReason') %></p><% } %>
             </section>
           <% } %>
         <% } %>
@@ -70,8 +69,15 @@
                 <span class="email-inbox-attachment<%= thread.attachmentCount ? '' : ' is-empty' %>" title="<%= t('attachmentCount') %>"><% if (thread.attachmentCount) { %><span aria-hidden="true">📎</span> <%= thread.attachmentCount %><% } %></span>
                 <time class="email-inbox-time" datetime="<%= thread.lastMessageAt || '' %>"><%= formatEmailListDate(thread.lastMessageAt) %></time>
               </a>
-              <% if (['spam', 'non_business'].includes(folder) && cleanup && thread.purgeEligible) { %>
-                <a class="danger-action email-spam-row-delete" href="/email-center/threads/<%= thread.id %>?mailbox=<%= encodeURIComponent(mailbox.key) %>&from=spam<%= category ? `&category=${encodeURIComponent(category)}` : '' %>#email-delete"><%= t('emailSpamDeleteOneAction') %></a>
+              <% if (['spam', 'non_business'].includes(folder) && cleanup) { const blockedReason = thread.purgeBlockedReason || 'protected_business_history'; %>
+                <span class="email-row-delete-control">
+                  <% if (thread.purgeEligible) { %>
+                    <a class="danger-action email-spam-row-delete" href="/email-center/threads/<%= thread.id %>?mailbox=<%= encodeURIComponent(mailbox.key) %>&from=<%= folder %><%= category ? `&category=${encodeURIComponent(category)}` : '' %>#email-delete"><%= t('emailSpamDeleteOneAction') %></a>
+                  <% } else { %>
+                    <button class="danger-action email-spam-row-delete" type="button" disabled><%= t('emailSpamDeleteOneAction') %></button>
+                    <small class="email-delete-blocked-reason"><%= t('emailDeleteBlockedLabel') %>：<%= t(`emailDeleteBlockedReason.${blockedReason}`) %></small>
+                  <% } %>
+                </span>
               <% } %>
             </div>
           <% } %>

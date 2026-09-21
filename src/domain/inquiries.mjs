@@ -2,12 +2,18 @@ export const INQUIRY_SOURCES = ['manual', 'website', 'email', 'chatwoot'];
 
 export const INQUIRY_ACTIVE_STATUSES = ['new', 'reviewing'];
 
+export const LEAD_ACTIVE_STATUSES = ['new', 'returned'];
+
+export const LEAD_PROCESSED_STATUSES = ['converted', 'rejected'];
+
 export const INQUIRY_PENDING_STATUSES = ['customer_approval_pending'];
 
 export const INQUIRY_DISPOSITION_STATUSES = ['converted', 'contact_saved', 'customer_saved', 'spam'];
 
 export const INQUIRY_STATUSES = [
   ...INQUIRY_ACTIVE_STATUSES,
+  'returned',
+  'rejected',
   ...INQUIRY_PENDING_STATUSES,
   ...INQUIRY_DISPOSITION_STATUSES,
   'duplicate',

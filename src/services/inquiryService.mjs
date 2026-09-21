@@ -299,7 +299,7 @@ function opportunityTitleForInquiry(inquiry, input) {
     || `Inquiry ${inquiry.id}`;
 }
 
-export async function convertInquiryToOpportunity(repositories, actor, inquiry, input = {}) {
+export async function convertInquiryToOpportunity(repositories, actor, inquiry, input = {}, options = {}) {
   if (!canViewInquiry(actor, inquiry)) {
     forbidden();
   }
@@ -364,14 +364,16 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     originInquiryId: inquiry.id,
     salespersonId
   });
-  await copyInquiryAttachmentsToOpportunity({
-    inquiryAttachmentRepository: repositories.inquiryAttachmentRepository,
-    attachmentRepository: repositories.attachmentRepository,
-    inquiryId: inquiry.id,
-    opportunityId: opportunity.id,
-    actor,
-    uploadDir: repositories.uploadDir || './var/uploads'
-  });
+  if (options.copyAttachments !== false) {
+    await copyInquiryAttachmentsToOpportunity({
+      inquiryAttachmentRepository: repositories.inquiryAttachmentRepository,
+      attachmentRepository: repositories.attachmentRepository,
+      inquiryId: inquiry.id,
+      opportunityId: opportunity.id,
+      actor,
+      uploadDir: repositories.uploadDir || './var/uploads'
+    });
+  }
   const converted = await repositories.inquiryRepository.markConverted(inquiry.id, {
     matchedCustomerId: customerId,
     matchedContactId: primaryContactId,

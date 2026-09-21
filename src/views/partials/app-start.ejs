@@ -2637,6 +2637,99 @@
         width: 100%;
       }
 
+      .lead-submission-list-table {
+        min-width: 1180px;
+      }
+
+      .lead-submission-list-table th:nth-child(1),
+      .lead-submission-list-table td:nth-child(1) {
+        width: 150px;
+      }
+
+      .lead-submission-list-table th:nth-child(2),
+      .lead-submission-list-table td:nth-child(2) {
+        width: 180px;
+      }
+
+      .lead-submission-list-table th:nth-child(3),
+      .lead-submission-list-table td:nth-child(3) {
+        width: clamp(300px, 34vw, 560px);
+      }
+
+      .lead-submission-list-table th:nth-child(4),
+      .lead-submission-list-table td:nth-child(4),
+      .lead-submission-list-table th:nth-child(5),
+      .lead-submission-list-table td:nth-child(5) {
+        width: 180px;
+      }
+
+      .lead-submission-list-table th:nth-child(6),
+      .lead-submission-list-table td:nth-child(6) {
+        width: 130px;
+      }
+
+      .lead-submission-list-table th:nth-child(7),
+      .lead-submission-list-table td:nth-child(7) {
+        width: 100px;
+      }
+
+      .lead-submission-list-table tbody td.clickable-cell .cell-link {
+        height: 100%;
+        text-align: left;
+      }
+
+      .lead-submission-list-table th,
+      .lead-submission-list-table td {
+        border-right-color: #b8c6d1;
+      }
+
+      .lead-submission-list-table thead th {
+        border-right-color: rgba(255, 255, 255, 0.42);
+        text-align: center;
+      }
+
+      .lead-submission-list-table tbody td,
+      .lead-submission-list-table tbody td.clickable-cell .cell-link {
+        text-align: left;
+      }
+
+      .lead-submission-list-table th:last-child,
+      .lead-submission-list-table td:last-child {
+        border-right: 0;
+      }
+
+      .lead-submission-time {
+        white-space: nowrap;
+      }
+
+      .lead-requirement-preview {
+        display: -webkit-box;
+        line-height: 1.4;
+        max-height: 2.8em;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+        white-space: normal;
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 2;
+      }
+
+      .lead-sales-manager-review .section-body {
+        padding-bottom: 10px;
+      }
+
+      .lead-conversion-review-form > .inquiry-form-grid {
+        padding-left: 0;
+        padding-right: 0;
+      }
+
+      .lead-review-action-list {
+        border-top: 1px solid var(--line);
+      }
+
+      .lead-secondary-decision-list {
+        margin-top: 0;
+      }
+
       .email-recipient-line {
         color: var(--muted);
         font-size: 12px;
@@ -2969,10 +3062,40 @@
         white-space: nowrap;
       }
 
-      .email-spam-row-delete {
+      .email-row-delete-control {
         align-self: center;
+        display: grid;
+        gap: 4px;
         margin-right: 14px;
+        max-width: 240px;
+        padding: 6px 0;
+      }
+
+      .email-spam-row-delete {
+        justify-self: start;
+        margin: 0;
         white-space: nowrap;
+      }
+
+      .email-delete-blocked-reason {
+        color: var(--muted);
+        font-size: 12px;
+        line-height: 1.35;
+      }
+
+      .email-delete-empty-reason {
+        margin: 10px 0 0;
+      }
+
+      .email-thread-delete-blocked {
+        align-items: flex-start;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 10px 14px;
+      }
+
+      .email-thread-delete-blocked .warning-text {
+        margin: 6px 0 0;
       }
 
       .email-message-outbound {
@@ -3309,7 +3432,7 @@
           grid-template-columns: minmax(0, 1fr);
         }
 
-        .email-spam-row-delete {
+        .email-row-delete-control {
           justify-self: start;
           margin: 0 12px 10px;
         }
@@ -3807,7 +3930,7 @@
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>
     <% const canSeeSystemNav = Array.isArray(currentUser?.roles) && currentUser.roles.includes('administrator'); %>
     <% const canSeeWebsiteFormsNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'sales_manager'].includes(role)); %>
-    <% const canSeeLeadNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'sales_manager', 'salesperson'].includes(role)); %>
+    <% const canSeeLeadNav = Boolean(currentUser && currentUser.isActive !== false); %>
     <% const canSeeTechnicalStandardsNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'technical_manager', 'quotation_engineer'].includes(role)); %>
     <% const canSeeEmailCenterNav = Boolean(typeof emailCenterEnabled !== 'undefined' && emailCenterEnabled); %>
     <div class="app-shell">

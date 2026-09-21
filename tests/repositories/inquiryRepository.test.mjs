@@ -121,6 +121,22 @@ test('inquiry repository excludes filtered statuses when requested', async () =>
   assert.deepEqual(queryTarget.queries[0].params, ['spam', 'archived']);
 });
 
+test('inquiry repository filters the active lead queue by an explicit status set', async () => {
+  const queryTarget = createFakeQueryTarget([inquiryRow]);
+  const repository = createInquiryRepository(queryTarget);
+
+  await repository.listInquiries({
+    submissionType: 'sales_lead',
+    statuses: ['new', 'returned']
+  });
+
+  assert.match(queryTarget.queries[0].sql, /i\.submission_type = \$1/);
+  assert.match(queryTarget.queries[0].sql, /i\.status IN \(\$2, \$3\)/);
+  assert.match(queryTarget.queries[0].sql, /WHEN 'new' THEN 1/);
+  assert.match(queryTarget.queries[0].sql, /WHEN 'returned' THEN 2/);
+  assert.deepEqual(queryTarget.queries[0].params, ['sales_lead', 'new', 'returned']);
+});
+
 test('inquiry repository searches, date-filters, counts, and paginates inquiries', async () => {
   const queryTarget = createFakeQueryTarget([
     [inquiryRow],
@@ -276,4 +292,122 @@ test('inquiry repository returns an existing inquiry for duplicate source refere
   assert.equal(inquiry.wasDuplicate, true);
   assert.match(queryTarget.queries[1].sql, /i\.source = \$1 AND i\.source_reference = \$2/);
   assert.deepEqual(queryTarget.queries[1].params, ['website', 'form-1']);
+});
+
+test('inquiry repository locks and transitions leads while recording immutable review history', async () => {
+  const leadRow = { ...inquiryRow, submission_type: 'sales_lead', status: 'new' };
+  const eventRow = {
+    id: '91',
+    inquiry_id: '11',
+    event_type: 'reviewer_reassigned',
+    from_status: 'returned',
+    to_status: 'returned',
+    actor_user_id: '1',
+    actor_display_name: 'Administrator',
+    assigned_user_id: '8',
+    assigned_display_name: 'Sales Manager Two',
+    opportunity_id: null,
+    opportunity_no: null,
+    reason: 'Coverage change',
+    details: { previousAssignedUserId: 7 },
+    created_at: '2026-09-22T01:00:00.000Z'
+  };
+  const queryTarget = createFakeQueryTarget([
+    [leadRow],
+    [{ ...leadRow, status: 'returned', review_note: 'Need more detail' }],
+    [{ ...leadRow, status: 'rejected', review_note: 'Not a business lead' }],
+    [{ ...leadRow, status: 'new', assigned_user_id: '8' }],
+    [{ ...leadRow, status: 'returned', assigned_user_id: '8' }],
+    [eventRow],
+    [eventRow]
+  ]);
+  const repository = createInquiryRepository(queryTarget);
+
+  const locked = await repository.findLeadByIdForUpdate(11);
+  const returned = await repository.returnLead(11, {
+    reason: 'Need more detail',
+    actorUserId: 7
+  });
+  const rejected = await repository.rejectLead(11, {
+    reason: 'Not a business lead',
+    actorUserId: 7
+  });
+  const resubmitted = await repository.resubmitLead(11, {
+    sourceChannel: 'email',
+    subject: 'Updated RFQ',
+    companyName: 'Acme Co',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '+1 555',
+    country: 'United States',
+    productInterest: 'Evaporator',
+    opportunityType: 'Expansion',
+    requirementText: 'Updated requirement',
+    priority: 'high',
+    assignedUserId: 8,
+    recommendedSalespersonId: 7,
+    actorUserId: 7
+  });
+  const reassigned = await repository.reassignLeadReviewer(11, { assignedUserId: 8 });
+  const createdEvent = await repository.createLeadReviewEvent({
+    inquiryId: 11,
+    eventType: 'reviewer_reassigned',
+    fromStatus: 'returned',
+    toStatus: 'returned',
+    actorUserId: 1,
+    assignedUserId: 8,
+    reason: 'Coverage change',
+    details: { previousAssignedUserId: 7 }
+  });
+  const events = await repository.listLeadReviewEvents(11);
+
+  assert.equal(locked.submissionType, 'sales_lead');
+  assert.equal(returned.status, 'returned');
+  assert.equal(rejected.status, 'rejected');
+  assert.equal(resubmitted.assignedUserId, 8);
+  assert.equal(reassigned.status, 'returned');
+  assert.equal(createdEvent.id, '91');
+  assert.deepEqual(events, [{
+    id: 91,
+    inquiryId: 11,
+    eventType: 'reviewer_reassigned',
+    fromStatus: 'returned',
+    toStatus: 'returned',
+    actorUserId: 1,
+    actorDisplayName: 'Administrator',
+    assignedUserId: 8,
+    assignedDisplayName: 'Sales Manager Two',
+    opportunityId: null,
+    opportunityNo: '',
+    reason: 'Coverage change',
+    details: { previousAssignedUserId: 7 },
+    createdAt: '2026-09-22T01:00:00.000Z'
+  }]);
+
+  assert.match(queryTarget.queries[0].sql, /submission_type = 'sales_lead'/);
+  assert.match(queryTarget.queries[0].sql, /FOR UPDATE OF i/);
+  assert.match(queryTarget.queries[1].sql, /status = 'returned'/);
+  assert.match(queryTarget.queries[1].sql, /assigned_user_id = \$3/);
+  assert.deepEqual(queryTarget.queries[1].params, [11, 'Need more detail', 7]);
+  assert.match(queryTarget.queries[2].sql, /status = 'rejected'/);
+  assert.deepEqual(queryTarget.queries[2].params, [11, 'Not a business lead', 7]);
+  assert.match(queryTarget.queries[3].sql, /status = 'returned'/);
+  assert.match(queryTarget.queries[3].sql, /created_by = \$15/);
+  assert.equal(queryTarget.queries[3].params[14], 7);
+  assert.match(queryTarget.queries[4].sql, /status IN \('new', 'returned'\)/);
+  assert.deepEqual(queryTarget.queries[4].params, [11, 8]);
+  assert.match(queryTarget.queries[5].sql, /INSERT INTO lead_review_events/);
+  assert.deepEqual(queryTarget.queries[5].params, [
+    11,
+    'reviewer_reassigned',
+    'returned',
+    'returned',
+    1,
+    8,
+    null,
+    'Coverage change',
+    '{"previousAssignedUserId":7}'
+  ]);
+  assert.match(queryTarget.queries[6].sql, /ORDER BY event\.id/);
+  assert.deepEqual(queryTarget.queries[6].params, [11]);
 });

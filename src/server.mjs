@@ -195,6 +195,9 @@ const emptyInquiryRepository = {
   async findById() {
     return null;
   },
+  async findLeadByIdForUpdate() {
+    return null;
+  },
   async createInquiry() {
     throw new Error('Inquiry repository is not configured');
   },
@@ -203,6 +206,24 @@ const emptyInquiryRepository = {
   },
   async markConverted() {
     throw new Error('Inquiry repository is not configured');
+  },
+  async returnLead() {
+    throw new Error('Inquiry repository is not configured');
+  },
+  async rejectLead() {
+    throw new Error('Inquiry repository is not configured');
+  },
+  async resubmitLead() {
+    throw new Error('Inquiry repository is not configured');
+  },
+  async reassignLeadReviewer() {
+    throw new Error('Inquiry repository is not configured');
+  },
+  async createLeadReviewEvent() {
+    throw new Error('Inquiry repository is not configured');
+  },
+  async listLeadReviewEvents() {
+    return [];
   },
   async markDisposition() {
     throw new Error('Inquiry repository is not configured');
@@ -410,7 +431,9 @@ const emptyEmailArchiveRepository = {
   async findAttachmentById() { return null; },
   async listAttachmentsByMessage() { return []; },
   async createThread() { throw new Error('Email archive repository is not configured'); },
+  async linkThreadToOpportunity() { throw new Error('Email archive repository is not configured'); },
   async linkThreadToInquiry() { throw new Error('Email archive repository is not configured'); },
+  async releaseThreadFromInquiry() { throw new Error('Email archive repository is not configured'); },
   async assignThreadTriage() { throw new Error('Email archive repository is not configured'); },
   async transitionThreadTriage() { throw new Error('Email archive repository is not configured'); },
   async createTriageEvent() { throw new Error('Email archive repository is not configured'); },
@@ -840,6 +863,8 @@ export function createApp(options = {}) {
     inquiryRepository,
     inquiryAttachmentRepository,
     userRepository,
+    customerRepository,
+    contactRepository,
     emailArchiveRepository,
     opportunityRepository,
     opportunityResponsibilityRepository,

@@ -202,11 +202,15 @@ export function emailCenterRoutes({
       const linkableOpportunities = thread.opportunityId || !canTriage
         ? []
         : await listEmailLinkableOpportunities(dependencies, req.currentUser);
+      const canManageEmailCleanup = canPurgeEmailSpam(req.currentUser);
       const canDeleteThread = await canPurgeEmailThread(
         dependencies,
         req.currentUser,
         thread.id
       );
+      const deleteBlockedReason = canDeleteThread
+        ? ''
+        : thread.purgeBlockedReason || 'protected_business_history';
       res.render('email-center/detail', {
         thread,
         formatEmailListDate,
@@ -215,7 +219,9 @@ export function emailCenterRoutes({
         backMailbox,
         backCategory,
         canTriage,
+        canManageEmailCleanup,
         canDeleteThread,
+        deleteBlockedReason,
         canCreateLead: canSubmitNewLead(req.currentUser),
         canCreateOpportunity: canCreateOpportunityManually(req.currentUser) && Boolean(thread.customerId),
         linkableOpportunities

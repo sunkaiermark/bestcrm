@@ -67,6 +67,7 @@ const emailPurgeFileJobsMigrationPath = new URL('../../src/db/migrations/065_ema
 const emailOutboundMimeArtifactsMigrationPath = new URL('../../src/db/migrations/066_email_outbound_mime_artifacts.sql', import.meta.url);
 const legacyAttachmentIntegrityMigrationPath = new URL('../../src/db/migrations/067_legacy_attachment_integrity.sql', import.meta.url);
 const inquiryAttachmentPurgeJobsMigrationPath = new URL('../../src/db/migrations/068_inquiry_attachment_purge_jobs.sql', import.meta.url);
+const salesLeadReviewWorkflowMigrationPath = new URL('../../src/db/migrations/069_sales_lead_review_workflow.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -523,6 +524,24 @@ test('sales lead submissions migration enforces inquiry-first opportunity creati
   assert.match(sql, /ADD COLUMN IF NOT EXISTS recommended_salesperson_id bigint REFERENCES users\(id\)/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS origin_inquiry_id bigint REFERENCES inquiries\(id\) ON DELETE RESTRICT/);
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS opportunities_origin_inquiry_unique_idx/);
+});
+
+test('sales lead review workflow adds returned and rejected states with immutable review history', async () => {
+  const sql = await readFile(salesLeadReviewWorkflowMigrationPath, 'utf8');
+
+  assert.match(sql, /'returned'/);
+  assert.match(sql, /'rejected'/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS lead_review_events/);
+  assert.match(sql, /inquiry_id bigint NOT NULL REFERENCES inquiries\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /inquiries_sales_lead_status_check/);
+  assert.match(sql, /inquiries_sales_lead_opportunity_check/);
+  assert.match(sql, /assigned_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /'reviewer_reassigned'/);
+  assert.match(sql, /lead_review_events_transition_check/);
+  assert.match(sql, /lead_review_events_opportunity_check/);
+  assert.match(sql, /Lead review events are immutable/);
+  assert.match(sql, /Converted sales leads are immutable and cannot be deleted/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON inquiries/);
 });
 
 test('opportunity material versions migration creates unified approval version records', async () => {

@@ -824,6 +824,43 @@ test('opportunity detail uses compact header actions and hides repeated customer
   assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/delete"/);
 });
 
+test('converted opportunity detail links back to its immutable source lead', async () => {
+  const { agent } = await createLoggedInAgent({
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return {
+          id: 30,
+          opportunityNo: 'OPP-20260605-abcdef12',
+          title: 'Factory upgrade',
+          customerId: 10,
+          customerCode: 'C000010',
+          customerName: 'Acme Co',
+          primaryContactId: 20,
+          primaryContactCode: 'CT000020',
+          primaryContactName: 'Alice',
+          requirement: 'Upgrade production line',
+          estimatedAmount: 120000.50,
+          projectType: 'automation',
+          deliveryCycle: '45 days',
+          expectedBidDate: '2026-07-10',
+          status: STATUSES.DRAFT,
+          salespersonId: 7,
+          salespersonUsername: 'sales01',
+          salespersonDisplayName: 'Sales One',
+          originInquiryId: 11
+        };
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /<th scope="row">Source lead<\/th>/);
+  assert.match(detail.text, /href="\/lead-submissions\/11"/);
+  assert.match(detail.text, /View source lead #11/);
+});
+
 test('sales manager can create an opportunity directly for an existing customer', async () => {
   const { agent, created } = await createLoggedInAgent({
     user: { roles: [ROLES.SALES_MANAGER] },

@@ -9,7 +9,7 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function buildApp({ currentUserRoles = [ROLES.SALESPERSON], receiptCreatedBy = 7, uploadDir } = {}) {
+async function buildApp({ currentUserRoles = [ROLES.SALESPERSON], receiptCreatedBy = 7, receiptAssignedUserId = 2, uploadDir } = {}) {
   const calls = [];
   const user = {
     id: 7,
@@ -48,7 +48,7 @@ async function buildApp({ currentUserRoles = [ROLES.SALESPERSON], receiptCreated
     requirementText: 'Need a dryer',
     priority: 'normal',
     status: 'new',
-    assignedUserId: 2,
+    assignedUserId: receiptAssignedUserId,
     assignedDisplayName: 'Sales Manager',
     recommendedSalespersonId: 7,
     createdBy: receiptCreatedBy,
@@ -98,12 +98,56 @@ test('salesperson sees only personal lead submissions and cannot open inquiry in
     assert.equal(list.status, 200);
     assert.match(list.text, />Leads</);
     assert.match(list.text, /Acme/);
-    assert.deepEqual(calls[0], ['listInquiries', { createdBy: 7, submissionType: 'sales_lead' }]);
+    assert.match(list.text, />Requirement</);
+    assert.match(list.text, /Need a dryer/);
+    assert.match(list.text, /2026-09-02 09:00/);
+    assert.doesNotMatch(list.text, /2026-09-02T01:00:00\.000Z/);
+    assert.match(list.text, /class="cell-link lead-submission-time" href="\/lead-submissions\/11"/);
+    assert.ok((list.text.match(/href="\/lead-submissions\/11"/g) || []).length >= 7);
+    assert.match(list.text, /\.lead-submission-list-table th,\s*\.lead-submission-list-table td\s*\{[^}]*border-right-color:\s*#b8c6d1;/);
+    assert.match(list.text, /\.lead-submission-list-table thead th\s*\{[^}]*border-right-color:\s*rgba\(255, 255, 255, 0\.42\);[^}]*text-align:\s*center;/);
+    assert.deepEqual(calls[0], ['listInquiries', {
+      createdBy: 7,
+      submissionType: 'sales_lead',
+      statuses: ['new', 'returned']
+    }]);
 
     const receipt = await agent.get('/lead-submissions/11');
     assert.equal(receipt.status, 200);
     assert.match(receipt.text, /Lead details/);
+    assert.match(receipt.text, /title="Back to list"/);
+    assert.match(receipt.text, /2026-09-02 09:00/);
+    assert.doesNotMatch(receipt.text, /2026-09-02T01:00:00\.000Z/);
+    assert.doesNotMatch(receipt.text, /action="\/lead-submissions\/11\/approve"/);
+    assert.doesNotMatch(receipt.text, /action="\/lead-submissions\/11\/reject"/);
     assert.equal((await agent.get('/inquiries')).status, 403);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('any active CRM user can open the lead queue and submission form', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-active-user-'));
+  try {
+    const { agent, calls } = await buildApp({
+      uploadDir,
+      currentUserRoles: [ROLES.QUOTATION_ENGINEER]
+    });
+
+    const list = await agent.get('/lead-submissions');
+    const form = await agent.get('/lead-submissions/new');
+
+    assert.equal(list.status, 200);
+    assert.equal(form.status, 200);
+    assert.deepEqual(calls[0], ['listInquiries', {
+      createdBy: 7,
+      submissionType: 'sales_lead',
+      statuses: ['new', 'returned']
+    }]);
+    assert.match(form.text, /name="assignedUserId"/);
+    assert.match(form.text, /name="recommendedSalespersonId"/);
+    assert.match(form.text, /Sales Manager/);
+    assert.match(form.text, /Sales Two/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
@@ -163,6 +207,46 @@ test('another salesperson cannot open someone else lead while managers can use t
     assert.match(managerForm.text, /name="recommendedSalespersonId"/);
     assert.match(managerForm.text, /Sales Two/);
     assert.equal((await manager.agent.get('/lead-submissions/11')).status, 200);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('assigned sales manager sees approve return and reject controls on lead detail', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-review-ui-'));
+  try {
+    const manager = await buildApp({
+      uploadDir,
+      currentUserRoles: [ROLES.SALES_MANAGER],
+      receiptAssignedUserId: 7
+    });
+    const page = await manager.agent.get('/lead-submissions/11');
+    assert.equal(page.status, 200);
+    assert.match(page.text, /action="\/lead-submissions\/11\/approve"/);
+    assert.match(page.text, /action="\/lead-submissions\/11\/return"/);
+    assert.match(page.text, /action="\/lead-submissions\/11\/reject"/);
+    assert.match(page.text, />Approve and create opportunity</);
+    assert.match(page.text, />Sales manager review</);
+    assert.match(page.text, /workflow-compact-row workflow-approve-row/);
+    assert.match(page.text, /workflow-compact-row workflow-reject-row/);
+    assert.match(page.text, /name="reason" type="text" required maxlength="1000"/);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('processed lead view uses converted and rejected statuses', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-processed-'));
+  try {
+    const { agent, calls } = await buildApp({ uploadDir });
+    const page = await agent.get('/lead-submissions?view=processed');
+    assert.equal(page.status, 200);
+    assert.deepEqual(calls[0], ['listInquiries', {
+      createdBy: 7,
+      submissionType: 'sales_lead',
+      statuses: ['converted', 'rejected']
+    }]);
+    assert.match(page.text, />Processed records</);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

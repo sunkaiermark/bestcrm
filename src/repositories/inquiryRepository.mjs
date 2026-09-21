@@ -126,6 +126,17 @@ function addNotInFilter(where, params, column, values) {
   where.push(`${column} NOT IN (${placeholders.join(', ')})`);
 }
 
+function addInFilter(where, params, column, values) {
+  if (!Array.isArray(values) || values.length === 0) {
+    return;
+  }
+  const placeholders = values.map((value) => {
+    params.push(value);
+    return `$${params.length}`;
+  });
+  where.push(`${column} IN (${placeholders.join(', ')})`);
+}
+
 const listReceivedAtSql = `CASE
   WHEN i.source_received_at > now() + interval '1 day' THEN i.created_at
   ELSE COALESCE(i.source_received_at, i.created_at)
@@ -139,6 +150,7 @@ function buildInquiryListFilter(filter = {}) {
   addFilter(where, params, 'i.assigned_user_id = ?', filter.assignedUserId);
   addFilter(where, params, 'i.created_by = ?', filter.createdBy);
   addFilter(where, params, 'i.submission_type = ?', filter.submissionType);
+  addInFilter(where, params, 'i.status', filter.statuses);
   addNotInFilter(where, params, 'i.status', filter.excludeStatuses);
   if (filter.visibleToUserId) {
     params.push(filter.visibleToUserId);
@@ -188,10 +200,12 @@ export function createInquiryRepository(queryTarget) {
         ORDER BY
           CASE i.status
             WHEN 'new' THEN 1
-            WHEN 'reviewing' THEN 2
-            WHEN 'customer_approval_pending' THEN 3
-            WHEN 'converted' THEN 4
-            ELSE 5
+            WHEN 'returned' THEN 2
+            WHEN 'reviewing' THEN 3
+            WHEN 'customer_approval_pending' THEN 4
+            WHEN 'converted' THEN 5
+            WHEN 'rejected' THEN 6
+            ELSE 7
           END,
           ${listReceivedAtSql} DESC,
           i.id DESC
@@ -215,6 +229,17 @@ export function createInquiryRepository(queryTarget) {
         ${inquirySelect}
         WHERE i.id = $1
         LIMIT 1
+      `, [id]);
+      return mapInquiryRow(result.rows[0]);
+    },
+
+    async findLeadByIdForUpdate(id) {
+      const result = await queryTarget.query(`
+        ${inquirySelect}
+        WHERE i.id = $1
+          AND i.submission_type = 'sales_lead'
+        LIMIT 1
+        FOR UPDATE OF i
       `, [id]);
       return mapInquiryRow(result.rows[0]);
     },
@@ -365,6 +390,172 @@ export function createInquiryRepository(queryTarget) {
         id
       ]);
       return mapInquiryRow(result.rows[0]);
+    },
+
+    async returnLead(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE inquiries
+        SET
+          status = 'returned',
+          review_note = $2,
+          reviewed_by = $3,
+          reviewed_at = now(),
+          updated_at = now()
+        WHERE id = $1
+          AND submission_type = 'sales_lead'
+          AND status = 'new'
+          AND assigned_user_id = $3
+        RETURNING *
+      `, [id, input.reason, input.actorUserId]);
+      return mapInquiryRow(result.rows[0]);
+    },
+
+    async rejectLead(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE inquiries
+        SET
+          status = 'rejected',
+          review_note = $2,
+          reviewed_by = $3,
+          reviewed_at = now(),
+          updated_at = now()
+        WHERE id = $1
+          AND submission_type = 'sales_lead'
+          AND status = 'new'
+          AND assigned_user_id = $3
+        RETURNING *
+      `, [id, input.reason, input.actorUserId]);
+      return mapInquiryRow(result.rows[0]);
+    },
+
+    async resubmitLead(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE inquiries
+        SET
+          status = 'new',
+          source_channel = $2,
+          subject = $3,
+          company_name = $4,
+          contact_name = $5,
+          contact_email = $6,
+          contact_phone = $7,
+          country = $8,
+          product_interest = $9,
+          opportunity_type = $10,
+          requirement_text = $11,
+          priority = $12,
+          assigned_user_id = $13,
+          recommended_salesperson_id = $14,
+          review_note = '',
+          reviewed_by = NULL,
+          reviewed_at = NULL,
+          updated_at = now()
+        WHERE id = $1
+          AND submission_type = 'sales_lead'
+          AND status = 'returned'
+          AND created_by = $15
+        RETURNING *
+      `, [
+        id,
+        input.sourceChannel,
+        input.subject,
+        input.companyName,
+        input.contactName,
+        input.contactEmail,
+        input.contactPhone,
+        input.country,
+        input.productInterest,
+        input.opportunityType,
+        input.requirementText,
+        input.priority,
+        input.assignedUserId,
+        input.recommendedSalespersonId,
+        input.actorUserId
+      ]);
+      return mapInquiryRow(result.rows[0]);
+    },
+
+    async reassignLeadReviewer(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE inquiries
+        SET assigned_user_id = $2, updated_at = now()
+        WHERE id = $1
+          AND submission_type = 'sales_lead'
+          AND status IN ('new', 'returned')
+        RETURNING *
+      `, [id, input.assignedUserId]);
+      return mapInquiryRow(result.rows[0]);
+    },
+
+    async createLeadReviewEvent(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO lead_review_events (
+          inquiry_id,
+          event_type,
+          from_status,
+          to_status,
+          actor_user_id,
+          assigned_user_id,
+          opportunity_id,
+          reason,
+          details
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb)
+        RETURNING *
+      `, [
+        input.inquiryId,
+        input.eventType,
+        input.fromStatus,
+        input.toStatus,
+        input.actorUserId,
+        input.assignedUserId || null,
+        input.opportunityId || null,
+        input.reason || '',
+        JSON.stringify(input.details || {})
+      ]);
+      return result.rows[0] || null;
+    },
+
+    async listLeadReviewEvents(inquiryId) {
+      const result = await queryTarget.query(`
+        SELECT
+          event.id,
+          event.inquiry_id,
+          event.event_type,
+          event.from_status,
+          event.to_status,
+          event.actor_user_id,
+          actor.display_name AS actor_display_name,
+          event.assigned_user_id,
+          assigned.display_name AS assigned_display_name,
+          event.opportunity_id,
+          opportunity.opportunity_no,
+          event.reason,
+          event.details,
+          event.created_at
+        FROM lead_review_events event
+        JOIN users actor ON actor.id = event.actor_user_id
+        LEFT JOIN users assigned ON assigned.id = event.assigned_user_id
+        LEFT JOIN opportunities opportunity ON opportunity.id = event.opportunity_id
+        WHERE event.inquiry_id = $1
+        ORDER BY event.id
+      `, [inquiryId]);
+      return result.rows.map((row) => ({
+        id: Number(row.id),
+        inquiryId: Number(row.inquiry_id),
+        eventType: row.event_type,
+        fromStatus: row.from_status,
+        toStatus: row.to_status,
+        actorUserId: Number(row.actor_user_id),
+        actorDisplayName: row.actor_display_name || '',
+        assignedUserId: numberOrNull(row.assigned_user_id),
+        assignedDisplayName: row.assigned_display_name || '',
+        opportunityId: numberOrNull(row.opportunity_id),
+        opportunityNo: row.opportunity_no || '',
+        reason: row.reason || '',
+        details: row.details || {},
+        createdAt: row.created_at
+      }));
     },
 
     async markDisposition(id, input) {

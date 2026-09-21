@@ -106,7 +106,7 @@ function forbidden(res) {
 
 async function loadInquiryOrSend(inquiryRepository, req, res) {
   const inquiry = await inquiryRepository.findById(req.params.id);
-  if (!inquiry) {
+  if (!inquiry || inquiry.submissionType === 'sales_lead') {
     res.status(404).send('Inquiry not found');
     return null;
   }

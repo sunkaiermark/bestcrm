@@ -1,19 +1,42 @@
 <%- include('../partials/app-start', { title: `${t('leadSubmissionReceipt')} - BESTCRM`, activeNav: 'lead-submissions' }) %>
+        <%
+          const leadDateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Singapore',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23'
+          });
+          const formatLeadDateTime = (value) => {
+            if (!value) return '-';
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) return String(value);
+            const parts = Object.fromEntries(
+              leadDateTimeFormatter.formatToParts(date).map((part) => [part.type, part.value])
+            );
+            return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+          };
+        %>
         <p class="breadcrumb"><a href="/lead-submissions"><%= t('myLeadSubmissions') %></a></p>
         <header class="page-header">
           <div>
             <h1><%= submission.subject || submission.companyName || `${t('leadSubmissionReceipt')} #${submission.id}` %></h1>
             <p class="muted"><%= t('leadSubmissionReceiptNotice') %></p>
           </div>
-          <% if (submission.convertedOpportunityId && Number(submission.convertedSalespersonId) === Number(currentUser.id)) { %>
-            <a class="quick-action" href="/opportunities/<%= submission.convertedOpportunityId %>"><%= t('viewOpportunity') %></a>
-          <% } %>
+          <div class="inline-actions">
+            <a class="secondary-action" href="/lead-submissions" title="<%= t('backToList') %>" aria-label="<%= t('backToList') %>"><span aria-hidden="true">←</span> <%= t('backShort') %></a>
+            <% if (canResubmit) { %><a class="quick-action" href="/lead-submissions/<%= submission.id %>/edit"><%= t('editAndResubmit') %></a><% } %>
+            <% if (submission.convertedOpportunityId) { %><a class="quick-action" href="/opportunities/<%= submission.convertedOpportunityId %>"><%= t('viewOpportunity') %></a><% } %>
+            <% if (Number(submission.rawPayload?.emailThreadId) > 0) { %><a class="secondary-action" href="/email-center/threads/<%= submission.rawPayload.emailThreadId %>"><%= t('viewSourceEmail') %></a><% } %>
+          </div>
         </header>
 
         <section class="content-section">
           <div class="inquiry-summary-grid">
-            <span><strong><%= t('status') %>:</strong> <%= t(`inquiryStatus.${submission.status}`) %></span>
-            <span><strong><%= t('submittedAt') %>:</strong> <%= submission.createdAt || '-' %></span>
+            <span><strong><%= t('status') %>:</strong> <%= t(`leadStatus.${submission.status}`) %></span>
+            <span><strong><%= t('submittedAt') %>:</strong> <%= formatLeadDateTime(submission.createdAt) %></span>
             <span><strong><%= t('reviewSalesManager') %>:</strong> <%= submission.assignedDisplayName || '-' %></span>
             <span><strong><%= t('leadSourceChannel') %>:</strong> <%= t(`leadSourceChannel.${submission.sourceChannel}`) %></span>
             <span><strong><%= t('companyName') %>:</strong> <%= submission.companyName || '-' %></span>
@@ -22,9 +45,123 @@
             <span><strong><%= t('phone') %>:</strong> <%= submission.contactPhone || '-' %></span>
             <span><strong><%= t('productInterest') %>:</strong> <%= submission.productInterest || '-' %></span>
             <span><strong><%= t('opportunityType') %>:</strong> <%= submission.opportunityType || '-' %></span>
+            <span><strong><%= t('recommendedSalesOwner') %>:</strong> <%= submission.recommendedSalespersonDisplayName || '-' %></span>
             <p class="inquiry-field-full detail-text-cell"><strong><%= t('requirement') %>:</strong><br><%= submission.requirementText || '-' %></p>
+            <% if (submission.reviewNote) { %><p class="inquiry-field-full detail-text-cell"><strong><%= t('latestDecisionReason') %>:</strong><br><%= submission.reviewNote %></p><% } %>
           </div>
         </section>
+
+        <% if (canReview) { %>
+          <section class="content-section business-section business-section-project-approval lead-sales-manager-review">
+            <h2><%= t('leadSalesManagerReview') %></h2>
+            <div class="section-body">
+              <form class="inquiry-workflow-form lead-conversion-review-form" method="post" action="/lead-submissions/<%= submission.id %>/approve">
+                <%- csrfField() %>
+                <input type="hidden" name="createMissingRecords" value="1">
+                <div class="inquiry-form-grid">
+                <label class="inquiry-field-wide">
+                  <%= t('customer') %>
+                  <select name="customerId" id="lead-customer-select">
+                    <option value=""><%= t('createNewCustomerFromInquiry') %></option>
+                    <% for (const customer of customers) { %>
+                      <option value="<%= customer.id %>"<%= Number(submission.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label><%= t('customerName') %><input name="companyName" value="<%= submission.companyName || '' %>"></label>
+                <label>
+                  <%= t('country') %>
+                  <select name="country">
+                    <option value=""><%= t('selectCountry') %></option>
+                    <% for (const country of countryOptions) { %><option value="<%= country %>"<%= submission.country === country ? ' selected' : '' %>><%= country %></option><% } %>
+                  </select>
+                </label>
+                <label class="inquiry-field-wide">
+                  <%= t('primaryContact') %>
+                  <select name="primaryContactId" id="lead-contact-select">
+                    <option value=""><%= t('createNewContactFromInquiry') %></option>
+                    <% for (const contact of contacts) { %>
+                      <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>"<%= Number(submission.matchedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %><%= contact.customerName ? ` (${contact.customerName})` : '' %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label><%= t('contactName') %><input name="contactName" value="<%= submission.contactName || '' %>"></label>
+                <label><%= t('email') %><input type="email" name="contactEmail" value="<%= submission.contactEmail || '' %>"></label>
+                <label><%= t('phone') %><input name="contactPhone" value="<%= submission.contactPhone || '' %>"></label>
+                <label>
+                  <%= t('salesOwner') %>
+                  <select name="salespersonId" required>
+                    <option value=""><%= t('selectSalesOwner') %></option>
+                    <% for (const salesperson of salespeople) { %>
+                      <option value="<%= salesperson.id %>"<%= Number(submission.recommendedSalespersonId) === Number(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" value="<%= submission.subject || submission.productInterest || submission.companyName || '' %>" required></label>
+                <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount"></label>
+                <label><%= t('deliveryPeriod') %><input name="deliveryCycle"></label>
+                <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate"></label>
+                  <label class="inquiry-field-full"><%= t('requirement') %><textarea name="requirementText" required><%= submission.requirementText || '' %></textarea></label>
+                </div>
+                <div class="workflow-action-list lead-review-action-list">
+                  <div class="workflow-compact-row workflow-approve-row">
+                    <button class="workflow-action-button workflow-approve-button" type="submit"><%= t('approveLeadAndCreateOpportunity') %></button>
+                    <label class="workflow-inline-field">
+                      <span><%= t('reviewNote') %></span>
+                      <input name="reviewNote" type="text" maxlength="1000">
+                    </label>
+                  </div>
+                </div>
+              </form>
+
+              <div class="workflow-action-list lead-review-action-list lead-secondary-decision-list">
+                <form class="workflow-compact-row workflow-reject-row" method="post" action="/lead-submissions/<%= submission.id %>/reject" onsubmit="return confirm('<%= t('rejectLeadConfirm') %>')">
+                  <%- csrfField() %>
+                  <button class="workflow-action-button workflow-reject-button" type="submit"><%= t('rejectLead') %></button>
+                  <label class="workflow-inline-field">
+                    <span><%= t('rejectReason') %></span>
+                    <input name="reason" type="text" required maxlength="1000">
+                  </label>
+                  <% if (isEmailLead) { %>
+                    <label class="workflow-inline-field">
+                      <span><%= t('sourceEmailDisposition') %></span>
+                      <select name="emailDisposition" required>
+                        <option value="pending"><%= t('emailDisposition.pending') %></option>
+                        <option value="non_business"><%= t('emailDisposition.non_business') %></option>
+                        <option value="spam"><%= t('emailDisposition.spam') %></option>
+                      </select>
+                    </label>
+                  <% } %>
+                </form>
+                <form class="workflow-compact-row workflow-neutral-row" method="post" action="/lead-submissions/<%= submission.id %>/return">
+                  <%- csrfField() %>
+                  <button class="workflow-action-button" type="submit"><%= t('returnForSupplement') %></button>
+                  <label class="workflow-inline-field">
+                    <span><%= t('returnReason') %></span>
+                    <input name="reason" type="text" required maxlength="1000">
+                  </label>
+                </form>
+              </div>
+            </div>
+          </section>
+        <% } %>
+
+        <% if (canReassign) { %>
+          <section class="content-section">
+            <h2><%= t('reassignReviewManager') %></h2>
+            <form class="form-panel compact-form-panel" method="post" action="/lead-submissions/<%= submission.id %>/reassign">
+              <%- csrfField() %>
+              <label>
+                <%= t('reviewSalesManager') %>
+                <select name="assignedUserId" required>
+                  <% for (const manager of reviewManagers) { %><option value="<%= manager.id %>"<%= Number(submission.assignedUserId) === Number(manager.id) ? ' selected' : '' %>><%= manager.displayName || manager.username %></option><% } %>
+                </select>
+              </label>
+              <label><%= t('reassignmentReason') %><input name="reason" required maxlength="1000"></label>
+              <button type="submit"><%= t('reassign') %></button>
+            </form>
+          </section>
+        <% } %>
 
         <% if (attachments.length) { %>
           <section class="content-section">
@@ -33,5 +170,47 @@
               <p><a href="/lead-submissions/<%= submission.id %>/attachments/<%= attachment.id %>/download"><%= attachment.originalName %></a></p>
             <% } %>
           </section>
+        <% } %>
+
+        <section class="content-section">
+          <h2><%= t('leadReviewHistory') %></h2>
+          <% if (!reviewEvents.length) { %>
+            <p class="empty-state"><%= t('noLeadReviewHistory') %></p>
+          <% } else { %>
+            <table>
+              <thead><tr><th><%= t('time') %></th><th><%= t('actions') %></th><th><%= t('user') %></th><th><%= t('status') %></th><th><%= t('reason') %></th></tr></thead>
+              <tbody>
+                <% for (const event of reviewEvents) { %>
+                  <tr>
+                    <td><%= formatLeadDateTime(event.createdAt) %></td>
+                    <td><%= t(`leadReviewEvent.${event.eventType}`) %></td>
+                    <td><%= event.actorDisplayName || `#${event.actorUserId}` %></td>
+                    <td><%= t(`leadStatus.${event.fromStatus}`) %> → <%= t(`leadStatus.${event.toStatus}`) %></td>
+                    <td><%= event.reason || '-' %></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          <% } %>
+        </section>
+
+        <% if (canReview) { %>
+          <script>
+            (() => {
+              const customerSelect = document.getElementById('lead-customer-select');
+              const contactSelect = document.getElementById('lead-contact-select');
+              if (!customerSelect || !contactSelect) return;
+              const filterContacts = () => {
+                const customerId = customerSelect.value;
+                for (const option of contactSelect.options) {
+                  if (!option.value) continue;
+                  option.hidden = Boolean(customerId) && option.dataset.customerId !== customerId;
+                }
+                if (contactSelect.selectedOptions[0]?.hidden) contactSelect.value = '';
+              };
+              customerSelect.addEventListener('change', filterContacts);
+              filterContacts();
+            })();
+          </script>
         <% } %>
 <%- include('../partials/app-end') %>

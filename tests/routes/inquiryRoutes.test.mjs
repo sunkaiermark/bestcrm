@@ -531,6 +531,30 @@ test('inquiry detail supports review and conversion forms', async () => {
   assert.match(response.text, /name="opportunityType" value="Expansion"/);
 });
 
+test('generic inquiry routes do not expose sales leads or their legacy actions', async () => {
+  const { agent } = await createLoggedInAgent({
+    inquiryRepository: {
+      async findById() {
+        return { ...inquiry, submissionType: 'sales_lead', status: 'new' };
+      }
+    }
+  });
+
+  const detail = await agent.get('/inquiries/11');
+  const review = await agent.post('/inquiries/11/review').type('form').send({
+    requirementText: 'Attempted legacy review'
+  });
+  const convert = await agent.post('/inquiries/11/convert').type('form').send({
+    customerId: 20,
+    primaryContactId: 30,
+    salespersonId: 7
+  });
+
+  assert.equal(detail.status, 404);
+  assert.equal(review.status, 404);
+  assert.equal(convert.status, 404);
+});
+
 test('inquiry summary shows a real matched contact code and never assigns one to raw contact text', async () => {
   const matched = await createLoggedInAgent({
     inquiryRepository: {

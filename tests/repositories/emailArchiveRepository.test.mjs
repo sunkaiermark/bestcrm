@@ -9,7 +9,8 @@ function threadRow(overrides = {}) {
     opportunity_title: null, customer_id: null, customer_code: null, customer_name: null, contact_id: null,
     contact_code: null, contact_name: null, archive_disposition: 'active', classification_category: 'inquiry',
     classification_reason: 'inquiry_intent', last_message_at: '2026-09-03T01:00:00Z', created_at: '2026-09-03T01:00:00Z',
-    updated_at: '2026-09-03T01:00:00Z', message_count: 1, attachment_count: 2, purge_eligible: true, last_direction: 'inbound',
+    updated_at: '2026-09-03T01:00:00Z', message_count: 1, attachment_count: 2, purge_eligible: true,
+    purge_blocked_reason: '', last_direction: 'inbound',
     last_from_address: 'buyer@example.com', last_text_preview: 'Need quote', ...overrides
   };
 }
@@ -40,6 +41,7 @@ test('email archive repository lists threaded summaries without exposing bodies 
   assert.equal(threads[0].messageCount, 1);
   assert.equal(threads[0].attachmentCount, 2);
   assert.equal(threads[0].purgeEligible, true);
+  assert.equal(threads[0].purgeBlockedReason, '');
   assert.equal(threads[0].inquiryId, 8);
   assert.equal(threads[0].lastFromAddress, 'buyer@example.com');
   assert.match(calls[0].sql, /LEFT JOIN LATERAL/);
@@ -65,6 +67,31 @@ test('email archive repository supports explicit archived, spam, and all-mail vi
   assert.deepEqual(calls[0].params, ['spam']);
   assert.doesNotMatch(calls[1].sql, /WHERE thread\.archive_disposition = \$1/);
   assert.deepEqual(calls[1].params, []);
+});
+
+test('email archive repository exposes the first exact permanent-deletion blocking reason', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return {
+        rows: [threadRow({
+          inquiry_id: 8,
+          purge_eligible: false,
+          purge_blocked_reason: 'linked_inquiry'
+        })]
+      };
+    }
+  });
+
+  const [thread] = await repository.listThreads({ archiveDisposition: 'archived' });
+
+  assert.equal(thread.purgeEligible, false);
+  assert.equal(thread.purgeBlockedReason, 'linked_inquiry');
+  assert.match(calls[0].sql, /AS purge_blocked_reason/);
+  assert.match(calls[0].sql, /THEN 'linked_inquiry'/);
+  assert.match(calls[0].sql, /THEN 'has_outbound_message'/);
+  assert.match(calls[0].sql, /THEN 'reply_chain_dependency'/);
 });
 
 test('spam cleanup includes every confirmed spam thread regardless of business-link history', async () => {
@@ -679,6 +706,43 @@ test('outbound archive state keeps immutable content while delivery attempts inc
   assert.match(calls[2].sql, /delivery_status = 'pending'/);
   assert.match(calls[3].sql, /MAX\(attempt_number\)/);
   assert.equal(calls[3].params.length, 5);
+});
+
+test('email archive repository releases only the expected unconverted inquiry link', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [threadRow({ inquiry_id: null })] };
+    }
+  });
+
+  const released = await repository.releaseThreadFromInquiry(1, 8);
+
+  assert.equal(released.id, 1);
+  assert.equal(released.inquiryId, null);
+  assert.match(calls[0].sql, /SET inquiry_id = NULL/);
+  assert.match(calls[0].sql, /WHERE id = \$1/);
+  assert.match(calls[0].sql, /inquiry_id = \$2/);
+  assert.match(calls[0].sql, /opportunity_id IS NULL/);
+  assert.deepEqual(calls[0].params, [1, 8]);
+});
+
+test('email archive repository links an opportunity only while the expected lead link is unchanged', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [threadRow({ opportunity_id: 20 })] };
+    }
+  });
+
+  const linked = await repository.linkThreadToOpportunity(1, 20, 8);
+
+  assert.equal(linked.opportunityId, 20);
+  assert.match(calls[0].sql, /opportunity_id IS NULL/);
+  assert.match(calls[0].sql, /\$3::bigint IS NULL OR inquiry_id = \$3/);
+  assert.deepEqual(calls[0].params, [1, 20, 8]);
 });
 
 test('Sent-folder observation reconciles a pending outbound message without changing its content identity', async () => {

@@ -25,6 +25,7 @@ function mapThreadRow(row) {
   if (primaryMailboxOwnerUserId && !mailboxOwnerUserIds.includes(primaryMailboxOwnerUserId)) {
     mailboxOwnerUserIds.push(primaryMailboxOwnerUserId);
   }
+  const purgeEligible = Boolean(row.purge_eligible);
   return {
     id: Number(row.id),
     mailboxKey: row.mailbox_key,
@@ -62,7 +63,10 @@ function mapThreadRow(row) {
     updatedAt: row.updated_at,
     messageCount: Number(row.message_count || 0),
     attachmentCount: Number(row.attachment_count || 0),
-    purgeEligible: Boolean(row.purge_eligible),
+    purgeEligible,
+    purgeBlockedReason: purgeEligible
+      ? ''
+      : text(row.purge_blocked_reason) || 'protected_business_history',
     lastDirection: text(row.last_direction),
     lastFromAddress: text(row.last_from_address),
     lastTextPreview: text(row.last_text_preview)
@@ -381,6 +385,55 @@ const emailPurgeBusinessEligibility = `
   )
 `;
 
+const emailPurgeBlockedReason = `
+  CASE
+    WHEN ${confirmedSpamEligibility} THEN ''
+    WHEN NOT (
+      thread.archive_disposition = 'archived'
+      AND thread.triage_status = 'archived'
+    ) THEN 'not_confirmed_for_deletion'
+    WHEN thread.opportunity_id IS NOT NULL THEN 'linked_opportunity'
+    WHEN thread.inquiry_id IS NOT NULL THEN 'linked_inquiry'
+    WHEN thread.customer_id IS NOT NULL THEN 'linked_customer'
+    WHEN thread.contact_id IS NOT NULL THEN 'linked_contact'
+    WHEN EXISTS (
+      SELECT 1 FROM email_messages outbound
+      WHERE outbound.thread_id = thread.id AND outbound.direction = 'outbound'
+    ) THEN 'has_outbound_message'
+    WHEN EXISTS (
+      SELECT 1
+      FROM opportunity_activity_links activity_link
+      JOIN email_messages activity_message ON activity_message.id = activity_link.email_message_id
+      WHERE activity_message.thread_id = thread.id
+    ) THEN 'linked_opportunity_activity'
+    WHEN EXISTS (
+      SELECT 1
+      FROM quotation_package_versions package_version
+      JOIN email_messages package_message ON package_message.id = package_version.sent_email_message_id
+      WHERE package_message.thread_id = thread.id
+    ) THEN 'linked_quotation_package'
+    WHEN EXISTS (
+      SELECT 1
+      FROM email_messages referenced_message
+      JOIN email_messages external_reply ON external_reply.reply_to_message_id = referenced_message.id
+      WHERE referenced_message.thread_id = thread.id
+        AND external_reply.thread_id <> thread.id
+    ) THEN 'reply_chain_dependency'
+    WHEN EXISTS (
+      SELECT 1 FROM email_thread_triage_events business_event
+      WHERE business_event.thread_id = thread.id
+        AND business_event.event_type IN (
+          'linked_opportunity',
+          'linked_lead',
+          'converted_lead',
+          'linked_inquiry',
+          'converted_inquiry'
+        )
+    ) THEN 'historical_business_link'
+    ELSE ''
+  END
+`;
+
 function cleanupPurgeEligibility(folder) {
   return folder === 'non_business' ? confirmedNonBusinessEligibility : spamPurgeEligibility;
 }
@@ -425,6 +478,7 @@ const threadSelect = `
     COALESCE(summary.message_count, 0) AS message_count,
     COALESCE(summary.attachment_count, 0) AS attachment_count,
     (${emailPurgeBusinessEligibility}) AS purge_eligible,
+    (${emailPurgeBlockedReason}) AS purge_blocked_reason,
     last_message.direction AS last_direction,
     last_message.from_address AS last_from_address,
     left(last_message.text_body, 240) AS last_text_preview
@@ -1085,14 +1139,15 @@ export function createEmailArchiveRepository(queryTarget) {
       return mapThreadRow(result.rows[0]);
     },
 
-    async linkThreadToOpportunity(threadId, opportunityId) {
+    async linkThreadToOpportunity(threadId, opportunityId, expectedInquiryId = null) {
       const result = await queryTarget.query(`
         UPDATE email_threads
         SET opportunity_id = $2, updated_at = now()
         WHERE id = $1
           AND opportunity_id IS NULL
+          AND ($3::bigint IS NULL OR inquiry_id = $3)
         RETURNING *
-      `, [threadId, opportunityId]);
+      `, [threadId, opportunityId, expectedInquiryId]);
       return mapThreadRow(result.rows[0]);
     },
 
@@ -1102,6 +1157,18 @@ export function createEmailArchiveRepository(queryTarget) {
         SET inquiry_id = $2, updated_at = now()
         WHERE id = $1
           AND inquiry_id IS NULL
+        RETURNING *
+      `, [threadId, inquiryId]);
+      return mapThreadRow(result.rows[0]);
+    },
+
+    async releaseThreadFromInquiry(threadId, inquiryId) {
+      const result = await queryTarget.query(`
+        UPDATE email_threads
+        SET inquiry_id = NULL, updated_at = now()
+        WHERE id = $1
+          AND inquiry_id = $2
+          AND opportunity_id IS NULL
         RETURNING *
       `, [threadId, inquiryId]);
       return mapThreadRow(result.rows[0]);

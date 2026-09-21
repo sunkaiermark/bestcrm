@@ -74,17 +74,24 @@
           </section>
         <% } %>
 
-        <% if (canDeleteThread) { %>
+        <% if (canManageEmailCleanup) { %>
           <section id="email-delete" class="form-panel email-thread-delete" aria-label="<%= t('emailDeleteAction') %>">
             <h2><%= t('emailDeleteAction') %></h2>
             <p><%= t('emailDeleteRule') %></p>
-            <form class="inline-form" method="post" action="/email-center/threads/<%= thread.id %>/purge" onsubmit="return confirm('<%= t('emailDeleteConfirm') %>')">
-              <%- csrfField() %>
-              <input type="hidden" name="mailbox" value="<%= backMailbox %>">
-              <input type="hidden" name="from" value="<%= backFolder %>">
-              <label><span><%= t('emailSpamCleanupTypeDelete') %></span><input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label>
-              <button class="danger-action" type="submit"><%= t('emailDeleteAction') %></button>
-            </form>
+            <% if (canDeleteThread) { %>
+              <form class="inline-form" method="post" action="/email-center/threads/<%= thread.id %>/purge" onsubmit="return confirm('<%= t('emailDeleteConfirm') %>')">
+                <%- csrfField() %>
+                <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+                <input type="hidden" name="from" value="<%= backFolder %>">
+                <label><span><%= t('emailSpamCleanupTypeDelete') %></span><input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label>
+                <button class="danger-action" type="submit"><%= t('emailDeleteAction') %></button>
+              </form>
+            <% } else { %>
+              <div class="email-thread-delete-blocked">
+                <button class="danger-action" type="button" disabled><%= t('emailDeleteAction') %></button>
+                <p class="warning-text"><strong><%= t('emailDeleteBlockedLabel') %>：</strong><%= t(`emailDeleteBlockedReason.${deleteBlockedReason}`) %></p>
+              </div>
+            <% } %>
           </section>
         <% } %>
 
