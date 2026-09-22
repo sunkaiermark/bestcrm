@@ -343,12 +343,18 @@ test('archived attachments retain checksum and independent email-archive file', 
         async createAttachment(input) { records.push(input); return { id: 1, ...input }; }
       },
       messageId: 10,
-      attachments: [{ filename: 'spec.pdf', contentType: 'application/pdf', content: Buffer.from('safe-content') }],
+      attachments: [{
+        filename: 'spec.pdf',
+        contentType: 'application/pdf',
+        content: Buffer.from('safe-content'),
+        contentDisposition: 'attachment'
+      }],
       uploadDir,
       maxUploadMb: 1
     });
     assert.equal(result.stored.length, 1);
     assert.equal(records[0].sha256, '63a2f0f94f2efe262dee71613926b2bb5ceda47b0aa2950d9403dcfd5a089ec8');
+    assert.equal(records[0].contentDisposition, 'attachment');
     assert.match(records[0].storedPath, /^email-archive\//);
     assert.equal(await readFile(path.resolve(uploadDir, records[0].storedPath), 'utf8'), 'safe-content');
   } finally {

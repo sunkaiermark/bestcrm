@@ -52,6 +52,8 @@ test('email archive repository lists threaded summaries without exposing bodies 
   assert.match(calls[0].sql, /contact\.contact_code/);
   assert.match(calls[0].sql, /AS attachment_count/);
   assert.match(calls[0].sql, /LEFT JOIN email_attachments attachment/);
+  assert.match(calls[0].sql, /attachment\.content_disposition/);
+  assert.match(calls[0].sql, /THEN 'inline' ELSE 'attachment'/);
 });
 
 test('email archive repository supports explicit archived, spam, and all-mail views', async () => {
@@ -362,7 +364,8 @@ test('email archive repository builds message detail with immutable attachment c
       if (text.includes('FROM email_threads thread')) return { rows: [threadRow()] };
       if (text.includes('FROM email_attachments attachment')) return { rows: [{
         id: 21, message_id: 11, source_index: 0, original_name: 'spec.pdf', stored_path: 'email-archive/spec.pdf',
-        mime_type: 'application/pdf', file_size: 4, sha256: 'a'.repeat(64), content_id: '', created_at: '2026-09-03'
+        mime_type: 'application/pdf', file_size: 4, sha256: 'a'.repeat(64), content_id: '',
+        content_disposition: 'attachment', created_at: '2026-09-03'
       }] };
       if (text.includes('FROM email_delivery_attempts attempt')) return { rows: [] };
       if (text.includes('FROM email_messages message')) return { rows: [messageRow()] };
@@ -374,6 +377,47 @@ test('email archive repository builds message detail with immutable attachment c
   assert.equal(detail.messages[0].textBody, 'Need quote');
   assert.equal(detail.messages[0].attachments[0].originalName, 'spec.pdf');
   assert.equal(detail.messages[0].attachments[0].sha256, 'a'.repeat(64));
+  assert.equal(detail.messages[0].attachments[0].contentDisposition, 'attachment');
+  assert.equal(detail.messages[0].attachments[0].isInline, false);
+});
+
+test('email archive repository persists inline MIME disposition and maps legacy CID rows safely', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [{
+        id: 22,
+        message_id: 11,
+        source_index: 1,
+        original_name: 'logo.png',
+        stored_path: 'email-archive/logo.png',
+        mime_type: 'image/png',
+        file_size: 4,
+        sha256: 'b'.repeat(64),
+        content_id: 'logo@example.com',
+        content_disposition: 'inline',
+        created_at: '2026-09-03'
+      }] };
+    }
+  });
+
+  const attachment = await repository.createAttachment({
+    messageId: 11,
+    sourceIndex: 1,
+    originalName: 'logo.png',
+    storedPath: 'email-archive/logo.png',
+    mimeType: 'image/png',
+    fileSize: 4,
+    sha256: 'b'.repeat(64),
+    contentId: 'logo@example.com',
+    contentDisposition: 'inline'
+  });
+
+  assert.match(calls[0].sql, /content_disposition/);
+  assert.equal(calls[0].params[8], 'inline');
+  assert.equal(attachment.contentDisposition, 'inline');
+  assert.equal(attachment.isInline, true);
 });
 
 test('email archive repository writes RFC and provider identities with conflict protection', async () => {

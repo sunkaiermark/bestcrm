@@ -2,7 +2,7 @@ import { simpleParser } from 'mailparser';
 import { isInquiryPriority } from '../domain/inquiries.mjs';
 import { applyEmailInquiryFilter } from './emailInquiryFilterService.mjs';
 
-const MAX_BODY_CHARS = 20000;
+const MAX_INQUIRY_BODY_CHARS = 20000;
 
 function text(value) {
   return String(value || '').trim();
@@ -71,7 +71,14 @@ function stripHtml(html) {
 
 function bodyText(parsed) {
   const body = text(parsed.text) || stripHtml(parsed.html);
-  return body.length > MAX_BODY_CHARS ? `${body.slice(0, MAX_BODY_CHARS)}\n[truncated]` : body;
+  return body.length > MAX_INQUIRY_BODY_CHARS
+    ? `${body.slice(0, MAX_INQUIRY_BODY_CHARS)}\n[truncated]`
+    : body;
+}
+
+function archiveTextBody(parsed) {
+  if (typeof parsed.text === 'string' && parsed.text.trim()) return parsed.text;
+  return stripHtml(parsed.html);
 }
 
 function fieldFromBody(body, labels) {
@@ -117,9 +124,8 @@ function safeHeaders(parsed) {
   return safe;
 }
 
-function htmlBody(parsed) {
-  const value = typeof parsed.html === 'string' ? parsed.html : '';
-  return value.length > MAX_BODY_CHARS ? `${value.slice(0, MAX_BODY_CHARS)}\n<!-- truncated -->` : value;
+function archiveHtmlBody(parsed) {
+  return typeof parsed.html === 'string' ? parsed.html : '';
 }
 
 function sourceReferenceFor(parsed, meta) {
@@ -205,8 +211,8 @@ export function normalizeEmailArchivePayload(parsed = {}, meta = {}) {
     toRecipients: addressList(parsed.to),
     ccRecipients: addressList(parsed.cc),
     subject,
-    textBody: bodyText(parsed),
-    htmlBody: htmlBody(parsed),
+    textBody: archiveTextBody(parsed),
+    htmlBody: archiveHtmlBody(parsed),
     safeHeaders: safeHeaders(parsed),
     receivedAt: direction === 'inbound' ? observedAt : null,
     sentAt: direction === 'outbound' ? observedAt : null

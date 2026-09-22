@@ -35,3 +35,18 @@ test('HTML email reading resolves archived CID images without changing external 
     '<img src="/email-center/attachments/21/inline"><img src="/email-center/attachments/22/inline"><img src="https://example.com/pixel">'
   );
 });
+
+test('HTML email reading repairs the historical SUNKAIER signature logo locally', () => {
+  assert.equal(
+    resolveInlineEmailContent('<img src="cid:sunkaier-signature-logo@sunkaier.com" alt="SUNKAIER">'),
+    '<img src="/assets/sunkaier-logo-email.png" alt="SUNKAIER">'
+  );
+});
+
+test('HTML email reading hides only unresolved inline images instead of showing a broken frame', () => {
+  const resolved = resolveInlineEmailContent('<p>Before</p><img width="400" src="cid:missing@example.com"><p>After</p>');
+
+  assert.match(resolved, /data-email-inline-missing="true"/);
+  assert.doesNotMatch(resolved, /cid:missing@example\.com/);
+  assert.match(resolved, /<p>Before<\/p>[\s\S]*<p>After<\/p>/);
+});

@@ -3,6 +3,10 @@ const QUOTED_OR_FORWARDED_LINE = /^(?:>|-{2,}\s*(?:original|forwarded)\s+message
 const SIGN_OFF_LINE = /^(?:best\s+regards?|kind\s+regards?|regards|sincerely|thanks|thank\s+you|敬上|此致|谢谢)[,，!！]?$/i;
 const CJK_EDGE = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]$/u;
 const CJK_START = /^[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}\p{Script=Hangul}]/u;
+export const SUNKAIER_SIGNATURE_LOGO_CID = 'sunkaier-signature-logo@sunkaier.com';
+export const SUNKAIER_SIGNATURE_LOGO_URL = '/assets/sunkaier-logo-email.png';
+
+const TRANSPARENT_PIXEL = 'data:image/gif;base64,R0lGODlhAQABAAD/ACwAAAAAAQABAAACADs=';
 
 function joinSeparator(previous, next) {
   if (!previous || !next) return '';
@@ -62,5 +66,25 @@ export function resolveInlineEmailContent(html, attachments = []) {
     const cidPattern = new RegExp(`cid:(?:%3C|<)?${escapedRegExp(contentId)}(?:%3E|>)?`, 'gi');
     content = content.replace(cidPattern, `/email-center/attachments/${attachmentId}/inline`);
   }
-  return content;
+
+  // Older BESTCRM outbound messages referenced the branded logo in MIME but did
+  // not index that inline part in email_attachments. Keep those immutable
+  // records readable by resolving only the known company-owned CID locally.
+  const signatureLogoPattern = new RegExp(
+    `cid:(?:%3C|<)?${escapedRegExp(SUNKAIER_SIGNATURE_LOGO_CID)}(?:%3E|>)?`,
+    'gi'
+  );
+  content = content.replace(signatureLogoPattern, SUNKAIER_SIGNATURE_LOGO_URL);
+
+  // A missing inline part must not leave a large broken-image frame that can
+  // obscure the rest of the message. The original HTML remains unchanged in
+  // the archive; this replacement is presentation-only.
+  content = content.replace(/<img\b[^>]*>/gi, (tag) => {
+    if (!/\bsrc\s*=\s*(["'])\s*cid:/i.test(tag)) return tag;
+    return tag.replace(
+      /\bsrc\s*=\s*(["'])\s*cid:[^"']*\1/i,
+      `src="${TRANSPARENT_PIXEL}" data-email-inline-missing="true"`
+    );
+  });
+  return content.replace(/url\(\s*(["']?)cid:[^)]+\1\s*\)/gi, 'none');
 }

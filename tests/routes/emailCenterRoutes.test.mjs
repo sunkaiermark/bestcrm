@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -21,7 +22,7 @@ function thread(overrides = {}) {
       id: 11, threadId: 1, direction: 'inbound', messageId: 'rfq@example.com', inReplyTo: '',
       referenceIds: [], fromAddress: 'buyer@example.com', fromName: 'Buyer',
       toRecipients: [{ address: 'sales@sunkaier.com' }], ccRecipients: [], subject: 'RFQ',
-      textBody: '<script>alert(2)</script> Need quote', htmlBody: '<img src="cid:spec@example.com"><img src="https://tracker.example/pixel">',
+      textBody: '<script>alert(2)</script> Need quote', htmlBody: '<img src="cid:spec@example.com"><img src="cid:sunkaier-signature-logo@sunkaier.com" alt="SUNKAIER"><img src="https://tracker.example/pixel">',
       deliveryStatus: 'received', receivedAt: '2026-09-03T01:00:00Z', attachments: [{
         id: 21, messageId: 11, originalName: 'spec.pdf', storedPath: 'email-archive/spec.pdf',
         mimeType: 'application/pdf', fileSize: 4, sha256: 'a'.repeat(64), contentId: '<spec@example.com>'
@@ -47,7 +48,8 @@ async function createAgent({
   spamPurgeCandidates = [],
   nonBusinessPurgeCandidates = [],
   unlinkedOverrides = {},
-  linkedOverrides = {}
+  linkedOverrides = {},
+  additionalOpportunityThreads = []
 }) {
   const passwordHash = await hashPassword('ChangeMe123!');
   const user = {
@@ -93,16 +95,25 @@ async function createAgent({
     attachments: []
   });
   linked.messageCount = 2;
+  const opportunityThreads = [linked, ...additionalOpportunityThreads];
   const repository = {
-    async listThreads() { return [unlinked, linked]; },
+    async listThreads() { return [unlinked, ...opportunityThreads]; },
     async listActivePersonalMailboxAssignments() {
       return [{ userId: user.id, mailboxAddress: user.email, displayName: user.displayName }];
     },
-    async listThreadsByOpportunity(id) { return Number(id) === 20 ? [linked] : []; },
-    async findThreadById(id) { return Number(id) === 2 ? linked : Number(id) === 1 ? unlinked : null; },
+    async listThreadsByOpportunity(id) { return Number(id) === 20 ? opportunityThreads : []; },
+    async findThreadById(id) {
+      return Number(id) === 1
+        ? unlinked
+        : opportunityThreads.find((item) => Number(item.id) === Number(id)) || null;
+    },
     async findLatestThreadByOpportunity() { return linked; },
     async findLatestThreadByInquiry() { return unlinked; },
-    async getThreadDetail(id) { return Number(id) === 2 ? linked : Number(id) === 1 ? unlinked : null; },
+    async getThreadDetail(id) {
+      return Number(id) === 1
+        ? unlinked
+        : opportunityThreads.find((item) => Number(item.id) === Number(id)) || null;
+    },
     async linkThreadToOpportunity(id, opportunityId) {
       if (Number(id) !== 1 || unlinked.opportunityId) return null;
       unlinked.opportunityId = Number(opportunityId);
@@ -152,7 +163,10 @@ async function createAgent({
     async countEmailPurgeFileJobs() { return 0; },
     async findAttachmentById(id) { return Number(id) === 21 ? unlinked.messages[0].attachments[0] : null; },
     async findMessageById(id) {
-      return [...unlinked.messages, ...linked.messages].find((message) => Number(message.id) === Number(id)) || null;
+      return [
+        ...unlinked.messages,
+        ...opportunityThreads.flatMap((item) => item.messages || [])
+      ].find((message) => Number(message.id) === Number(id)) || null;
     }
   };
   const app = createApp({
@@ -250,7 +264,7 @@ test('sales manager sees the shared mailbox pending threads and plain-text escap
   assert.match(detail.text, /<details class="email-conversation-item email-message-inbound" open>/);
   assert.match(detail.text, /class="email-conversation-summary"/);
   assert.match(detail.text, /class="email-message-details"/);
-  assert.match(detail.text, /class="email-html-body" src="\/email-center\/messages\/11\/content" sandbox=""/);
+  assert.match(detail.text, /class="email-html-body" src="\/email-center\/messages\/11\/content" sandbox="allow-same-origin"/);
   assert.match(detail.text, /class="email-plain-body email-reading-body"/);
   assert.match(detail.text, /\.email-reading-body\s*\{[^}]*max-width:\s*none;/);
   assert.match(detail.text, /@media[\s\S]*\.email-conversation-body\s*\{[^}]*padding:\s*14px;/);
@@ -262,9 +276,11 @@ test('sales manager sees the shared mailbox pending threads and plain-text escap
 
   const htmlContent = await agent.get('/email-center/messages/11/content');
   assert.equal(htmlContent.status, 200);
-  assert.match(htmlContent.headers['content-security-policy'], /sandbox; default-src 'none'; img-src 'self' data:/);
+  assert.match(htmlContent.headers['content-security-policy'], /sandbox allow-same-origin; default-src 'none'; img-src 'self' data:/);
+  assert.match(htmlContent.headers['content-security-policy'], /script-src 'none'/);
   assert.equal(htmlContent.headers['referrer-policy'], 'no-referrer');
   assert.match(htmlContent.text, /src="\/email-center\/attachments\/21\/inline"/);
+  assert.match(htmlContent.text, /src="\/assets\/sunkaier-logo-email\.png"/);
   assert.doesNotMatch(htmlContent.text, /cid:spec@example\.com/);
   assert.match(htmlContent.text, /https:\/\/tracker\.example\/pixel/);
 
@@ -278,6 +294,49 @@ test('email thread back action preserves its source folder', async () => {
 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /href="\/email-center\?mailbox=sales%40sunkaier\.com&folder=sent">← 返回邮件列表<\/a>/);
+});
+
+test('email content restores a historically truncated body from immutable raw EML', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-content-'));
+  try {
+    const storedPath = 'email-raw/truncated.eml';
+    const raw = Buffer.from([
+      'Message-ID: <complete@example.com>',
+      'From: Buyer <buyer@example.com>',
+      'To: sales@sunkaier.com',
+      'Subject: Complete body',
+      'MIME-Version: 1.0',
+      'Content-Type: text/html; charset=utf-8',
+      '',
+      '<html><body><p>Beginning</p><table><tr><td>RECOVERED-END-OF-MESSAGE</td></tr></table></body></html>'
+    ].join('\r\n'));
+    await mkdir(path.join(uploadDir, 'email-raw'), { recursive: true });
+    await writeFile(path.join(uploadDir, storedPath), raw);
+    const originalMessage = thread().messages[0];
+    const agent = await createAgent({
+      userId: 2,
+      roles: [ROLES.SALES_MANAGER],
+      uploadDir,
+      unlinkedOverrides: {
+        messages: [{
+          ...originalMessage,
+          textBody: 'Beginning\n[truncated]',
+          htmlBody: '<html><body><p>Beginning<!-- truncated -->',
+          rawEmlStoredPath: storedPath,
+          rawEmlSha256: createHash('sha256').update(raw).digest('hex'),
+          attachments: []
+        }]
+      }
+    });
+
+    const content = await agent.get('/email-center/messages/11/content');
+    assert.equal(content.status, 200);
+    assert.equal(content.headers['x-email-content-source'], 'raw-archive');
+    assert.match(content.text, /RECOVERED-END-OF-MESSAGE/);
+    assert.doesNotMatch(content.text, /<!-- truncated -->/);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
 });
 
 test('only an administrator sees and can invoke immediate permanent spam cleanup', async () => {
@@ -573,6 +632,7 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(salesCompose.text, /opportunity-email-timeline/);
   assert.match(salesCompose.text, /opportunity-email-message-inbound/);
   assert.match(salesCompose.text, /opportunity-email-message-outbound/);
+  assert.match(salesCompose.text, /class="email-html-body" src="\/email-center\/messages\/11\/content" sandbox="allow-same-origin"/);
   assert.match(salesCompose.text, /customer-email-header-fields/);
   assert.equal((salesCompose.text.match(/class="customer-email-header-field"/g) || []).length, 3);
   assert.match(salesCompose.text, /grid-template-columns: clamp\(220px, 18vw, 260px\) minmax\(0, 1fr\)/);
@@ -622,4 +682,56 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(supportingCompose.text, />未选择任何文件</);
   assert.match(supportingCompose.text, /value="draft"/);
   assert.doesNotMatch(supportingCompose.text, /value="send"/);
+});
+
+test('reply entry requires choosing a conversation when an opportunity has multiple email threads', async () => {
+  const secondThread = thread({
+    id: 3,
+    opportunityId: 20,
+    opportunityNo: '800020',
+    opportunityTitle: 'Mixer Project',
+    customerId: 10,
+    contactId: 20,
+    subject: 'Commercial terms',
+    triageStatus: 'linked_opportunity',
+    lastMessageAt: '2026-09-04T01:00:00Z',
+    lastFromAddress: 'buyer@example.com',
+    messages: [{
+      id: 13,
+      threadId: 3,
+      direction: 'inbound',
+      messageId: 'commercial-terms@example.com',
+      inReplyTo: '',
+      referenceIds: [],
+      fromAddress: 'buyer@example.com',
+      fromName: 'Buyer',
+      toRecipients: [{ address: 'sales@sunkaier.com' }],
+      ccRecipients: [],
+      subject: 'Commercial terms',
+      textBody: 'Please confirm payment terms.',
+      htmlBody: '',
+      deliveryStatus: 'received',
+      receivedAt: '2026-09-04T01:00:00Z',
+      attachments: [],
+      deliveryAttempts: []
+    }]
+  });
+  const agent = await createAgent({
+    userId: 7,
+    roles: [ROLES.SALESPERSON],
+    sendingEnabled: true,
+    additionalOpportunityThreads: [secondThread]
+  });
+
+  const selection = await agent.get('/email-center/compose?opportunityId=20&chooseThread=1');
+  assert.equal(selection.status, 200);
+  assert.match(selection.text, /Select an email conversation before replying/);
+  assert.match(selection.text, /href="\/email-center\/compose\?threadId=2"/);
+  assert.match(selection.text, /href="\/email-center\/compose\?threadId=3"/);
+  assert.doesNotMatch(selection.text, /<form class="form-panel" method="post" action="\/email-center\/messages"/);
+
+  const selected = await agent.get('/email-center/compose?threadId=3');
+  assert.equal(selected.status, 200);
+  assert.match(selected.text, /<input type="hidden" name="threadId" value="3">/);
+  assert.match(selected.text, /<form class="form-panel" method="post" action="\/email-center\/messages"/);
 });

@@ -1,6 +1,8 @@
 import { Router } from 'express';
 import multer from 'multer';
-import { randomUUID as nodeRandomUUID } from 'node:crypto';
+import { createHash, randomUUID as nodeRandomUUID } from 'node:crypto';
+import { readFile } from 'node:fs/promises';
+import { simpleParser } from 'mailparser';
 import { EMAIL_CLASSIFICATION_CATEGORIES } from '../domain/emailArchive.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
@@ -99,6 +101,72 @@ function formatEmailListDate(value) {
     emailListDateFormatter.formatToParts(date).map((part) => [part.type, part.value])
   );
   return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function archivedBodyWasTruncated(message) {
+  return String(message?.htmlBody || '').includes('<!-- truncated -->')
+    || String(message?.textBody || '').endsWith('\n[truncated]');
+}
+
+async function completeArchivedBody(message, uploadDir) {
+  const fallback = {
+    htmlBody: String(message.htmlBody || ''),
+    textBody: String(message.textBody || ''),
+    source: 'parsed-archive'
+  };
+  if (!archivedBodyWasTruncated(message) || !message.rawEmlStoredPath) return fallback;
+  const rawPath = resolveStoredPath(uploadDir, message.rawEmlStoredPath);
+  if (!rawPath) return fallback;
+  try {
+    const raw = await readFile(rawPath);
+    if (message.rawEmlSha256
+        && createHash('sha256').update(raw).digest('hex') !== message.rawEmlSha256) {
+      return fallback;
+    }
+    const parsed = await simpleParser(raw);
+    return {
+      htmlBody: typeof parsed.html === 'string' ? parsed.html : '',
+      textBody: typeof parsed.text === 'string' ? parsed.text : fallback.textBody,
+      source: 'raw-archive'
+    };
+  } catch {
+    return fallback;
+  }
+}
+
+function emailHtmlDocument(htmlBody, textBody) {
+  const safeBody = htmlBody
+    ? String(htmlBody)
+      .replace(/<base\b[^>]*>/gi, '')
+      .replace(/<meta\b[^>]*http-equiv\s*=\s*(["']?)refresh\1[^>]*>/gi, '')
+    : `<pre class="email-text-only">${escapeHtml(textBody)}</pre>`;
+  const style = `<style>
+    html{color:#172333;background:#fff;font:16px/1.55 Arial,sans-serif}
+    body{box-sizing:border-box;margin:0;padding:18px;overflow-wrap:anywhere;overflow-x:auto}
+    img{height:auto;max-width:100%}
+    img[alt="SUNKAIER"]{height:auto!important;max-height:36px;max-width:245px;width:245px}
+    img[data-email-inline-missing="true"]{display:none!important}
+    table{max-width:100%}
+    pre{white-space:pre-wrap}
+    pre.email-text-only{font:inherit;margin:0}
+    blockquote{border-left:3px solid #d7e0e8;margin-left:0;padding-left:12px}
+  </style>`;
+  if (/<head(?:\s[^>]*)?>/i.test(safeBody)) {
+    return safeBody.replace(/<head(\s[^>]*)?>/i, (match) => `${match}${style}`);
+  }
+  if (/<html(?:\s[^>]*)?>/i.test(safeBody)) {
+    return safeBody.replace(/<html(\s[^>]*)?>/i, (match) => `${match}<head>${style}</head>`);
+  }
+  return `<!doctype html><html><head><meta charset="utf-8">${style}</head><body>${safeBody}</body></html>`;
 }
 
 export function emailCenterRoutes({
@@ -314,7 +382,7 @@ export function emailCenterRoutes({
     if (!sendingEnabled) return res.status(404).send('Customer email sending is disabled');
     try {
       const context = await getCustomerEmailComposeContext(dependencies, req.currentUser, req.query);
-      res.render('email-center/compose', { context, maxUploadMb });
+      res.render('email-center/compose', { context, maxUploadMb, formatPlainEmailForReading });
     } catch (error) {
       handleError(error, res, next);
     }
@@ -404,20 +472,22 @@ export function emailCenterRoutes({
   router.get('/email-center/messages/:messageId/content', async (req, res, next) => {
     try {
       const message = await getVisibleEmailMessage(dependencies, req.currentUser, req.params.messageId);
-      if (!message.htmlBody) {
-        res.status(404).send('HTML email content not found');
+      const completeBody = await completeArchivedBody(message, uploadDir);
+      if (!completeBody.htmlBody && !completeBody.textBody) {
+        res.status(404).send('Email content not found');
         return;
       }
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('X-Content-Type-Options', 'nosniff');
       res.setHeader('Referrer-Policy', 'no-referrer');
+      res.setHeader('X-Email-Content-Source', completeBody.source);
       res.setHeader(
         'Content-Security-Policy',
-        "sandbox; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"
+        "sandbox allow-same-origin; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"
       );
-      const htmlBody = resolveInlineEmailContent(message.htmlBody, message.attachments);
-      res.send(`<style>html{color:#172333;background:#fff;font:16px/1.55 Arial,sans-serif}body{box-sizing:border-box;margin:0;padding:18px;overflow-wrap:anywhere}img{height:auto;max-width:100%}table{display:block;max-width:100%;overflow:auto}pre{white-space:pre-wrap}blockquote{border-left:3px solid #d7e0e8;margin-left:0;padding-left:12px}</style>${htmlBody}`);
+      const htmlBody = resolveInlineEmailContent(completeBody.htmlBody, message.attachments);
+      res.send(emailHtmlDocument(htmlBody, completeBody.textBody));
     } catch (error) {
       handleError(error, res, next);
     }

@@ -161,3 +161,29 @@ test('email archive parser normalizes reply headers and keeps HTML separate from
   assert.match(result.message.htmlBody, /<script>/);
   assert.equal(result.message.providerUidValidity, '44');
 });
+
+test('email archive parser preserves complete HTML and plain bodies beyond the inquiry preview limit', async () => {
+  const longParagraph = 'A'.repeat(22000);
+  const raw = [
+    'Message-ID: <long-body@example.com>',
+    'Date: Thu, 03 Sep 2026 01:00:00 +0000',
+    'From: Buyer <buyer@example.com>',
+    'To: Sales <sales@sunkaier.com>',
+    'Subject: Complete process table',
+    'MIME-Version: 1.0',
+    'Content-Type: text/html; charset=utf-8',
+    '',
+    `<html><body><p>${longParagraph}</p><table><tr><td>END-OF-MESSAGE</td></tr></table></body></html>`
+  ].join('\r\n');
+
+  const result = await parseEmailArchiveSourceWithAttachments(Buffer.from(raw), {
+    uid: 10, uidValidity: '44', mailbox: 'INBOX', mailboxKey: 'sales@sunkaier.com'
+  });
+
+  assert.ok(result.message.htmlBody.length > 20000);
+  assert.match(result.message.htmlBody, /END-OF-MESSAGE/);
+  assert.doesNotMatch(result.message.htmlBody, /<!-- truncated -->/);
+  assert.ok(result.message.textBody.length > 20000);
+  assert.match(result.message.textBody, /END-OF-MESSAGE/);
+  assert.doesNotMatch(result.message.textBody, /\[truncated\]$/);
+});

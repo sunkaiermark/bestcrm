@@ -1,0 +1,38 @@
+<%
+  const allMessageAttachments = Array.isArray(message.attachments) ? message.attachments : [];
+  const downloadableMessageAttachments = allMessageAttachments.filter((attachment) => (
+    attachment.isInline !== true && attachment.contentDisposition !== 'inline'
+  ));
+  const readablePlainBody = typeof formatPlainEmailForReading === 'function'
+    ? formatPlainEmailForReading(message.textBody)
+    : String(message.textBody || '');
+  const hasIsolatedContent = Boolean(message.htmlBody || message.rawEmlStoredPath);
+%>
+<div class="email-message-content">
+  <% if (hasIsolatedContent) { %>
+    <p class="muted email-html-safety-note"><%= t('htmlEmailBlockedNotice') %></p>
+    <iframe class="email-html-body" src="/email-center/messages/<%= message.id %>/content" sandbox="allow-same-origin" referrerpolicy="no-referrer" loading="lazy" title="<%= t('emailHtmlContent') %>"></iframe>
+    <% if (message.textBody) { %>
+      <details class="email-plain-fallback"><summary><%= t('emailPlainTextVersion') %></summary><pre class="email-plain-body email-reading-body"><%= readablePlainBody %></pre></details>
+    <% } %>
+  <% } else { %>
+    <pre class="email-plain-body email-reading-body"><%= readablePlainBody %></pre>
+  <% } %>
+  <% if (downloadableMessageAttachments.length) { %>
+    <div class="email-attachment-list">
+      <strong><%= t('attachments') %></strong>
+      <div class="email-attachment-chips">
+        <% for (const attachment of downloadableMessageAttachments) { %>
+          <a class="email-attachment-chip" href="/email-center/attachments/<%= attachment.id %>/download"><span aria-hidden="true">📎</span><span><%= attachment.originalName %></span><% if (attachment.fileSize !== undefined && attachment.fileSize !== null) { %><small><%= attachment.fileSize %> B</small><% } %></a>
+        <% } %>
+      </div>
+      <% if (downloadableMessageAttachments.some((attachment) => attachment.sha256)) { %>
+        <details class="email-attachment-integrity"><summary><%= t('emailAttachmentIntegrity') %></summary>
+          <% for (const attachment of downloadableMessageAttachments) { %>
+            <% if (attachment.sha256) { %><p><%= attachment.originalName %> · SHA-256 <code><%= attachment.sha256 %></code></p><% } %>
+          <% } %>
+        </details>
+      <% } %>
+    </div>
+  <% } %>
+</div>

@@ -798,6 +798,7 @@ test('opportunity framework text and common actions use selected Chinese languag
 
 test('opportunity detail uses compact header actions and hides repeated customer details', async () => {
   const { agent } = await createLoggedInAgent({
+    emailCenter: { enabled: true },
     customerEmail: { enabled: true }
   });
 
@@ -806,7 +807,9 @@ test('opportunity detail uses compact header actions and hides repeated customer
   assert.equal(detail.status, 200);
   const headerHtml = detail.text.match(/<header class="page-header opportunity-detail-header">[\s\S]*?<\/header>/)?.[0] || '';
   assert.match(headerHtml, />←<\/span> Back<\/a>/);
-  assert.match(headerHtml, />✉<\/span> Email<\/a>/);
+  assert.match(headerHtml, /href="#opportunity-correspondence"[^>]*>[^<]*<span aria-hidden="true">✉<\/span> Email correspondence<\/a>/);
+  assert.doesNotMatch(headerHtml, /\/email-center\/compose\?opportunityId=30/);
+  assert.match(detail.text, /id="opportunity-correspondence"/);
   assert.match(headerHtml, /href="\/opportunities\/30\/technical-documents"/);
   assert.match(headerHtml, />Documents<\/a>/);
   assert.match(headerHtml, />Technical<\/a>/);
@@ -951,8 +954,12 @@ test('opportunity correspondence is a single collapsed timeline with expandable 
             fromAddress: 'customer@example.com',
             toRecipients: [{ address: 'sales@sunkaier.com' }],
             textBody: 'Please revise the required capacity to 12 m3/h.',
+            htmlBody: '<table><tr><td>Please revise the required capacity to 12 m3/h.</td></tr></table><img src="cid:logo@example.com">',
             receivedAt: '2026-09-09T07:20:00.000Z',
-            attachments: [{ id: 101, originalName: 'pump-parameters-rev2.pdf' }]
+            attachments: [
+              { id: 101, originalName: 'pump-parameters-rev2.pdf' },
+              { id: 102, originalName: 'logo.png', contentDisposition: 'inline', isInline: true }
+            ]
           }]
         };
       }
@@ -962,13 +969,68 @@ test('opportunity correspondence is a single collapsed timeline with expandable 
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /<h2><span>Correspondence<\/span><span class="section-heading-meta">1 messages<\/span><\/h2>/);
+  assert.match(detail.text, /id="opportunity-correspondence"/);
+  assert.match(detail.text, /<h2>\s*<span>Correspondence<\/span>[\s\S]*<span class="section-heading-meta">1 messages<\/span>[\s\S]*href="\/email-center\/compose\?threadId=81"[^>]*>Reply to customer<\/a>[\s\S]*<\/h2>/);
   assert.match(detail.text, /<details class="correspondence-item">[\s\S]*Request to revise pump capacity[\s\S]*← Incoming/);
   assert.doesNotMatch(detail.text, /<details class="correspondence-item" open>/);
+  assert.match(detail.text, /class="email-html-body" src="\/email-center\/messages\/91\/content" sandbox="allow-same-origin"/);
   assert.match(detail.text, /Please revise the required capacity to 12 m3\/h\./);
-  assert.match(detail.text, /href="\/email-center\/attachments\/101\/download">pump-parameters-rev2\.pdf/);
+  assert.match(detail.text, /href="\/email-center\/attachments\/101\/download"[^>]*>[\s\S]*?pump-parameters-rev2\.pdf/);
+  assert.doesNotMatch(detail.text, /\/email-center\/attachments\/102\/download/);
   assert.match(detail.text, /href="\/email-center\/threads\/81">Open conversation/);
-  assert.match(detail.text, /href="\/email-center\/compose\?threadId=81">Reply/);
+  assert.doesNotMatch(detail.text, /href="\/email-center\/compose\?threadId=81">Reply<\/a>/);
+  assert.equal((detail.text.match(/>Reply to customer<\/a>/g) || []).length, 1);
+});
+
+test('opportunity correspondence uses one reply entry and requests thread selection for multiple conversations', async () => {
+  const threads = [
+    {
+      id: 81,
+      subject: 'Pump capacity clarification',
+      lastMessageAt: '2026-09-09T07:20:00.000Z',
+      messages: [{
+        id: 91,
+        direction: 'inbound',
+        subject: 'Pump capacity clarification',
+        fromAddress: 'customer@example.com',
+        toRecipients: [{ address: 'sales@sunkaier.com' }],
+        textBody: 'Please confirm the capacity.',
+        receivedAt: '2026-09-09T07:20:00.000Z',
+        attachments: []
+      }]
+    },
+    {
+      id: 82,
+      subject: 'Commercial terms',
+      lastMessageAt: '2026-09-10T07:20:00.000Z',
+      messages: [{
+        id: 92,
+        direction: 'inbound',
+        subject: 'Commercial terms',
+        fromAddress: 'customer@example.com',
+        toRecipients: [{ address: 'sales@sunkaier.com' }],
+        textBody: 'Please confirm the payment terms.',
+        receivedAt: '2026-09-10T07:20:00.000Z',
+        attachments: []
+      }]
+    }
+  ];
+  const { agent } = await createLoggedInAgent({
+    emailCenter: { enabled: true },
+    customerEmail: { enabled: true },
+    emailArchiveRepository: {
+      supportsEmailArchive: true,
+      async listThreadsByOpportunity() { return threads; },
+      async getThreadDetail(id) { return threads.find((thread) => thread.id === Number(id)) || null; }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /href="\/email-center\/compose\?opportunityId=30&amp;chooseThread=1"[^>]*>Reply to customer<\/a>/);
+  assert.equal((detail.text.match(/>Reply to customer<\/a>/g) || []).length, 1);
+  assert.doesNotMatch(detail.text, />Reply<\/a>/);
 });
 
 test('active team member can view opportunity detail without edit access', async () => {

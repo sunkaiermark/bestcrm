@@ -43,6 +43,7 @@ test('signature preview uses the exact identity signature and stays unavailable 
   assert.match(personalEmailSignatureHtmlPreview(completeActor), /mailto:steven\.yang@sunkaier\.com/);
   assert.match(personalEmailSignatureHtmlPreview(completeActor), /SUNKAIER Asia Pacific Pte\. Ltd\./);
   assert.match(personalEmailSignatureHtmlPreview(completeActor), /src="\/assets\/sunkaier-logo-email\.png"/);
+  assert.match(personalEmailSignatureHtmlPreview(completeActor), /width="245" height="36"/);
   assert.match(personalEmailSignatureHtmlPreview(completeActor), /2 Venture Drive, #10-30, Vision Exchange, Singapore 608526/);
   assert.match(personalEmailSignatureHtmlPreview(completeActor), /CONFIDENTIALITY NOTICE:/);
   assert.match(personalEmailSignatureHtmlPreview(completeActor), /www\.sunkaier\.com/);
@@ -234,6 +235,13 @@ test('a CRM-native outbound opportunity thread starts linked and never enters pe
     assert.equal(draft.deliveryStatus, 'draft');
     assert.equal(dependencies.state.thread.opportunityId, 20);
     assert.equal(dependencies.state.thread.triageStatus, 'linked_opportunity');
+    const archivedLogo = dependencies.state.attachments.find((attachment) => (
+      attachment.contentId === 'sunkaier-signature-logo@sunkaier.com'
+    ));
+    assert.equal(archivedLogo.originalName, 'sunkaier-logo.png');
+    assert.equal(archivedLogo.mimeType, 'image/png');
+    assert.equal(archivedLogo.contentDisposition, 'inline');
+    assert.ok(archivedLogo.fileSize > 0);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

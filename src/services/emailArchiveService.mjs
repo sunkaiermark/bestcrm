@@ -31,6 +31,11 @@ function fallbackAttachmentName(index) {
   return `email-attachment-${index + 1}`;
 }
 
+function normalizedContentDisposition(value) {
+  const disposition = text(value).toLowerCase();
+  return ['attachment', 'inline'].includes(disposition) ? disposition : '';
+}
+
 export class EmailArchiveError extends Error {
   constructor(message, statusCode = 400) {
     super(message);
@@ -499,7 +504,8 @@ export async function storeEmailArchiveAttachments({
         mimeType: attachment.contentType || 'application/octet-stream',
         fileSize: file.fileSize,
         sha256: createHash('sha256').update(content).digest('hex'),
-        contentId: attachment.cid || attachment.contentId || ''
+        contentId: attachment.cid || attachment.contentId || '',
+        contentDisposition: normalizedContentDisposition(attachment.contentDisposition)
       });
       if (record) {
         if (scan && typeof emailArchiveRepository.createAttachmentScanAttempt === 'function') {

@@ -177,7 +177,8 @@
     }
     return t('contractApprovalPrerequisite');
   })();
-  const correspondence = (typeof correspondenceThreads === 'undefined' ? [] : correspondenceThreads)
+  const correspondenceThreadList = typeof correspondenceThreads === 'undefined' ? [] : correspondenceThreads;
+  const correspondence = correspondenceThreadList
     .flatMap((thread) => (thread.messages || []).map((message) => ({
       ...message,
       threadId: thread.id,
@@ -185,6 +186,9 @@
       occurredAt: message.receivedAt || message.sentAt || message.createdAt
     })))
     .sort((left, right) => requirementTimelineSortValue(right.occurredAt).localeCompare(requirementTimelineSortValue(left.occurredAt)));
+  const replyCustomerHref = correspondenceThreadList.length === 1
+    ? `/email-center/compose?threadId=${correspondenceThreadList[0].id}`
+    : `/email-center/compose?opportunityId=${opportunity.id}${correspondenceThreadList.length > 1 ? '&chooseThread=1' : ''}`;
 %>
         <p class="breadcrumb"><a href="/opportunities"><%= t('opportunities') %></a></p>
         <header class="page-header opportunity-detail-header">
@@ -194,7 +198,7 @@
           </div>
           <div class="page-actions opportunity-detail-actions">
             <a class="secondary-action" href="/opportunities" title="<%= t('backToList') %>" aria-label="<%= t('backToList') %>"><span aria-hidden="true">←</span> <%= t('backShort') %></a>
-            <% if (customerEmailSendingEnabled) { %><a class="secondary-action" href="/email-center/compose?opportunityId=<%= opportunity.id %>" title="<%= t('composeCustomerEmail') %>" aria-label="<%= t('composeCustomerEmail') %>"><span aria-hidden="true">✉</span> <%= t('emailShort') %></a><% } %>
+            <% if (emailCenterEnabled) { %><a class="secondary-action" href="#opportunity-correspondence" title="<%= t('emailCorrespondence') %>" aria-label="<%= t('emailCorrespondence') %>"><span aria-hidden="true">✉</span> <%= t('emailCorrespondence') %></a><% } %>
             <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents" title="<%= t('opportunityTechnicalDocuments') %>" aria-label="<%= t('opportunityTechnicalDocuments') %>"><%= t('technicalDocumentsShort') %></a>
             <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-drafts" title="<%= t('projectTechnicalDrafts') %>" aria-label="<%= t('projectTechnicalDrafts') %>"><%= t('technicalShort') %></a>
             <% if (typeof canEditOpportunity !== 'undefined' && canEditOpportunity) { %>
@@ -279,10 +283,17 @@
             </div>
           </section>
 
-          <% if (correspondence.length > 0) { %>
-            <section class="content-section business-section business-section-correspondence">
-              <h2><span><%= t('correspondence') %></span><span class="section-heading-meta"><%= correspondence.length %> <%= t('messages') %></span></h2>
+          <% if (emailCenterEnabled) { %>
+            <section class="content-section business-section business-section-correspondence" id="opportunity-correspondence">
+              <h2>
+                <span><%= t('correspondence') %></span>
+                <span class="correspondence-heading-actions">
+                  <span class="section-heading-meta"><%= correspondence.length %> <%= t('messages') %></span>
+                  <% if (customerEmailSendingEnabled) { %><a class="correspondence-reply-action" href="<%= replyCustomerHref %>"><%= t('replyCustomer') %></a><% } %>
+                </span>
+              </h2>
               <div class="section-body correspondence-timeline">
+                <% if (correspondence.length > 0) { %>
                 <% for (const message of correspondence) { const recipients = (message.toRecipients || []).map((recipient) => recipient.name ? `${recipient.name} <${recipient.address}>` : recipient.address).join(', '); %>
                   <details class="correspondence-item">
                     <summary>
@@ -295,20 +306,15 @@
                       <span class="correspondence-direction"><%= message.direction === 'outbound' ? `→ ${t('outgoing')}` : `← ${t('incoming')}` %></span>
                     </summary>
                     <div class="correspondence-content">
-                      <pre><%= message.textBody %></pre>
-                      <% if (message.attachments && message.attachments.length > 0) { %>
-                        <div class="correspondence-attachments">
-                          <% for (const attachment of message.attachments) { %>
-                            <a href="/email-center/attachments/<%= attachment.id %>/download"><%= attachment.originalName %></a>
-                          <% } %>
-                        </div>
-                      <% } %>
+                      <%- include('../email-center/_message-content', { message, formatPlainEmailForReading }) %>
                       <div class="inline-actions correspondence-actions">
                         <a href="/email-center/threads/<%= message.threadId %>"><%= t('openEmailThread') %></a>
-                        <% if (customerEmailSendingEnabled) { %><a href="/email-center/compose?threadId=<%= message.threadId %>"><%= t('reply') %></a><% } %>
                       </div>
                     </div>
                   </details>
+                <% } %>
+                <% } else { %>
+                  <p class="empty"><%= t('noEmailMessages') %></p>
                 <% } %>
               </div>
             </section>

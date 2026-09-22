@@ -68,6 +68,7 @@ const emailOutboundMimeArtifactsMigrationPath = new URL('../../src/db/migrations
 const legacyAttachmentIntegrityMigrationPath = new URL('../../src/db/migrations/067_legacy_attachment_integrity.sql', import.meta.url);
 const inquiryAttachmentPurgeJobsMigrationPath = new URL('../../src/db/migrations/068_inquiry_attachment_purge_jobs.sql', import.meta.url);
 const salesLeadReviewWorkflowMigrationPath = new URL('../../src/db/migrations/069_sales_lead_review_workflow.sql', import.meta.url);
+const emailInlineAttachmentMetadataMigrationPath = new URL('../../src/db/migrations/070_email_inline_attachment_metadata.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -680,6 +681,14 @@ test('email center migration creates immutable threaded business mail archive', 
   assert.match(sql, /Inbound email messages are immutable/);
   assert.match(sql, /Archived email attachments are immutable/);
   assert.match(sql, /inquiries_link_email_threads_after_conversion/);
+});
+
+test('email inline attachment metadata migration preserves MIME disposition for complete rendering', async () => {
+  const sql = await readFile(emailInlineAttachmentMetadataMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE email_attachments/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS content_disposition text NOT NULL DEFAULT ''/);
+  assert.match(sql, /content_disposition IN \('', 'attachment', 'inline'\)/);
 });
 
 test('customer email sending migration binds immutable outbound mail to approved quotation versions', async () => {

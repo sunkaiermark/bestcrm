@@ -223,6 +223,9 @@ function mapMalwareSecurityEventRow(row) {
 
 function mapAttachmentRow(row) {
   if (!row) return null;
+  const contentId = text(row.content_id);
+  const contentDisposition = text(row.content_disposition)
+    || (contentId ? 'inline' : 'attachment');
   return {
     id: Number(row.id),
     messageId: Number(row.message_id),
@@ -232,7 +235,9 @@ function mapAttachmentRow(row) {
     mimeType: row.mime_type,
     fileSize: Number(row.file_size),
     sha256: row.sha256,
-    contentId: text(row.content_id),
+    contentId,
+    contentDisposition,
+    isInline: contentDisposition === 'inline',
     createdAt: row.created_at
   };
 }
@@ -510,7 +515,12 @@ const threadSelect = `
   LEFT JOIN LATERAL (
     SELECT
       count(DISTINCT message.id)::integer AS message_count,
-      count(attachment.id)::integer AS attachment_count
+      count(attachment.id) FILTER (
+        WHERE COALESCE(
+          NULLIF(attachment.content_disposition, ''),
+          CASE WHEN btrim(attachment.content_id) <> '' THEN 'inline' ELSE 'attachment' END
+        ) <> 'inline'
+      )::integer AS attachment_count
     FROM email_messages message
     LEFT JOIN email_attachments attachment ON attachment.message_id = message.id
     WHERE message.thread_id = thread.id
@@ -527,6 +537,9 @@ const threadSelect = `
 const messageSelect = `
   SELECT
     message.*,
+    COALESCE(raw.stored_path, message.raw_eml_stored_path) AS raw_eml_stored_path,
+    COALESCE(raw.file_size, message.raw_eml_file_size) AS raw_eml_file_size,
+    COALESCE(raw.sha256, message.raw_eml_sha256) AS raw_eml_sha256,
     author.display_name AS author_display_name,
     CASE
       WHEN package.version_no IS NOT NULL THEN 'QP-V' || package.version_no::text
@@ -534,6 +547,7 @@ const messageSelect = `
       ELSE ''
     END AS quotation_package_label
   FROM email_messages message
+  LEFT JOIN email_raw_messages raw ON raw.id = message.raw_message_id
   LEFT JOIN users author ON author.id = message.authored_by
   LEFT JOIN quotation_package_versions package ON package.id = message.quotation_package_version_id
 `;
@@ -1967,9 +1981,10 @@ export function createEmailArchiveRepository(queryTarget) {
           mime_type,
           file_size,
           sha256,
-          content_id
+          content_id,
+          content_disposition
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         ON CONFLICT (message_id, source_index) DO NOTHING
         RETURNING *
       `, [
@@ -1980,7 +1995,8 @@ export function createEmailArchiveRepository(queryTarget) {
         input.mimeType || 'application/octet-stream',
         input.fileSize,
         input.sha256,
-        input.contentId || ''
+        input.contentId || '',
+        input.contentDisposition || ''
       ]);
       return mapAttachmentRow(result.rows[0]);
     },

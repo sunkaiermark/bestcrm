@@ -36,15 +36,7 @@
                       <span class="opportunity-email-message-meta"><%= message.receivedAt || message.sentAt || message.createdAt %></span>
                     </header>
                     <h3><%= message.subject || t('noSubject') %></h3>
-                    <pre class="email-plain-body"><%= message.textBody %></pre>
-                    <% if (message.attachments?.length) { %>
-                      <div class="email-attachment-list">
-                        <strong><%= t('attachments') %></strong>
-                        <% for (const attachment of message.attachments) { %>
-                          <p><a href="/email-center/attachments/<%= attachment.id %>/download"><%= attachment.originalName %></a> · <%= attachment.fileSize %> B</p>
-                        <% } %>
-                      </div>
-                    <% } %>
+                    <%- include('_message-content', { message, formatPlainEmailForReading }) %>
                   </article>
                 <% } %>
               </div>
@@ -52,6 +44,12 @@
           </section>
         <% } %>
         <div class="<%= context.opportunity ? 'opportunity-email-compose' : '' %>">
+        <% if (context.threadSelectionRequired) { %>
+        <section class="form-panel opportunity-email-thread-selection" aria-live="polite">
+          <h2><%= t('replyCustomer') %></h2>
+          <p><%= t('selectEmailConversationBeforeReply') %></p>
+        </section>
+        <% } else { %>
         <form class="form-panel" method="post" action="/email-center/messages" enctype="multipart/form-data">
           <%- csrfField() %>
           <% if (context.thread) { %><input type="hidden" name="threadId" value="<%= context.thread.id %>"><% } %>
@@ -100,6 +98,7 @@
             <% if (context.canSend) { %><button type="submit" name="action" value="send"><%= t('sendCustomerEmail') %></button><% } %>
           </div>
         </form>
+        <% } %>
         </div>
         </div>
         <script src="/assets/email-compose.js" defer></script>

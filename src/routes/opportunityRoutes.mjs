@@ -39,6 +39,7 @@ import { createSupplementalRequirementUpdate } from '../services/requirementUpda
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import { attachmentPreviewKind, extractDocxPlainText, renderDxfPreview } from '../utils/attachmentPreview.mjs';
 import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
+import { formatPlainEmailForReading } from '../utils/emailPresentation.mjs';
 import { createMessageLabeler, createWorkflowButtonLabeler, createWorkflowFieldLabeler, createWorkflowTitleLabeler } from '../utils/i18n.mjs';
 
 function opportunityVisibilityFilter(user) {
@@ -1086,6 +1087,7 @@ export function opportunityRoutes({
         attachments,
         requirementUpdates,
         correspondenceThreads,
+        formatPlainEmailForReading,
         materialVersions,
         versionedTechnicalDraftsEnabled: opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true,
         currentUserId: req.currentUser.id,

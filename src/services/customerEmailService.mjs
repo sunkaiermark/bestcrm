@@ -7,11 +7,11 @@ import { canViewOpportunity } from './opportunityService.mjs';
 import { resolveStoredPath } from './attachmentFileService.mjs';
 import { storeEmailArchiveAttachments } from './emailArchiveService.mjs';
 import { prepareOutboundMimeArtifact } from './emailOutboundMimeService.mjs';
+import { SUNKAIER_SIGNATURE_LOGO_CID } from '../utils/emailPresentation.mjs';
 
 const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 const COMPANY_ADDRESS = '2 Venture Drive, #10-30, Vision Exchange, Singapore 608526';
 const CONFIDENTIALITY_NOTICE = 'CONFIDENTIALITY NOTICE: This email and any attachments may contain confidential or privileged information intended only for the named recipient. If you received it in error, please notify the sender and delete it. Any unauthorized use, disclosure, copying, or distribution is prohibited.';
-const SIGNATURE_LOGO_CID = 'sunkaier-signature-logo@sunkaier.com';
 const SIGNATURE_LOGO_PATH = fileURLToPath(new URL('../public/assets/sunkaier-logo-email.png', import.meta.url));
 
 function text(value) {
@@ -50,7 +50,7 @@ function signatureHtml({ name, title, contactEmail, phone, logoSrc }) {
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" width="100%" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;width:100%;">',
     '<tr>',
     '<td width="53%" style="padding:0 18px 0 0;vertical-align:top;width:53%;">',
-    `<img src="${escapeHtml(logoSrc)}" width="245" alt="SUNKAIER" style="border:0;display:block;height:auto;max-width:100%;width:245px;">`,
+    `<img src="${escapeHtml(logoSrc)}" width="245" height="36" alt="SUNKAIER" style="border:0;display:block;height:36px;max-width:100%;object-fit:contain;width:245px;">`,
     '<div style="color:#334155;font-size:12px;font-weight:700;margin-top:9px;">SUNKAIER Asia Pacific Pte. Ltd.</div>',
     `<div style="color:#64748b;font-size:11px;line-height:1.45;margin-top:3px;">${escapeHtml(COMPANY_ADDRESS)}</div>`,
     '</td>',
@@ -114,7 +114,7 @@ function personalEmailIdentity(actor, sharedAddress = 'sales@sunkaier.com') {
     fromAddress: sharedAddress.toLowerCase(),
     fromName: `${name} | SUNKAIER`,
     signature: lines.join('\n'),
-    signatureHtml: signatureHtml({ name, title, contactEmail, phone, logoSrc: `cid:${SIGNATURE_LOGO_CID}` }),
+    signatureHtml: signatureHtml({ name, title, contactEmail, phone, logoSrc: `cid:${SUNKAIER_SIGNATURE_LOGO_CID}` }),
     signaturePreviewHtml: signatureHtml({ name, title, contactEmail, phone, logoSrc: '/assets/sunkaier-logo-email.png' })
   };
 }
@@ -267,29 +267,38 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
     ? (await dependencies.quotationPackageRepository.listByOpportunity(context.opportunity.id))
       .filter((item) => item.status === 'approved' && item.versionNo)
     : [];
-  const conversation = context.thread
-    ? await dependencies.emailArchiveRepository.getThreadDetail(context.thread.id)
-    : null;
-  const latestMessage = conversation?.messages
-    ?.filter((message) => ['received', 'sent'].includes(message.deliveryStatus)).at(-1) || null;
   const opportunityThreads = context.opportunity
     ? (typeof dependencies.emailArchiveRepository.listThreadsByOpportunity === 'function'
         ? await dependencies.emailArchiveRepository.listThreadsByOpportunity(context.opportunity.id)
         : (context.thread ? [context.thread] : []))
     : [];
+  const threadSelectionRequired = Boolean(
+    context.opportunity
+    && !positiveId(input.threadId)
+    && text(input.chooseThread) === '1'
+    && opportunityThreads.length > 1
+  );
+  const selectedThread = threadSelectionRequired ? null : context.thread;
+  const conversation = selectedThread
+    ? await dependencies.emailArchiveRepository.getThreadDetail(selectedThread.id)
+    : null;
+  const latestMessage = conversation?.messages
+    ?.filter((message) => ['received', 'sent'].includes(message.deliveryStatus)).at(-1) || null;
   const replyAddress = latestMessage?.direction === 'inbound'
     ? latestMessage.fromAddress
     : latestMessage?.toRecipients?.[0]?.address;
   return {
     ...context,
+    thread: selectedThread,
     conversation,
     opportunityThreads,
+    threadSelectionRequired,
     packages,
     signaturePreview: personalEmailSignaturePreview(actor, dependencies.sharedAddress),
     signatureHtmlPreview: personalEmailSignatureHtmlPreview(actor, dependencies.sharedAddress),
     defaults: {
       to: context.inquiry?.contactEmail || replyAddress || '',
-      subject: context.thread?.subject || context.inquiry?.subject || context.opportunity?.title || '',
+      subject: selectedThread?.subject || context.inquiry?.subject || context.opportunity?.title || '',
       replyToMessageId: positiveId(input.replyToMessageId) || latestMessage?.id || null,
       quotationPackageVersionId: positiveId(input.quotationPackageVersionId)
     }
@@ -326,7 +335,14 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
     contentType: file.mimetype,
     content: file.buffer
   }));
-  const attachments = [...packageFiles, ...uploadFiles];
+  const signatureLogo = {
+    filename: 'sunkaier-logo.png',
+    contentType: 'image/png',
+    content: await readFile(SIGNATURE_LOGO_PATH),
+    cid: SUNKAIER_SIGNATURE_LOGO_CID,
+    contentDisposition: 'inline'
+  };
+  const attachments = [...packageFiles, ...uploadFiles, signatureLogo];
 
   let thread = context.thread;
   if (!thread) {
@@ -421,14 +437,27 @@ async function outboundMailOptions(dependencies, message) {
   const mailAttachments = attachments.map((attachment) => {
     const attachmentPath = resolveStoredPath(dependencies.uploadDir, attachment.storedPath);
     if (!attachmentPath) throw new CustomerEmailError(`Archived attachment is unavailable: ${attachment.originalName}`, 409);
-    return { filename: attachment.originalName, contentType: attachment.mimeType, path: attachmentPath };
+    const contentId = text(attachment.contentId).replace(/^<|>$/g, '');
+    const contentDisposition = attachment.contentDisposition
+      || (contentId ? 'inline' : 'attachment');
+    return {
+      filename: attachment.originalName,
+      contentType: attachment.mimeType,
+      path: attachmentPath,
+      ...(contentId ? { cid: contentId } : {}),
+      contentDisposition
+    };
   });
-  if (message.htmlBody) {
+  const hasArchivedSignatureLogo = attachments.some((attachment) => (
+    text(attachment.contentId).replace(/^<|>$/g, '').toLowerCase()
+      === SUNKAIER_SIGNATURE_LOGO_CID
+  ));
+  if (message.htmlBody && !hasArchivedSignatureLogo) {
     mailAttachments.push({
       filename: 'sunkaier-logo.png',
       contentType: 'image/png',
       path: SIGNATURE_LOGO_PATH,
-      cid: SIGNATURE_LOGO_CID,
+      cid: SUNKAIER_SIGNATURE_LOGO_CID,
       contentDisposition: 'inline'
     });
   }
