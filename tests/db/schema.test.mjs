@@ -69,6 +69,7 @@ const legacyAttachmentIntegrityMigrationPath = new URL('../../src/db/migrations/
 const inquiryAttachmentPurgeJobsMigrationPath = new URL('../../src/db/migrations/068_inquiry_attachment_purge_jobs.sql', import.meta.url);
 const salesLeadReviewWorkflowMigrationPath = new URL('../../src/db/migrations/069_sales_lead_review_workflow.sql', import.meta.url);
 const emailInlineAttachmentMetadataMigrationPath = new URL('../../src/db/migrations/070_email_inline_attachment_metadata.sql', import.meta.url);
+const emailMessageCanonicalIdentityMigrationPath = new URL('../../src/db/migrations/071_email_message_canonical_identity.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -689,6 +690,23 @@ test('email inline attachment metadata migration preserves MIME disposition for 
   assert.match(sql, /ALTER TABLE email_attachments/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS content_disposition text NOT NULL DEFAULT ''/);
   assert.match(sql, /content_disposition IN \('', 'attachment', 'inline'\)/);
+});
+
+test('email canonical identity migration preserves duplicate evidence behind one visible message', async () => {
+  const sql = await readFile(emailMessageCanonicalIdentityMigrationPath, 'utf8');
+
+  assert.match(sql, /bestcrm_canonical_email_message_id/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS canonical_message_id bigint/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_message_merge_audits/);
+  assert.match(sql, /canonical_rfc_message_id_match/);
+  assert.match(sql, /mailboxDeliveryIds/);
+  assert.match(sql, /attachmentIds/);
+  assert.match(sql, /deliveryAttemptIds/);
+  assert.match(sql, /activityLinkIds/);
+  assert.match(sql, /outboundMimeArtifactIds/);
+  assert.match(sql, /CREATE UNIQUE INDEX email_messages_message_id_idx/);
+  assert.match(sql, /canonical_message_id IS NULL/);
+  assert.doesNotMatch(sql, /DELETE FROM email_messages/);
 });
 
 test('customer email sending migration binds immutable outbound mail to approved quotation versions', async () => {

@@ -97,6 +97,7 @@ function mapMessageRow(row) {
   return {
     id: Number(row.id),
     threadId: Number(row.thread_id),
+    canonicalMessageId: numberOrNull(row.canonical_message_id),
     direction: row.direction,
     messageId: text(row.message_id),
     inReplyTo: text(row.in_reply_to),
@@ -514,7 +515,9 @@ const threadSelect = `
   LEFT JOIN contacts contact ON contact.id = thread.contact_id
   LEFT JOIN LATERAL (
     SELECT
-      count(DISTINCT message.id)::integer AS message_count,
+      count(DISTINCT message.id) FILTER (
+        WHERE message.canonical_message_id IS NULL
+      )::integer AS message_count,
       count(attachment.id) FILTER (
         WHERE COALESCE(
           NULLIF(attachment.content_disposition, ''),
@@ -529,6 +532,7 @@ const threadSelect = `
     SELECT message.direction, message.from_address, message.text_body
     FROM email_messages message
     WHERE message.thread_id = thread.id
+      AND message.canonical_message_id IS NULL
     ORDER BY COALESCE(message.received_at, message.sent_at, message.created_at) DESC, message.id DESC
     LIMIT 1
   ) last_message ON true
@@ -944,17 +948,23 @@ export function createEmailArchiveRepository(queryTarget) {
         queryTarget.query(`
           ${messageSelect}
           WHERE message.thread_id = $1
+            AND message.canonical_message_id IS NULL
           ORDER BY COALESCE(message.received_at, message.sent_at, message.created_at), message.id
         `, [id]),
         queryTarget.query(`
-          SELECT attachment.*
+          SELECT
+            attachment.*,
+            COALESCE(message.canonical_message_id, message.id) AS message_id
           FROM email_attachments attachment
           JOIN email_messages message ON message.id = attachment.message_id
           WHERE message.thread_id = $1
           ORDER BY attachment.message_id, attachment.source_index, attachment.id
         `, [id]),
         queryTarget.query(`
-          SELECT attempt.*, actor.display_name AS attempted_by_display_name
+          SELECT
+            attempt.*,
+            COALESCE(message.canonical_message_id, message.id) AS message_id,
+            actor.display_name AS attempted_by_display_name
           FROM email_delivery_attempts attempt
           LEFT JOIN users actor ON actor.id = attempt.attempted_by
           JOIN email_messages message ON message.id = attempt.message_id
@@ -991,7 +1001,11 @@ export function createEmailArchiveRepository(queryTarget) {
     async findMessageById(id) {
       const result = await queryTarget.query(`
         ${messageSelect}
-        WHERE message.id = $1
+        WHERE message.id = COALESCE((
+          SELECT requested_message.canonical_message_id
+          FROM email_messages requested_message
+          WHERE requested_message.id = $1
+        ), $1)
         LIMIT 1
       `, [id]);
       return mapMessageRow(result.rows[0]);
@@ -1006,18 +1020,27 @@ export function createEmailArchiveRepository(queryTarget) {
     }) {
       const result = await queryTarget.query(`
         ${messageSelect}
-        WHERE
-          ($1 <> '' AND lower(message.message_id) = lower($1))
-          OR EXISTS (
-            SELECT 1
-            FROM email_message_mailbox_deliveries delivery
-            WHERE delivery.message_id = message.id
-              AND delivery.mailbox_key = $2
-              AND delivery.provider_mailbox = $3
-              AND delivery.provider_uid_validity = $4
-              AND delivery.provider_uid = $5
-          )
-        ORDER BY message.id
+        WHERE message.id = (
+          SELECT COALESCE(identity_message.canonical_message_id, identity_message.id)
+          FROM email_messages identity_message
+          WHERE
+            (
+              bestcrm_canonical_email_message_id($1) <> ''
+              AND bestcrm_canonical_email_message_id(identity_message.message_id)
+                = bestcrm_canonical_email_message_id($1)
+            )
+            OR EXISTS (
+              SELECT 1
+              FROM email_message_mailbox_deliveries delivery
+              WHERE delivery.message_id = identity_message.id
+                AND delivery.mailbox_key = $2
+                AND delivery.provider_mailbox = $3
+                AND delivery.provider_uid_validity = $4
+                AND delivery.provider_uid = $5
+            )
+          ORDER BY (identity_message.canonical_message_id IS NULL) DESC, identity_message.id
+          LIMIT 1
+        )
         LIMIT 1
       `, [messageId, mailboxKey, providerMailbox, providerUidValidity, providerUid]);
       return mapMessageRow(result.rows[0]);
@@ -1083,8 +1106,12 @@ export function createEmailArchiveRepository(queryTarget) {
       const result = await queryTarget.query(`
         SELECT message.thread_id
         FROM email_messages message
-        WHERE lower(message.message_id) = ANY($1::text[])
-        ORDER BY array_position($1::text[], lower(message.message_id)), message.id DESC
+        WHERE message.canonical_message_id IS NULL
+          AND bestcrm_canonical_email_message_id(message.message_id) = ANY($1::text[])
+        ORDER BY array_position(
+          $1::text[],
+          bestcrm_canonical_email_message_id(message.message_id)
+        ), message.id DESC
         LIMIT 1
       `, [normalized]);
       return result.rows[0]?.thread_id ? this.findThreadById(result.rows[0].thread_id) : null;
@@ -2013,9 +2040,12 @@ export function createEmailArchiveRepository(queryTarget) {
 
     async listAttachmentsByMessage(messageId) {
       const result = await queryTarget.query(`
-        SELECT attachment.*
+        SELECT
+          attachment.*,
+          COALESCE(message.canonical_message_id, message.id) AS message_id
         FROM email_attachments attachment
-        WHERE attachment.message_id = $1
+        JOIN email_messages message ON message.id = attachment.message_id
+        WHERE COALESCE(message.canonical_message_id, message.id) = $1
         ORDER BY attachment.source_index, attachment.id
       `, [messageId]);
       return result.rows.map(mapAttachmentRow);

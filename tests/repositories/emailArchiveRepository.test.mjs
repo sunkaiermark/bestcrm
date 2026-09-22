@@ -358,9 +358,11 @@ test('email archive repository resolves the active personal mailbox owner', asyn
 });
 
 test('email archive repository builds message detail with immutable attachment checksums', async () => {
+  const calls = [];
   const repository = createEmailArchiveRepository({
     async query(sql) {
       const text = String(sql);
+      calls.push(text);
       if (text.includes('FROM email_threads thread')) return { rows: [threadRow()] };
       if (text.includes('FROM email_attachments attachment')) return { rows: [{
         id: 21, message_id: 11, source_index: 0, original_name: 'spec.pdf', stored_path: 'email-archive/spec.pdf',
@@ -379,6 +381,8 @@ test('email archive repository builds message detail with immutable attachment c
   assert.equal(detail.messages[0].attachments[0].sha256, 'a'.repeat(64));
   assert.equal(detail.messages[0].attachments[0].contentDisposition, 'attachment');
   assert.equal(detail.messages[0].attachments[0].isInline, false);
+  assert.match(calls.find((sql) => sql.includes('FROM email_messages message')), /message\.canonical_message_id IS NULL/);
+  assert.match(calls.find((sql) => sql.includes('FROM email_attachments attachment')), /COALESCE\(message\.canonical_message_id, message\.id\) AS message_id/);
 });
 
 test('email archive repository persists inline MIME disposition and maps legacy CID rows safely', async () => {
@@ -465,6 +469,8 @@ test('email archive repository scopes provider delivery identity by company mail
   });
 
   assert.match(calls[0].sql, /FROM email_message_mailbox_deliveries delivery/);
+  assert.match(calls[0].sql, /bestcrm_canonical_email_message_id\(identity_message\.message_id\)/);
+  assert.match(calls[0].sql, /COALESCE\(identity_message\.canonical_message_id, identity_message\.id\)/);
   assert.match(calls[0].sql, /delivery\.mailbox_key = \$2/);
   assert.deepEqual(calls[0].params, [
     'rfq@example.com', 'markyang@sunkaier.com', 'INBOX', '44', 7

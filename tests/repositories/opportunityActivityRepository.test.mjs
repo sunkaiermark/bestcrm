@@ -29,5 +29,6 @@ test('activity repository returns the stable timeline contract and enforces oppo
   assert.match(queryTarget.calls[0].sql, /opportunity\.salesperson_id = \$2/);
   assert.match(queryTarget.calls[0].sql, /FROM opportunity_members member/);
   assert.match(queryTarget.calls[0].sql, /JOIN contract_approval_steps step/);
+  assert.match(queryTarget.calls[0].sql, /canonical_email_message\.canonical_message_id IS NOT NULL/);
   assert.deepEqual(queryTarget.calls[0].params, [41, 7, 20]);
 });

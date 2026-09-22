@@ -69,6 +69,15 @@ export function createOpportunityActivityRepository(queryTarget) {
         params.push(before.occurredAt, before.id);
         where.push(`(activity.occurred_at, activity.id) < ($${params.length - 1}, $${params.length})`);
       }
+      where.push(`NOT EXISTS (
+        SELECT 1
+        FROM opportunity_activity_links canonical_email_link
+        JOIN email_messages canonical_email_message
+          ON canonical_email_message.id = canonical_email_link.email_message_id
+        WHERE canonical_email_link.activity_id = activity.id
+          AND canonical_email_link.link_role = 'primary'
+          AND canonical_email_message.canonical_message_id IS NOT NULL
+      )`);
       const safeLimit = Math.min(250, Math.max(1, Number(limit) || 100));
       params.push(safeLimit);
       const result = await queryTarget.query(`
