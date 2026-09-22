@@ -1,5 +1,11 @@
 <%- include('../partials/app-start', { title: `${t('leadSubmissionReceipt')} - BESTCRM`, activeNav: 'lead-submissions' }) %>
         <%
+          const formatFileSize = (bytes) => {
+            const value = Number(bytes || 0);
+            if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+            if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+            return `${value} B`;
+          };
           const leadDateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
             timeZone: 'Asia/Singapore',
             year: 'numeric',
@@ -135,7 +141,7 @@
                 </form>
                 <form class="workflow-compact-row workflow-neutral-row" method="post" action="/lead-submissions/<%= submission.id %>/return">
                   <%- csrfField() %>
-                  <button class="workflow-action-button" type="submit"><%= t('returnForSupplement') %></button>
+                  <button class="workflow-action-button" type="submit"><%= t('returnForModification') %></button>
                   <label class="workflow-inline-field">
                     <span><%= t('returnReason') %></span>
                     <input name="reason" type="text" required maxlength="1000">
@@ -163,14 +169,25 @@
           </section>
         <% } %>
 
-        <% if (attachments.length) { %>
-          <section class="content-section">
-            <h2><%= t('supportingFile') %></h2>
+        <section class="content-section">
+          <h2><%= t('supportingFiles') %></h2>
+          <% if (!attachments.length) { %>
+            <p class="empty-state"><%= t('noSupportingFiles') %></p>
+          <% } else { %>
+            <div class="inquiry-attachment-list lead-attachment-list">
             <% for (const attachment of attachments) { %>
-              <p><a href="/lead-submissions/<%= submission.id %>/attachments/<%= attachment.id %>/download"><%= attachment.originalName %></a></p>
+                <div class="inquiry-attachment-row">
+                  <span><%= attachment.originalName %></span>
+                  <span class="muted"><%= formatFileSize(attachment.fileSize) %></span>
+                  <span class="inline-actions">
+                    <a href="/lead-submissions/<%= submission.id %>/attachments/<%= attachment.id %>/preview"><%= t('preview') %></a>
+                    <a href="/lead-submissions/<%= submission.id %>/attachments/<%= attachment.id %>/download"><%= t('download') %></a>
+                  </span>
+                </div>
             <% } %>
-          </section>
-        <% } %>
+            </div>
+          <% } %>
+        </section>
 
         <section class="content-section">
           <h2><%= t('leadReviewHistory') %></h2>

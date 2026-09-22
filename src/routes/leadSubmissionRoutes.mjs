@@ -39,8 +39,11 @@ import {
   returnSalesLead,
   submitSalesLead
 } from '../services/leadSubmissionService.mjs';
-import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
+import { attachmentPreviewKind, extractDocxPlainText, renderDxfPreview } from '../utils/attachmentPreview.mjs';
+import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
+
+const MAX_LEAD_ATTACHMENTS_PER_SUBMISSION = 10;
 
 function currentUploadSubdir() {
   const now = new Date();
@@ -59,17 +62,30 @@ function createUploadMiddleware(uploadDir, maxUploadMb) {
       callback(null, `${randomUUID()}${path.extname(file.originalname || '')}`);
     }
   });
-  return multer({ storage, limits: { fileSize: maxUploadMb * 1024 * 1024 } });
+  return multer({
+    storage,
+    limits: {
+      fileSize: maxUploadMb * 1024 * 1024,
+      files: MAX_LEAD_ATTACHMENTS_PER_SUBMISSION
+    }
+  });
 }
 
 function storedPathForFile(uploadDir, file) {
   return path.relative(path.resolve(uploadDir), file.path).split(path.sep).join('/');
 }
 
-async function removeUploadedFile(file) {
-  if (file?.path) {
-    await rm(file.path, { force: true });
-  }
+function uploadedFiles(req) {
+  if (Array.isArray(req.files)) return req.files;
+  return Object.values(req.files || {}).flat();
+}
+
+async function removeUploadedFiles(files = []) {
+  await Promise.all(files.map(async (file) => {
+    if (file?.path) {
+      await rm(file.path, { force: true });
+    }
+  }));
 }
 
 async function loadVisibleSubmission(dependencies, actor, id) {
@@ -204,6 +220,58 @@ export function leadSubmissionRoutes({
 }) {
   const router = Router();
   const upload = createUploadMiddleware(uploadDir, maxUploadMb);
+  const receiveLeadAttachments = (req, res, next) => {
+    upload.fields([
+      { name: 'attachments', maxCount: MAX_LEAD_ATTACHMENTS_PER_SUBMISSION },
+      { name: 'attachment', maxCount: 1 }
+    ])(req, res, (error) => {
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        res.status(413).send(req.language === 'zh'
+          ? `单个文件超过 ${maxUploadMb} MB 上传限制`
+          : `A file exceeds the ${maxUploadMb} MB upload limit`);
+        return;
+      }
+      if (error instanceof multer.MulterError
+          && ['LIMIT_FILE_COUNT', 'LIMIT_UNEXPECTED_FILE'].includes(error.code)) {
+        res.status(400).send(req.language === 'zh'
+          ? `每次最多上传 ${MAX_LEAD_ATTACHMENTS_PER_SUBMISSION} 个附件`
+          : `Upload no more than ${MAX_LEAD_ATTACHMENTS_PER_SUBMISSION} attachments at a time`);
+        return;
+      }
+      next(error);
+    });
+  };
+
+  async function persistLeadAttachments(inquiryId, files, retainedPaths) {
+    if (!files.length) return [];
+    const existing = await inquiryAttachmentRepository.listByInquiry(inquiryId);
+    let sourceIndex = existing.reduce(
+      (highest, attachment) => Math.max(highest, Number(attachment.sourceIndex) || 0),
+      -1
+    ) + 1;
+    const created = [];
+    for (const file of files) {
+      const storedPath = storedPathForFile(uploadDir, file);
+      const inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath });
+      const attachment = await inquiryAttachmentRepository.createAttachment({
+        inquiryId,
+        sourceIndex,
+        originalName: normalizeUploadedFilename(file.originalname),
+        storedPath,
+        mimeType: file.mimetype || 'application/octet-stream',
+        fileSize: inspected.fileSize,
+        cid: '',
+        sha256: inspected.sha256
+      });
+      if (!attachment) {
+        throw new Error('Attachment could not be recorded');
+      }
+      retainedPaths.add(file.path);
+      created.push(attachment);
+      sourceIndex += 1;
+    }
+    return created;
+  }
   const emailDependencies = {
     emailArchiveRepository,
     inquiryRepository,
@@ -267,6 +335,7 @@ export function leadSubmissionRoutes({
         : { priority: 'normal', sourceChannel: 'other' };
       res.render('lead-submissions/form', {
         submission,
+        attachments: [],
         emailThreadId: emailContext?.thread.id || null,
         submissionToken: randomUUID(),
         sourceChannels: SALES_LEAD_SOURCE_CHANNELS,
@@ -276,27 +345,20 @@ export function leadSubmissionRoutes({
         showSalesOwnerField,
         isResubmission: false,
         formAction: '/lead-submissions',
-        maxUploadMb
+        maxUploadMb,
+        maxAttachmentCount: MAX_LEAD_ATTACHMENTS_PER_SUBMISSION
       });
     } catch (error) {
       next(error);
     }
   });
 
-  router.post('/lead-submissions', (req, res, next) => {
-    upload.single('attachment')(req, res, (error) => {
-      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-        res.status(413).send(req.language === 'zh'
-          ? `文件超过 ${maxUploadMb} MB 上传限制`
-          : `File exceeds the ${maxUploadMb} MB upload limit`);
-        return;
-      }
-      next(error);
-    });
-  }, async (req, res, next) => {
+  router.post('/lead-submissions', receiveLeadAttachments, async (req, res, next) => {
+    const files = uploadedFiles(req);
+    const retainedPaths = new Set();
     try {
       if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
-        await removeUploadedFile(req.file);
+        await removeUploadedFiles(files);
         res.status(403).send('Invalid CSRF token');
         return;
       }
@@ -309,25 +371,14 @@ export function leadSubmissionRoutes({
             req.body
           )).lead
         : await submitSalesLead({ inquiryRepository, userRepository }, req.currentUser, req.body);
-      if (req.file && !inquiry.wasDuplicate) {
-        const storedPath = storedPathForFile(uploadDir, req.file);
-        const inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath });
-        await inquiryAttachmentRepository.createAttachment({
-          inquiryId: inquiry.id,
-          sourceIndex: 0,
-          originalName: normalizeUploadedFilename(req.file.originalname),
-          storedPath,
-          mimeType: req.file.mimetype || 'application/octet-stream',
-          fileSize: inspected.fileSize,
-          cid: '',
-          sha256: inspected.sha256
-        });
-      } else if (req.file) {
-        await removeUploadedFile(req.file);
+      if (files.length && !inquiry.wasDuplicate) {
+        await persistLeadAttachments(inquiry.id, files, retainedPaths);
+      } else if (files.length) {
+        await removeUploadedFiles(files);
       }
       res.redirect(`/lead-submissions/${inquiry.id}`);
     } catch (error) {
-      await removeUploadedFile(req.file);
+      await removeUploadedFiles(files.filter((file) => !retainedPaths.has(file.path)));
       handleLeadError(error, res, next);
     }
   });
@@ -360,8 +411,10 @@ export function leadSubmissionRoutes({
         dependencies,
         req.currentUser
       );
+      const attachments = await inquiryAttachmentRepository.listByInquiry(submission.id);
       res.render('lead-submissions/form', {
         submission,
+        attachments,
         emailThreadId: null,
         submissionToken: '',
         sourceChannels: SALES_LEAD_SOURCE_CHANNELS,
@@ -371,27 +424,20 @@ export function leadSubmissionRoutes({
         showSalesOwnerField,
         isResubmission: true,
         formAction: `/lead-submissions/${submission.id}/resubmit`,
-        maxUploadMb
+        maxUploadMb,
+        maxAttachmentCount: MAX_LEAD_ATTACHMENTS_PER_SUBMISSION
       });
     } catch (error) {
       handleLeadError(error, res, next);
     }
   });
 
-  router.post('/lead-submissions/:id/resubmit', (req, res, next) => {
-    upload.single('attachment')(req, res, (error) => {
-      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
-        res.status(413).send(req.language === 'zh'
-          ? `文件超过 ${maxUploadMb} MB 上传限制`
-          : `File exceeds the ${maxUploadMb} MB upload limit`);
-        return;
-      }
-      next(error);
-    });
-  }, async (req, res, next) => {
+  router.post('/lead-submissions/:id/resubmit', receiveLeadAttachments, async (req, res, next) => {
+    const files = uploadedFiles(req);
+    const retainedPaths = new Set();
     try {
       if (!csrfValid(req)) {
-        await removeUploadedFile(req.file);
+        await removeUploadedFiles(files);
         res.status(403).send('Invalid CSRF token');
         return;
       }
@@ -401,28 +447,10 @@ export function leadSubmissionRoutes({
         req.params.id,
         req.body
       );
-      if (req.file) {
-        const existing = await inquiryAttachmentRepository.listByInquiry(submission.id);
-        const sourceIndex = existing.reduce(
-          (highest, attachment) => Math.max(highest, Number(attachment.sourceIndex) || 0),
-          -1
-        ) + 1;
-        const storedPath = storedPathForFile(uploadDir, req.file);
-        const inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath });
-        await inquiryAttachmentRepository.createAttachment({
-          inquiryId: submission.id,
-          sourceIndex,
-          originalName: normalizeUploadedFilename(req.file.originalname),
-          storedPath,
-          mimeType: req.file.mimetype || 'application/octet-stream',
-          fileSize: inspected.fileSize,
-          cid: '',
-          sha256: inspected.sha256
-        });
-      }
+      await persistLeadAttachments(submission.id, files, retainedPaths);
       res.redirect(`/lead-submissions/${submission.id}`);
     } catch (error) {
-      await removeUploadedFile(req.file);
+      await removeUploadedFiles(files.filter((file) => !retainedPaths.has(file.path)));
       handleLeadError(error, res, next);
     }
   });
@@ -484,7 +512,7 @@ export function leadSubmissionRoutes({
     }
   });
 
-  router.get('/lead-submissions/:id/attachments/:attachmentId/download', async (req, res, next) => {
+  async function sendLeadAttachment(req, res, next, disposition) {
     try {
       const submission = await loadVisibleSubmission(dependencies, req.currentUser, req.params.id);
       if (!submission) {
@@ -498,16 +526,78 @@ export function leadSubmissionRoutes({
       }
       const filePath = resolveStoredPath(uploadDir, attachment.storedPath);
       if (!filePath) {
-        res.status(400).send('Invalid attachment path');
+        res.status(404).send('Attachment not found');
         return;
       }
-      const content = await readFile(filePath);
+      if (disposition === 'download') {
+        res.type(attachment.mimeType || 'application/octet-stream');
+        res.setHeader('Content-Disposition', attachmentContentDisposition(attachment.originalName));
+        res.sendFile(filePath);
+        return;
+      }
+      const kind = attachmentPreviewKind(attachment);
+      const downloadUrl = `/lead-submissions/${submission.id}/attachments/${attachment.id}/download`;
+      const previewContext = {
+        activeNav: 'lead-submissions',
+        attachment,
+        downloadUrl,
+        contextLabelKey: 'myLeadSubmissions',
+        contextText: submission.subject || submission.companyName
+          || `${res.locals.t('leadSubmissionReceipt')} #${submission.id}`,
+        backUrl: `/lead-submissions/${submission.id}`,
+        backLabelKey: 'backToList'
+      };
+      if (kind === 'unsupported-dwg') {
+        res.status(200).render('attachments/unsupported-preview', {
+          ...previewContext,
+          messageKey: 'dwgPreviewRequiresDxfOrPdf'
+        });
+        return;
+      }
+      if (kind === 'unsupported-doc') {
+        res.status(200).render('attachments/unsupported-preview', {
+          ...previewContext,
+          messageKey: 'docPreviewRequiresDocx'
+        });
+        return;
+      }
+      if (kind === 'dxf') {
+        const dxfText = await readFile(filePath, 'utf8');
+        res.status(200).render('attachments/dxf-preview', {
+          ...previewContext,
+          preview: renderDxfPreview(dxfText)
+        });
+        return;
+      }
+      if (kind === 'docx') {
+        const docxBuffer = await readFile(filePath);
+        res.status(200).render('attachments/docx-preview', {
+          ...previewContext,
+          paragraphs: extractDocxPlainText(docxBuffer)
+        });
+        return;
+      }
+      if (kind === 'download-only') {
+        res.status(200).render('attachments/unsupported-preview', {
+          ...previewContext,
+          messageKey: 'previewNotAvailableDownload'
+        });
+        return;
+      }
       res.type(attachment.mimeType || 'application/octet-stream');
-      res.setHeader('Content-Disposition', attachmentContentDisposition(attachment.originalName));
-      res.send(content);
+      res.setHeader('Content-Disposition', inlineContentDisposition(attachment.originalName));
+      res.sendFile(filePath);
     } catch (error) {
       next(error);
     }
+  }
+
+  router.get('/lead-submissions/:id/attachments/:attachmentId/download', (req, res, next) => {
+    sendLeadAttachment(req, res, next, 'download');
+  });
+
+  router.get('/lead-submissions/:id/attachments/:attachmentId/preview', (req, res, next) => {
+    sendLeadAttachment(req, res, next, 'preview');
   });
 
   return router;

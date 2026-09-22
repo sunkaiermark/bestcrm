@@ -9,7 +9,14 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function buildApp({ currentUserRoles = [ROLES.SALESPERSON], receiptCreatedBy = 7, receiptAssignedUserId = 2, uploadDir } = {}) {
+async function buildApp({
+  currentUserRoles = [ROLES.SALESPERSON],
+  receiptCreatedBy = 7,
+  receiptAssignedUserId = 2,
+  receiptStatus = 'new',
+  attachments = [],
+  uploadDir
+} = {}) {
   const calls = [];
   const user = {
     id: 7,
@@ -47,7 +54,7 @@ async function buildApp({ currentUserRoles = [ROLES.SALESPERSON], receiptCreated
     opportunityType: 'New project',
     requirementText: 'Need a dryer',
     priority: 'normal',
-    status: 'new',
+    status: receiptStatus,
     assignedUserId: receiptAssignedUserId,
     assignedDisplayName: 'Sales Manager',
     recommendedSalespersonId: 7,
@@ -77,8 +84,10 @@ async function buildApp({ currentUserRoles = [ROLES.SALESPERSON], receiptCreated
       }
     },
     inquiryAttachmentRepository: {
-      async listByInquiry() { return []; },
-      async findById() { return null; },
+      async listByInquiry() { return attachments; },
+      async findById(id) {
+        return attachments.find((attachment) => Number(attachment.id) === Number(id)) || null;
+      },
       async createAttachment(input) {
         calls.push(['createInquiryAttachment', input]);
         return { id: 50, ...input };
@@ -166,6 +175,7 @@ test('salesperson submits a manager-assigned lead with one supporting file', asy
     assert.match(form.text, /class="lead-submission-form-wide"/);
     assert.match(form.text, /\.form-panel\.lead-submission-form\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*margin-left: auto;[^}]*margin-right: auto;[^}]*max-width: 1180px;/s);
     assert.match(form.text, /@media \(max-width: 900px\)\s*\{[^}]*\.form-panel\.lead-submission-form\s*\{[^}]*grid-template-columns: 1fr;/s);
+    assert.match(form.text, /type="file" name="attachments" multiple/);
     const token = form.text.match(/name="submissionToken" value="([^"]+)"/)?.[1];
     assert.ok(token);
 
@@ -230,6 +240,107 @@ test('assigned sales manager sees approve return and reject controls on lead det
     assert.match(page.text, /workflow-compact-row workflow-approve-row/);
     assert.match(page.text, /workflow-compact-row workflow-reject-row/);
     assert.match(page.text, /name="reason" type="text" required maxlength="1000"/);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('salesperson submits multiple lead attachments with stable source indexes', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-multi-upload-'));
+  const firstFile = path.join(uploadDir, 'process.txt');
+  const secondFile = path.join(uploadDir, 'layout.pdf');
+  await writeFile(firstFile, 'process data', 'utf8');
+  await writeFile(secondFile, 'pdf data', 'utf8');
+  try {
+    const { agent, calls } = await buildApp({ uploadDir });
+    const form = await agent.get('/lead-submissions/new');
+    const token = form.text.match(/name="submissionToken" value="([^"]+)"/)?.[1];
+
+    const response = await agent.post('/lead-submissions')
+      .field('submissionToken', token)
+      .field('assignedUserId', '2')
+      .field('sourceChannel', 'referral')
+      .field('companyName', 'Acme')
+      .field('requirementText', 'Need a dryer')
+      .attach('attachments', firstFile)
+      .attach('attachments', secondFile);
+
+    assert.equal(response.status, 302);
+    const attachmentCalls = calls.filter((call) => call[0] === 'createInquiryAttachment');
+    assert.equal(attachmentCalls.length, 2);
+    assert.deepEqual(attachmentCalls.map((call) => call[1].sourceIndex), [0, 1]);
+    assert.deepEqual(attachmentCalls.map((call) => call[1].originalName), ['process.txt', 'layout.pdf']);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('lead detail exposes authorized attachment preview and download routes', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-preview-'));
+  const storedPath = 'preview.txt';
+  const content = 'lead evidence';
+  await writeFile(path.join(uploadDir, storedPath), content, 'utf8');
+  const attachments = [{
+    id: 50,
+    inquiryId: 11,
+    sourceIndex: 0,
+    originalName: 'preview.txt',
+    storedPath,
+    mimeType: 'text/plain',
+    fileSize: Buffer.byteLength(content),
+    sha256: createHash('sha256').update(content).digest('hex')
+  }];
+  try {
+    const { agent } = await buildApp({ uploadDir, attachments });
+    const detail = await agent.get('/lead-submissions/11');
+    assert.equal(detail.status, 200);
+    assert.match(detail.text, /href="\/lead-submissions\/11\/attachments\/50\/preview"/);
+    assert.match(detail.text, /href="\/lead-submissions\/11\/attachments\/50\/download"/);
+
+    const preview = await agent.get('/lead-submissions/11/attachments/50/preview');
+    assert.equal(preview.status, 200);
+    assert.match(preview.headers['content-disposition'], /^inline;/);
+    assert.equal(preview.text, content);
+
+    const download = await agent.get('/lead-submissions/11/attachments/50/download');
+    assert.equal(download.status, 200);
+    assert.match(download.headers['content-disposition'], /^attachment;/);
+    assert.equal(download.text, content);
+
+    const unauthorized = await buildApp({ uploadDir, attachments, receiptCreatedBy: 8 });
+    assert.equal(
+      (await unauthorized.agent.get('/lead-submissions/11/attachments/50/preview')).status,
+      404
+    );
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('returned lead shows the creator a modification and resubmission form with existing attachments', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-resubmit-ui-'));
+  const attachments = [{
+    id: 50,
+    inquiryId: 11,
+    sourceIndex: 0,
+    originalName: 'existing.pdf',
+    storedPath: 'existing.pdf',
+    mimeType: 'application/pdf',
+    fileSize: 100,
+    sha256: 'a'.repeat(64)
+  }];
+  try {
+    const { agent } = await buildApp({ uploadDir, attachments, receiptStatus: 'returned' });
+    const detail = await agent.get('/lead-submissions/11');
+    assert.equal(detail.status, 200);
+    assert.match(detail.text, /href="\/lead-submissions\/11\/edit"/);
+    assert.match(detail.text, />Edit and resubmit</);
+
+    const edit = await agent.get('/lead-submissions/11/edit');
+    assert.equal(edit.status, 200);
+    assert.match(edit.text, /action="\/lead-submissions\/11\/resubmit"/);
+    assert.match(edit.text, /existing\.pdf/);
+    assert.match(edit.text, /type="file" name="attachments" multiple/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

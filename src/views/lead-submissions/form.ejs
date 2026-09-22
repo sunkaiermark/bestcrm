@@ -65,10 +65,26 @@
             </select>
           </label>
           <label class="lead-submission-form-wide"><%= t('requirement') %><textarea name="requirementText" required><%= submission.requirementText || '' %></textarea></label>
-          <label>
-            <%= t('supportingFile') %>
-            <input type="file" name="attachment">
-            <span class="muted"><%= t('supportingFileHint') %> <%= maxUploadMb %> MB</span>
+          <% if (resubmissionMode && (attachments || []).length) { %>
+            <div class="lead-submission-form-wide">
+              <strong><%= t('existingSupportingFiles') %></strong>
+              <div class="inquiry-attachment-list lead-attachment-list">
+                <% for (const attachment of attachments) { %>
+                  <div class="inquiry-attachment-row">
+                    <span><%= attachment.originalName %></span>
+                    <span class="inline-actions">
+                      <a href="/lead-submissions/<%= submission.id %>/attachments/<%= attachment.id %>/preview"><%= t('preview') %></a>
+                      <a href="/lead-submissions/<%= submission.id %>/attachments/<%= attachment.id %>/download"><%= t('download') %></a>
+                    </span>
+                  </div>
+                <% } %>
+              </div>
+            </div>
+          <% } %>
+          <label class="lead-submission-form-wide lead-attachment-upload">
+            <%= t('supportingFiles') %>
+            <input type="file" name="attachments" multiple>
+            <span class="muted"><%= t('supportingFilesHint') %> <%= maxAttachmentCount %> · <%= t('maximumPerFile') %> <%= maxUploadMb %> MB</span>
           </label>
           <% if (resubmissionMode) { %>
             <label><%= t('resubmissionNote') %><input name="resubmissionNote" maxlength="1000"></label>

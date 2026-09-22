@@ -2770,6 +2770,21 @@
         margin-top: 0;
       }
 
+      .lead-attachment-list .inquiry-attachment-row {
+        grid-template-columns: minmax(180px, 1fr) auto auto;
+      }
+
+      .lead-attachment-list .inline-actions {
+        grid-column: -2 / -1;
+      }
+
+      .lead-attachment-upload input[type="file"] {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        padding: 9px 10px;
+      }
+
       .email-recipient-line {
         color: var(--muted);
         font-size: 12px;
@@ -3975,6 +3990,14 @@
         .customer-match-card,
         .inquiry-attachment-row {
           grid-template-columns: 1fr;
+        }
+
+        .lead-attachment-list .inquiry-attachment-row {
+          grid-template-columns: 1fr;
+        }
+
+        .lead-attachment-list .inline-actions {
+          grid-column: auto;
         }
 
         .account-security-grid,
