@@ -61,6 +61,19 @@
           </section>
         <% } %>
 
+        <% if (canReclassifyAsSpam) { %>
+          <section class="email-triage-panel email-orphaned-inquiry-spam-panel" aria-label="<%= t('emailManualTriage') %>">
+            <form class="email-triage-spam-action" method="post" action="/email-center/threads/<%= thread.id %>/disposition">
+              <%- csrfField() %>
+              <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+              <input type="hidden" name="from" value="<%= backFolder %>">
+              <input type="hidden" name="category" value="<%= backCategory %>">
+              <input type="hidden" name="action" value="spam">
+              <button class="danger-action" type="submit"><%= t('emailSpamAction') %></button>
+            </form>
+          </section>
+        <% } %>
+
         <% if (['spam', 'archived'].includes(thread.triageStatus)) { const isSpam = thread.triageStatus === 'spam'; %>
           <section class="form-panel email-spam-restore">
             <p><%= t(isSpam ? 'emailSpamRestoreHelp' : 'emailNonBusinessRestoreHelp') %></p>

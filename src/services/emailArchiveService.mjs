@@ -48,6 +48,20 @@ export function canPurgeEmailSpam(actor) {
   return hasRole(actor, ROLES.ADMINISTRATOR);
 }
 
+export async function canReclassifyOrphanedConvertedInquiryAsSpam(dependencies, actor, thread) {
+  if (!canPurgeEmailSpam(actor)
+    || thread?.triageStatus !== 'converted_inquiry'
+    || thread?.archiveDisposition !== 'active'
+    || thread?.inquiryId
+    || thread?.opportunityId
+    || thread?.customerId
+    || thread?.contactId
+    || typeof dependencies.emailArchiveRepository?.isOrphanedConvertedInquirySpamEligible !== 'function') {
+    return false;
+  }
+  return dependencies.emailArchiveRepository.isOrphanedConvertedInquirySpamEligible(thread.id);
+}
+
 export class EmailArchiveDuplicateRaceError extends Error {
   constructor() {
     super('Email archive duplicate race');
@@ -546,12 +560,12 @@ export async function canViewEmailThread(dependencies, actor, thread) {
     : [Number(thread?.mailboxOwnerUserId || 0)].filter((value) => value > 0);
   const hasSharedMailboxDelivery = thread?.hasSharedMailboxDelivery === true
     || text(thread?.mailboxKey).toLowerCase() === text(dependencies.sharedAddress || 'sales@sunkaier.com').toLowerCase();
-  if (mailboxOwnerUserIds.length > 0 && !hasSharedMailboxDelivery) return false;
-  if (!thread?.opportunityId) {
-    return canAccessInquiryInbox(actor);
+  if (thread?.opportunityId) {
+    const opportunity = await opportunityForThread(dependencies, thread);
+    return Boolean(opportunity && canViewOpportunity(actor, opportunity));
   }
-  const opportunity = await opportunityForThread(dependencies, thread);
-  return Boolean(opportunity && canViewOpportunity(actor, opportunity));
+  if (mailboxOwnerUserIds.length > 0 && !hasSharedMailboxDelivery) return false;
+  return canAccessInquiryInbox(actor);
 }
 
 export async function listVisibleEmailThreads(dependencies, actor, filter = {}) {
@@ -952,8 +966,14 @@ export async function setEmailThreadDisposition(dependencies, actor, threadId, a
   if (thread.triageStatus === target.triageStatus) return thread;
   await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
     const current = await transactionDependencies.emailArchiveRepository.findThreadById(thread.id);
+    if (!current) throw new EmailArchiveError('Email thread not found', 404);
+    const orphanedConvertedInquirySpam = action === 'spam'
+      && await canReclassifyOrphanedConvertedInquiryAsSpam(transactionDependencies, actor, current);
     return transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
       ...target,
+      ...(orphanedConvertedInquirySpam
+        ? { allowedFromStatuses: ['converted_inquiry'] }
+        : {}),
       note: text(note).slice(0, 1000),
       triagedAt: dependencies.now?.() || new Date().toISOString()
     });

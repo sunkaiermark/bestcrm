@@ -102,6 +102,9 @@ async function createAgent({
       return [{ userId: user.id, mailboxAddress: user.email, displayName: user.displayName }];
     },
     async listThreadsByOpportunity(id) { return Number(id) === 20 ? opportunityThreads : []; },
+    async isOrphanedConvertedInquirySpamEligible(id) {
+      return Number(id) === 1 && unlinked.orphanedSpamEligible !== false;
+    },
     async findThreadById(id) {
       return Number(id) === 1
         ? unlinked
@@ -473,6 +476,58 @@ test('administrator always sees disabled non-business deletion controls with the
   assert.doesNotMatch(list.text, /href="\/email-center\/threads\/1[^>]*#email-delete"/);
 });
 
+test('administrator can move an orphaned converted inquiry from Inbox to Spam for permanent cleanup', async () => {
+  const administrator = await createAgent({
+    userId: 1,
+    roles: [ROLES.ADMINISTRATOR],
+    unlinkedOverrides: {
+      triageStatus: 'converted_inquiry',
+      archiveDisposition: 'active',
+      inquiryId: null,
+      opportunityId: null,
+      customerId: null,
+      contactId: null
+    }
+  });
+
+  const inboxDetail = await administrator.get('/email-center/threads/1?mailbox=sales%40sunkaier.com&from=inbox');
+  assert.equal(inboxDetail.status, 200);
+  assert.match(inboxDetail.text, /email-orphaned-inquiry-spam-panel/);
+  assert.match(inboxDetail.text, /name="action" value="spam"/);
+  assert.doesNotMatch(inboxDetail.text, /href="\/lead-submissions\/new\?emailThreadId=1"/);
+
+  const marked = await administrator.post('/email-center/threads/1/disposition').type('form').send({
+    mailbox: 'sales@sunkaier.com',
+    from: 'inbox',
+    action: 'spam'
+  });
+  assert.equal(marked.status, 302);
+  assert.equal(marked.headers.location, '/email-center/threads/1?mailbox=sales%40sunkaier.com&from=inbox');
+
+  const spamDetail = await administrator.get('/email-center/threads/1?mailbox=sales%40sunkaier.com&from=spam');
+  assert.equal(spamDetail.status, 200);
+  assert.match(spamDetail.text, /action="\/email-center\/threads\/1\/purge"/);
+  assert.match(spamDetail.text, /name="confirmation"[^>]*pattern="DELETE"/);
+});
+
+test('orphaned converted mail with historical business dependencies cannot be marked as spam', async () => {
+  const administrator = await createAgent({
+    userId: 1,
+    roles: [ROLES.ADMINISTRATOR],
+    unlinkedOverrides: {
+      triageStatus: 'converted_inquiry',
+      archiveDisposition: 'active',
+      orphanedSpamEligible: false
+    }
+  });
+  const detail = await administrator.get('/email-center/threads/1');
+  assert.equal(detail.status, 200);
+  assert.doesNotMatch(detail.text, /email-orphaned-inquiry-spam-panel/);
+  const attempted = await administrator.post('/email-center/threads/1/disposition')
+    .type('form').send({ action: 'spam' });
+  assert.equal(attempted.status, 409);
+});
+
 test('administrator can delete confirmed non-business mail but pending and linked mail stay protected', async () => {
   const manager = await createAgent({ userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh' });
   const managerDetail = await manager.get('/email-center/threads/1');
@@ -586,6 +641,27 @@ test('salesperson sees assigned opportunity mail but direct unlinked mail access
   assert.equal(detail.status, 200);
   assert.match(detail.text, /C000010 · Acme Co/);
   assert.match(detail.text, /CT000020 · Alice/);
+});
+
+test('an opportunity stakeholder can open linked personal-mail history while unlinked personal mail remains private', async () => {
+  const personalMailbox = {
+    mailboxKey: 'user7@sunkaier.com',
+    mailboxKeys: ['user7@sunkaier.com'],
+    mailboxOwnerUserId: 7,
+    mailboxOwnerUserIds: [7],
+    hasSharedMailboxDelivery: false
+  };
+  const manager = await createAgent({
+    userId: 2,
+    roles: [ROLES.SALES_MANAGER],
+    unlinkedOverrides: personalMailbox,
+    linkedOverrides: personalMailbox
+  });
+
+  assert.equal((await manager.get('/email-center/threads/1')).status, 403);
+  const linkedDetail = await manager.get('/email-center/threads/2');
+  assert.equal(linkedDetail.status, 200);
+  assert.match(linkedDetail.text, /Mixer Project/);
 });
 
 test('email attachment download enforces the same thread permission', async () => {

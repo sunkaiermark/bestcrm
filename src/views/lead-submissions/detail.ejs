@@ -24,6 +24,13 @@
             );
             return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
           };
+          const leadApprovalInput = approvalInput || {};
+          const leadApprovalValue = (field, fallback = '') => Object.hasOwn(leadApprovalInput, field)
+            ? leadApprovalInput[field]
+            : fallback;
+          const selectedCustomerId = leadApprovalValue('customerId', submission.matchedCustomerId);
+          const selectedContactId = leadApprovalValue('primaryContactId', submission.matchedContactId);
+          const selectedSalespersonId = leadApprovalValue('salespersonId', submission.recommendedSalespersonId);
         %>
         <p class="breadcrumb"><a href="/lead-submissions"><%= t('myLeadSubmissions') %></a></p>
         <header class="page-header">
@@ -64,22 +71,49 @@
               <form class="inquiry-workflow-form lead-conversion-review-form" method="post" action="/lead-submissions/<%= submission.id %>/approve">
                 <%- csrfField() %>
                 <input type="hidden" name="createMissingRecords" value="1">
+                <% if (duplicateCustomers.length) { %>
+                  <section class="duplicate-warning lead-duplicate-customer-warning" role="alert">
+                    <strong><%= t('duplicateCustomerFound') %></strong>
+                    <p><%= t('duplicateCustomerCoordinationHint') %></p>
+                    <p class="muted"><%= t('selectExistingCustomerHint') %></p>
+                    <table class="duplicate-table">
+                      <thead>
+                        <tr>
+                          <th><%= t('customerCode') %></th>
+                          <th><%= t('customerName') %></th>
+                          <th><%= t('responsiblePerson') %></th>
+                          <th><%= t('contacts') %></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <% for (const duplicate of duplicateCustomers) { %>
+                          <tr>
+                            <td><%= duplicate.customerCode %></td>
+                            <td><%= duplicate.name %></td>
+                            <td><%= duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></td>
+                            <td><%= duplicate.contactCount %></td>
+                          </tr>
+                        <% } %>
+                      </tbody>
+                    </table>
+                  </section>
+                <% } %>
                 <div class="inquiry-form-grid">
                 <label class="inquiry-field-wide">
                   <%= t('customer') %>
                   <select name="customerId" id="lead-customer-select">
-                    <option value=""><%= t('createNewCustomerFromInquiry') %></option>
+                    <option value=""<%= selectedCustomerId ? '' : ' selected' %>><%= t('createNewCustomerFromInquiry') %></option>
                     <% for (const customer of customers) { %>
-                      <option value="<%= customer.id %>"<%= Number(submission.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
+                      <option value="<%= customer.id %>"<%= Number(selectedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
                     <% } %>
                   </select>
                 </label>
-                <label><%= t('customerName') %><input name="companyName" value="<%= submission.companyName || '' %>"></label>
+                <label><%= t('customerName') %><input name="companyName" value="<%= leadApprovalValue('companyName', submission.companyName) || '' %>"></label>
                 <label>
                   <%= t('country') %>
                   <select name="country">
                     <option value=""><%= t('selectCountry') %></option>
-                    <% for (const country of countryOptions) { %><option value="<%= country %>"<%= submission.country === country ? ' selected' : '' %>><%= country %></option><% } %>
+                    <% for (const country of countryOptions) { %><option value="<%= country %>"<%= leadApprovalValue('country', submission.country) === country ? ' selected' : '' %>><%= country %></option><% } %>
                   </select>
                 </label>
                 <label class="inquiry-field-wide">
@@ -87,35 +121,37 @@
                   <select name="primaryContactId" id="lead-contact-select">
                     <option value=""><%= t('createNewContactFromInquiry') %></option>
                     <% for (const contact of contacts) { %>
-                      <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>"<%= Number(submission.matchedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %><%= contact.customerName ? ` (${contact.customerName})` : '' %></option>
+                      <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>"<%= Number(selectedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %><%= contact.customerName ? ` (${contact.customerName})` : '' %></option>
                     <% } %>
                   </select>
                 </label>
-                <label><%= t('contactName') %><input name="contactName" value="<%= submission.contactName || '' %>"></label>
-                <label><%= t('email') %><input type="email" name="contactEmail" value="<%= submission.contactEmail || '' %>"></label>
-                <label><%= t('phone') %><input name="contactPhone" value="<%= submission.contactPhone || '' %>"></label>
+                <label><%= t('contactName') %><input name="contactName" value="<%= leadApprovalValue('contactName', submission.contactName) || '' %>"></label>
+                <label><%= t('email') %><input type="email" name="contactEmail" value="<%= leadApprovalValue('contactEmail', submission.contactEmail) || '' %>"></label>
+                <label><%= t('phone') %><input name="contactPhone" value="<%= leadApprovalValue('contactPhone', submission.contactPhone) || '' %>"></label>
                 <label>
                   <%= t('salesOwner') %>
                   <select name="salespersonId" required>
                     <option value=""><%= t('selectSalesOwner') %></option>
                     <% for (const salesperson of salespeople) { %>
-                      <option value="<%= salesperson.id %>"<%= Number(submission.recommendedSalespersonId) === Number(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
+                      <option value="<%= salesperson.id %>"<%= Number(selectedSalespersonId) === Number(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
                     <% } %>
                   </select>
                 </label>
-                <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" value="<%= submission.subject || submission.productInterest || submission.companyName || '' %>" required></label>
-                <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount"></label>
-                <label><%= t('deliveryPeriod') %><input name="deliveryCycle"></label>
-                <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate"></label>
-                  <label class="inquiry-field-full"><%= t('requirement') %><textarea name="requirementText" required><%= submission.requirementText || '' %></textarea></label>
+                <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" value="<%= leadApprovalValue('title', submission.subject || submission.productInterest || submission.companyName) || '' %>" required></label>
+                <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount" value="<%= leadApprovalValue('estimatedAmount') || '' %>"></label>
+                <label><%= t('deliveryPeriod') %><input name="deliveryCycle" value="<%= leadApprovalValue('deliveryCycle') || '' %>"></label>
+                <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate" value="<%= leadApprovalValue('expectedBidDate') || '' %>"></label>
+                  <label class="inquiry-field-full"><%= t('requirement') %><textarea name="requirementText" required><%= leadApprovalValue('requirementText', submission.requirementText) || '' %></textarea></label>
                 </div>
                 <div class="workflow-action-list lead-review-action-list">
                   <div class="workflow-compact-row workflow-approve-row">
                     <button class="workflow-action-button workflow-approve-button" type="submit"><%= t('approveLeadAndCreateOpportunity') %></button>
-                    <label class="workflow-inline-field">
-                      <span><%= t('reviewNote') %></span>
-                      <input name="reviewNote" type="text" maxlength="1000">
-                    </label>
+                    <div class="lead-review-action-fields lead-review-action-fields-single">
+                      <label class="workflow-inline-field">
+                        <span><%= t('reviewNote') %></span>
+                        <input name="reviewNote" type="text" maxlength="1000" value="<%= leadApprovalValue('reviewNote') || '' %>">
+                      </label>
+                    </div>
                   </div>
                 </div>
               </form>
@@ -124,28 +160,32 @@
                 <form class="workflow-compact-row workflow-reject-row" method="post" action="/lead-submissions/<%= submission.id %>/reject" onsubmit="return confirm('<%= t('rejectLeadConfirm') %>')">
                   <%- csrfField() %>
                   <button class="workflow-action-button workflow-reject-button" type="submit"><%= t('rejectLead') %></button>
-                  <label class="workflow-inline-field">
-                    <span><%= t('rejectReason') %></span>
-                    <input name="reason" type="text" required maxlength="1000">
-                  </label>
-                  <% if (isEmailLead) { %>
+                  <div class="lead-review-action-fields">
                     <label class="workflow-inline-field">
-                      <span><%= t('sourceEmailDisposition') %></span>
-                      <select name="emailDisposition" required>
-                        <option value="pending"><%= t('emailDisposition.pending') %></option>
-                        <option value="non_business"><%= t('emailDisposition.non_business') %></option>
-                        <option value="spam"><%= t('emailDisposition.spam') %></option>
-                      </select>
+                      <span><%= t('rejectReason') %></span>
+                      <input name="reason" type="text" required maxlength="1000">
                     </label>
-                  <% } %>
+                    <% if (isEmailLead) { %>
+                      <label class="workflow-inline-field">
+                        <span><%= t('sourceEmailDisposition') %></span>
+                        <select name="emailDisposition" required>
+                          <option value="pending"><%= t('emailDisposition.pending') %></option>
+                          <option value="non_business"><%= t('emailDisposition.non_business') %></option>
+                          <option value="spam"><%= t('emailDisposition.spam') %></option>
+                        </select>
+                      </label>
+                    <% } %>
+                  </div>
                 </form>
                 <form class="workflow-compact-row workflow-neutral-row" method="post" action="/lead-submissions/<%= submission.id %>/return">
                   <%- csrfField() %>
                   <button class="workflow-action-button" type="submit"><%= t('returnForModification') %></button>
-                  <label class="workflow-inline-field">
-                    <span><%= t('returnReason') %></span>
-                    <input name="reason" type="text" required maxlength="1000">
-                  </label>
+                  <div class="lead-review-action-fields lead-review-action-fields-single">
+                    <label class="workflow-inline-field">
+                      <span><%= t('returnReason') %></span>
+                      <input name="reason" type="text" required maxlength="1000">
+                    </label>
+                  </div>
                 </form>
               </div>
             </div>

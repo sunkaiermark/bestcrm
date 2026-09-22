@@ -1358,6 +1358,21 @@ export function createEmailArchiveRepository(queryTarget) {
       return Boolean(result.rows[0]?.eligible);
     },
 
+    async isOrphanedConvertedInquirySpamEligible(threadId) {
+      const result = await queryTarget.query(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM email_threads thread
+          WHERE thread.id = $1
+            AND thread.triage_status = 'converted_inquiry'
+            AND thread.archive_disposition = 'active'
+            AND ${emailPurgeNonInquiryEligibility}
+            AND ${strictEmailInquiryEligibility}
+        ) AS eligible
+      `, [threadId]);
+      return Boolean(result.rows[0]?.eligible);
+    },
+
     async purgeEmailThread(input) {
       const candidateResult = await queryTarget.query(`
         SELECT

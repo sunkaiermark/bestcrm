@@ -438,18 +438,19 @@ test('attachment file remains recoverable when scan evidence insert fails after 
   }
 });
 
-test('thread visibility keeps shared mail role-scoped and hides personal-only mail from every CRM user', async () => {
+test('thread visibility keeps unlinked personal mail hidden but preserves authorized linked business history', async () => {
   const unlinked = { id: 1, inquiryId: 8, opportunityId: null };
   const linked = { id: 2, inquiryId: 9, opportunityId: 20 };
   const personal = { id: 3, mailboxOwnerUserId: 7, inquiryId: null, opportunityId: null };
+  const linkedPersonal = { id: 4, mailboxOwnerUserId: 7, inquiryId: 10, opportunityId: 20 };
   const dependencies = {
     emailArchiveRepository: {
-      async listThreads() { return [unlinked, linked, personal]; },
+      async listThreads() { return [unlinked, linked, personal, linkedPersonal]; },
       async findThreadById(id) {
-        return Number(id) === 3 ? personal : Number(id) === 2 ? linked : unlinked;
+        return Number(id) === 4 ? linkedPersonal : Number(id) === 3 ? personal : Number(id) === 2 ? linked : unlinked;
       },
       async getThreadDetail(id) {
-        const selected = Number(id) === 3 ? personal : Number(id) === 2 ? linked : unlinked;
+        const selected = Number(id) === 4 ? linkedPersonal : Number(id) === 3 ? personal : Number(id) === 2 ? linked : unlinked;
         return { ...selected, messages: [] };
       }
     },
@@ -464,11 +465,12 @@ test('thread visibility keeps shared mail role-scoped and hides personal-only ma
   const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
   const otherSalesperson = { id: 8, roles: [ROLES.SALESPERSON] };
   const manager = { id: 2, roles: [ROLES.SALES_MANAGER] };
-  assert.deepEqual((await listVisibleEmailThreads(dependencies, salesperson)).map((item) => item.id), [2]);
+  assert.deepEqual((await listVisibleEmailThreads(dependencies, salesperson)).map((item) => item.id), [2, 4]);
   assert.deepEqual((await listVisibleEmailThreads(dependencies, otherSalesperson)).map((item) => item.id), []);
-  assert.deepEqual((await listVisibleEmailThreads(dependencies, manager)).map((item) => item.id), [1, 2]);
+  assert.deepEqual((await listVisibleEmailThreads(dependencies, manager)).map((item) => item.id), [1, 2, 4]);
   await assert.rejects(() => getVisibleEmailThread(dependencies, salesperson, 1), /Forbidden/);
   assert.equal((await getVisibleEmailThread(dependencies, salesperson, 2)).id, 2);
+  assert.equal((await getVisibleEmailThread(dependencies, salesperson, 4)).id, 4);
   await assert.rejects(() => getVisibleEmailThread(dependencies, salesperson, 3), /Forbidden/);
   await assert.rejects(() => getVisibleEmailThread(dependencies, manager, 3), /Forbidden/);
   await assert.rejects(
@@ -637,6 +639,7 @@ function triageMemory(threadOverrides = {}) {
   const repository = {
     async findThreadById() { return thread; },
     async getThreadDetail() { return thread; },
+    async isOrphanedConvertedInquirySpamEligible() { return thread.orphanedSpamEligible !== false; },
     async linkThreadToInquiry(id, inquiryId) {
       if (thread.inquiryId) return null;
       thread.inquiryId = Number(inquiryId);
@@ -876,6 +879,66 @@ test('misclassified spam can be restored to pending with an immutable reopen eve
   assert.equal(memory.events[0].eventType, 'reopened');
   assert.equal(memory.events[0].fromStatus, 'spam');
   assert.equal(memory.events[0].toStatus, 'pending');
+});
+
+test('only an administrator can mark an orphaned converted inquiry as spam', async () => {
+  const orphaned = triageMemory({
+    triageStatus: 'converted_inquiry',
+    archiveDisposition: 'active'
+  });
+  const administrator = { id: 1, roles: [ROLES.ADMINISTRATOR] };
+
+  await setEmailThreadDisposition({
+    emailArchiveRepository: orphaned.repository,
+    now: () => '2026-10-12T02:00:00Z'
+  }, administrator, 30, 'spam');
+
+  assert.equal(orphaned.thread.triageStatus, 'spam');
+  assert.equal(orphaned.thread.archiveDisposition, 'spam');
+  assert.equal(orphaned.events[0].eventType, 'spam');
+  assert.equal(orphaned.events[0].fromStatus, 'converted_inquiry');
+
+  const historicallyLinked = triageMemory({
+    triageStatus: 'converted_inquiry',
+    archiveDisposition: 'active',
+    orphanedSpamEligible: false
+  });
+  await assert.rejects(
+    () => setEmailThreadDisposition(
+      { emailArchiveRepository: historicallyLinked.repository }, administrator, 30, 'spam'
+    ),
+    (error) => error.statusCode === 409
+  );
+  assert.equal(historicallyLinked.thread.triageStatus, 'converted_inquiry');
+
+  const managerCopy = triageMemory({
+    triageStatus: 'converted_inquiry',
+    archiveDisposition: 'active'
+  });
+  await assert.rejects(
+    () => setEmailThreadDisposition(
+      { emailArchiveRepository: managerCopy.repository },
+      { id: 2, roles: [ROLES.SALES_MANAGER] },
+      30,
+      'spam'
+    ),
+    (error) => error.statusCode === 409
+  );
+
+  const linkedCopy = triageMemory({
+    triageStatus: 'converted_inquiry',
+    archiveDisposition: 'active',
+    inquiryId: 91
+  });
+  await assert.rejects(
+    () => setEmailThreadDisposition(
+      { emailArchiveRepository: linkedCopy.repository },
+      administrator,
+      30,
+      'spam'
+    ),
+    (error) => error.statusCode === 409
+  );
 });
 
 test('spam cleanup summary is administrator-only and immediate during system debugging', async () => {

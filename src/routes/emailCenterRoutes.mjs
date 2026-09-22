@@ -10,6 +10,7 @@ import { formatPlainEmailForReading, resolveInlineEmailContent } from '../utils/
 import {
   canPurgeEmailThread,
   canPurgeEmailSpam,
+  canReclassifyOrphanedConvertedInquiryAsSpam,
   EmailArchiveError,
   getEmailCleanupSummary,
   getVisibleEmailAttachment,
@@ -267,6 +268,11 @@ export function emailCenterRoutes({
       const backMailbox = String(req.query.mailbox || thread.mailboxKey || '').trim().toLowerCase();
       const backCategory = emailCategory(String(req.query.category || ''));
       const canTriage = ['pending', 'outbound_only'].includes(thread.triageStatus || 'pending');
+      const canReclassifyAsSpam = await canReclassifyOrphanedConvertedInquiryAsSpam(
+        dependencies,
+        req.currentUser,
+        thread
+      );
       const linkableOpportunities = thread.opportunityId || !canTriage
         ? []
         : await listEmailLinkableOpportunities(dependencies, req.currentUser);
@@ -287,6 +293,7 @@ export function emailCenterRoutes({
         backMailbox,
         backCategory,
         canTriage,
+        canReclassifyAsSpam,
         canManageEmailCleanup,
         canDeleteThread,
         deleteBlockedReason,

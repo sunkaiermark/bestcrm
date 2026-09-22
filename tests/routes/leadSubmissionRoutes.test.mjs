@@ -16,7 +16,9 @@ async function buildApp({
   receiptAssignedUserId = 2,
   receiptStatus = 'new',
   attachments = [],
-  uploadDir
+  uploadDir,
+  customerRepository,
+  contactRepository
 } = {}) {
   const calls = [];
   const user = {
@@ -117,7 +119,9 @@ async function buildApp({
         attachments.push(...created);
         return created;
       }
-    }
+    },
+    customerRepository,
+    contactRepository
   });
   const agent = request.agent(app);
   await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
@@ -301,7 +305,68 @@ test('assigned sales manager sees approve return and reject controls on lead det
     assert.match(page.text, />Sales manager review</);
     assert.match(page.text, /workflow-compact-row workflow-approve-row/);
     assert.match(page.text, /workflow-compact-row workflow-reject-row/);
+    assert.equal((page.text.match(/class="lead-review-action-fields/g) || []).length, 3);
+    assert.match(page.text, /lead-review-action-fields lead-review-action-fields-single/);
     assert.match(page.text, /name="reason" type="text" required maxlength="1000"/);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('duplicate customer approval returns to the lead review page with actionable matching details', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-duplicate-customer-'));
+  const duplicate = {
+    id: 44,
+    customerCode: 'C000044',
+    name: 'Acme',
+    ownerUserId: 8,
+    ownerDisplayName: 'Sales Two',
+    contactCount: 3
+  };
+  try {
+    const manager = await buildApp({
+      uploadDir,
+      currentUserRoles: [ROLES.SALES_MANAGER],
+      receiptAssignedUserId: 7,
+      customerRepository: {
+        async listCustomers() { return [duplicate]; },
+        async findDuplicatesByName() { return [duplicate]; },
+        async createCustomer() { throw new Error('should not create a duplicate customer'); }
+      },
+      contactRepository: {
+        async listContacts() { return []; }
+      }
+    });
+
+    const response = await manager.agent.post('/lead-submissions/11/approve')
+      .type('form')
+      .send({
+        createMissingRecords: '1',
+        customerId: '',
+        companyName: 'Acme',
+        salespersonId: '8',
+        title: 'Preserved opportunity title',
+        estimatedAmount: '125000',
+        deliveryCycle: '16 weeks',
+        expectedBidDate: '2026-12-15',
+        requirementText: 'Preserved requirement',
+        reviewNote: 'Preserved review note'
+      });
+
+    assert.equal(response.status, 409);
+    assert.match(response.text, /Duplicate customer found/);
+    assert.match(response.text, /Select this existing customer above; do not create a duplicate/);
+    assert.match(response.text, /C000044/);
+    assert.match(response.text, /Sales Two/);
+    assert.match(response.text, />3<\/td>/);
+    assert.match(response.text, /action="\/lead-submissions\/11\/approve"/);
+    assert.match(response.text, /name="title" value="Preserved opportunity title"/);
+    assert.match(response.text, /name="estimatedAmount" value="125000"/);
+    assert.match(response.text, /name="deliveryCycle" value="16 weeks"/);
+    assert.match(response.text, /name="expectedBidDate" value="2026-12-15"/);
+    assert.match(response.text, />Preserved requirement<\/textarea>/);
+    assert.match(response.text, /name="reviewNote"[^>]*value="Preserved review note"/);
+    assert.doesNotMatch(response.text, /^Duplicate customer$/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

@@ -170,6 +170,24 @@ test('individual email deletion allows confirmed spam and keeps the non-spam bus
   assert.match(calls[0].sql, /outbound\.direction = 'outbound'/);
 });
 
+test('orphaned converted mail reclassification excludes outbound and historical business dependencies', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [{ eligible: false }] };
+    }
+  });
+  assert.equal(await repository.isOrphanedConvertedInquirySpamEligible(8199), false);
+  assert.deepEqual(calls[0].params, [8199]);
+  assert.match(calls[0].sql, /thread\.triage_status = 'converted_inquiry'/);
+  assert.match(calls[0].sql, /outbound\.direction = 'outbound'/);
+  assert.match(calls[0].sql, /opportunity_activity_links/);
+  assert.match(calls[0].sql, /quotation_package_versions/);
+  assert.match(calls[0].sql, /external_reply\.thread_id <> thread\.id/);
+  assert.match(calls[0].sql, /business_event\.event_type IN/);
+});
+
 test('email purge repository writes the audit before deleting the isolated email graph', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({

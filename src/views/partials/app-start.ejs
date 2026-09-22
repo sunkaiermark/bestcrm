@@ -2829,6 +2829,36 @@
         border-top: 1px solid var(--line);
       }
 
+      .lead-review-action-list .workflow-compact-row {
+        align-items: center;
+        display: grid;
+        grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
+      }
+
+      .lead-review-action-list .workflow-action-button {
+        min-width: 0;
+        overflow-wrap: anywhere;
+        white-space: normal;
+        width: 100%;
+      }
+
+      .lead-review-action-fields {
+        display: grid;
+        gap: 10px 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        min-width: 0;
+      }
+
+      .lead-review-action-fields-single {
+        grid-template-columns: minmax(0, 1fr);
+      }
+
+      .lead-review-action-list .workflow-inline-field {
+        flex-basis: auto;
+        min-width: 0;
+        width: 100%;
+      }
+
       .lead-secondary-decision-list {
         margin-top: 0;
       }
@@ -4118,6 +4148,16 @@
         .lead-attachment-picker .secondary-action {
           text-align: center;
           width: 100%;
+        }
+
+        .lead-review-action-list .workflow-compact-row,
+        .lead-review-action-fields {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .lead-review-action-list .workflow-inline-field {
+          grid-template-columns: minmax(0, 1fr);
+          gap: 6px;
         }
 
         .account-security-grid,

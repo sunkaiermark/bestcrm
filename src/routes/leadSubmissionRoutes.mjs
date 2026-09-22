@@ -213,7 +213,11 @@ async function loadLeadFormOptions(dependencies, actor) {
   };
 }
 
-async function renderLeadDetailPage(dependencies, req, res, submission) {
+async function renderLeadDetailPage(dependencies, req, res, submission, {
+  statusCode = 200,
+  duplicateCustomers = [],
+  approvalInput = {}
+} = {}) {
   const [attachments, reviewEvents, formOptions] = await Promise.all([
     dependencies.inquiryAttachmentRepository.listByInquiry(submission.id),
     typeof dependencies.inquiryRepository.listLeadReviewEvents === 'function'
@@ -232,12 +236,14 @@ async function renderLeadDetailPage(dependencies, req, res, submission) {
           : []
       ])
     : [[], []];
-  res.render('lead-submissions/detail', {
+  res.status(statusCode).render('lead-submissions/detail', {
     submission,
     attachments,
     reviewEvents,
     customers,
     contacts,
+    duplicateCustomers,
+    approvalInput,
     countryOptions: CUSTOMER_COUNTRIES,
     ...formOptions,
     canReview,
@@ -719,6 +725,27 @@ export function leadSubmissionRoutes({
       );
       res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
+      if (error instanceof DuplicateCustomerError) {
+        try {
+          const submission = await loadVisibleSubmission(
+            dependencies,
+            req.currentUser,
+            req.params.id
+          );
+          if (!submission) {
+            res.status(404).send('Lead submission not found');
+            return;
+          }
+          await renderLeadDetailPage(dependencies, req, res, submission, {
+            statusCode: 409,
+            duplicateCustomers: error.duplicates,
+            approvalInput: req.body
+          });
+        } catch (renderError) {
+          next(renderError);
+        }
+        return;
+      }
       handleLeadError(error, res, next);
     }
   });
