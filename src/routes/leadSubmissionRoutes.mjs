@@ -26,7 +26,6 @@ import { canViewOpportunity } from '../services/opportunityService.mjs';
 import {
   approveSalesLead,
   canEditLeadSubmission,
-  canReassignLeadReviewer,
   canReviewLeadSubmission,
   canSubmitNewLead,
   canViewLeadSubmission,
@@ -243,7 +242,6 @@ async function renderLeadDetailPage(dependencies, req, res, submission) {
     ...formOptions,
     canReview,
     canEdit: canEditLeadSubmission(req.currentUser, submission),
-    canReassign: canReassignLeadReviewer(req.currentUser, submission),
     isEmailLead: submission.sourceChannel === 'email'
       || Number(submission.rawPayload?.emailThreadId) > 0
   });

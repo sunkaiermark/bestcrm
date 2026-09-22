@@ -307,6 +307,22 @@ test('assigned sales manager sees approve return and reject controls on lead det
   }
 });
 
+test('lead detail omits reviewer reassignment because the reviewer role is fixed', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-reassign-ui-'));
+  try {
+    const administrator = await buildApp({
+      uploadDir,
+      currentUserRoles: [ROLES.ADMINISTRATOR]
+    });
+    const page = await administrator.agent.get('/lead-submissions/11');
+    assert.equal(page.status, 200);
+    assert.doesNotMatch(page.text, /action="\/lead-submissions\/11\/reassign"/);
+    assert.doesNotMatch(page.text, />Reassign review manager</);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('salesperson submits multiple lead attachments with stable source indexes', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-multi-upload-'));
   const firstFile = path.join(uploadDir, 'process.txt');

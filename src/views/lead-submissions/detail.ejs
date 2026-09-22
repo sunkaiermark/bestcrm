@@ -152,23 +152,6 @@
           </section>
         <% } %>
 
-        <% if (canReassign) { %>
-          <section class="content-section">
-            <h2><%= t('reassignReviewManager') %></h2>
-            <form class="form-panel compact-form-panel" method="post" action="/lead-submissions/<%= submission.id %>/reassign">
-              <%- csrfField() %>
-              <label>
-                <%= t('reviewSalesManager') %>
-                <select name="assignedUserId" required>
-                  <% for (const manager of reviewManagers) { %><option value="<%= manager.id %>"<%= Number(submission.assignedUserId) === Number(manager.id) ? ' selected' : '' %>><%= manager.displayName || manager.username %></option><% } %>
-                </select>
-              </label>
-              <label><%= t('reassignmentReason') %><input name="reason" required maxlength="1000"></label>
-              <button type="submit"><%= t('reassign') %></button>
-            </form>
-          </section>
-        <% } %>
-
         <section class="content-section">
           <h2><%= t('supportingFiles') %></h2>
           <% if (!attachments.length) { %>
