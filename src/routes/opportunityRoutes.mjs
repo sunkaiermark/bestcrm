@@ -37,7 +37,12 @@ import {
 } from '../services/opportunityService.mjs';
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
-import { attachmentPreviewKind, extractDocxPlainText, renderDxfPreview } from '../utils/attachmentPreview.mjs';
+import {
+  attachmentPreviewKind,
+  extractDocxPlainText,
+  extractXlsxPreview,
+  renderDxfPreview
+} from '../utils/attachmentPreview.mjs';
 import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
 import { formatPlainEmailForReading } from '../utils/emailPresentation.mjs';
 import { createMessageLabeler, createWorkflowButtonLabeler, createWorkflowFieldLabeler, createWorkflowTitleLabeler } from '../utils/i18n.mjs';
@@ -1498,6 +1503,17 @@ export function opportunityRoutes({
           attachment,
           downloadUrl,
           paragraphs: extractDocxPlainText(docxBuffer)
+        });
+        return;
+      }
+      if (kind === 'spreadsheet') {
+        const spreadsheetBuffer = await readFile(filePath);
+        res.status(200).render('attachments/spreadsheet-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          preview: extractXlsxPreview(spreadsheetBuffer)
         });
         return;
       }

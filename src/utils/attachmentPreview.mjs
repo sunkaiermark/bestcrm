@@ -21,6 +21,9 @@ export function attachmentPreviewKind(attachment) {
   if (extension === '.docx') {
     return 'docx';
   }
+  if (['.xlsx', '.xlsm', '.xltx', '.xltm'].includes(extension)) {
+    return 'spreadsheet';
+  }
   if (extension === '.doc') {
     return 'unsupported-doc';
   }
@@ -180,38 +183,63 @@ function findEndOfCentralDirectory(buffer) {
   return -1;
 }
 
-function zipEntryBuffer(buffer, entryName) {
+function zipEntries(buffer) {
   const endOffset = findEndOfCentralDirectory(buffer);
   if (endOffset < 0) {
-    return null;
+    return [];
   }
   const entryCount = buffer.readUInt16LE(endOffset + 10);
   let centralOffset = buffer.readUInt32LE(endOffset + 16);
+  const entries = [];
   for (let entryIndex = 0; entryIndex < entryCount; entryIndex += 1) {
-    if (buffer.readUInt32LE(centralOffset) !== 0x02014b50) {
-      return null;
+    if (centralOffset + 46 > buffer.length || buffer.readUInt32LE(centralOffset) !== 0x02014b50) {
+      return [];
     }
     const compressionMethod = buffer.readUInt16LE(centralOffset + 10);
     const compressedSize = buffer.readUInt32LE(centralOffset + 20);
+    const uncompressedSize = buffer.readUInt32LE(centralOffset + 24);
     const filenameLength = buffer.readUInt16LE(centralOffset + 28);
     const extraLength = buffer.readUInt16LE(centralOffset + 30);
     const commentLength = buffer.readUInt16LE(centralOffset + 32);
     const localOffset = buffer.readUInt32LE(centralOffset + 42);
     const filename = buffer.subarray(centralOffset + 46, centralOffset + 46 + filenameLength).toString('utf8');
-    if (filename === entryName) {
-      const localNameLength = buffer.readUInt16LE(localOffset + 26);
-      const localExtraLength = buffer.readUInt16LE(localOffset + 28);
-      const dataStart = localOffset + 30 + localNameLength + localExtraLength;
-      const data = buffer.subarray(dataStart, dataStart + compressedSize);
-      if (compressionMethod === 0) {
-        return data;
-      }
-      if (compressionMethod === 8) {
-        return inflateRawSync(data);
-      }
+    entries.push({
+      filename,
+      compressionMethod,
+      compressedSize,
+      uncompressedSize,
+      localOffset
+    });
+    centralOffset += 46 + filenameLength + extraLength + commentLength;
+  }
+  return entries;
+}
+
+function zipEntryBuffer(buffer, entryName, maxOutputLength = 32 * 1024 * 1024) {
+  const entry = zipEntries(buffer).find((candidate) => candidate.filename === entryName);
+  if (!entry || entry.uncompressedSize > maxOutputLength) {
+    return null;
+  }
+  const { compressionMethod, compressedSize, localOffset } = entry;
+  if (localOffset + 30 > buffer.length || buffer.readUInt32LE(localOffset) !== 0x04034b50) {
+    return null;
+  }
+  const localNameLength = buffer.readUInt16LE(localOffset + 26);
+  const localExtraLength = buffer.readUInt16LE(localOffset + 28);
+  const dataStart = localOffset + 30 + localNameLength + localExtraLength;
+  if (dataStart + compressedSize > buffer.length) {
+    return null;
+  }
+  const data = buffer.subarray(dataStart, dataStart + compressedSize);
+  if (compressionMethod === 0) {
+    return data;
+  }
+  if (compressionMethod === 8) {
+    try {
+      return inflateRawSync(data, { maxOutputLength });
+    } catch {
       return null;
     }
-    centralOffset += 46 + filenameLength + extraLength + commentLength;
   }
   return null;
 }
@@ -227,6 +255,164 @@ function decodeXmlEntities(value) {
 
 function stripXmlTags(value) {
   return String(value).replace(/<[^>]+>/g, '');
+}
+
+function xmlAttribute(attributes, name) {
+  const escapedName = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const match = String(attributes || '').match(new RegExp(`(?:^|\\s)${escapedName}=(['"])([\\s\\S]*?)\\1`, 'i'));
+  return match ? decodeXmlEntities(match[2]) : '';
+}
+
+function textNodes(xml) {
+  const nodes = String(xml || '').match(/<t(?:\s[^>]*)?>[\s\S]*?<\/t>/gi) || [];
+  return nodes.map((node) => decodeXmlEntities(stripXmlTags(node))).join('');
+}
+
+function spreadsheetColumnIndex(reference) {
+  const letters = String(reference || '').match(/^[A-Z]+/i)?.[0]?.toUpperCase();
+  if (!letters) return null;
+  let value = 0;
+  for (const letter of letters) {
+    value = value * 26 + letter.charCodeAt(0) - 64;
+  }
+  return value - 1;
+}
+
+function spreadsheetColumnLabel(index) {
+  let value = Number(index) + 1;
+  let label = '';
+  while (value > 0) {
+    value -= 1;
+    label = String.fromCharCode(65 + (value % 26)) + label;
+    value = Math.floor(value / 26);
+  }
+  return label;
+}
+
+function spreadsheetCellValue(cellXml, cellType, sharedStrings) {
+  if (cellType === 'inlineStr') {
+    return textNodes(cellXml);
+  }
+  const rawValue = cellXml.match(/<v(?:\s[^>]*)?>([\s\S]*?)<\/v>/i)?.[1];
+  if (cellType === 's') {
+    const sharedIndex = Number(rawValue);
+    return Number.isSafeInteger(sharedIndex) ? String(sharedStrings[sharedIndex] ?? '') : '';
+  }
+  if (cellType === 'b') {
+    return rawValue === '1' ? 'TRUE' : rawValue === '0' ? 'FALSE' : '';
+  }
+  if (rawValue !== undefined) {
+    return decodeXmlEntities(rawValue);
+  }
+  const formula = cellXml.match(/<f(?:\s[^>]*)?>([\s\S]*?)<\/f>/i)?.[1];
+  return formula === undefined ? '' : `=${decodeXmlEntities(formula)}`;
+}
+
+function spreadsheetSheetRows(sheetXml, sharedStrings, { maxRows, maxColumns }) {
+  const rows = [];
+  let maxColumn = -1;
+  let truncated = false;
+  let fallbackRowNumber = 1;
+  const rowPattern = /<row\b([^>]*)>([\s\S]*?)<\/row>/gi;
+  for (let rowMatch = rowPattern.exec(sheetXml); rowMatch; rowMatch = rowPattern.exec(sheetXml)) {
+    if (rows.length >= maxRows) {
+      truncated = true;
+      break;
+    }
+    const rowNumber = Number(xmlAttribute(rowMatch[1], 'r')) || fallbackRowNumber;
+    fallbackRowNumber = rowNumber + 1;
+    const cells = [];
+    let fallbackColumn = 0;
+    const cellPattern = /<c\b([^>]*?)(?:\/>|>([\s\S]*?)<\/c>)/gi;
+    for (let cellMatch = cellPattern.exec(rowMatch[2]); cellMatch; cellMatch = cellPattern.exec(rowMatch[2])) {
+      const column = spreadsheetColumnIndex(xmlAttribute(cellMatch[1], 'r')) ?? fallbackColumn;
+      fallbackColumn = column + 1;
+      if (column >= maxColumns) {
+        truncated = true;
+        continue;
+      }
+      const value = spreadsheetCellValue(
+        cellMatch[2] || '',
+        xmlAttribute(cellMatch[1], 't'),
+        sharedStrings
+      );
+      cells[column] = value;
+      maxColumn = Math.max(maxColumn, column);
+    }
+    if (cells.some((value) => String(value || '') !== '')) {
+      rows.push({ number: rowNumber, cells });
+    }
+  }
+  const columnCount = Math.min(maxColumn + 1, maxColumns);
+  return {
+    rows: rows.map((row) => ({
+      ...row,
+      cells: Array.from({ length: columnCount }, (_, index) => row.cells[index] ?? '')
+    })),
+    columnLabels: Array.from({ length: columnCount }, (_, index) => spreadsheetColumnLabel(index)),
+    truncated
+  };
+}
+
+function spreadsheetSheetDefinitions(buffer, workbookXml) {
+  const relationshipsXml = zipEntryBuffer(
+    buffer,
+    'xl/_rels/workbook.xml.rels',
+    2 * 1024 * 1024
+  )?.toString('utf8') || '';
+  const relationshipTargets = new Map();
+  const relationshipPattern = /<Relationship\b([^>]*?)\/?\s*>/gi;
+  for (let match = relationshipPattern.exec(relationshipsXml); match; match = relationshipPattern.exec(relationshipsXml)) {
+    const id = xmlAttribute(match[1], 'Id');
+    const target = xmlAttribute(match[1], 'Target');
+    if (!id || !target) continue;
+    const normalized = target.startsWith('/')
+      ? target.slice(1)
+      : path.posix.normalize(path.posix.join('xl', target));
+    if (normalized.startsWith('xl/worksheets/')) {
+      relationshipTargets.set(id, normalized);
+    }
+  }
+  const definitions = [];
+  const sheetPattern = /<sheet\b([^>]*?)\/?\s*>/gi;
+  for (let match = sheetPattern.exec(workbookXml); match; match = sheetPattern.exec(workbookXml)) {
+    const relationshipId = xmlAttribute(match[1], 'r:id');
+    const filename = relationshipTargets.get(relationshipId);
+    if (!filename) continue;
+    definitions.push({
+      name: xmlAttribute(match[1], 'name') || `Sheet ${definitions.length + 1}`,
+      filename
+    });
+  }
+  if (definitions.length) return definitions;
+  return zipEntries(buffer)
+    .map((entry) => entry.filename)
+    .filter((filename) => /^xl\/worksheets\/sheet\d+\.xml$/i.test(filename))
+    .sort((left, right) => left.localeCompare(right, undefined, { numeric: true }))
+    .map((filename, index) => ({ name: `Sheet ${index + 1}`, filename }));
+}
+
+export function extractXlsxPreview(buffer, {
+  maxSheets = 10,
+  maxRows = 200,
+  maxColumns = 40
+} = {}) {
+  try {
+    const workbookXml = zipEntryBuffer(buffer, 'xl/workbook.xml', 2 * 1024 * 1024)?.toString('utf8') || '';
+    const sharedStringsXml = zipEntryBuffer(buffer, 'xl/sharedStrings.xml', 32 * 1024 * 1024)?.toString('utf8') || '';
+    const sharedStrings = (sharedStringsXml.match(/<si\b[\s\S]*?<\/si>/gi) || []).map(textNodes);
+    const definitions = spreadsheetSheetDefinitions(buffer, workbookXml);
+    let truncated = definitions.length > maxSheets;
+    const sheets = definitions.slice(0, maxSheets).map((definition) => {
+      const sheetXml = zipEntryBuffer(buffer, definition.filename, 32 * 1024 * 1024)?.toString('utf8') || '';
+      const preview = spreadsheetSheetRows(sheetXml, sharedStrings, { maxRows, maxColumns });
+      truncated ||= preview.truncated;
+      return { name: definition.name, ...preview };
+    });
+    return { sheets, truncated, maxSheets, maxRows, maxColumns };
+  } catch {
+    return { sheets: [], truncated: false, maxSheets, maxRows, maxColumns };
+  }
 }
 
 export function extractDocxPlainText(buffer) {

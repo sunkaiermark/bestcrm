@@ -4,6 +4,7 @@ import { createHash } from 'node:crypto';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
+import JSZip from 'jszip';
 import request from 'supertest';
 import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
@@ -97,6 +98,22 @@ async function buildApp({
   const agent = request.agent(app);
   await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
   return { agent, calls };
+}
+
+async function sampleXlsxBuffer() {
+  const zip = new JSZip();
+  zip.file('xl/workbook.xml', `<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Equipment list" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`);
+  zip.file('xl/_rels/workbook.xml.rels', `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships><Relationship Id="rId1" Target="worksheets/sheet1.xml"/></Relationships>`);
+  zip.file('xl/sharedStrings.xml', '<sst><si><t>Equipment</t></si><si><t>Mixer</t></si></sst>');
+  zip.file('xl/worksheets/sheet1.xml', `<worksheet><sheetData>
+    <row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="inlineStr"><is><t>Quantity</t></is></c></row>
+    <row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2"><v>2</v></c></row>
+  </sheetData></worksheet>`);
+  return zip.generateAsync({ type: 'nodebuffer', compression: 'DEFLATE' });
 }
 
 test('salesperson sees only personal lead submissions and cannot open inquiry inbox', async () => {
@@ -312,6 +329,36 @@ test('lead detail exposes authorized attachment preview and download routes', as
       (await unauthorized.agent.get('/lead-submissions/11/attachments/50/preview')).status,
       404
     );
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('lead attachment preview renders xlsx worksheet content without changing the source file', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-xlsx-preview-'));
+  const storedPath = 'equipment.xlsx';
+  const content = await sampleXlsxBuffer();
+  await writeFile(path.join(uploadDir, storedPath), content);
+  const attachments = [{
+    id: 51,
+    inquiryId: 11,
+    sourceIndex: 0,
+    originalName: 'equipment.xlsx',
+    storedPath,
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    fileSize: content.length,
+    sha256: createHash('sha256').update(content).digest('hex')
+  }];
+  try {
+    const { agent } = await buildApp({ uploadDir, attachments });
+    const preview = await agent.get('/lead-submissions/11/attachments/51/preview');
+
+    assert.equal(preview.status, 200);
+    assert.match(preview.text, />Spreadsheet preview</);
+    assert.match(preview.text, />Equipment list</);
+    assert.match(preview.text, />Mixer</);
+    assert.match(preview.text, />Quantity</);
+    assert.match(preview.text, /href="\/lead-submissions\/11\/attachments\/51\/download"/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

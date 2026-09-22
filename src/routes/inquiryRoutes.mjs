@@ -28,7 +28,12 @@ import {
   saveInquiryAsCustomer,
   updateInquiryReview
 } from '../services/inquiryService.mjs';
-import { attachmentPreviewKind, extractDocxPlainText, renderDxfPreview } from '../utils/attachmentPreview.mjs';
+import {
+  attachmentPreviewKind,
+  extractDocxPlainText,
+  extractXlsxPreview,
+  renderDxfPreview
+} from '../utils/attachmentPreview.mjs';
 import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
 
 const INQUIRY_PAGE_SIZE = 50;
@@ -555,6 +560,14 @@ export function inquiryRoutes({
         res.status(200).render('attachments/docx-preview', {
           ...previewContext,
           paragraphs: extractDocxPlainText(docxBuffer)
+        });
+        return;
+      }
+      if (kind === 'spreadsheet') {
+        const spreadsheetBuffer = await readFile(filePath);
+        res.status(200).render('attachments/spreadsheet-preview', {
+          ...previewContext,
+          preview: extractXlsxPreview(spreadsheetBuffer)
         });
         return;
       }

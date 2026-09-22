@@ -1101,6 +1101,69 @@
         white-space: pre-wrap;
       }
 
+      .spreadsheet-preview-stack,
+      .spreadsheet-sheet {
+        display: grid;
+        gap: 12px;
+      }
+
+      .spreadsheet-sheet h3 {
+        font-size: 16px;
+        margin: 0;
+      }
+
+      .spreadsheet-table-wrap {
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        max-height: 68vh;
+        max-width: 100%;
+        overflow: auto;
+      }
+
+      .spreadsheet-preview-table {
+        border-collapse: separate;
+        border-spacing: 0;
+        min-width: 100%;
+        width: max-content;
+      }
+
+      .spreadsheet-preview-table th,
+      .spreadsheet-preview-table td {
+        background: #ffffff;
+        border-bottom: 1px solid var(--line);
+        border-right: 1px solid var(--line);
+        max-width: 420px;
+        min-width: 110px;
+        overflow-wrap: anywhere;
+        padding: 7px 9px;
+        text-align: left;
+        vertical-align: top;
+        white-space: pre-wrap;
+      }
+
+      .spreadsheet-preview-table thead th,
+      .spreadsheet-preview-table tbody th {
+        background: #eef4f8;
+        color: var(--muted);
+        font-weight: 700;
+        min-width: 48px;
+        position: sticky;
+        z-index: 2;
+      }
+
+      .spreadsheet-preview-table thead th {
+        top: 0;
+      }
+
+      .spreadsheet-preview-table thead th:first-child,
+      .spreadsheet-preview-table tbody th {
+        left: 0;
+      }
+
+      .spreadsheet-preview-table thead th:first-child {
+        z-index: 3;
+      }
+
       .list-table th,
       .list-table td {
         padding: 7px 8px;

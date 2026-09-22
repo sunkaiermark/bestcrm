@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 import {
   attachmentPreviewKind,
   extractDocxPlainText,
+  extractXlsxPreview,
   renderDxfPreview
 } from '../../src/utils/attachmentPreview.mjs';
 
@@ -77,10 +78,11 @@ function createStoredZip(entries) {
   return Buffer.concat([...localParts, centralDirectory, end]);
 }
 
-test('attachment preview kind separates direct, dxf, docx, and unsupported dwg files', () => {
+test('attachment preview kind separates direct, dxf, docx, spreadsheet, and unsupported files', () => {
   assert.equal(attachmentPreviewKind({ originalName: 'drawing.dwg', mimeType: 'application/octet-stream' }), 'unsupported-dwg');
   assert.equal(attachmentPreviewKind({ originalName: 'drawing.dxf', mimeType: 'application/octet-stream' }), 'dxf');
   assert.equal(attachmentPreviewKind({ originalName: 'proposal.docx', mimeType: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' }), 'docx');
+  assert.equal(attachmentPreviewKind({ originalName: 'equipment.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'spreadsheet');
   assert.equal(attachmentPreviewKind({ originalName: 'old.doc', mimeType: 'application/msword' }), 'unsupported-doc');
   assert.equal(attachmentPreviewKind({ originalName: 'drawing.pdf', mimeType: 'application/pdf' }), 'direct');
 });
@@ -127,4 +129,47 @@ test('docx preview extracts paragraph text from document xml', () => {
   }]);
 
   assert.deepEqual(extractDocxPlainText(docx), ['First paragraph', 'Second & final']);
+});
+
+test('xlsx preview extracts worksheet names, shared strings, and cell values', () => {
+  const workbook = createStoredZip([
+    {
+      name: 'xl/workbook.xml',
+      data: `<?xml version="1.0" encoding="UTF-8"?>
+<workbook xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
+  <sheets><sheet name="Equipment list" sheetId="1" r:id="rId1"/></sheets>
+</workbook>`
+    },
+    {
+      name: 'xl/_rels/workbook.xml.rels',
+      data: `<?xml version="1.0" encoding="UTF-8"?>
+<Relationships>
+  <Relationship Id="rId1" Target="worksheets/sheet1.xml"/>
+</Relationships>`
+    },
+    {
+      name: 'xl/sharedStrings.xml',
+      data: `<?xml version="1.0" encoding="UTF-8"?>
+<sst><si><t>Equipment</t></si><si><t>Mixer &amp; reactor</t></si></sst>`
+    },
+    {
+      name: 'xl/worksheets/sheet1.xml',
+      data: `<?xml version="1.0" encoding="UTF-8"?>
+<worksheet><sheetData>
+  <row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="inlineStr"><is><t>Quantity</t></is></c></row>
+  <row r="2"><c r="A2" t="s"><v>1</v></c><c r="B2"><v>2</v></c><c r="C2" t="b"><v>1</v></c></row>
+</sheetData></worksheet>`
+    }
+  ]);
+
+  const preview = extractXlsxPreview(workbook);
+
+  assert.equal(preview.sheets.length, 1);
+  assert.equal(preview.sheets[0].name, 'Equipment list');
+  assert.deepEqual(preview.sheets[0].columnLabels, ['A', 'B', 'C']);
+  assert.deepEqual(preview.sheets[0].rows, [
+    { number: 1, cells: ['Equipment', 'Quantity', ''] },
+    { number: 2, cells: ['Mixer & reactor', '2', 'TRUE'] }
+  ]);
+  assert.equal(preview.truncated, false);
 });
