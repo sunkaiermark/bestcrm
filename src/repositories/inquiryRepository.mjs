@@ -475,6 +475,49 @@ export function createInquiryRepository(queryTarget) {
       return mapInquiryRow(result.rows[0]);
     },
 
+    async updatePendingLead(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE inquiries
+        SET
+          source_channel = $2,
+          subject = $3,
+          company_name = $4,
+          contact_name = $5,
+          contact_email = $6,
+          contact_phone = $7,
+          country = $8,
+          product_interest = $9,
+          opportunity_type = $10,
+          requirement_text = $11,
+          priority = $12,
+          assigned_user_id = $13,
+          recommended_salesperson_id = $14,
+          updated_at = now()
+        WHERE id = $1
+          AND submission_type = 'sales_lead'
+          AND status = 'new'
+          AND created_by = $15
+        RETURNING *
+      `, [
+        id,
+        input.sourceChannel,
+        input.subject,
+        input.companyName,
+        input.contactName,
+        input.contactEmail,
+        input.contactPhone,
+        input.country,
+        input.productInterest,
+        input.opportunityType,
+        input.requirementText,
+        input.priority,
+        input.assignedUserId,
+        input.recommendedSalespersonId,
+        input.actorUserId
+      ]);
+      return mapInquiryRow(result.rows[0]);
+    },
+
     async reassignLeadReviewer(id, input) {
       const result = await queryTarget.query(`
         UPDATE inquiries

@@ -63,3 +63,42 @@ test('inquiry attachment selects retain sha256 for list and lookup', async () =>
   assert.match(target.queries[0].sql, /sha256/);
   assert.match(target.queries[1].sql, /sha256/);
 });
+
+test('inquiry attachment repository inserts a staged batch in one atomic statement', async () => {
+  const target = fakeTarget([
+    inquiryAttachmentRow({ id: '92', source_index: '3', original_name: 'layout.pdf' }),
+    inquiryAttachmentRow({ id: '91', source_index: '2' })
+  ]);
+  const repository = createInquiryAttachmentRepository(target);
+
+  const attachments = await repository.createAttachments([
+    {
+      inquiryId: 27,
+      sourceIndex: 2,
+      originalName: 'requirements.pdf',
+      storedPath: 'lead-submissions/2026/09/requirements.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 4096,
+      cid: '',
+      sha256
+    },
+    {
+      inquiryId: 27,
+      sourceIndex: 3,
+      originalName: 'layout.pdf',
+      storedPath: 'lead-submissions/2026/09/layout.pdf',
+      mimeType: 'application/pdf',
+      fileSize: 2048,
+      cid: '',
+      sha256
+    }
+  ]);
+
+  assert.equal(target.queries.length, 1);
+  assert.match(target.queries[0].sql, /jsonb_to_recordset/);
+  assert.doesNotMatch(target.queries[0].sql, /ON CONFLICT/);
+  assert.deepEqual(attachments.map((attachment) => attachment.sourceIndex), [2, 3]);
+  const payload = JSON.parse(target.queries[0].params[0]);
+  assert.equal(payload.length, 2);
+  assert.equal(payload[1].source_index, 3);
+});

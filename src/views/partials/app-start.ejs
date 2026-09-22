@@ -2848,6 +2848,50 @@
         padding: 9px 10px;
       }
 
+      .lead-attachment-draft {
+        border-top: 1px solid var(--line);
+        padding-top: 12px;
+      }
+
+      .lead-staged-attachment-list {
+        margin-top: 8px;
+      }
+
+      .lead-attachment-picker {
+        align-items: end;
+        display: grid;
+        gap: 8px 10px;
+        grid-template-columns: minmax(240px, 1fr) auto;
+        margin-top: 10px;
+      }
+
+      .lead-attachment-picker > label {
+        grid-column: 1 / -1;
+        margin: 0;
+      }
+
+      .lead-attachment-picker input[type="file"] {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        min-width: 0;
+        padding: 9px 10px;
+        width: 100%;
+      }
+
+      .lead-attachment-hint,
+      .lead-attachment-status {
+        margin: 8px 0 0;
+      }
+
+      .lead-staged-attachment-list .link-button {
+        background: transparent;
+        border: 0;
+        color: #991b1b;
+        font-weight: 600;
+        padding: 0;
+      }
+
       .email-recipient-line {
         color: var(--muted);
         font-size: 12px;
@@ -4061,6 +4105,19 @@
 
         .lead-attachment-list .inline-actions {
           grid-column: auto;
+        }
+
+        .lead-attachment-picker {
+          grid-template-columns: 1fr;
+        }
+
+        .lead-attachment-picker > label {
+          grid-column: auto;
+        }
+
+        .lead-attachment-picker .secondary-action {
+          text-align: center;
+          width: 100%;
         }
 
         .account-security-grid,

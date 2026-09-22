@@ -33,7 +33,7 @@
           </div>
           <div class="inline-actions">
             <a class="secondary-action" href="/lead-submissions" title="<%= t('backToList') %>" aria-label="<%= t('backToList') %>"><span aria-hidden="true">←</span> <%= t('backShort') %></a>
-            <% if (canResubmit) { %><a class="quick-action" href="/lead-submissions/<%= submission.id %>/edit"><%= t('editAndResubmit') %></a><% } %>
+            <% if (canEdit) { %><a class="quick-action" href="/lead-submissions/<%= submission.id %>/edit"><%= t(submission.status === 'returned' ? 'editAndResubmit' : 'editLead') %></a><% } %>
             <% if (submission.convertedOpportunityId) { %><a class="quick-action" href="/opportunities/<%= submission.convertedOpportunityId %>"><%= t('viewOpportunity') %></a><% } %>
             <% if (Number(submission.rawPayload?.emailThreadId) > 0) { %><a class="secondary-action" href="/email-center/threads/<%= submission.rawPayload.emailThreadId %>"><%= t('viewSourceEmail') %></a><% } %>
           </div>

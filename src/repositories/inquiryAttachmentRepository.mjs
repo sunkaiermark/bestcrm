@@ -64,6 +64,54 @@ export function createInquiryAttachmentRepository(queryTarget) {
       return mapInquiryAttachmentRow(result.rows[0]);
     },
 
+    async createAttachments(inputs = []) {
+      if (!inputs.length) return [];
+      const payload = inputs.map((input) => ({
+        inquiry_id: input.inquiryId,
+        source_index: input.sourceIndex,
+        original_name: input.originalName,
+        stored_path: input.storedPath,
+        mime_type: input.mimeType,
+        file_size: input.fileSize,
+        cid: input.cid || '',
+        sha256: input.sha256
+      }));
+      const result = await queryTarget.query(`
+        INSERT INTO inquiry_attachments (
+          inquiry_id,
+          source_index,
+          original_name,
+          stored_path,
+          mime_type,
+          file_size,
+          cid,
+          sha256
+        )
+        SELECT
+          item.inquiry_id,
+          item.source_index,
+          item.original_name,
+          item.stored_path,
+          item.mime_type,
+          item.file_size,
+          item.cid,
+          item.sha256
+        FROM jsonb_to_recordset($1::jsonb) AS item(
+          inquiry_id bigint,
+          source_index integer,
+          original_name text,
+          stored_path text,
+          mime_type text,
+          file_size bigint,
+          cid text,
+          sha256 text
+        )
+        RETURNING *
+      `, [JSON.stringify(payload)]);
+      return result.rows.map(mapInquiryAttachmentRow)
+        .sort((left, right) => left.sourceIndex - right.sourceIndex);
+    },
+
     async listByInquiry(inquiryId) {
       const result = await queryTarget.query(`
         ${inquiryAttachmentSelect}

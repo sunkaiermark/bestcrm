@@ -216,6 +216,9 @@ const emptyInquiryRepository = {
   async resubmitLead() {
     throw new Error('Inquiry repository is not configured');
   },
+  async updatePendingLead() {
+    throw new Error('Inquiry repository is not configured');
+  },
   async reassignLeadReviewer() {
     throw new Error('Inquiry repository is not configured');
   },
@@ -241,6 +244,9 @@ const emptyInquiryAttachmentRepository = {
     return null;
   },
   async createAttachment() {
+    throw new Error('Inquiry attachment repository is not configured');
+  },
+  async createAttachments() {
     throw new Error('Inquiry attachment repository is not configured');
   }
 };

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
   approveSalesLead,
+  canEditLeadSubmission,
   canReassignLeadReviewer,
   canResubmitLeadSubmission,
   canReviewLeadSubmission,
@@ -15,7 +16,8 @@ import {
   rejectSalesLead,
   resubmitSalesLead,
   returnSalesLead,
-  submitSalesLead
+  submitSalesLead,
+  updatePendingSalesLead
 } from '../../src/services/leadSubmissionService.mjs';
 
 const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
@@ -64,12 +66,56 @@ test('every active CRM user can submit while only the assigned sales manager can
   assert.equal(canReviewLeadSubmission(manager, assignedLead), true);
   assert.equal(canReviewLeadSubmission({ ...manager, id: 3 }, assignedLead), false);
   assert.equal(canResubmitLeadSubmission(engineer, { ...assignedLead, status: 'returned' }), true);
+  assert.equal(canEditLeadSubmission(engineer, assignedLead), true);
+  assert.equal(canEditLeadSubmission(engineer, { ...assignedLead, status: 'returned' }), true);
+  assert.equal(canEditLeadSubmission(engineer, { ...assignedLead, status: 'converted' }), false);
   assert.equal(canReassignLeadReviewer({ id: 1, isActive: true, roles: [ROLES.ADMINISTRATOR] }, assignedLead), true);
   assert.equal(canReviewLeadSubmission({
     id: 2,
     isActive: true,
     roles: [ROLES.ADMINISTRATOR]
   }, assignedLead), false);
+});
+
+test('creator can edit a pending lead without changing its status and the edit is audited', async () => {
+  let lead = workflowLead();
+  const events = [];
+  const dependencies = {
+    inquiryRepository: {
+      async findLeadByIdForUpdate() { return lead; },
+      async updatePendingLead(id, input) {
+        lead = { ...lead, ...input, status: 'new' };
+        return lead;
+      },
+      async createLeadReviewEvent(input) { events.push(input); return input; }
+    },
+    userRepository: {
+      async listUsersWithRoles() { return [manager, salesperson]; }
+    }
+  };
+
+  const updated = await updatePendingSalesLead(dependencies, salesperson, 11, {
+    sourceChannel: 'referral',
+    assignedUserId: '2',
+    companyName: 'Acme corrected',
+    requirementText: 'Need a 6 t/h dryer'
+  });
+
+  assert.equal(updated.status, 'new');
+  assert.equal(updated.companyName, 'Acme corrected');
+  assert.equal(updated.requirementText, 'Need a 6 t/h dryer');
+  assert.equal(events[0].eventType, 'creator_edited');
+  assert.equal(events[0].fromStatus, 'new');
+  assert.equal(events[0].toStatus, 'new');
+
+  await assert.rejects(
+    () => updatePendingSalesLead(dependencies, { ...salesperson, id: 8 }, 11, {
+      assignedUserId: '2',
+      companyName: 'Wrong owner',
+      requirementText: 'Must not update'
+    }),
+    /Forbidden/
+  );
 });
 
 test('only active sales managers can review a submitted lead', () => {

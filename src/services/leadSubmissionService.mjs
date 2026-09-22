@@ -65,6 +65,13 @@ export function canResubmitLeadSubmission(user, inquiry) {
     && Number(inquiry.createdBy) === Number(user.id);
 }
 
+export function canEditLeadSubmission(user, inquiry) {
+  return canSubmitNewLead(user)
+    && inquiry?.submissionType === 'sales_lead'
+    && ['new', 'returned'].includes(inquiry.status)
+    && Number(inquiry.createdBy) === Number(user.id);
+}
+
 export function canReassignLeadReviewer(user, inquiry) {
   return canSubmitNewLead(user)
     && hasRole(user, ROLES.ADMINISTRATOR)
@@ -423,6 +430,35 @@ export async function resubmitSalesLead(dependencies, actor, leadId, input = {})
       reason: text(input.resubmissionNote)
     });
     return resubmitted;
+  });
+}
+
+export async function updatePendingSalesLead(dependencies, actor, leadId, input = {}) {
+  return withLeadTransaction(dependencies, async (repositories) => {
+    const lead = await lockLead(repositories.inquiryRepository, leadId);
+    if (!lead) throw new Error('Lead submission not found');
+    if (!canEditLeadSubmission(actor, lead) || lead.status !== 'new') {
+      if (lead.status !== 'new') throw new Error('Lead already processed');
+      forbidden();
+    }
+    const normalized = normalizeLeadResubmissionInput(input, actor, lead);
+    if (!normalized.requirementText) throw new Error('Requirement is required');
+    if (!normalized.companyName && !normalized.contactName && !normalized.contactEmail && !normalized.contactPhone) {
+      throw new Error('Company or contact is required');
+    }
+    await validateLeadRouting(repositories.userRepository, normalized);
+    const updated = await repositories.inquiryRepository.updatePendingLead(lead.id, normalized);
+    if (!updated) throw new Error('Lead already processed');
+    await createLeadReviewEvent(repositories.inquiryRepository, {
+      inquiryId: lead.id,
+      eventType: 'creator_edited',
+      fromStatus: 'new',
+      toStatus: 'new',
+      actorUserId: actor.id,
+      assignedUserId: normalized.assignedUserId,
+      reason: ''
+    });
+    return updated;
   });
 }
 

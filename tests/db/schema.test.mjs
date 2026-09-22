@@ -70,6 +70,7 @@ const inquiryAttachmentPurgeJobsMigrationPath = new URL('../../src/db/migrations
 const salesLeadReviewWorkflowMigrationPath = new URL('../../src/db/migrations/069_sales_lead_review_workflow.sql', import.meta.url);
 const emailInlineAttachmentMetadataMigrationPath = new URL('../../src/db/migrations/070_email_inline_attachment_metadata.sql', import.meta.url);
 const emailMessageCanonicalIdentityMigrationPath = new URL('../../src/db/migrations/071_email_message_canonical_identity.sql', import.meta.url);
+const leadCreatorEditAuditMigrationPath = new URL('../../src/db/migrations/072_lead_creator_edit_audit.sql', import.meta.url);
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
@@ -544,6 +545,14 @@ test('sales lead review workflow adds returned and rejected states with immutabl
   assert.match(sql, /Lead review events are immutable/);
   assert.match(sql, /Converted sales leads are immutable and cannot be deleted/);
   assert.match(sql, /BEFORE UPDATE OR DELETE ON inquiries/);
+});
+
+test('lead creator edit audit permits only a pending-to-pending creator edit event', async () => {
+  const sql = await readFile(leadCreatorEditAuditMigrationPath, 'utf8');
+
+  assert.match(sql, /'creator_edited'/);
+  assert.match(sql, /event_type = 'creator_edited' AND from_status = 'new' AND to_status = 'new'/);
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS lead_review_events_transition_check/);
 });
 
 test('opportunity material versions migration creates unified approval version records', async () => {
