@@ -68,7 +68,7 @@ service_is_active() {
 
 nginx_has_maintenance_fallback() {
   nginx -T 2>&1 \
-    | grep -Eq 'error_page[[:space:]]+502[[:space:]]+503[[:space:]]+504[[:space:]]+=503[[:space:]]+/bestcrm-maintenance\.html;'
+    | grep -E 'error_page[[:space:]]+502[[:space:]]+503[[:space:]]+504[[:space:]]+=503[[:space:]]+/bestcrm-maintenance\.html;' >/dev/null
 }
 
 ensure_upload_access() {

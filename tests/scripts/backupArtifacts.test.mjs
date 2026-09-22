@@ -296,6 +296,8 @@ test('production deployment prepares online, serializes releases, and uses a sho
   assert.match(deployScript, /bash "\$BACKUP_SCRIPT"/);
   assert.match(deployScript, /BESTCRM_MAINTENANCE_DRAIN_SECONDS/);
   assert.match(deployScript, /nginx_has_maintenance_fallback/);
+  assert.match(deployScript, /nginx -T 2>&1\s*\\\s*\| grep -E .* >\/dev\/null/);
+  assert.doesNotMatch(deployScript, /nginx -T 2>&1\s*\\\s*\| grep -Eq/);
   assert.match(deployScript, /BESTCRM deploy phase: install the scoped Nginx maintenance fallback/);
   assert.match(deployScript, /bash "\$NGINX_INSTALLER"/);
   assert.match(deployScript, /mv -Tf "\$next_link" "\$CURRENT_APP"/);
@@ -325,6 +327,8 @@ test('Nginx maintenance fallback installer is scoped, validated, and recoverable
   assert.match(installer, /nginx -t/);
   assert.match(installer, /restore_on_failure/);
   assert.match(installer, /systemctl reload nginx\.service/);
+  assert.match(installer, /nginx -T 2>&1 \| grep -E .* >\/dev\/null/);
+  assert.doesNotMatch(installer, /nginx -T 2>&1 \| grep -Eq/);
   assert.match(snippet, /error_page 502 503 504 =503 \/bestcrm-maintenance\.html/);
   assert.match(snippet, /Retry-After "60" always/);
   assert.doesNotMatch(installer, /ssl_certificate/);

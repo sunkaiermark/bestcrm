@@ -94,7 +94,7 @@ install -o root -g root -m 0644 "$TMP_DIR/site.next" "$SITE_FILE"
 nginx -t
 systemctl reload nginx.service
 
-nginx -T 2>&1 | grep -Eq 'error_page[[:space:]]+502[[:space:]]+503[[:space:]]+504[[:space:]]+=503[[:space:]]+/bestcrm-maintenance\.html;'
+nginx -T 2>&1 | grep -E 'error_page[[:space:]]+502[[:space:]]+503[[:space:]]+504[[:space:]]+=503[[:space:]]+/bestcrm-maintenance\.html;' >/dev/null
 trap - ERR
 
 echo "NGINX_MAINTENANCE_FALLBACK=installed"
