@@ -247,6 +247,10 @@ test('production backup and rollback scripts record and enforce artifact checksu
     backupScript,
     /ATTACHMENT_EVIDENCE_EXPORTER="\$\{BESTCRM_ATTACHMENT_EVIDENCE_EXPORTER:-\$APP_DIR\/scripts\/export-attachment-evidence-inventory\.mjs\}"/
   );
+  assert.match(
+    backupScript,
+    /ENV_READER="\$\{BESTCRM_ENV_READER:-\$APP_DIR\/scripts\/read-env-value\.mjs\}"/
+  );
   assert.match(backupScript, /attachment_evidence_inventory_sha256=\$ATTACHMENT_EVIDENCE_INVENTORY_SHA256/);
   assert.match(backupScript, /email-outbound/);
   assert.match(backupScript, /lead-submissions\/\.staging/);
@@ -264,6 +268,10 @@ test('production backup and rollback scripts record and enforce artifact checksu
   assert.match(rollbackScript, /verify_backup_checksum "\$EMAIL_EVIDENCE_INVENTORY"/);
   assert.match(rollbackScript, /tar -tzf "\$UPLOAD_BACKUP"/);
   assert.match(rollbackScript, /BESTCRM_ALLOW_LEGACY_BACKUP/);
+  assert.match(
+    rollbackScript,
+    /ENV_READER="\$\{BESTCRM_ENV_READER:-\$CURRENT_APP\/scripts\/read-env-value\.mjs\}"/
+  );
 });
 
 test('production deployment and rollback keep uploads private but traversable by the service user', async () => {
@@ -306,6 +314,10 @@ test('production deployment prepares online, serializes releases, and uses a sho
   assert.match(deployScript, /mv -Tf "\$next_link" "\$CURRENT_APP"/);
   assert.match(deployScript, /wait_for_health/);
   assert.match(deployScript, /restore_after_failure/);
+  assert.match(
+    deployScript,
+    /ENV_READER="\$\{BESTCRM_ENV_READER:-\$CURRENT_APP\/scripts\/read-env-value\.mjs\}"/
+  );
 
   const prepareIndex = deployScript.indexOf('npm ci --omit=dev');
   const backupIndex = deployScript.indexOf('"$BACKUP_SCRIPT"', prepareIndex);
