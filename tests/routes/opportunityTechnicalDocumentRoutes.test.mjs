@@ -148,7 +148,7 @@ test('assigned Quotation Engineer sees equipment and immutable document versions
   const { agent } = await createTechnicalDocumentAgent({ language: 'zh' });
   const response = await agent.get('/opportunities/20/technical-documents');
   assert.equal(response.status, 200);
-  assert.match(response.text, /商机技术资料/);
+  assert.match(response.text, /技术资料/);
   assert.match(response.text, /Main Mixer/);
   assert.match(response.text, /OPP-20-01-DATASHEET-V1/);
   assert.match(response.text, /新增设备/);

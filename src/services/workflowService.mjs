@@ -374,7 +374,7 @@ function materialVersionRepository(repositories) {
   return repositories.opportunityMaterialVersionRepository;
 }
 
-async function createPendingMaterialVersion({ action, actor, opportunityId, repositories }) {
+async function createPendingMaterialVersion({ action, actor, opportunityId, payload, repositories }) {
   const materialType = materialSubmissionTypes.get(action);
   if (!materialType) {
     return null;
@@ -385,7 +385,14 @@ async function createPendingMaterialVersion({ action, actor, opportunityId, repo
     status: 'pending',
     submittedBy: actor.id
   });
-  if (version && typeof repositories.attachmentRepository?.bindUnboundToMaterialVersion === 'function') {
+  if (version && payload?.technicalDraft?.sourceKind === 'uploaded_file') {
+    const bound = await repositories.attachmentRepository?.bindSelectedToMaterialVersion?.({
+      attachmentId: payload.technicalDraft.uploadedAttachmentId,
+      opportunityId: Number(opportunityId),
+      opportunityMaterialVersionId: version.id
+    });
+    if (!bound) throw new WorkflowValidationError('The uploaded technical file could not be bound to this version');
+  } else if (version && typeof repositories.attachmentRepository?.bindUnboundToMaterialVersion === 'function') {
     await repositories.attachmentRepository.bindUnboundToMaterialVersion({
       opportunityId: Number(opportunityId),
       category: materialType,
@@ -468,6 +475,16 @@ async function payloadWithTechnicalDraft({ action, opportunityId, payload, repos
   );
   if (!draft || draft.status !== 'ready' || (draft.validationIssues || []).length) {
     throw new WorkflowValidationError('A validated ready project technical draft is required');
+  }
+  if (draft.sourceKind === 'uploaded_file') {
+    const file = draft.uploadedAttachmentId
+      ? await repositories.attachmentRepository?.findById?.(draft.uploadedAttachmentId)
+      : null;
+    if (!file || file.opportunityId !== Number(opportunityId)
+        || file.category !== 'technical_solution' || file.retiredAt
+        || file.opportunityMaterialVersionId || !file.sha256) {
+      throw new WorkflowValidationError('Upload a valid technical file before submitting this draft');
+    }
   }
   return {
     ...payload,
@@ -560,7 +577,7 @@ async function persistSubmissionData({ action, actor, opportunityId, payload, re
         throw new WorkflowValidationError('The project technical draft could not be submitted');
       }
     }
-    await createPendingMaterialVersion({ action, actor, opportunityId, repositories });
+    await createPendingMaterialVersion({ action, actor, opportunityId, payload, repositories });
     return;
   }
 
@@ -573,7 +590,7 @@ async function persistSubmissionData({ action, actor, opportunityId, payload, re
       actor,
       payload
     }));
-    await createPendingMaterialVersion({ action, actor, opportunityId, repositories });
+    await createPendingMaterialVersion({ action, actor, opportunityId, payload, repositories });
   }
 }
 
@@ -609,10 +626,19 @@ async function persistTechnicalSolutionReviewData({ action, actor, opportunity, 
       if (typeof draftRepository.getDraftDetail === 'function') {
         approvedDraft = await draftRepository.getDraftDetail(approvedDraft.id) || approvedDraft;
       }
+      const sourceAttachment = approvedDraft.sourceKind === 'uploaded_file'
+        ? await repositories.attachmentRepository?.findById?.(approvedDraft.uploadedAttachmentId)
+        : null;
+      if (approvedDraft.sourceKind === 'uploaded_file'
+          && (!sourceAttachment || sourceAttachment.opportunityId !== Number(opportunityId)
+            || sourceAttachment.category !== 'technical_solution' || sourceAttachment.retiredAt)) {
+        throw new WorkflowValidationError('Approved technical file is unavailable');
+      }
       const documents = await repositories.technicalDocumentService.generateApprovedDocuments({
         draft: approvedDraft,
         opportunity,
-        reviewer: actor
+        reviewer: actor,
+        sourceAttachment
       });
       await draftRepository.saveApprovedDocuments({
         draftId: approvedDraft.id,
@@ -829,6 +855,17 @@ export async function applyWorkflowAction({
     payload: technicalPayload,
     repositories
   });
+  if (action === ACTIONS.REJECT_TECHNICAL_SOLUTION
+      && !String(effectivePayload.reason || effectivePayload.comment || '').trim()) {
+    const reviewDraftId = Number(effectivePayload.reviewDraftId);
+    const hasReviewFile = Number.isInteger(reviewDraftId) && reviewDraftId > 0
+      && typeof repositories.opportunityTechnicalDraftRepository?.hasReviewAttachments === 'function'
+      && await repositories.opportunityTechnicalDraftRepository.hasReviewAttachments({
+        draftId: reviewDraftId,
+        opportunityId: Number(opportunityId)
+      });
+    if (!hasReviewFile) throw new WorkflowValidationError('A text reason or review file is required');
+  }
   assertTechnicalPlanSubmitDate(action, effectivePayload);
 
   const after = transition({

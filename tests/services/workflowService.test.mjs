@@ -928,6 +928,45 @@ test('submit commercial quote requires commercial quote attachment before side e
   ]);
 });
 
+test('technical manager rejection accepts a linked review file without text and denies an unlinked file claim', async () => {
+  const before = {
+    id: 10,
+    status: STATUSES.TECHNICAL_SOLUTION_PENDING,
+    quotationEngineerId: 3,
+    technicalManagerId: 4
+  };
+  const repositories = createMaterialRepositories(before);
+  repositories.opportunityTechnicalDraftRepository = {
+    async hasReviewAttachments({ draftId, opportunityId }) {
+      repositories.calls.push(['hasReviewAttachments', draftId, opportunityId]);
+      return draftId === 41 && opportunityId === 10;
+    }
+  };
+  const rejected = await applyWorkflowAction({
+    actor: { id: 4, roles: [ROLES.TECHNICAL_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.REJECT_TECHNICAL_SOLUTION,
+    payload: { reviewDraftId: 41 },
+    repositories
+  });
+  assert.equal(rejected.status, STATUSES.TECHNICAL_SOLUTION_REJECTED);
+  assert.ok(repositories.calls.some(([name, draftId, opportunityId]) => name === 'hasReviewAttachments'
+    && draftId === 41 && opportunityId === 10));
+
+  const invalidRepositories = createMaterialRepositories(before);
+  invalidRepositories.opportunityTechnicalDraftRepository = {
+    async hasReviewAttachments() { return false; }
+  };
+  await assert.rejects(applyWorkflowAction({
+    actor: { id: 4, roles: [ROLES.TECHNICAL_MANAGER] },
+    opportunityId: 10,
+    action: ACTIONS.REJECT_TECHNICAL_SOLUTION,
+    payload: { reviewDraftId: 41 },
+    repositories: invalidRepositories
+  }), /A text reason or review file is required/);
+  assert.deepEqual(invalidRepositories.calls, [['findOpportunity', 10]]);
+});
+
 test('versioned technical draft submission is required and frozen inside the existing workflow', async () => {
   const before = {
     id: 10,
@@ -984,6 +1023,54 @@ test('versioned technical draft submission is required and frozen inside the exi
   assert.equal(legacyVersionCall[1].opportunityTechnicalDraftId, 41);
   assert.match(legacyVersionCall[1].summary, /TS-D1 generated from MX-100 TPL-R1/);
   assert.ok(repositories.calls.some(([method]) => method === 'submitTechnicalDraft'));
+});
+
+test('uploaded TS-D submission binds only its selected file to the pending material version', async () => {
+  const before = {
+    id: 10, opportunityNo: 'OPP-10', title: 'Mixer Project',
+    status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    salespersonId: 1, salesManagerId: 2, quotationEngineerId: 3, technicalManagerId: null
+  };
+  const file = {
+    id: 81, opportunityId: 10, category: 'technical_solution',
+    originalName: 'Agreement.pdf', sha256: 'a'.repeat(64),
+    opportunityMaterialVersionId: null, retiredAt: null
+  };
+  const repositories = createMaterialRepositories(before, [file, {
+    id: 82, opportunityId: 10, category: 'technical_solution',
+    sha256: 'b'.repeat(64), opportunityMaterialVersionId: null, retiredAt: null
+  }]);
+  repositories.attachmentRepository.findById = async (id) => Number(id) === 81 ? file : null;
+  repositories.attachmentRepository.bindSelectedToMaterialVersion = async (input) => {
+    repositories.calls.push(['bindSelectedTechnicalFile', input]);
+    return [81];
+  };
+  repositories.opportunityTechnicalDraftRepository = {
+    supportsVersionedTechnicalApproval: true,
+    async findSubmissionCandidate() {
+      return {
+        id: 41, opportunityId: 10, status: 'ready', sourceKind: 'uploaded_file',
+        draftRevisionNo: 1, templateNameSnapshot: 'Technical Agreement',
+        uploadedAttachmentId: 81, uploadedFile: { originalName: 'Agreement.pdf' },
+        validationIssues: []
+      };
+    },
+    async submitForApproval(input) {
+      repositories.calls.push(['submitTechnicalDraft', input]);
+      return { id: 41, status: 'pending' };
+    }
+  };
+  await applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+    payload: { technicalDraftId: 41 },
+    repositories
+  });
+  assert.deepEqual(repositories.calls.find(([name]) => name === 'bindSelectedTechnicalFile')[1], {
+    attachmentId: 81, opportunityId: 10, opportunityMaterialVersionId: 300
+  });
+  assert.equal(repositories.calls.some(([name]) => name === 'bindAttachmentsToMaterialVersion'), false);
 });
 
 test('technical approval creates immutable TS-V documents while rejection clones the next TS-D draft', async () => {

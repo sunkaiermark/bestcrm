@@ -194,6 +194,20 @@ export function createAttachmentRepository(queryTarget) {
         input.opportunityMaterialVersionId
       ]);
       return result.rows.map((row) => Number(row.id));
+    },
+
+    async bindSelectedToMaterialVersion(input) {
+      const result = await queryTarget.query(`
+        UPDATE attachments
+        SET opportunity_material_version_id = $3
+        WHERE id = $1
+          AND opportunity_id = $2
+          AND category = 'technical_solution'
+          AND opportunity_material_version_id IS NULL
+          AND retired_at IS NULL
+        RETURNING id
+      `, [input.attachmentId, input.opportunityId, input.opportunityMaterialVersionId]);
+      return result.rows.length === 1;
     }
   };
 }

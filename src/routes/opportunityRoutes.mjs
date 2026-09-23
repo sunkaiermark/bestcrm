@@ -36,6 +36,10 @@ import {
   updateOpportunity
 } from '../services/opportunityService.mjs';
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
+import {
+  canCreateOpportunityTechnicalDraft,
+  canReviewOpportunityTechnicalDraft
+} from '../services/opportunityTechnicalDraftService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import {
   attachmentPreviewKind,
@@ -1047,7 +1051,9 @@ export function opportunityRoutes({
         materialVersions,
         teamMembers,
         quotationPackages,
-        correspondenceThreads
+        correspondenceThreads,
+        technicalDrafts,
+        technicalReviewAttachments
       ] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
@@ -1072,8 +1078,19 @@ export function opportunityRoutes({
         quotationPackageRepository?.supportsQuotationPackages === true
           ? quotationPackageRepository.listByOpportunity(opportunity.id)
           : [],
-        emailCenterEnabled ? loadOpportunityCorrespondence(emailArchiveRepository, opportunity.id) : []
+        emailCenterEnabled ? loadOpportunityCorrespondence(emailArchiveRepository, opportunity.id) : [],
+        opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true
+          && typeof opportunityTechnicalDraftRepository.listByOpportunity === 'function'
+          ? opportunityTechnicalDraftRepository.listByOpportunity(opportunity.id)
+          : [],
+        opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true
+          && typeof opportunityTechnicalDraftRepository.listReviewAttachmentsByOpportunity === 'function'
+          ? opportunityTechnicalDraftRepository.listReviewAttachmentsByOpportunity(opportunity.id)
+          : []
       ]);
+      const opportunityWithTeam = { ...opportunity, teamMembers };
+      const activeTechnicalDraft = technicalDrafts.find((draft) => ['draft', 'ready', 'pending'].includes(draft.status)) || null;
+      const isTechnicalPreparationStage = ['technical_solution_in_progress', 'technical_solution_rejected'].includes(opportunity.status);
       const workflowForms = buildWorkflowForms(
         req.currentUser,
         opportunity,
@@ -1094,6 +1111,28 @@ export function opportunityRoutes({
         correspondenceThreads,
         formatPlainEmailForReading,
         materialVersions,
+        technicalFileLimitMb: Math.min(maxUploadMb, 25),
+        technicalDrafts,
+        technicalReviewAttachments,
+        activeTechnicalDraft,
+        canCreateUploadedTechnicalDraft: isTechnicalPreparationStage
+          && !activeTechnicalDraft
+          && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
+        canManageUploadedTechnicalDraft: isTechnicalPreparationStage
+          && activeTechnicalDraft?.sourceKind === 'uploaded_file'
+          && ['draft', 'ready'].includes(activeTechnicalDraft.status)
+          && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
+        canSubmitUploadedTechnicalDraft: isTechnicalPreparationStage
+          && activeTechnicalDraft?.sourceKind === 'uploaded_file'
+          && activeTechnicalDraft.status === 'ready'
+          && !activeTechnicalDraft.uploadedFile?.materialVersionId
+          && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
+        canWithdrawTechnicalDraft: activeTechnicalDraft?.status === 'pending'
+          && opportunity.status === 'technical_solution_pending'
+          && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
+        canReviewTechnicalDraft: activeTechnicalDraft
+          ? canReviewOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam, activeTechnicalDraft)
+          : false,
         versionedTechnicalDraftsEnabled: opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true,
         currentUserId: req.currentUser.id,
         currentUserIsSupportingEngineer: isSupportingEngineer(req.currentUser, {
@@ -1416,6 +1455,10 @@ export function opportunityRoutes({
       }
       if (!canDeleteAttachment(req.currentUser, opportunity, attachment)) {
         res.status(403).send('Attachment cannot be deleted after submission');
+        return;
+      }
+      if (await opportunityTechnicalDraftRepository?.isAttachmentLinked?.(attachment.id)) {
+        res.status(403).send('Technical draft files cannot be deleted');
         return;
       }
       await retireOpportunityAttachment({

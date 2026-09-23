@@ -13,11 +13,34 @@
         <header class="page-header">
           <div>
             <h1><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %></h1>
-            <div class="muted"><%= draft.templateCodeSnapshot %> · TPL-R<%= draft.templateRevisionNoSnapshot %></div>
+            <div class="muted"><%= draft.sourceKind === 'uploaded_file' ? draft.templateNameSnapshot : `${draft.templateCodeSnapshot} · TPL-R${draft.templateRevisionNoSnapshot}` %></div>
           </div>
           <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span>
         </header>
 
+        <% if (draft.sourceKind === 'uploaded_file') { %>
+          <section class="detail-section">
+            <h2><%= t('technicalFile') %></h2>
+            <% if (canManageDraft) { %>
+              <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/file" enctype="multipart/form-data">
+                <%- csrfField() %>
+                <div class="technical-upload-field">
+                  <label for="technical-draft-detail-file-<%= draft.id %>"><%= draft.uploadedFile ? t('replaceTechnicalFile') : t('uploadTechnicalFile') %></label>
+                  <%- include('../partials/_localized-file-picker', { pickerId: `technical-draft-detail-file-${draft.id}`, inputName: 'attachment', labelText: draft.uploadedFile ? t('replaceTechnicalFile') : t('uploadTechnicalFile') }) %>
+                </div>
+                <p class="muted"><%= t('technicalFileUploadLimit') %> <%= technicalFileLimitMb %> MB</p>
+                <button type="submit"><%= t('upload') %></button>
+              </form>
+            <% } %>
+            <% if (draft.uploadedFile) { %>
+              <p><%= draft.uploadedFile.originalName %>
+                <a href="/opportunities/<%= opportunity.id %>/attachments/<%= draft.uploadedFile.id %>/preview"><%= t('preview') %></a>
+                <a href="/opportunities/<%= opportunity.id %>/attachments/<%= draft.uploadedFile.id %>/download"><%= t('download') %></a>
+              </p>
+              <% if (draft.uploadedFile.materialVersionId && canManageDraft) { %><p class="muted"><%= t('replaceWithdrawnTechnicalFile') %></p><% } %>
+            <% } else { %><p class="muted"><%= t('technicalFileNotUploaded') %></p><% } %>
+          </section>
+        <% } else { %>
         <section class="detail-section">
           <h2><%= t('snapshotAndValidation') %></h2>
           <p class="muted"><%= t('technicalDraftSnapshotNotice') %></p>
@@ -38,6 +61,7 @@
             </form>
           <% } %>
         </section>
+        <% } %>
 
         <% if (canSubmitDraft) { %>
           <section class="detail-section form-panel">
@@ -60,25 +84,18 @@
           </section>
         <% } %>
 
-        <% if (canReviewDraft) { %>
-          <section class="detail-section form-panel">
-            <h2><%= t('technicalManagerReview') %></h2>
-            <p class="muted"><%= t('technicalManagerReviewNotice') %></p>
-            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/review">
-              <%- csrfField() %>
-              <label><%= t('reviewComment') %><textarea name="comment" maxlength="2000"></textarea></label>
-              <div class="inline-actions">
-                <button type="submit" name="decision" value="approve"><%= t('approveTechnicalVersion') %></button>
-                <button class="danger-action" type="submit" name="decision" value="reject"><%= t('returnTechnicalVersion') %></button>
-              </div>
-            </form>
-          </section>
-        <% } %>
+        <% if (canReviewDraft) { %><%- include('../partials/_technical-manager-review', { draft, opportunity, returnTo: 'draft' }) %><% } %>
 
         <% if (draft.status === 'rejected') { %>
           <section class="detail-section validation-warning">
             <h2><%= t('technicalVersionReturned') %></h2>
-            <p><%= draft.reviewComment || '-' %></p>
+            <% if (draft.reviewComment) { %><p><%= draft.reviewComment %></p><% } %>
+            <% if (reviewAttachments.length) { %>
+              <strong><%= t('reviewAttachments') %></strong>
+              <ul>
+                <% for (const file of reviewAttachments) { %><li><%= file.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/download"><%= t('download') %></a></li><% } %>
+              </ul>
+            <% } %>
             <p class="muted"><%= t('returnedDraftCloneNotice') %></p>
           </section>
         <% } %>
@@ -93,6 +110,7 @@
           </section>
         <% } %>
 
+        <% if (draft.sourceKind !== 'uploaded_file') { %>
         <section class="detail-section">
           <h2><%= t('projectVariables') %></h2>
           <p class="muted"><%= t('prefilledVariableNotice') %></p>
@@ -168,6 +186,7 @@
             </article>
           <% } %>
         </section>
+        <% } %>
 
         <section class="detail-section">
           <h2><%= t('draftContributionHistory') %></h2>
@@ -175,4 +194,5 @@
             <% for (const event of draft.events || []) { %><tr><td><%= t(`technicalDraftEvent.${event.eventType}`) %></td><td><%= event.sectionKey ? sectionLabel(event.sectionKey) : '-' %></td><td><%= event.actorDisplayName || event.actorUserId %></td><td><%= event.createdAt || '' %></td></tr><% } %>
           </tbody></table></div>
         </section>
+<script src="/assets/localized-file-picker.js" defer></script>
 <%- include('../partials/app-end') %>

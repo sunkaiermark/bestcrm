@@ -8,7 +8,7 @@
           <% if (canCreateDraft) { %><a class="quick-action" href="/opportunities/<%= opportunity.id %>/technical-drafts/new"><%= t('generateTechnicalDraft') %></a><% } %>
         </header>
 
-        <section class="form-panel"><strong><%= t('technicalDraftSnapshotNotice') %></strong></section>
+        <% if (drafts.some((draft) => draft.sourceKind !== 'uploaded_file')) { %><section class="form-panel"><strong><%= t('technicalDraftSnapshotNotice') %></strong></section><% } %>
         <section class="list-section">
           <div class="list-body">
             <table class="list-table content-fit-table">
@@ -17,7 +17,7 @@
                 <% for (const draft of drafts) { %>
                   <tr>
                 <td><strong><%= draft.formalVersionLabel || draft.draftLabel %></strong><% if (draft.formalVersionLabel) { %><br><span class="muted"><%= draft.draftLabel %></span><% } %></td>
-                    <td><%= draft.templateCodeSnapshot %> · TPL-R<%= draft.templateRevisionNoSnapshot %></td>
+                    <td><%= draft.sourceKind === 'uploaded_file' ? draft.templateNameSnapshot : `${draft.templateCodeSnapshot} · TPL-R${draft.templateRevisionNoSnapshot}` %></td>
                     <td><span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span></td>
                     <td><%= draft.updatedByDisplayName || draft.updatedBy %></td>
                     <td><%= draft.updatedAt || '' %></td>

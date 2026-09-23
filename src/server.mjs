@@ -709,7 +709,7 @@ export function createApp(options = {}) {
   const technicalTemplateRepository = options.technicalTemplateRepository
     || (pool ? createTechnicalTemplateRepository(pool) : emptyTechnicalTemplateRepository);
   const technicalDocumentService = options.technicalDocumentService
-    || createTechnicalDocumentService({ fontPath: config.technicalDocumentFontPath });
+    || createTechnicalDocumentService({ fontPath: config.technicalDocumentFontPath, uploadDir: config.uploadDir });
   const technicalMaterialDocumentService = options.technicalMaterialDocumentService
     || createTechnicalMaterialDocumentService({ fontPath: config.technicalDocumentFontPath });
   const workflowTransaction = 'workflowTransaction' in options
@@ -945,6 +945,8 @@ export function createApp(options = {}) {
     todoRepository,
     workflowEventRepository,
     workflowTransaction,
+    uploadDir: config.uploadDir,
+    maxUploadMb: config.maxUploadMb,
     workflowAction: options.workflowAction
   }));
   app.use(quotationPackageRoutes({

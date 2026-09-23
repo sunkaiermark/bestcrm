@@ -1,4 +1,5 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
+import { isTechnicalDeliverableType } from '../domain/technicalDeliverables.mjs';
 import {
   localizedTechnicalField,
   opportunityTechnicalDraftLabel,
@@ -452,6 +453,47 @@ export async function generateOpportunityTechnicalDraft(repositories, actor, opp
   return repositories.opportunityTechnicalDraftRepository.createDraft(snapshot);
 }
 
+function ensureTemplateDraft(draft) {
+  if (draft?.sourceKind === 'uploaded_file') {
+    conflict('Uploaded technical files are edited by replacing the file before submission');
+  }
+}
+
+export async function createUploadedOpportunityTechnicalDraft(repository, actor, opportunity, deliverableType, language = 'en') {
+  ensureLead(actor, opportunity);
+  if (opportunity.archivedAt || !['technical_solution_in_progress', 'technical_solution_rejected'].includes(opportunity.status)) {
+    conflict('Technical files can only be prepared during the technical proposal stage');
+  }
+  const normalizedType = text(deliverableType);
+  if (!isTechnicalDeliverableType(normalizedType)) {
+    invalid('Select Datasheet, Technical Agreement, or Bidding Document');
+  }
+  const names = {
+    datasheet: 'Datasheet',
+    technical_agreement: 'Technical Agreement',
+    bidding_document: 'Bidding Document'
+  };
+  const contentLanguage = technicalContentLanguage(language);
+  return repository.createDraft({
+    opportunityId: Number(opportunity.id),
+    templateRevisionId: null,
+    sourceKind: 'uploaded_file',
+    deliverableType: normalizedType,
+    language: contentLanguage,
+    templateCodeSnapshot: normalizedType.toUpperCase(),
+    templateNameSnapshot: names[normalizedType],
+    templateRevisionNoSnapshot: 1,
+    contentSchemaSnapshot: { schemaVersion: 1, sections: [] },
+    variableSchemaSnapshot: [],
+    variableValues: {},
+    selectedClauses: [],
+    renderedContent: { schemaVersion: 1, sections: [], variables: [] },
+    sourceMetadata: { schemaVersion: 1, sourceKind: 'uploaded_file', deliverableType: normalizedType },
+    validationIssues: [],
+    actorUserId: Number(actor.id)
+  });
+}
+
 export async function listOpportunityTechnicalDrafts(repository, actor, opportunity) {
   ensureViewer(actor, opportunity);
   return repository.listByOpportunity(opportunity.id);
@@ -467,6 +509,7 @@ export async function getOpportunityTechnicalDraft(repository, actor, opportunit
 export async function updateOpportunityTechnicalDraftVariables(repository, actor, opportunity, draft, submittedValues) {
   ensureViewer(actor, opportunity);
   ensureEditableDraft(draft);
+  ensureTemplateDraft(draft);
   const lead = isProjectLeadEngineer(actor, opportunity);
   const allowedSections = actorSectionKeys(actor, draft);
   if (!lead && !isSupportingEngineer(actor, opportunity)) forbidden();
@@ -496,6 +539,7 @@ export async function updateOpportunityTechnicalDraftVariables(repository, actor
 export async function updateOpportunityTechnicalDraftSection(repository, actor, opportunity, draft, sectionKey, input) {
   ensureViewer(actor, opportunity);
   ensureEditableDraft(draft);
+  ensureTemplateDraft(draft);
   if (!sectionKeyPattern.test(text(sectionKey))) invalid('Technical section is invalid');
   if (!canEditOpportunityTechnicalDraftSection(actor, opportunity, draft, sectionKey)) forbidden();
   const sourceSection = (draft.contentSchemaSnapshot?.sections || []).find((section) => section.key === sectionKey);
@@ -528,6 +572,7 @@ export async function updateOpportunityTechnicalDraftSection(repository, actor, 
 export async function updateOpportunityTechnicalDraftClauses(repositories, actor, opportunity, draft, clauseIds) {
   ensureLead(actor, opportunity);
   ensureEditableDraft(draft);
+  ensureTemplateDraft(draft);
   const requestedIds = normalizeIdList(clauseIds);
   const clauses = await repositories.technicalTemplateRepository.listClauses({ publishedOnly: true });
   const clausesById = new Map(clauses
@@ -575,6 +620,7 @@ export async function updateOpportunityTechnicalDraftClauses(repositories, actor
 export async function assignOpportunityTechnicalDraftSection(repository, actor, opportunity, draft, input) {
   ensureLead(actor, opportunity);
   ensureEditableDraft(draft);
+  ensureTemplateDraft(draft);
   const sectionKey = text(input.sectionKey);
   if (!sectionKeyPattern.test(sectionKey)
       || !(draft.contentSchemaSnapshot?.sections || []).some((section) => section.key === sectionKey)) {
@@ -602,6 +648,7 @@ export async function assignOpportunityTechnicalDraftSection(repository, actor, 
 export async function removeOpportunityTechnicalDraftSectionAssignment(repository, actor, opportunity, draft, assignmentId) {
   ensureLead(actor, opportunity);
   ensureEditableDraft(draft);
+  ensureTemplateDraft(draft);
   const removed = await repository.removeAssignment({
     draftId: draft.id,
     assignmentId: positiveInteger(assignmentId, 'Section assignment'),
@@ -614,6 +661,9 @@ export async function removeOpportunityTechnicalDraftSectionAssignment(repositor
 export async function markOpportunityTechnicalDraftReady(repository, actor, opportunity, draft) {
   ensureLead(actor, opportunity);
   ensureEditableDraft(draft);
+  if (draft.sourceKind === 'uploaded_file' && !draft.uploadedAttachmentId) {
+    conflict('Upload the technical file before submitting it for approval');
+  }
   const validationIssues = validateTechnicalDraftVariables(draft.variableSchemaSnapshot, draft.variableValues);
   if (validationIssues.length) {
     conflict('Required or engineering-range variables must be corrected before submission', validationIssues);
@@ -634,6 +684,9 @@ export function technicalDraftDisplayLabel(draft) {
 }
 
 export function technicalDraftSubmissionSummary(draft) {
+  if (draft.sourceKind === 'uploaded_file') {
+    return `${technicalDraftLabel(draft)} · ${draft.templateNameSnapshot} · ${draft.uploadedFile?.originalName || 'uploaded file'}`;
+  }
   const language = technicalContentLanguage(draft.language);
   const sections = (draft.renderedContent?.sections || [])
     .filter((section) => section.included !== false)

@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import JSZip from 'jszip';
 import { createTechnicalDocumentService } from '../../src/services/technicalDocumentService.mjs';
 
@@ -65,6 +68,35 @@ test('approved technical solution generates DOCX and PDF with stable names and S
     assert.ok(document.byteSize > 1000);
     assert.equal(document.byteSize, document.content.length);
     assert.equal(document.sha256, createHash('sha256').update(document.content).digest('hex'));
+  }
+});
+
+test('approved uploaded technical file is the exact official TS-V content', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-technical-version-'));
+  try {
+    const content = Buffer.from('%PDF-1.4\nApproved datasheet');
+    const storedPath = 'datasheet.pdf';
+    await writeFile(path.join(uploadDir, storedPath), content);
+    const sha256 = createHash('sha256').update(content).digest('hex');
+    const sourceAttachment = {
+      storedPath, originalName: 'Customer Datasheet.pdf', mimeType: 'application/pdf',
+      fileSize: content.length, sha256
+    };
+    const service = createTechnicalDocumentService({ uploadDir });
+    const draft = approvedDraft({ sourceKind: 'uploaded_file', formalVersionNo: 2 });
+    const documents = await service.generateApprovedDocuments({ draft, sourceAttachment });
+    assert.equal(documents.length, 1);
+    assert.equal(documents[0].format, 'uploaded');
+    assert.equal(documents[0].documentNo, 'TS-V2');
+    assert.equal(documents[0].originalName, 'Customer Datasheet.pdf');
+    assert.equal(documents[0].sha256, sha256);
+    assert.deepEqual(documents[0].content, content);
+    await assert.rejects(
+      service.generateApprovedDocuments({ draft, sourceAttachment: { ...sourceAttachment, sha256: '0'.repeat(64) } }),
+      /integrity verification/
+    );
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
   }
 });
 

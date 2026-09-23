@@ -1,0 +1,5 @@
+<div class="localized-file-picker" data-localized-file-picker data-empty-label="<%= t('noFileSelected') %>">
+  <input class="localized-file-input" id="<%= pickerId %>" type="file" name="<%= inputName %>" required aria-label="<%= labelText %>" aria-describedby="<%= pickerId %>-status">
+  <span class="localized-file-button" aria-hidden="true"><%= t('chooseFile') %></span>
+  <span class="localized-file-status" id="<%= pickerId %>-status" data-localized-file-status aria-hidden="true"><%= t('noFileSelected') %></span>
+</div>

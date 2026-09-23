@@ -1,8 +1,15 @@
 import { Router } from 'express';
+import { randomUUID } from 'node:crypto';
+import { mkdirSync } from 'node:fs';
+import { rm } from 'node:fs/promises';
+import path from 'node:path';
+import multer from 'multer';
+import { TECHNICAL_DELIVERABLE_TYPES } from '../domain/technicalDeliverables.mjs';
 import { ACTIONS } from '../domain/workflow.mjs';
 import { localizedTechnicalField } from '../domain/technicalTemplates.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { applyWorkflowAction, WorkflowValidationError } from '../services/workflowService.mjs';
+import { persistUploadedOpportunityAttachment } from '../services/attachmentIntegrityService.mjs';
 import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
 import {
   assignOpportunityTechnicalDraftSection,
@@ -10,6 +17,7 @@ import {
   canEditOpportunityTechnicalDraftSection,
   canReviewOpportunityTechnicalDraft,
   canViewOpportunityTechnicalDraft,
+  createUploadedOpportunityTechnicalDraft,
   generateOpportunityTechnicalDraft,
   getOpportunityTechnicalDraft,
   listOpportunityTechnicalDrafts,
@@ -85,9 +93,31 @@ export function opportunityTechnicalDraftRoutes({
   todoRepository,
   workflowEventRepository,
   workflowTransaction,
+  uploadDir,
+  maxUploadMb = 25,
   workflowAction = applyWorkflowAction
 }) {
   const router = Router();
+  const technicalFileLimitMb = Math.min(maxUploadMb, 25);
+  const technicalUploadStorage = multer.diskStorage({
+      destination(req, file, callback) {
+        const destination = path.join(path.resolve(uploadDir), String(new Date().getUTCFullYear()), String(new Date().getUTCMonth() + 1).padStart(2, '0'));
+        mkdirSync(destination, { recursive: true });
+        callback(null, destination);
+      },
+      filename(req, file, callback) {
+        const extension = path.extname(file.originalname || '').slice(0, 32);
+        callback(null, `${randomUUID()}${extension}`);
+      }
+    });
+  const technicalFileUpload = multer({
+    storage: technicalUploadStorage,
+    limits: { fileSize: technicalFileLimitMb * 1024 * 1024 }
+  }).single('attachment');
+  const reviewFileUpload = multer({
+    storage: technicalUploadStorage,
+    limits: { fileSize: technicalFileLimitMb * 1024 * 1024, files: 10 }
+  }).array('reviewFiles', 10);
   const dependencies = {
     opportunityRepository,
     opportunityResponsibilityRepository,
@@ -155,7 +185,7 @@ export function opportunityTechnicalDraftRoutes({
           name: localizedTechnicalField(template, 'name', req.language) || template.templateCode,
           application: localizedTechnicalField(template, 'application', req.language)
         }));
-      res.render('opportunity-technical-drafts/new', { opportunity, templates });
+      res.render('opportunity-technical-drafts/new', { opportunity, templates, deliverableTypes: TECHNICAL_DELIVERABLE_TYPES });
     } catch (error) {
       handleError(error, res, next);
     }
@@ -165,14 +195,99 @@ export function opportunityTechnicalDraftRoutes({
     try {
       const opportunity = await loadOpportunity({ req, res, ...dependencies });
       if (!opportunity) return;
-      const draft = await generateOpportunityTechnicalDraft(
-        dependencies,
-        req.currentUser,
-        opportunity,
-        req.body.templateId,
-        req.language
-      );
-      res.redirect(`/opportunities/${opportunity.id}/technical-drafts/${draft.id}`);
+      const draft = req.body.sourceKind === 'uploaded_file'
+        ? await createUploadedOpportunityTechnicalDraft(
+          opportunityTechnicalDraftRepository,
+          req.currentUser,
+          opportunity,
+          req.body.deliverableType,
+          req.language
+        )
+        : await generateOpportunityTechnicalDraft(
+          dependencies,
+          req.currentUser,
+          opportunity,
+          req.body.templateId,
+          req.language
+        );
+      res.redirect(req.body.returnTo === 'opportunity'
+        ? `/opportunities/${opportunity.id}#technical-proposal`
+        : `/opportunities/${opportunity.id}/technical-drafts/${draft.id}`);
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/opportunities/:opportunityId/technical-drafts/:draftId/file', async (req, res, next) => {
+    try {
+      const context = await loadDraftContext(dependencies, req, res);
+      if (!context) return;
+      if (!canCreateOpportunityTechnicalDraft(req.currentUser, context.opportunity)
+          || context.draft.sourceKind !== 'uploaded_file'
+          || !['draft', 'ready'].includes(context.draft.status)
+          || !['technical_solution_in_progress', 'technical_solution_rejected'].includes(context.opportunity.status)) {
+        res.status(403).send('Technical file upload is not allowed');
+        return;
+      }
+      technicalFileUpload(req, res, async (uploadError) => {
+        if (uploadError) {
+          if (uploadError instanceof multer.MulterError && uploadError.code === 'LIMIT_FILE_SIZE') {
+            res.status(413).send(`File exceeds the ${technicalFileLimitMb} MB upload limit`);
+            return;
+          }
+          next(uploadError);
+          return;
+        }
+        let saved = false;
+        try {
+          if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+            res.status(403).send('Invalid CSRF token');
+            return;
+          }
+          if (!req.file) {
+            res.status(400).send('Technical file is required');
+            return;
+          }
+          const save = async (transactionRepositories = {}) => {
+            const repositories = { ...dependencies, ...transactionRepositories };
+            const previousAttachmentId = context.draft.uploadedAttachmentId || null;
+            const attachment = await persistUploadedOpportunityAttachment({
+              attachmentRepository: repositories.attachmentRepository,
+              uploadDir,
+              file: req.file,
+              opportunityId: context.opportunity.id,
+              category: 'technical_solution',
+              actorUserId: req.currentUser.id
+            });
+            const updated = await repositories.opportunityTechnicalDraftRepository.setUploadedFile({
+              draftId: context.draft.id,
+              attachmentId: attachment.id,
+              previousAttachmentId,
+              actorUserId: req.currentUser.id
+            });
+            if (!updated) throw new WorkflowValidationError('Technical draft is no longer editable', 409);
+            if (previousAttachmentId) {
+              const retired = await repositories.attachmentRepository.retireById({
+                id: previousAttachmentId,
+                actorUserId: req.currentUser.id,
+                reason: 'replaced_before_technical_submission',
+                replacedByAttachmentId: attachment.id
+              });
+              if (!retired) throw new WorkflowValidationError('Previous technical file could not be replaced', 409);
+            }
+          };
+          if (typeof workflowTransaction === 'function') await workflowTransaction(save);
+          else await save();
+          saved = true;
+          res.redirect(req.body.returnTo === 'opportunity'
+            ? `/opportunities/${context.opportunity.id}#technical-proposal`
+            : `/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}`);
+        } catch (error) {
+          handleError(error, res, next);
+        } finally {
+          if (!saved && req.file?.path) await rm(req.file.path, { force: true });
+        }
+      });
     } catch (error) {
       handleError(error, res, next);
     }
@@ -182,8 +297,9 @@ export function opportunityTechnicalDraftRoutes({
     try {
       const context = await loadDraftContext(dependencies, req, res);
       if (!context) return;
-      const clauses = (await technicalTemplateRepository.listClauses({ publishedOnly: true }))
-        .filter((clause) => clause.language === context.draft.language);
+      const clauses = context.draft.sourceKind === 'uploaded_file' ? []
+        : (await technicalTemplateRepository.listClauses({ publishedOnly: true }))
+          .filter((clause) => clause.language === context.draft.language);
       const canLead = canCreateOpportunityTechnicalDraft(req.currentUser, context.opportunity);
       const editableSectionKeys = new Set((context.draft.renderedContent?.sections || [])
         .filter((section) => canEditOpportunityTechnicalDraftSection(
@@ -193,13 +309,18 @@ export function opportunityTechnicalDraftRoutes({
           section.key
         ))
         .map((section) => section.key));
+      const reviewAttachments = typeof opportunityTechnicalDraftRepository.listReviewAttachmentsByDraft === 'function'
+        ? await opportunityTechnicalDraftRepository.listReviewAttachmentsByDraft(context.draft.id)
+        : [];
       res.render('opportunity-technical-drafts/detail', {
         ...context,
         clauses,
+        reviewAttachments,
         canLead,
         canManageDraft: canLead && ['draft', 'ready'].includes(context.draft.status),
         canSubmitDraft: canLead
           && context.draft.status === 'ready'
+          && (context.draft.sourceKind !== 'uploaded_file' || (context.draft.uploadedAttachmentId && !context.draft.uploadedFile?.materialVersionId))
           && ['technical_solution_in_progress', 'technical_solution_rejected'].includes(context.opportunity.status),
         canWithdrawDraft: canLead
           && context.draft.status === 'pending'
@@ -214,7 +335,8 @@ export function opportunityTechnicalDraftRoutes({
           member.roleCode === 'quotation_engineer'
           && member.isActive !== false
           && Number(member.userId) !== Number(context.opportunity.quotationEngineerId)
-        ))
+        )),
+        technicalFileLimitMb
       });
     } catch (error) {
       handleError(error, res, next);
@@ -342,7 +464,9 @@ export function opportunityTechnicalDraftRoutes({
         },
         repositories: workflowRepositories
       });
-      res.redirect(`/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}`);
+      res.redirect(req.body.returnTo === 'opportunity'
+        ? `/opportunities/${context.opportunity.id}#technical-proposal`
+        : `/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}`);
     } catch (error) {
       if (error.message === 'Action not allowed') {
         res.status(403).send('Forbidden');
@@ -371,7 +495,9 @@ export function opportunityTechnicalDraftRoutes({
         action: ACTIONS.WITHDRAW_TECHNICAL_SOLUTION,
         repositories: workflowRepositories
       });
-      res.redirect(`/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}`);
+      res.redirect(req.body.returnTo === 'opportunity'
+        ? `/opportunities/${context.opportunity.id}#technical-proposal`
+        : `/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}`);
     } catch (error) {
       if (error.message === 'Action not allowed') {
         res.status(403).send('Forbidden');
@@ -393,23 +519,104 @@ export function opportunityTechnicalDraftRoutes({
         res.status(403).send('Forbidden');
         return;
       }
-      const action = req.body.decision === 'approve'
-        ? ACTIONS.APPROVE_TECHNICAL_SOLUTION
-        : req.body.decision === 'reject'
-          ? ACTIONS.REJECT_TECHNICAL_SOLUTION
-          : null;
-      if (!action) {
-        res.status(400).send('Technical review decision is invalid');
+      const submitReview = async () => {
+        const files = Array.isArray(req.files) ? req.files : [];
+        let committed = false;
+        try {
+          if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+            res.status(403).send('Invalid CSRF token');
+            return;
+          }
+          const action = req.body.decision === 'approve'
+            ? ACTIONS.APPROVE_TECHNICAL_SOLUTION
+            : req.body.decision === 'reject'
+              ? ACTIONS.REJECT_TECHNICAL_SOLUTION
+              : null;
+          if (!action) {
+            res.status(400).send('Technical review decision is invalid');
+            return;
+          }
+          if (files.length && (action !== ACTIONS.REJECT_TECHNICAL_SOLUTION || context.draft.sourceKind !== 'uploaded_file')) {
+            res.status(400).send('Review files can only accompany a rejected uploaded technical proposal');
+            return;
+          }
+          const comment = action === ACTIONS.APPROVE_TECHNICAL_SOLUTION && context.draft.sourceKind === 'uploaded_file'
+            ? '' : String(req.body.comment || '').trim();
+          if (action === ACTIONS.REJECT_TECHNICAL_SOLUTION && !comment && !files.length) {
+            res.status(400).send('A text reason or review file is required');
+            return;
+          }
+          const applyReview = async (transactionRepositories = {}) => {
+            const repositories = {
+              ...workflowRepositories,
+              ...transactionRepositories,
+              workflowTransaction: null
+            };
+            const attachmentIds = [];
+            for (const file of files) {
+              const attachment = await persistUploadedOpportunityAttachment({
+                attachmentRepository: repositories.attachmentRepository,
+                uploadDir,
+                file,
+                opportunityId: context.opportunity.id,
+                category: 'technical_review',
+                actorUserId: req.currentUser.id
+              });
+              attachmentIds.push(attachment.id);
+            }
+            if (attachmentIds.length) {
+              if (typeof repositories.opportunityTechnicalDraftRepository?.addReviewAttachments !== 'function') {
+                throw new WorkflowValidationError('Technical review attachments are not configured');
+              }
+              await repositories.opportunityTechnicalDraftRepository.addReviewAttachments({
+                draftId: context.draft.id,
+                attachmentIds,
+                reviewerUserId: req.currentUser.id
+              });
+            }
+            await workflowAction({
+              actor: req.currentUser,
+              opportunityId: context.opportunity.id,
+              action,
+              payload: { comment, reviewDraftId: context.draft.id },
+              repositories
+            });
+          };
+          if (typeof workflowTransaction === 'function') await workflowTransaction(applyReview);
+          else await applyReview();
+          committed = true;
+          res.redirect(req.body.returnTo === 'opportunity'
+            ? `/opportunities/${context.opportunity.id}#technical-proposal`
+            : `/opportunities/${context.opportunity.id}/technical-drafts`);
+        } catch (error) {
+          if (error.message === 'Action not allowed') {
+            res.status(403).send('Forbidden');
+          } else if (error instanceof WorkflowValidationError) {
+            res.status(error.statusCode).send(res.locals.messageLabel(error.message));
+          } else {
+            handleError(error, res, next);
+          }
+        } finally {
+          if (!committed) await Promise.all(files.filter((file) => file.path).map((file) => rm(file.path, { force: true })));
+        }
+      };
+      if (context.draft.sourceKind !== 'uploaded_file') {
+        await submitReview();
         return;
       }
-      await workflowAction({
-        actor: req.currentUser,
-        opportunityId: context.opportunity.id,
-        action,
-        payload: { comment: req.body.comment },
-        repositories: workflowRepositories
+      reviewFileUpload(req, res, (uploadError) => {
+        if (uploadError) {
+          if (uploadError instanceof multer.MulterError && uploadError.code === 'LIMIT_FILE_SIZE') {
+            res.status(413).send(`File exceeds the ${technicalFileLimitMb} MB upload limit`);
+          } else if (uploadError instanceof multer.MulterError && ['LIMIT_FILE_COUNT', 'LIMIT_UNEXPECTED_FILE'].includes(uploadError.code)) {
+            res.status(400).send('Too many review files');
+          } else {
+            next(uploadError);
+          }
+          return;
+        }
+        submitReview().catch(next);
       });
-      res.redirect(`/opportunities/${context.opportunity.id}/technical-drafts`);
     } catch (error) {
       if (error.message === 'Action not allowed') {
         res.status(403).send('Forbidden');

@@ -1,0 +1,29 @@
+<section class="detail-section form-panel technical-manager-review">
+  <h2><%= t('technicalManagerReview') %></h2>
+  <% if (draft.sourceKind !== 'uploaded_file') { %><p class="muted"><%= t('technicalManagerReviewNotice') %></p><% } %>
+  <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/review"<% if (draft.sourceKind === 'uploaded_file') { %> enctype="multipart/form-data"<% } %>>
+    <%- csrfField() %>
+    <% if (returnTo === 'opportunity') { %><input type="hidden" name="returnTo" value="opportunity"><% } %>
+    <% if (draft.sourceKind === 'uploaded_file') { %>
+      <div class="inline-actions technical-review-actions technical-review-actions-first">
+        <button type="submit" name="decision" value="approve"><%= t('technicalReviewApprove') %></button>
+        <button class="danger-action" type="submit" name="decision" value="reject"><%= t('technicalReviewReject') %></button>
+      </div>
+      <strong><%= t('technicalReviewRejectReason') %></strong>
+      <label for="technical-review-reason-<%= draft.id %>"><%= t('technicalReviewTextReason') %></label>
+      <textarea id="technical-review-reason-<%= draft.id %>" name="comment" maxlength="2000"></textarea>
+      <label for="technical-review-files-<%= draft.id %>"><%= t('technicalReviewUploadFiles') %></label>
+      <div class="localized-file-picker technical-review-file-picker" data-localized-file-picker data-empty-label="<%= t('noFilesSelected') %>">
+        <input class="localized-file-input" id="technical-review-files-<%= draft.id %>" type="file" name="reviewFiles" multiple aria-label="<%= t('technicalReviewUploadFiles') %>" aria-describedby="technical-review-files-<%= draft.id %>-status">
+        <span class="localized-file-button" aria-hidden="true"><%= t('chooseFiles') %></span>
+        <span class="localized-file-status" id="technical-review-files-<%= draft.id %>-status" data-localized-file-status aria-hidden="true"><%= t('noFilesSelected') %></span>
+      </div>
+    <% } else { %>
+      <label><%= t('reviewComment') %><textarea name="comment" maxlength="2000" placeholder="<%= t('returnReasonRequired') %>"></textarea></label>
+      <div class="inline-actions technical-review-actions">
+        <button type="submit" name="decision" value="approve"><%= t('approveTechnicalVersion') %></button>
+        <button class="danger-action" type="submit" name="decision" value="reject"><%= t('returnTechnicalVersion') %></button>
+      </div>
+    <% } %>
+  </form>
+</section>

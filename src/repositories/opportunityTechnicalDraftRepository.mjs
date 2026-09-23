@@ -25,7 +25,18 @@ function mapDraftRow(row) {
   return {
     id: Number(row.id),
     opportunityId: Number(row.opportunity_id),
-    templateRevisionId: Number(row.template_revision_id),
+    templateRevisionId: numberOrNull(row.template_revision_id),
+    sourceKind: row.source_kind || 'template',
+    deliverableType: row.deliverable_type || 'technical_agreement',
+    uploadedAttachmentId: numberOrNull(row.uploaded_attachment_id),
+    uploadedFile: row.uploaded_attachment_id ? {
+      id: Number(row.uploaded_attachment_id),
+      originalName: row.uploaded_attachment_name || '',
+      mimeType: row.uploaded_attachment_mime_type || 'application/octet-stream',
+      fileSize: Number(row.uploaded_attachment_file_size || 0),
+      sha256: row.uploaded_attachment_sha256 || null,
+      materialVersionId: numberOrNull(row.uploaded_attachment_material_version_id)
+    } : null,
     draftRevisionNo: Number(row.draft_revision_no),
     draftLabel: opportunityTechnicalDraftLabel(row.draft_revision_no),
     sourceDraftId: numberOrNull(row.source_draft_id),
@@ -78,6 +89,17 @@ function mapDocumentRow(row, includeContent = false) {
   return document;
 }
 
+function mapReviewAttachmentRow(row) {
+  return {
+    technicalDraftId: Number(row.technical_draft_id),
+    attachmentId: Number(row.attachment_id),
+    originalName: row.original_name,
+    mimeType: row.mime_type,
+    fileSize: Number(row.file_size),
+    uploadedAt: row.uploaded_at
+  };
+}
+
 function mapAssignmentRow(row) {
   if (!row) return null;
   return {
@@ -118,12 +140,18 @@ const draftSelect = `
     creator.display_name AS created_by_display_name,
     updater.display_name AS updated_by_display_name,
     submitter.display_name AS submitter_display_name,
-    reviewer.display_name AS reviewer_display_name
+    reviewer.display_name AS reviewer_display_name,
+    file_attachment.original_name AS uploaded_attachment_name,
+    file_attachment.mime_type AS uploaded_attachment_mime_type,
+    file_attachment.file_size AS uploaded_attachment_file_size,
+    file_attachment.sha256 AS uploaded_attachment_sha256,
+    file_attachment.opportunity_material_version_id AS uploaded_attachment_material_version_id
   FROM opportunity_technical_drafts d
   JOIN users creator ON creator.id = d.created_by
   JOIN users updater ON updater.id = d.updated_by
   LEFT JOIN users submitter ON submitter.id = d.submitted_by
   LEFT JOIN users reviewer ON reviewer.id = d.reviewed_by
+  LEFT JOIN attachments file_attachment ON file_attachment.id = d.uploaded_attachment_id
 `;
 
 export function createOpportunityTechnicalDraftRepository(queryTarget) {
@@ -193,11 +221,12 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
             template_code_snapshot, template_name_snapshot, template_revision_no_snapshot,
             content_schema_snapshot, variable_schema_snapshot, variable_values,
             selected_clauses, rendered_content, source_metadata, validation_issues,
+            source_kind, deliverable_type,
             created_by, updated_by
           )
           SELECT $1, $2, next_revision.draft_revision_no, 'draft', $3,
             $4, $5, $6, $7::jsonb, $8::jsonb, $9::jsonb,
-            $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $14, $14
+            $10::jsonb, $11::jsonb, $12::jsonb, $13::jsonb, $15, $16, $14, $14
           FROM next_revision
           RETURNING *
         ), inserted_event AS (
@@ -208,6 +237,8 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
             jsonb_build_object(
               'templateRevisionId', template_revision_id,
               'templateRevisionNo', template_revision_no_snapshot,
+              'sourceKind', source_kind,
+              'deliverableType', deliverable_type,
               'draftRevisionNo', draft_revision_no
             )
           FROM inserted
@@ -227,8 +258,38 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
         JSON.stringify(input.renderedContent),
         JSON.stringify(input.sourceMetadata),
         JSON.stringify(input.validationIssues),
-        input.actorUserId
+        input.actorUserId,
+        input.sourceKind || 'template',
+        input.deliverableType || 'technical_agreement'
       ]);
+      return mapDraftRow(result.rows[0]);
+    },
+
+    async setUploadedFile(input) {
+      const result = await queryTarget.query(`
+        WITH updated AS (
+          UPDATE opportunity_technical_drafts
+          SET uploaded_attachment_id = $2,
+              status = 'ready',
+              validation_issues = '[]'::jsonb,
+              updated_by = $3,
+              updated_at = now()
+          WHERE id = $1
+            AND source_kind = 'uploaded_file'
+            AND status IN ('draft', 'ready')
+            AND uploaded_attachment_id IS NOT DISTINCT FROM $4::bigint
+          RETURNING *
+        ), inserted_event AS (
+          INSERT INTO opportunity_technical_draft_events (
+            technical_draft_id, event_type, actor_user_id, details
+          )
+          SELECT id,
+            CASE WHEN $4::bigint IS NULL THEN 'file_uploaded' ELSE 'file_replaced' END,
+            $3, jsonb_build_object('attachmentId', $2::bigint, 'previousAttachmentId', $4::bigint)
+          FROM updated
+        )
+        SELECT * FROM updated
+      `, [input.draftId, input.attachmentId, input.actorUserId, input.previousAttachmentId || null]);
       return mapDraftRow(result.rows[0]);
     },
 
@@ -239,6 +300,16 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
         ORDER BY d.draft_revision_no DESC, d.id DESC
       `, [opportunityId]);
       return result.rows.map(mapDraftRow);
+    },
+
+    async isAttachmentLinked(attachmentId) {
+      const result = await queryTarget.query(`
+        SELECT EXISTS (
+          SELECT 1 FROM opportunity_technical_drafts
+          WHERE uploaded_attachment_id = $1
+        ) AS linked
+      `, [attachmentId]);
+      return result.rows[0]?.linked === true;
     },
 
     async getDraftDetail(draftId) {
@@ -607,13 +678,15 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
             status, language, template_code_snapshot, template_name_snapshot,
             template_revision_no_snapshot, content_schema_snapshot,
             variable_schema_snapshot, variable_values, selected_clauses,
-            rendered_content, source_metadata, validation_issues, created_by, updated_by
+            rendered_content, source_metadata, validation_issues, source_kind,
+            deliverable_type, uploaded_attachment_id, created_by, updated_by
           )
           SELECT opportunity_id, template_revision_id, next_draft_revision_no, id,
             'draft', language, template_code_snapshot, template_name_snapshot,
             template_revision_no_snapshot, content_schema_snapshot,
             variable_schema_snapshot, variable_values, selected_clauses,
-            rendered_content, source_metadata, validation_issues, $2, $2
+            rendered_content, source_metadata, validation_issues, source_kind,
+            deliverable_type, NULL, $2, $2
           FROM next_revision
           RETURNING *
         ), copied_assignments AS (
@@ -683,6 +756,63 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
         ]);
       }
       return saved;
+    },
+
+    async addReviewAttachments({ draftId, attachmentIds, reviewerUserId }) {
+      const linked = [];
+      for (const attachmentId of attachmentIds) {
+        const result = await queryTarget.query(`
+          INSERT INTO opportunity_technical_review_attachments (
+            technical_draft_id, attachment_id, reviewer_user_id
+          ) VALUES ($1, $2, $3)
+          RETURNING attachment_id
+        `, [draftId, attachmentId, reviewerUserId]);
+        linked.push(Number(result.rows[0].attachment_id));
+      }
+      return linked;
+    },
+
+    async hasReviewAttachments({ draftId, opportunityId }) {
+      const result = await queryTarget.query(`
+        SELECT 1
+        FROM opportunity_technical_review_attachments review_file
+        JOIN opportunity_technical_drafts draft ON draft.id = review_file.technical_draft_id
+        JOIN attachments attachment ON attachment.id = review_file.attachment_id
+        WHERE review_file.technical_draft_id = $1
+          AND draft.opportunity_id = $2
+          AND draft.status = 'pending'
+          AND attachment.category = 'technical_review'
+          AND attachment.retired_at IS NULL
+        LIMIT 1
+      `, [draftId, opportunityId]);
+      return result.rows.length > 0;
+    },
+
+    async listReviewAttachmentsByOpportunity(opportunityId) {
+      const result = await queryTarget.query(`
+        SELECT review_file.technical_draft_id, attachment.id AS attachment_id,
+          attachment.original_name, attachment.mime_type, attachment.file_size,
+          attachment.uploaded_at
+        FROM opportunity_technical_review_attachments review_file
+        JOIN opportunity_technical_drafts draft ON draft.id = review_file.technical_draft_id
+        JOIN attachments attachment ON attachment.id = review_file.attachment_id
+        WHERE draft.opportunity_id = $1 AND attachment.retired_at IS NULL
+        ORDER BY review_file.id
+      `, [opportunityId]);
+      return result.rows.map(mapReviewAttachmentRow);
+    },
+
+    async listReviewAttachmentsByDraft(draftId) {
+      const result = await queryTarget.query(`
+        SELECT review_file.technical_draft_id, attachment.id AS attachment_id,
+          attachment.original_name, attachment.mime_type, attachment.file_size,
+          attachment.uploaded_at
+        FROM opportunity_technical_review_attachments review_file
+        JOIN attachments attachment ON attachment.id = review_file.attachment_id
+        WHERE review_file.technical_draft_id = $1 AND attachment.retired_at IS NULL
+        ORDER BY review_file.id
+      `, [draftId]);
+      return result.rows.map(mapReviewAttachmentRow);
     },
 
     async findDocument(draftId, documentId) {

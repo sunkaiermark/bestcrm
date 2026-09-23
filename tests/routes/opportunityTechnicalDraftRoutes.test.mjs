@@ -1,5 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
@@ -67,6 +70,10 @@ async function createDraftAgent(options = {}) {
     id: 41,
     opportunityId: 20,
     templateRevisionId: 9,
+    sourceKind: options.sourceKind || 'template',
+    deliverableType: options.deliverableType || 'technical_agreement',
+    uploadedAttachmentId: options.uploadedAttachmentId || null,
+    uploadedFile: options.uploadedFile || null,
     draftRevisionNo: 1,
     draftLabel: 'TS-D1',
     status: options.draftStatus || 'draft',
@@ -91,6 +98,7 @@ async function createDraftAgent(options = {}) {
     updatedAt: '2026-09-02'
   };
   const calls = [];
+  const reviewAttachments = options.reviewAttachments || [];
   const opportunityTechnicalDraftRepository = {
     async getGenerationContext(id) { calls.push(['getGenerationContext', Number(id)]); return { customerName: 'Acme', opportunityTitle: opportunity.title, productName: 'Mixer', opportunityOwner: 'Sales One' }; },
     async listByOpportunity(id) { calls.push(['listByOpportunity', Number(id)]); return [draft]; },
@@ -100,6 +108,32 @@ async function createDraftAgent(options = {}) {
       return (draft.documents || []).find((document) => Number(document.id) === Number(documentId)) || null;
     },
     async createDraft(input) { calls.push(['createDraft', input]); return { ...draft, ...input }; },
+    async setUploadedFile(input) {
+      calls.push(['setUploadedFile', input]);
+      draft.uploadedAttachmentId = input.attachmentId;
+      draft.status = 'ready';
+      return draft;
+    },
+    async addReviewAttachments(input) {
+      calls.push(['addReviewAttachments', input]);
+      for (const attachmentId of input.attachmentIds) {
+        const attachment = await options.attachmentRepository?.findById(attachmentId);
+        reviewAttachments.push({
+          technicalDraftId: input.draftId,
+          attachmentId,
+          originalName: attachment?.originalName || '',
+          mimeType: attachment?.mimeType || 'application/octet-stream'
+        });
+      }
+      return input.attachmentIds;
+    },
+    async hasReviewAttachments({ draftId, opportunityId }) {
+      calls.push(['hasReviewAttachments', draftId, opportunityId]);
+      return Number(opportunityId) === opportunity.id
+        && reviewAttachments.some((file) => Number(file.technicalDraftId) === Number(draftId));
+    },
+    async listReviewAttachmentsByOpportunity() { return reviewAttachments; },
+    async listReviewAttachmentsByDraft() { return reviewAttachments; },
     async updateVariables(input) { calls.push(['updateVariables', input]); return { ...draft, ...input }; },
     async updateSection(input) { calls.push(['updateSection', input]); return { ...draft, ...input }; },
     async updateClauses(input) { calls.push(['updateClauses', input]); return { ...draft, ...input }; },
@@ -127,6 +161,8 @@ async function createDraftAgent(options = {}) {
     opportunityResponsibilityRepository: {
       async listTeamMembersByOpportunity() { return teamMembers; }
     },
+    ...(options.attachmentRepository ? { attachmentRepository: options.attachmentRepository } : {}),
+    ...(options.uploadDir ? { uploadDir: options.uploadDir } : {}),
     technicalTemplateRepository,
     opportunityTechnicalDraftRepository,
     workflowAction: options.workflowAction
@@ -134,7 +170,7 @@ async function createDraftAgent(options = {}) {
   const agent = request.agent(app);
   if (options.language) await agent.get(`/language?lang=${options.language}&returnTo=/login`);
   await agent.post('/login').type('form').send({ username: currentUser.username, password: 'ChangeMe123!' });
-  return { agent, calls, draft };
+  return { agent, calls, draft, reviewAttachments };
 }
 
 test('anonymous users are redirected from project technical draft routes', async () => {
@@ -156,6 +192,173 @@ test('Project Lead Engineer sees the login-language draft list and generation fr
   assert.equal(created.status, 302);
   assert.equal(created.headers.location, '/opportunities/20/technical-drafts/41');
   assert.ok(calls.some(([method, input]) => method === 'createDraft' && input.language === 'zh'));
+});
+
+test('uploaded technical draft requires one of the three approved deliverable types', async () => {
+  const { agent, calls } = await createDraftAgent();
+  const invalid = await agent.post('/opportunities/20/technical-drafts').type('form').send({
+    sourceKind: 'uploaded_file', deliverableType: 'other'
+  });
+  assert.equal(invalid.status, 400);
+  const created = await agent.post('/opportunities/20/technical-drafts').type('form').send({
+    sourceKind: 'uploaded_file', deliverableType: 'datasheet', returnTo: 'opportunity'
+  });
+  assert.equal(created.status, 302);
+  assert.equal(created.headers.location, '/opportunities/20#technical-proposal');
+  assert.ok(calls.some(([method, input]) => method === 'createDraft'
+    && input.sourceKind === 'uploaded_file'
+    && input.deliverableType === 'datasheet'
+    && input.templateRevisionId === null));
+});
+
+test('uploaded technical file is shown for preview and submission while template editing is hidden', async () => {
+  const uploadedFile = { id: 81, originalName: 'Datasheet.pdf', fileSize: 8 };
+  const { agent } = await createDraftAgent({
+    sourceKind: 'uploaded_file', deliverableType: 'datasheet', draftStatus: 'ready',
+    uploadedAttachmentId: 81, uploadedFile
+  });
+  const detail = await agent.get('/opportunities/20/technical-drafts/41');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Datasheet\.pdf/);
+  assert.match(detail.text, /attachments\/81\/preview/);
+  assert.match(detail.text, /Submit for Technical Approval/);
+  assert.match(detail.text, /data-localized-file-picker data-empty-label="No file selected"/);
+  assert.match(detail.text, />Choose file<\/span>/);
+  assert.match(detail.text, /src="\/assets\/localized-file-picker\.js"/);
+  assert.doesNotMatch(detail.text, /Project Variables|Structured Technical Content|TPL-R1/);
+});
+
+test('project lead upload persists a technical file before submission', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-technical-upload-'));
+  let savedAttachment = null;
+  try {
+    const attachmentRepository = {
+      async createAttachment(input) {
+        savedAttachment = { id: 81, ...input };
+        return savedAttachment;
+      },
+      async findById(id) { return Number(id) === 81 ? savedAttachment : null; }
+    };
+    const { agent, calls } = await createDraftAgent({
+      sourceKind: 'uploaded_file', deliverableType: 'datasheet',
+      uploadDir, attachmentRepository
+    });
+    const uploaded = await agent.post('/opportunities/20/technical-drafts/41/file')
+      .field('returnTo', 'opportunity')
+      .attach('attachment', Buffer.from('%PDF-1.4\nTechnical datasheet'), 'Datasheet.pdf');
+    assert.equal(uploaded.status, 302);
+    assert.equal(uploaded.headers.location, '/opportunities/20#technical-proposal');
+    assert.equal(savedAttachment.category, 'technical_solution');
+    assert.equal(savedAttachment.originalName, 'Datasheet.pdf');
+    assert.equal((await readFile(path.join(uploadDir, savedAttachment.storedPath))).toString(), '%PDF-1.4\nTechnical datasheet');
+    assert.ok(calls.some(([method, input]) => method === 'setUploadedFile' && input.attachmentId === 81));
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('technical manager must enter a rejection reason before the existing review action runs', async () => {
+  const workflowCalls = [];
+  const { agent } = await createDraftAgent({
+    userId: 6, username: 'manager01', roles: [ROLES.TECHNICAL_MANAGER],
+    sourceKind: 'uploaded_file', draftStatus: 'pending',
+    uploadedAttachmentId: 81, uploadedFile: { id: 81, originalName: 'Datasheet.pdf' },
+    workflowAction: async (input) => { workflowCalls.push(input); return {}; }
+  });
+  const detail = await agent.get('/opportunities/20/technical-drafts/41');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Datasheet\.pdf/);
+  assert.match(detail.text, /attachments\/81\/preview/);
+  assert.match(detail.text, /attachments\/81\/download/);
+  assert.match(detail.text, /Reject Reason/);
+  assert.match(detail.text, /Text Reason/);
+  assert.match(detail.text, /Upload Files/);
+  assert.match(detail.text, /name="decision" value="approve">Approve</);
+  assert.match(detail.text, /name="decision" value="reject">Reject</);
+  const missingReason = await agent.post('/opportunities/20/technical-drafts/41/review')
+    .type('form').send({ decision: 'reject', comment: '  ' });
+  assert.equal(missingReason.status, 400);
+  assert.equal(workflowCalls.length, 0);
+  const returned = await agent.post('/opportunities/20/technical-drafts/41/review')
+    .type('form').send({ decision: 'reject', comment: 'Revise capacity', returnTo: 'opportunity' });
+  assert.equal(returned.status, 302);
+  assert.equal(returned.headers.location, '/opportunities/20#technical-proposal');
+  assert.equal(workflowCalls.length, 1);
+});
+
+test('technical manager can reject with a review file instead of text and the file remains available', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-technical-review-'));
+  let savedAttachment = null;
+  const workflowCalls = [];
+  try {
+    const attachmentRepository = {
+      async createAttachment(input) {
+        savedAttachment = { id: 82, ...input };
+        return savedAttachment;
+      },
+      async findById(id) { return Number(id) === 82 ? savedAttachment : null; }
+    };
+    const { agent, calls, draft } = await createDraftAgent({
+      userId: 6, username: 'manager02', roles: [ROLES.TECHNICAL_MANAGER],
+      sourceKind: 'uploaded_file', draftStatus: 'pending',
+      uploadedAttachmentId: 81, uploadedFile: { id: 81, originalName: 'Datasheet.pdf' },
+      uploadDir, attachmentRepository,
+      workflowAction: async (input) => { workflowCalls.push(input); return {}; }
+    });
+    const returned = await agent.post('/opportunities/20/technical-drafts/41/review')
+      .field('decision', 'reject')
+      .field('returnTo', 'opportunity')
+      .attach('reviewFiles', Buffer.from('%PDF-1.4\nReview notes'), 'Review notes.pdf');
+    assert.equal(returned.status, 302);
+    assert.equal(savedAttachment.category, 'technical_review');
+    assert.equal(savedAttachment.originalName, 'Review notes.pdf');
+    assert.equal((await readFile(path.join(uploadDir, savedAttachment.storedPath))).toString(), '%PDF-1.4\nReview notes');
+    assert.ok(calls.some(([method, input]) => method === 'addReviewAttachments' && input.attachmentIds[0] === 82));
+    assert.equal(workflowCalls[0].action, 'reject_technical_solution');
+    assert.equal(workflowCalls[0].payload.comment, '');
+    draft.status = 'rejected';
+    const detail = await agent.get('/opportunities/20/technical-drafts/41');
+    assert.equal(detail.status, 200);
+    assert.match(detail.text, /Review notes\.pdf/);
+    assert.match(detail.text, /attachments\/82\/preview/);
+    assert.match(detail.text, /attachments\/82\/download/);
+    const preview = await agent.get('/opportunities/20/attachments/82/preview');
+    assert.equal(preview.status, 200);
+    assert.match(preview.headers['content-disposition'], /^inline;/);
+    const download = await agent.get('/opportunities/20/attachments/82/download');
+    assert.equal(download.status, 200);
+    assert.match(download.headers['content-disposition'], /^attachment;/);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('technical manager can approve without a reason but cannot attach rejection files to approval', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-technical-approve-'));
+  const workflowCalls = [];
+  try {
+    const { agent } = await createDraftAgent({
+      userId: 6, username: 'manager03', roles: [ROLES.TECHNICAL_MANAGER],
+      sourceKind: 'uploaded_file', draftStatus: 'pending',
+      uploadedAttachmentId: 81, uploadedFile: { id: 81, originalName: 'Datasheet.pdf' },
+      uploadDir,
+      workflowAction: async (input) => { workflowCalls.push(input); return {}; }
+    });
+    const invalid = await agent.post('/opportunities/20/technical-drafts/41/review')
+      .field('decision', 'approve')
+      .attach('reviewFiles', Buffer.from('%PDF-1.4\nReview notes'), 'Review notes.pdf');
+    assert.equal(invalid.status, 400);
+    assert.equal(workflowCalls.length, 0);
+
+    const approved = await agent.post('/opportunities/20/technical-drafts/41/review')
+      .type('form').send({ decision: 'approve' });
+    assert.equal(approved.status, 302);
+    assert.equal(workflowCalls.length, 1);
+    assert.equal(workflowCalls[0].action, 'approve_technical_solution');
+    assert.equal(workflowCalls[0].payload.comment, '');
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
 });
 
 test('draft detail shows snapshot validation structured sections clauses and contribution history', async () => {

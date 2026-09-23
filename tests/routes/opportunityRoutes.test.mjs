@@ -776,12 +776,14 @@ test('opportunity framework text and common actions use selected Chinese languag
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /\u8fd4\u56de\u6e05\u5355/);
+  assert.match(detail.text, /\u8fd4\u56de\u5546\u673a\u5217\u8868/);
   assert.match(detail.text, />\u7f16\u8f91<\/a>/);
   assert.match(detail.text, />\u4e0a\u4f20<\/button>/);
   assert.match(detail.text, /<td>\u8349\u7a3f<\/td>/);
   assert.doesNotMatch(detail.text, /<h2>\u8d23\u4efb\u4eba<\/h2>/);
   assert.match(detail.text, /\u5ba2\u6237\u9700\u6c42/);
+  assert.match(detail.text, /data-localized-file-picker data-empty-label="\u672a\u9009\u62e9\u6587\u4ef6"/);
+  assert.match(detail.text, />\u9009\u62e9\u6587\u4ef6<\/span>/);
   assert.match(detail.text, /\u6280\u672f\u65b9\u6848/);
   assert.match(detail.text, /\u5546\u52a1\u65b9\u6848/);
   assert.match(detail.text, /\u5408\u540c/);
@@ -796,7 +798,7 @@ test('opportunity framework text and common actions use selected Chinese languag
   assert.equal(form.headers.location, '/lead-submissions/new');
 });
 
-test('opportunity detail uses compact header actions and hides repeated customer details', async () => {
+test('opportunity detail gives the full title room and keeps only the approved header actions', async () => {
   const { agent } = await createLoggedInAgent({
     emailCenter: { enabled: true },
     customerEmail: { enabled: true }
@@ -806,22 +808,23 @@ test('opportunity detail uses compact header actions and hides repeated customer
 
   assert.equal(detail.status, 200);
   const headerHtml = detail.text.match(/<header class="page-header opportunity-detail-header">[\s\S]*?<\/header>/)?.[0] || '';
-  assert.match(headerHtml, />←<\/span> Back<\/a>/);
-  assert.match(headerHtml, /href="#opportunity-correspondence"[^>]*>[^<]*<span aria-hidden="true">✉<\/span> Email correspondence<\/a>/);
-  assert.doesNotMatch(headerHtml, /\/email-center\/compose\?opportunityId=30/);
+  assert.match(headerHtml, /class="opportunity-detail-toolbar"/);
+  assert.match(headerHtml, /href="\/opportunities"><span aria-hidden="true">←<\/span> Back to opportunities<\/a>/);
+  assert.equal((headerHtml.match(/href="\/opportunities"/g) || []).length, 1);
+  assert.doesNotMatch(headerHtml, /href="#opportunity-correspondence"|\/email-center\/compose\?opportunityId=30/);
   assert.match(detail.text, /id="opportunity-correspondence"/);
-  assert.match(headerHtml, /href="\/opportunities\/30\/technical-documents"/);
-  assert.match(headerHtml, />Documents<\/a>/);
-  assert.match(headerHtml, />Technical<\/a>/);
-  assert.doesNotMatch(headerHtml, /\/bid-workspace|>Bidding<\/a>/);
-  assert.match(headerHtml, /OPP-20260605-abcdef12/);
+  assert.doesNotMatch(headerHtml, /\/technical-documents|\/technical-drafts|\/bid-workspace/);
+  assert.match(detail.text, /class="opportunity-technical-links opportunity-technical-secondary-links"[\s\S]*?href="\/opportunities\/30\/technical-documents"[\s\S]*?href="\/opportunities\/30\/technical-drafts"/);
+  assert.match(headerHtml, /<div class="user-line">OPP-20260605-abcdef12<\/div>\s*<h1>Factory upgrade<\/h1>/);
   assert.doesNotMatch(headerHtml, /C000010|Acme Co/);
-  assert.match(detail.text, /\.opportunity-detail-header\s*\{[\s\S]*grid-template-columns:\s*minmax\(720px,\s*68%\) minmax\(0,\s*1fr\);/);
+  assert.match(detail.text, /\.opportunity-detail-header\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;/);
+  assert.match(detail.text, /\.opportunity-detail-toolbar\s*\{[\s\S]*justify-content:\s*space-between;/);
   assert.match(detail.text, /\.opportunity-detail-actions\s*\{[\s\S]*justify-content:\s*flex-end;/);
-  assert.match(detail.text, /\.opportunity-detail-heading h1\s*\{[\s\S]*font-weight:\s*700;[\s\S]*white-space:\s*nowrap;/);
+  assert.match(detail.text, /\.opportunity-detail-heading h1\s*\{[\s\S]*font-weight:\s*700;[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*white-space:\s*normal;/);
   assert.match(detail.text, /<th scope="row">Customer<\/th>\s*<td><a href="\/customers\/10">C000010 · Acme Co<\/a><\/td>/);
   assert.match(detail.text, /href="\/opportunities\/30\/edit"/);
   assert.match(detail.text, />Edit</);
+  assert.doesNotMatch(headerHtml, /data-opportunity-archive-toggle/);
   assert.doesNotMatch(headerHtml, /class="status"/);
   assert.match(detail.text, /<th scope="row">Status<\/th>\s*<td>Draft<\/td>/);
   assert.doesNotMatch(detail.text, /action="\/opportunities\/30\/delete"/);
@@ -978,6 +981,8 @@ test('opportunity correspondence is a single collapsed timeline with expandable 
   assert.match(detail.text, /href="\/email-center\/attachments\/101\/download"[^>]*>[\s\S]*?pump-parameters-rev2\.pdf/);
   assert.doesNotMatch(detail.text, /\/email-center\/attachments\/102\/download/);
   assert.match(detail.text, /href="\/email-center\/threads\/81">Open conversation/);
+  assert.doesNotMatch(detail.text, /2 · Linked email|No linked email/);
+  assert.match(detail.text, /2 · Uploaded files/);
   assert.doesNotMatch(detail.text, /href="\/email-center\/compose\?threadId=81">Reply<\/a>/);
   assert.equal((detail.text.match(/>Reply to customer<\/a>/g) || []).length, 1);
 });
@@ -1340,6 +1345,14 @@ test('administrator archives opportunity and preserves stored attachment files',
         }
       }
     });
+
+    const detail = await agent.get('/opportunities/30');
+    assert.equal(detail.status, 200);
+    const headerHtml = detail.text.match(/<header class="page-header opportunity-detail-header">[\s\S]*?<\/header>/)?.[0] || '';
+    assert.match(headerHtml, /data-opportunity-archive-toggle[^>]*>Archive…<\/button>/);
+    assert.match(headerHtml, /id="opportunity-detail-archive-panel"[^>]* hidden>/);
+    assert.match(headerHtml, /action="\/opportunities\/30\/archive"/);
+    assert.match(headerHtml, /<label>Archive reason<input name="reason" required maxlength="500"/);
 
     const response = await agent.post('/opportunities/30/archive').type('form').send({ reason: 'Cancelled duplicate' });
 
@@ -1828,10 +1841,14 @@ test('opportunity detail shows attachment upload form and file links', async () 
   assert.match(detail.text, /Commercial Proposal/);
   assert.match(detail.text, /Contract/);
   assert.match(detail.text, /name="attachment"/);
+  assert.match(detail.text, /data-localized-file-picker data-empty-label="No file selected"/);
+  assert.match(detail.text, />Choose file<\/span>/);
+  assert.match(detail.text, /src="\/assets\/localized-file-picker\.js"/);
   assert.match(detail.text, /name="category" value="requirement"/);
   assert.match(detail.text, /name="requirementText"[\s\S]*type="hidden" name="reason"/);
   assert.match(detail.text, /1 · Requirement text[\s\S]*Initial Requirement[\s\S]*Upgrade production line/);
-  assert.match(detail.text, /3 · Uploaded files[\s\S]*name="category" value="requirement"[\s\S]*name="attachment"/);
+  assert.match(detail.text, /2 · Uploaded files[\s\S]*name="category" value="requirement"[\s\S]*name="attachment"/);
+  assert.doesNotMatch(detail.text, /2 · Linked email|No linked email/);
   assert.doesNotMatch(detail.text, /Reason \/ Source/);
   assert.match(detail.text, /requirement-spec\.pdf/);
   assert.match(detail.text, /\/opportunities\/30\/attachments\/55\/download/);
@@ -2355,7 +2372,7 @@ test('opportunity detail shows upload forms in each business material panel', as
   assert.equal((detail.text.match(/action="\/opportunities\/30\/attachments"/g) || []).length, 4);
   assert.equal((detail.text.match(/class="form-panel attachment-upload-panel"/g) || []).length, 3);
   assert.equal((detail.text.match(/class="attachment-upload-panel requirement-file-upload"/g) || []).length, 1);
-  assert.equal((detail.text.match(/<input type="file" name="attachment" required>/g) || []).length, 4);
+  assert.equal((detail.text.match(/<input class="localized-file-input"[^>]*type="file" name="attachment" required/g) || []).length, 4);
   assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*max-width:\s*none;/);
   assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*display:\s*flex;/);
   assert.match(detail.text, /\.attachment-upload-panel\s*\{[\s\S]*align-items:\s*center;/);
@@ -2370,7 +2387,7 @@ test('opportunity detail shows upload forms in each business material panel', as
   assert.equal((detail.text.match(/<button type="submit">Upload<\/button>/g) || []).length, 4);
   assert.doesNotMatch(detail.text, />\s*File\s*<input type="file" name="attachment" required>/);
   assert.match(detail.text, /Upload file/);
-  assert.equal((detail.text.match(/Upload proposal/g) || []).length, 2);
+  assert.equal((detail.text.match(/<span class="attachment-upload-label">Upload proposal<\/span>/g) || []).length, 2);
   assert.match(detail.text, /Upload contract/);
   const requirementSection = extractBusinessSection(detail.text, 'requirement', 'technical');
   assert.match(requirementSection, /name="category" value="requirement"/);
@@ -2436,9 +2453,203 @@ test('versioned technical approval directs the Project Lead to TS-D drafts', asy
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /href="\/opportunities\/30\/technical-drafts"/);
+  const headerHtml = detail.text.match(/<header class="page-header opportunity-detail-header">[\s\S]*?<\/header>/)?.[0] || '';
+  assert.doesNotMatch(headerHtml, /\/technical-drafts/);
+  assert.match(detail.text, /class="opportunity-technical-links opportunity-technical-secondary-links"[\s\S]*?href="\/opportunities\/30\/technical-drafts"/);
+  assert.match(detail.text, /class="form-panel technical-draft-create-form"[\s\S]*?name="deliverableType"[\s\S]*?Create Draft/);
   assert.doesNotMatch(detail.text, /Technical approval is submitted from a validated TS-D project draft/);
   assert.doesNotMatch(detail.text, /name="solutionSummary"/);
+  assert.match(detail.text, /name="deliverableType"/);
+  assert.match(detail.text, /value="datasheet"/);
+  assert.match(detail.text, /value="technical_agreement"/);
+  assert.match(detail.text, /value="bidding_document"/);
+  assert.doesNotMatch(detail.text, /name="category" value="technical_solution"/);
+});
+
+test('uploaded technical proposal is listed between upload and approval submission', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'quote01',
+      displayName: 'Quote Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7,
+      quotationEngineerId: 3
+    },
+    opportunityTechnicalDraftRepository: {
+      supportsVersionedTechnicalApproval: true,
+      async listByOpportunity() {
+        return [{
+          id: 41, opportunityId: 30, draftLabel: 'TS-D1', status: 'ready',
+          sourceKind: 'uploaded_file', templateNameSnapshot: 'Technical Agreement',
+          uploadedAttachmentId: 81,
+          uploadedFile: { id: 81, originalName: 'Technical_Agreement_V1.pdf' }
+        }];
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  const section = extractBusinessSection(detail.text, 'technical', 'quote');
+  const uploadAt = section.indexOf('class="technical-proposal-upload-form"');
+  const listAt = section.indexOf('class="technical-uploaded-files"');
+  const submitAt = section.indexOf('class="technical-proposal-submit-form"');
+  assert.ok(uploadAt !== -1 && listAt > uploadAt && submitAt > listAt);
+  assert.match(section, /Upload Technical Proposal · TS-D1/);
+  assert.match(section, /Uploaded Technical Proposals[\s\S]*Technical_Agreement_V1\.pdf[\s\S]*Preview[\s\S]*Download/);
+  assert.doesNotMatch(section, /Maximum file size:|Uploading another file replaces this draft file\./);
+  assert.doesNotMatch(section.match(/<h2>[\s\S]*?<\/h2>/)?.[0] || '', /Technical Document|Project Technical Drafts/);
+  assert.match(section, /href="\/opportunities\/30\/technical-drafts"/);
+  assert.match(section, /href="\/opportunities\/30\/technical-documents"/);
+});
+
+test('technical manager reviews the uploaded file without a duplicate file list', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 4,
+      username: 'tech01',
+      displayName: 'Technical Manager',
+      roles: [ROLES.TECHNICAL_MANAGER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_PENDING,
+      salespersonId: 7,
+      quotationEngineerId: 3,
+      technicalManagerId: 4
+    },
+    opportunityTechnicalDraftRepository: {
+      supportsVersionedTechnicalApproval: true,
+      async listByOpportunity() {
+        return [{
+          id: 41, opportunityId: 30, draftLabel: 'TS-D1', status: 'pending',
+          sourceKind: 'uploaded_file', templateNameSnapshot: 'Technical Agreement',
+          submittedBy: 3, uploadedAttachmentId: 81,
+          uploadedFile: { id: 81, originalName: 'Agreement.pdf' }
+        }];
+      }
+    }
+  });
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  const section = extractBusinessSection(detail.text, 'technical', 'quote');
+  assert.match(section, /Technical Manager Review/);
+  assert.doesNotMatch(section, /attachments\/81\/(preview|download)/);
+  assert.doesNotMatch(section, /Uploaded Technical Proposals|Agreement\.pdf|technical-uploaded-files/);
+  assert.match(section, /Reject Reason/);
+  assert.match(section, /Text Reason/);
+  assert.match(section, /Upload Files/);
+  assert.match(section, /name="decision" value="approve">Approve</);
+  assert.match(section, /name="decision" value="reject">Reject</);
+  assert.ok(section.indexOf('name="decision" value="reject"') < section.indexOf('Reject Reason'));
+  assert.doesNotMatch(section, /name="action" value="approve_technical_solution"/);
+  assert.doesNotMatch(section, /name="action" value="reject_technical_solution"/);
+});
+
+test('rejected technical proposal keeps review files visible in version history', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'quote01',
+      displayName: 'Quotation Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_REJECTED,
+      salespersonId: 7,
+      quotationEngineerId: 3,
+      technicalManagerId: 4
+    },
+    opportunityTechnicalDraftRepository: {
+      supportsVersionedTechnicalApproval: true,
+      async listByOpportunity() {
+        return [
+          { id: 42, opportunityId: 30, draftLabel: 'TS-D2', status: 'draft',
+            sourceKind: 'uploaded_file', templateNameSnapshot: 'Technical Agreement', createdBy: 3 },
+          { id: 41, opportunityId: 30, draftLabel: 'TS-D1', status: 'rejected',
+            sourceKind: 'uploaded_file', templateNameSnapshot: 'Technical Agreement',
+            uploadedAttachmentId: 81, uploadedFile: { id: 81, originalName: 'Agreement.pdf' } }
+        ];
+      },
+      async listReviewAttachmentsByOpportunity() {
+        return [{ technicalDraftId: 41, attachmentId: 82, originalName: 'Review notes.pdf' }];
+      }
+    }
+  });
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Review notes\.pdf/);
+  assert.match(detail.text, /attachments\/82\/preview/);
+  assert.match(detail.text, /attachments\/82\/download/);
+});
+
+test('an uploaded TS-D file cannot be deleted through the generic attachment route', async () => {
+  let retireCalled = false;
+  const attachment = {
+    id: 81, opportunityId: 30, category: 'technical_solution',
+    originalName: 'Datasheet.pdf', uploadedBy: 3,
+    uploadedAt: '2026-09-23T00:00:00.000Z'
+  };
+  const { agent } = await createLoggedInAgent({
+    user: { id: 3, username: 'quote01', roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return opportunityDetail({
+          status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+          quotationEngineerId: 3,
+          salespersonId: 7
+        });
+      }
+    },
+    opportunityTechnicalDraftRepository: {
+      supportsVersionedTechnicalApproval: true,
+      async listByOpportunity() {
+        return [{
+          id: 41, draftLabel: 'TS-D1', status: 'ready', sourceKind: 'uploaded_file',
+          templateNameSnapshot: 'Datasheet', uploadedAttachmentId: 81,
+          uploadedFile: { id: 81, originalName: 'Datasheet.pdf' }
+        }];
+      },
+      async isAttachmentLinked() { return true; }
+    },
+    attachmentRepository: {
+      async listByOpportunity() { return [attachment]; },
+      async findById() { return attachment; },
+      async retireById() { retireCalled = true; return attachment; }
+    }
+  });
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  assert.doesNotMatch(detail.text, /attachments\/81\/delete/);
+  const response = await agent.post('/opportunities/30/attachments/81/delete').type('form').send();
+  assert.equal(response.status, 403);
+  assert.equal(retireCalled, false);
+});
+
+test('approved uploaded TS-V remains visible with preview and download in Technical Proposal history', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: { id: 7, username: 'sales01', displayName: 'Sales One', roles: [ROLES.SALESPERSON] },
+    opportunity: { status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS, salespersonId: 7, quotationEngineerId: 3 },
+    opportunityTechnicalDraftRepository: {
+      supportsVersionedTechnicalApproval: true,
+      async listByOpportunity() {
+        return [{
+          id: 41, draftLabel: 'TS-D1', formalVersionLabel: 'TS-V1', status: 'approved',
+          sourceKind: 'uploaded_file', templateNameSnapshot: 'Technical Agreement',
+          uploadedAttachmentId: 81, uploadedFile: { id: 81, originalName: 'Agreement.pdf' }
+        }];
+      }
+    }
+  });
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /TS-V1/);
+  assert.match(detail.text, /attachments\/81\/preview/);
+  assert.match(detail.text, /attachments\/81\/download/);
+  assert.doesNotMatch(detail.text, /attachments\/81\/delete/);
 });
 
 test('approved opportunity shows supplemental requirement form and history', async () => {

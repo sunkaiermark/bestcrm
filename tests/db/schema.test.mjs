@@ -71,6 +71,28 @@ const salesLeadReviewWorkflowMigrationPath = new URL('../../src/db/migrations/06
 const emailInlineAttachmentMetadataMigrationPath = new URL('../../src/db/migrations/070_email_inline_attachment_metadata.sql', import.meta.url);
 const emailMessageCanonicalIdentityMigrationPath = new URL('../../src/db/migrations/071_email_message_canonical_identity.sql', import.meta.url);
 const leadCreatorEditAuditMigrationPath = new URL('../../src/db/migrations/072_lead_creator_edit_audit.sql', import.meta.url);
+const uploadedTechnicalDraftVersionsMigrationPath = new URL('../../src/db/migrations/073_uploaded_technical_draft_versions.sql', import.meta.url);
+const technicalReviewAttachmentsMigrationPath = new URL('../../src/db/migrations/074_technical_review_attachments.sql', import.meta.url);
+
+test('technical review attachment migration binds immutable rejection files to pending uploaded drafts', async () => {
+  const sql = await readFile(technicalReviewAttachmentsMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_review_attachments/);
+  assert.match(sql, /attachment_id bigint NOT NULL UNIQUE REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /draft_row\.status IS DISTINCT FROM 'pending'/);
+  assert.match(sql, /attachment_row\.category IS DISTINCT FROM 'technical_review'/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON opportunity_technical_review_attachments/);
+  assert.match(sql, /A technical review file cannot be retired while linked to the review/);
+});
+
+test('uploaded technical draft migration preserves file-backed versions and approved bytes', async () => {
+  const sql = await readFile(uploadedTechnicalDraftVersionsMigrationPath, 'utf8');
+  assert.match(sql, /source_kind IN \('template', 'uploaded_file'\)/);
+  assert.match(sql, /deliverable_type IN \('datasheet', 'technical_agreement', 'bidding_document'\)/);
+  assert.match(sql, /uploaded_attachment_id bigint REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CHECK \(format IN \('docx', 'pdf', 'uploaded'\)\)/);
+  assert.match(sql, /Submitted technical solution content is immutable/);
+  assert.match(sql, /A technical draft file cannot be retired while linked to the draft/);
+});
 
 test('initial schema declares first-version tables', async () => {
   const sql = await readFile(schemaPath, 'utf8');
