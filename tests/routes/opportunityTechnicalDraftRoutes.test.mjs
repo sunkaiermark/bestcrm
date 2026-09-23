@@ -74,6 +74,7 @@ async function createDraftAgent(options = {}) {
     deliverableType: options.deliverableType || 'technical_agreement',
     uploadedAttachmentId: options.uploadedAttachmentId || null,
     uploadedFile: options.uploadedFile || null,
+    uploadedFiles: options.uploadedFiles || (options.uploadedFile ? [options.uploadedFile] : []),
     draftRevisionNo: 1,
     draftLabel: 'TS-D1',
     status: options.draftStatus || 'draft',
@@ -108,9 +109,10 @@ async function createDraftAgent(options = {}) {
       return (draft.documents || []).find((document) => Number(document.id) === Number(documentId)) || null;
     },
     async createDraft(input) { calls.push(['createDraft', input]); return { ...draft, ...input }; },
-    async setUploadedFile(input) {
-      calls.push(['setUploadedFile', input]);
-      draft.uploadedAttachmentId = input.attachmentId;
+    async setUploadedFiles(input) {
+      calls.push(['setUploadedFiles', input]);
+      draft.uploadedAttachmentId = input.attachmentIds[0];
+      draft.uploadedFiles = input.attachmentIds.map((id) => ({ id }));
       draft.status = 'ready';
       return draft;
     },
@@ -222,7 +224,8 @@ test('uploaded technical file is shown for preview and submission while template
   assert.match(detail.text, /Datasheet\.pdf/);
   assert.match(detail.text, /attachments\/81\/preview/);
   assert.match(detail.text, /Submit for Technical Approval/);
-  assert.match(detail.text, /data-localized-file-picker data-empty-label="No file selected"/);
+  assert.match(detail.text, /data-localized-file-picker data-empty-label="No files selected"/);
+  assert.match(detail.text, /name="attachment" required multiple/);
   assert.match(detail.text, />Choose file<\/span>/);
   assert.match(detail.text, /src="\/assets\/localized-file-picker\.js"/);
   assert.doesNotMatch(detail.text, /Project Variables|Structured Technical Content|TPL-R1/);
@@ -251,7 +254,39 @@ test('project lead upload persists a technical file before submission', async ()
     assert.equal(savedAttachment.category, 'technical_solution');
     assert.equal(savedAttachment.originalName, 'Datasheet.pdf');
     assert.equal((await readFile(path.join(uploadDir, savedAttachment.storedPath))).toString(), '%PDF-1.4\nTechnical datasheet');
-    assert.ok(calls.some(([method, input]) => method === 'setUploadedFile' && input.attachmentId === 81));
+    assert.ok(calls.some(([method, input]) => method === 'setUploadedFiles' && input.attachmentIds[0] === 81));
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('one upload can persist several technical files under the same TS-D version', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-technical-multi-upload-'));
+  const savedAttachments = [];
+  try {
+    const attachmentRepository = {
+      async createAttachment(input) {
+        const attachment = { id: 81 + savedAttachments.length, ...input };
+        savedAttachments.push(attachment);
+        return attachment;
+      },
+      async findById(id) { return savedAttachments.find((file) => file.id === Number(id)) || null; }
+    };
+    const { agent, calls } = await createDraftAgent({
+      sourceKind: 'uploaded_file', deliverableType: 'technical_agreement',
+      uploadDir, attachmentRepository
+    });
+    const uploaded = await agent.post('/opportunities/20/technical-drafts/41/file')
+      .field('returnTo', 'opportunity')
+      .attach('attachment', Buffer.from('%PDF-1.4\nAgreement'), 'Agreement.pdf')
+      .attach('attachment', Buffer.from('PK\u0003\u0004Datasheet'), 'Datasheet.xlsx');
+    assert.equal(uploaded.status, 302);
+    assert.deepEqual(savedAttachments.map((file) => file.originalName), ['Agreement.pdf', 'Datasheet.xlsx']);
+    const setFilesCall = calls.find(([method]) => method === 'setUploadedFiles');
+    assert.deepEqual(setFilesCall[1].attachmentIds, [81, 82]);
+    assert.equal(setFilesCall[1].draftId, 41);
+    assert.equal((await readFile(path.join(uploadDir, savedAttachments[0].storedPath))).toString(), '%PDF-1.4\nAgreement');
+    assert.equal((await readFile(path.join(uploadDir, savedAttachments[1].storedPath))).toString(), 'PK\u0003\u0004Datasheet');
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

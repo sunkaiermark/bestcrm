@@ -75,6 +75,18 @@ const uploadedTechnicalDraftVersionsMigrationPath = new URL('../../src/db/migrat
 const technicalReviewAttachmentsMigrationPath = new URL('../../src/db/migrations/074_technical_review_attachments.sql', import.meta.url);
 const unrestrictedAdministratorEmailPurgeMigrationPath = new URL('../../src/db/migrations/075_unrestricted_administrator_email_purge.sql', import.meta.url);
 const administratorOpportunityDeletionMigrationPath = new URL('../../src/db/migrations/076_administrator_opportunity_deletion.sql', import.meta.url);
+const multiFileTechnicalDraftsMigrationPath = new URL('../../src/db/migrations/077_multi_file_technical_drafts.sql', import.meta.url);
+
+test('multi-file technical drafts keep one immutable version relationship for every uploaded file', async () => {
+  const sql = await readFile(multiFileTechnicalDraftsMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_draft_attachments/);
+  assert.match(sql, /attachment_id bigint NOT NULL UNIQUE REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /INSERT INTO opportunity_technical_draft_attachments/);
+  assert.match(sql, /draft_row\.status NOT IN \('draft', 'ready'\)/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON opportunity_technical_draft_attachments/);
+  assert.match(sql, /A submitted technical draft file cannot be retired/);
+  assert.match(sql, /technical_solution_documents_uploaded_file_idx/);
+});
 
 test('administrator email purge migration permits dependency cleanup only inside the guarded purge transaction', async () => {
   const sql = await readFile(unrestrictedAdministratorEmailPurgeMigrationPath, 'utf8');

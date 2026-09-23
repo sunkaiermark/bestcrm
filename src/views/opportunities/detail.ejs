@@ -12,6 +12,11 @@
   const requirementAttachments = orderedAttachments.filter((attachment) => attachment.category === 'requirement' || attachment.category === 'other');
   const technicalSolutionAttachments = orderedAttachments.filter((attachment) => attachment.category === 'technical_solution');
   const technicalDraftList = typeof technicalDrafts === 'undefined' ? [] : technicalDrafts;
+  const uploadedFilesForTechnicalDraft = (draft) => Array.isArray(draft?.uploadedFiles) && draft.uploadedFiles.length
+    ? draft.uploadedFiles
+    : (draft?.uploadedFile ? [draft.uploadedFile] : []);
+  const uploadedTechnicalDrafts = technicalDraftList.filter((draft) => draft.sourceKind === 'uploaded_file' && uploadedFilesForTechnicalDraft(draft).length);
+  const inactiveTemplateTechnicalDrafts = technicalDraftList.filter((draft) => draft !== activeTechnicalDraft && draft.sourceKind !== 'uploaded_file');
   const technicalReviewFilesByDraftId = new Map();
   for (const file of (typeof technicalReviewAttachments === 'undefined' ? [] : technicalReviewAttachments)) {
     const draftId = Number(file.technicalDraftId);
@@ -19,7 +24,9 @@
     technicalReviewFilesByDraftId.get(draftId).push(file);
   }
   const latestApprovedTechnicalDraft = technicalDraftList.find((draft) => draft.status === 'approved');
-  const technicalDraftAttachmentIds = new Set(technicalDraftList.map((draft) => Number(draft.uploadedAttachmentId)).filter(Boolean));
+  const technicalDraftAttachmentIds = new Set(technicalDraftList
+    .flatMap((draft) => uploadedFilesForTechnicalDraft(draft).map((file) => Number(file.id)))
+    .filter(Boolean));
   const commercialQuoteAttachments = orderedAttachments.filter((attachment) => attachment.category === 'commercial_quote');
   const contractAttachments = orderedAttachments.filter((attachment) => attachment.category === 'contract');
   const canDeleteRequirementMaterials = ['draft', 'initiation_rejected'].includes(opportunity.status);
@@ -457,33 +464,44 @@
                     <button type="submit"><%= t('createTechnicalFileDraft') %></button>
                   </form>
                 <% } %>
-                <% if (activeTechnicalDraft) { const draft = activeTechnicalDraft; %>
-                  <% if (draft.sourceKind === 'uploaded_file') { %>
-                    <% if (!canReviewTechnicalDraft) { %>
+                <% if (activeTechnicalDraft?.sourceKind === 'uploaded_file' && !canReviewTechnicalDraft) { const draft = activeTechnicalDraft; %>
                     <div class="form-panel technical-proposal-upload-panel">
                       <% if (canManageUploadedTechnicalDraft) { %>
                         <form class="technical-proposal-upload-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/file" enctype="multipart/form-data">
                           <%- csrfField() %>
                           <input type="hidden" name="returnTo" value="opportunity">
-                          <label for="technical-draft-file-<%= draft.id %>"><%= t('uploadTechnicalProposal') %> · <%= draft.draftLabel %></label>
-                          <%- include('../partials/_localized-file-picker', { pickerId: `technical-draft-file-${draft.id}`, inputName: 'attachment', labelText: t('uploadTechnicalProposal') }) %>
+                          <label for="technical-draft-file-<%= draft.id %>"><%= t('upload') %> <%= draft.draftLabel %></label>
+                          <%- include('../partials/_localized-file-picker', { pickerId: `technical-draft-file-${draft.id}`, inputName: 'attachment', labelText: t('uploadTechnicalProposal'), multiple: true }) %>
                           <button type="submit"><%= t('upload') %></button>
                         </form>
                       <% } %>
+                      <% if (!uploadedFilesForTechnicalDraft(draft).length) { %><p class="muted"><%= t('technicalFileNotUploaded') %></p><% } %>
+                <% } %>
+                <% if (uploadedTechnicalDrafts.length) { %>
                       <div class="technical-uploaded-files">
-                        <strong><%= t('uploadedTechnicalProposals') %></strong>
-                      <% if (draft.uploadedFile) { %>
-                        <div class="technical-version-row technical-uploaded-file-row">
-                          <span class="technical-version-summary"><%= draft.draftLabel %> · <%= draft.templateNameSnapshot %> · <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span></span>
-                          <span class="technical-version-actions"><span><%= draft.uploadedFile.originalName %></span>
-                            <a href="/opportunities/<%= opportunity.id %>/attachments/<%= draft.uploadedFile.id %>/preview"><%= t('preview') %></a>
-                            <a href="/opportunities/<%= opportunity.id %>/attachments/<%= draft.uploadedFile.id %>/download"><%= t('download') %></a>
-                          </span>
-                        </div>
-                        <% if (draft.uploadedFile.materialVersionId && canManageUploadedTechnicalDraft) { %><p class="muted"><%= t('replaceWithdrawnTechnicalFile') %></p><% } %>
-                      <% } else { %><p class="muted"><%= t('technicalFileNotUploaded') %></p><% } %>
+                        <strong class="technical-uploaded-files-label"><%= t('uploadedTechnicalProposals') %></strong>
+                        <% for (const draft of uploadedTechnicalDrafts) { const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; const draftFiles = uploadedFilesForTechnicalDraft(draft); %>
+                          <% for (const [fileIndex, uploadedFile] of draftFiles.entries()) { %>
+                          <div class="technical-version-row technical-uploaded-file-row" data-technical-draft-id="<%= draft.id %>" data-technical-attachment-id="<%= uploadedFile.id %>">
+                            <span class="technical-version-summary"><%= draft.draftLabel %><% if (draft.formalVersionLabel) { %> · <%= draft.formalVersionLabel %><% } %> · <%= draft.templateNameSnapshot %>
+                              <% if (draft.status === 'rejected' && draft.reviewComment) { %><span class="muted">· <%= draft.reviewComment %></span><% } %>
+                              <% if (fileIndex === 0 && reviewFiles.length) { %><span class="technical-review-file-links"><%= t('reviewAttachments') %>:
+                                <% for (const file of reviewFiles) { %><span><%= file.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/download"><%= t('download') %></a></span><% } %>
+                              </span><% } %>
+                            </span>
+                            <span class="technical-uploaded-file-name" title="<%= uploadedFile.originalName %>"><%= uploadedFile.originalName %></span>
+                            <span class="technical-version-actions technical-uploaded-file-actions">
+                              <a class="technical-file-action technical-file-preview-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/preview"><%= t('preview') %></a>
+                              <a class="technical-file-action technical-file-download-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/download"><%= t('download') %></a>
+                            </span>
+                          </div>
+                          <% } %>
+                        <% } %>
                       </div>
-                      <% if (canSubmitUploadedTechnicalDraft && draft.uploadedFile) { %>
+                <% } %>
+                <% if (activeTechnicalDraft?.sourceKind === 'uploaded_file' && !canReviewTechnicalDraft) { const draft = activeTechnicalDraft; %>
+                      <% if (uploadedFilesForTechnicalDraft(draft).some((file) => file.materialVersionId) && canManageUploadedTechnicalDraft) { %><p class="muted"><%= t('replaceWithdrawnTechnicalFile') %></p><% } %>
+                      <% if (canSubmitUploadedTechnicalDraft && uploadedFilesForTechnicalDraft(draft).length) { %>
                         <form class="technical-proposal-submit-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/submit">
                           <%- csrfField() %>
                           <input type="hidden" name="returnTo" value="opportunity">
@@ -491,8 +509,9 @@
                         </form>
                       <% } %>
                     </div>
-                    <% } %>
-                  <% } else { %>
+                <% } %>
+                <% if (activeTechnicalDraft) { const draft = activeTechnicalDraft; %>
+                  <% if (draft.sourceKind !== 'uploaded_file') { %>
                     <div class="form-panel">
                       <strong><%= draft.draftLabel %> · <%= draft.templateNameSnapshot %></strong>
                       <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span>
@@ -507,10 +526,10 @@
                   <% } %>
                   <% if (canReviewTechnicalDraft) { %><%- include('../partials/_technical-manager-review', { draft, opportunity, returnTo: 'opportunity' }) %><% } %>
                 <% } %>
-                <% if (technicalDraftList.some((draft) => draft !== activeTechnicalDraft)) { %>
+                <% if (inactiveTemplateTechnicalDrafts.length) { %>
                   <div class="technical-version-history">
                     <strong><%= t('technicalVersionHistory') %></strong>
-                    <% for (const draft of technicalDraftList) { if (draft === activeTechnicalDraft) continue; const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; %>
+                    <% for (const draft of inactiveTemplateTechnicalDrafts) { const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; %>
                       <div class="technical-version-row">
                         <span class="technical-version-summary"><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %> · <%= t(`technicalDraftStatus.${draft.status}`) %>
                           <% if (draft.status === 'rejected' && draft.reviewComment) { %><span class="muted">· <%= draft.reviewComment %></span><% } %>
@@ -558,10 +577,6 @@
                 <p class="empty"><%= t('noTechnicalSolutionRecords') %></p>
               <% } %>
               <%- include('_workflow-actions', { forms: technicalStageWorkflowForms }) %>
-              <nav class="opportunity-technical-links opportunity-technical-secondary-links" aria-label="<%= t('technicalProposal') %>">
-                <a href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('projectTechnicalDrafts') %></a>
-                <a href="/opportunities/<%= opportunity.id %>/technical-documents"><%= t('opportunityTechnicalDocuments') %></a>
-              </nav>
             </div>
           </section>
           <% } else { %>
@@ -569,12 +584,6 @@
               <h2>
                 <span><%= t('technicalProposal') %> <span class="section-heading-meta"><%= t('notStarted') %></span></span>
               </h2>
-              <div class="section-body">
-                <nav class="opportunity-technical-links opportunity-technical-secondary-links" aria-label="<%= t('technicalProposal') %>">
-                  <a href="/opportunities/<%= opportunity.id %>/technical-documents"><%= t('opportunityTechnicalDocuments') %></a>
-                  <a href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('projectTechnicalDrafts') %></a>
-                </nav>
-              </div>
             </section>
           <% } %>
 

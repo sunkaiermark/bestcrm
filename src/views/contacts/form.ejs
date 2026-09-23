@@ -4,7 +4,7 @@
           <h1><%= contact.id ? t('editContact') : t('newContact') %></h1>
         </header>
 
-        <form class="form-panel" method="post" action="<%= action %>">
+        <form class="form-panel contact-form" method="post" action="<%= action %>">
           <%- csrfField() %>
           <% if (typeof duplicateContacts !== 'undefined' && duplicateContacts.length) { %>
             <section class="duplicate-warning" role="alert">
@@ -36,55 +36,55 @@
             <input type="hidden" name="returnTo" value="<%= returnTo %>">
           <% } %>
           <% if (contact.id) { %>
-            <label>
-              <%= t('contactCode') %>
+            <label class="contact-form-row">
+              <span class="contact-form-label"><%= t('contactCode') %></span>
               <input value="<%= contact.contactCode || '' %>" readonly>
             </label>
           <% } else { %>
             <p class="muted"><%= t('contactCodeGeneratedAfterSave') %></p>
           <% } %>
-          <label>
-            <%= t('customer') %>
+          <label class="contact-form-row">
+            <span class="contact-form-label"><%= t('customer') %></span>
             <select name="customerId" required>
               <% for (const customer of customers) { %>
                 <option value="<%= customer.id %>" <%= String(contact.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= [customer.customerCode, customer.name].filter(Boolean).join(' · ') %></option>
               <% } %>
             </select>
           </label>
-          <label>
-            <%= t('name') %>
+          <label class="contact-form-row">
+            <span class="contact-form-label"><%= t('name') %></span>
             <input name="name" value="<%= contact.name || '' %>" required>
           </label>
-          <label>
-            <%= t('title') %>
+          <label class="contact-form-row">
+            <span class="contact-form-label"><%= t('title') %></span>
             <input name="title" value="<%= contact.title || '' %>">
           </label>
-          <label>
-            <%= t('phone') %>
+          <label class="contact-form-row">
+            <span class="contact-form-label"><%= t('phone') %></span>
             <input name="phone" value="<%= contact.phone || '' %>">
           </label>
-          <label>
-            <%= t('email') %>
+          <label class="contact-form-row">
+            <span class="contact-form-label"><%= t('email') %></span>
             <input name="email" value="<%= contact.email || '' %>">
           </label>
-          <label>
-            <%= t('wechat') %>
+          <label class="contact-form-row">
+            <span class="contact-form-label"><%= t('wechat') %></span>
             <input name="wechat" value="<%= contact.wechat || '' %>">
           </label>
-          <label>
-            <%= t('educationBackground') %>
+          <label class="contact-form-row contact-form-row-textarea">
+            <span class="contact-form-label"><%= t('educationBackground') %></span>
             <textarea name="educationBackground"><%= contact.educationBackground || '' %></textarea>
           </label>
-          <label>
-            <%= t('workExperience') %>
+          <label class="contact-form-row contact-form-row-textarea">
+            <span class="contact-form-label"><%= t('workExperience') %></span>
             <textarea name="workExperience"><%= contact.workExperience || '' %></textarea>
           </label>
-          <label>
-            <%= t('keyAchievements') %>
+          <label class="contact-form-row contact-form-row-textarea">
+            <span class="contact-form-label"><%= t('keyAchievements') %></span>
             <textarea name="keyAchievements"><%= contact.keyAchievements || '' %></textarea>
           </label>
-          <label>
-            <%= t('notes') %>
+          <label class="contact-form-row contact-form-row-textarea">
+            <span class="contact-form-label"><%= t('notes') %></span>
             <textarea name="notes"><%= contact.notes || '' %></textarea>
           </label>
           <button type="submit"><%= contact.id ? t('saveContact') : t('createContact') %></button>

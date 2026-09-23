@@ -163,6 +163,22 @@ test('attachment repository binds only active unbound category attachments to a 
   assert.match(queryTarget.queries[0].sql, /retired_at IS NULL/);
 });
 
+test('attachment repository binds a selected technical file batch to one material version', async () => {
+  const queryTarget = createFakeQueryTarget([{ id: '81' }, { id: '82' }]);
+  const repository = createAttachmentRepository(queryTarget);
+
+  const attachmentIds = await repository.bindSelectedManyToMaterialVersion({
+    attachmentIds: [81, 82],
+    opportunityId: 30,
+    opportunityMaterialVersionId: 12
+  });
+
+  assert.deepEqual(attachmentIds, [81, 82]);
+  assert.match(queryTarget.queries[0].sql, /id = ANY\(\$1::bigint\[\]\)/);
+  assert.match(queryTarget.queries[0].sql, /category = 'technical_solution'/);
+  assert.deepEqual(queryTarget.queries[0].params, [[81, 82], 30, 12]);
+});
+
 test('attachment repository retires an active row in one transition and has no hard-delete API', async () => {
   const queryTarget = createFakeQueryTarget([attachmentRow({
     retired_at: '2026-09-20T10:00:00.000Z',

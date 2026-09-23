@@ -506,8 +506,8 @@ test('website forms page does not expose a manual inquiry form', async () => {
   assert.equal(page.status, 200);
   assert.doesNotMatch(page.text, /href="\/inquiries\/new"/);
   assert.doesNotMatch(page.text, /name="source"/);
-  assert.match(page.text, /href="\/lead-submissions\/new"/);
-  assert.match(page.text, /href="\/opportunities\/new"/);
+  assert.doesNotMatch(page.text, /href="\/lead-submissions\/new"/);
+  assert.doesNotMatch(page.text, /href="\/opportunities\/new"/);
 });
 
 test('inquiry detail supports review and conversion forms', async () => {

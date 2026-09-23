@@ -817,7 +817,7 @@ test('opportunity detail gives the full title room and keeps only the approved h
   assert.doesNotMatch(headerHtml, /href="#opportunity-correspondence"|\/email-center\/compose\?opportunityId=30/);
   assert.match(detail.text, /id="opportunity-correspondence"/);
   assert.doesNotMatch(headerHtml, /\/technical-documents|\/technical-drafts|\/bid-workspace/);
-  assert.match(detail.text, /class="opportunity-technical-links opportunity-technical-secondary-links"[\s\S]*?href="\/opportunities\/30\/technical-documents"[\s\S]*?href="\/opportunities\/30\/technical-drafts"/);
+  assert.doesNotMatch(detail.text, /class="opportunity-technical-links opportunity-technical-secondary-links"/);
   assert.match(headerHtml, /<div class="user-line">OPP-20260605-abcdef12<\/div>\s*<h1>Factory upgrade<\/h1>/);
   assert.doesNotMatch(headerHtml, /C000010|Acme Co/);
   assert.match(detail.text, /\.opportunity-detail-header\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;/);
@@ -2526,7 +2526,7 @@ test('versioned technical approval directs the Project Lead to TS-D drafts', asy
   assert.equal(detail.status, 200);
   const headerHtml = detail.text.match(/<header class="page-header opportunity-detail-header">[\s\S]*?<\/header>/)?.[0] || '';
   assert.doesNotMatch(headerHtml, /\/technical-drafts/);
-  assert.match(detail.text, /class="opportunity-technical-links opportunity-technical-secondary-links"[\s\S]*?href="\/opportunities\/30\/technical-drafts"/);
+  assert.doesNotMatch(detail.text, /class="opportunity-technical-links opportunity-technical-secondary-links"/);
   assert.match(detail.text, /class="form-panel technical-draft-create-form"[\s\S]*?name="deliverableType"[\s\S]*?Create Draft/);
   assert.doesNotMatch(detail.text, /Technical approval is submitted from a validated TS-D project draft/);
   assert.doesNotMatch(detail.text, /name="solutionSummary"/);
@@ -2537,7 +2537,7 @@ test('versioned technical approval directs the Project Lead to TS-D drafts', asy
   assert.doesNotMatch(detail.text, /name="category" value="technical_solution"/);
 });
 
-test('uploaded technical proposal is listed between upload and approval submission', async () => {
+test('all uploaded technical proposal drafts are listed between upload and approval submission', async () => {
   const { agent } = await createWorkflowAgent({
     user: {
       id: 3,
@@ -2554,7 +2554,16 @@ test('uploaded technical proposal is listed between upload and approval submissi
       supportsVersionedTechnicalApproval: true,
       async listByOpportunity() {
         return [{
-          id: 41, opportunityId: 30, draftLabel: 'TS-D1', status: 'ready',
+          id: 42, opportunityId: 30, draftLabel: 'TS-D2', status: 'ready',
+          sourceKind: 'uploaded_file', templateNameSnapshot: 'Bidding Document',
+          uploadedAttachmentId: 82,
+          uploadedFile: { id: 82, originalName: 'Bidding_Document_V2.pdf' },
+          uploadedFiles: [
+            { id: 82, originalName: 'Bidding_Document_V2.pdf' },
+            { id: 83, originalName: 'Equipment_List_V2.xlsx' }
+          ]
+        }, {
+          id: 41, opportunityId: 30, draftLabel: 'TS-D1', formalVersionLabel: 'TS-V1', status: 'approved',
           sourceKind: 'uploaded_file', templateNameSnapshot: 'Technical Agreement',
           uploadedAttachmentId: 81,
           uploadedFile: { id: 81, originalName: 'Technical_Agreement_V1.pdf' }
@@ -2570,15 +2579,40 @@ test('uploaded technical proposal is listed between upload and approval submissi
   const listAt = section.indexOf('class="technical-uploaded-files"');
   const submitAt = section.indexOf('class="technical-proposal-submit-form"');
   assert.ok(uploadAt !== -1 && listAt > uploadAt && submitAt > listAt);
-  assert.match(section, /Upload Technical Proposal · TS-D1/);
-  assert.match(section, /Uploaded Technical Proposals[\s\S]*Technical_Agreement_V1\.pdf[\s\S]*Preview[\s\S]*Download/);
+  assert.match(section, /Upload TS-D2/);
+  assert.match(section, /Uploaded Files[\s\S]*Bidding_Document_V2\.pdf[\s\S]*Equipment_List_V2\.xlsx[\s\S]*Technical_Agreement_V1\.pdf/);
+  assert.equal((section.match(/class="technical-version-row technical-uploaded-file-row"/g) || []).length, 3);
+  assert.equal((section.match(/data-technical-draft-id="42"/g) || []).length, 2);
+  assert.match(section, /data-technical-draft-id="42"[\s\S]*TS-D2[\s\S]*Bidding_Document_V2\.pdf/);
+  assert.match(section, /data-technical-attachment-id="83"[\s\S]*TS-D2[\s\S]*Equipment_List_V2\.xlsx/);
+  assert.match(section, /data-technical-draft-id="41"[\s\S]*TS-D1[\s\S]*TS-V1[\s\S]*Technical_Agreement_V1\.pdf/);
+  assert.match(section, /class="technical-uploaded-file-name" title="Technical_Agreement_V1\.pdf">Technical_Agreement_V1\.pdf/);
+  assert.match(section, /class="technical-file-action technical-file-preview-action"[^>]*>Preview<\/a>/);
+  assert.match(section, /class="technical-file-action technical-file-download-action"[^>]*>Download<\/a>/);
+  assert.doesNotMatch(section, />Open Draft<\/a>/);
+  assert.match(detail.text, /\.technical-proposal-upload-form\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*var\(--technical-proposal-file-columns\);/);
+  assert.match(detail.text, /\.technical-proposal-upload-form > button\s*\{[^}]*justify-self:\s*end;[^}]*width:\s*var\(--technical-download-action-width\);/);
+  assert.match(detail.text, /--technical-proposal-file-columns:\s*minmax\(175px, 190px\) fit-content\(230px\) minmax\(300px, 1fr\) minmax\(260px, 296px\);/);
+  assert.match(detail.text, /\.technical-uploaded-files\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*var\(--technical-proposal-file-columns\);/);
+  assert.match(detail.text, /--technical-proposal-layout-width:\s*1320px;/);
+  assert.match(detail.text, /\.technical-uploaded-file-name\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
+  assert.match(detail.text, /\.technical-version-row\.technical-uploaded-file-row\s*\{[^}]*display:\s*contents;/);
+  assert.match(detail.text, /\.technical-proposal-submit-form\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(320px, 360px\);[^}]*margin-left:\s*-14px;/);
+  assert.match(detail.text, /\.technical-proposal-submit-form > button\s*\{[^}]*text-align:\s*left;/);
+  assert.match(detail.text, /\.business-section-technical \.technical-proposal-upload-panel\s*\{[^}]*background:\s*transparent;[^}]*border:\s*0;/);
+  assert.match(detail.text, /\.business-section-technical \.stage-workflow-actions\s*\{[^}]*margin-top:\s*28px;/);
+  assert.match(detail.text, /\.business-section-technical \.stage-workflow-actions \.workflow-compact-row\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*var\(--technical-proposal-action-columns\);[^}]*max-width:\s*1050px;/);
+  assert.match(detail.text, /\.business-section-technical \.stage-workflow-actions \.workflow-action-button\s*\{[^}]*text-align:\s*left;/);
+  assert.match(detail.text, /\.business-section-technical \.stage-workflow-actions \.workflow-inline-field > select,[\s\S]*grid-column:\s*3;/);
+  assert.match(detail.text, /\.technical-file-preview-action\s*\{[^}]*background:\s*#dbeafe;/);
+  assert.match(detail.text, /\.technical-file-download-action\s*\{[^}]*background:\s*var\(--accent\);[^}]*text-align:\s*center;[^}]*width:\s*var\(--technical-download-action-width\);/);
+  assert.doesNotMatch(section, />Comment</);
   assert.doesNotMatch(section, /Maximum file size:|Uploading another file replaces this draft file\./);
   assert.doesNotMatch(section.match(/<h2>[\s\S]*?<\/h2>/)?.[0] || '', /Technical Document|Project Technical Drafts/);
-  assert.match(section, /href="\/opportunities\/30\/technical-drafts"/);
-  assert.match(section, /href="\/opportunities\/30\/technical-documents"/);
+  assert.doesNotMatch(section, /class="opportunity-technical-links opportunity-technical-secondary-links"/);
 });
 
-test('technical manager reviews the uploaded file without a duplicate file list', async () => {
+test('technical manager reviews the uploaded file with one unified uploaded files list', async () => {
   const { agent } = await createWorkflowAgent({
     user: {
       id: 4,
@@ -2608,8 +2642,11 @@ test('technical manager reviews the uploaded file without a duplicate file list'
   assert.equal(detail.status, 200);
   const section = extractBusinessSection(detail.text, 'technical', 'quote');
   assert.match(section, /Technical Manager Review/);
-  assert.doesNotMatch(section, /attachments\/81\/(preview|download)/);
-  assert.doesNotMatch(section, /Uploaded Technical Proposals|Agreement\.pdf|technical-uploaded-files/);
+  assert.match(section, /Uploaded Files/);
+  assert.match(section, /Agreement\.pdf/);
+  assert.match(section, /attachments\/81\/preview/);
+  assert.match(section, /attachments\/81\/download/);
+  assert.equal((section.match(/class="technical-uploaded-file-name" title="Agreement\.pdf">Agreement\.pdf<\/span>/g) || []).length, 1);
   assert.match(section, /Reject Reason/);
   assert.match(section, /Text Reason/);
   assert.match(section, /Upload Files/);
@@ -2620,7 +2657,7 @@ test('technical manager reviews the uploaded file without a duplicate file list'
   assert.doesNotMatch(section, /name="action" value="reject_technical_solution"/);
 });
 
-test('rejected technical proposal keeps review files visible in version history', async () => {
+test('rejected technical proposal keeps review files visible in Uploaded Files', async () => {
   const { agent } = await createWorkflowAgent({
     user: {
       id: 3,
@@ -2700,7 +2737,7 @@ test('an uploaded TS-D file cannot be deleted through the generic attachment rou
   assert.equal(retireCalled, false);
 });
 
-test('approved uploaded TS-V remains visible with preview and download in Technical Proposal history', async () => {
+test('approved uploaded TS-V remains visible with preview and download in Uploaded Files', async () => {
   const { agent } = await createWorkflowAgent({
     user: { id: 7, username: 'sales01', displayName: 'Sales One', roles: [ROLES.SALESPERSON] },
     opportunity: { status: STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS, salespersonId: 7, quotationEngineerId: 3 },
@@ -2717,6 +2754,8 @@ test('approved uploaded TS-V remains visible with preview and download in Techni
   });
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
+  assert.match(detail.text, /Uploaded Files/);
+  assert.match(detail.text, /TS-D1[\s\S]*TS-V1/);
   assert.match(detail.text, /TS-V1/);
   assert.match(detail.text, /attachments\/81\/preview/);
   assert.match(detail.text, /attachments\/81\/download/);

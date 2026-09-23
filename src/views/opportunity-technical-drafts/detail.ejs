@@ -4,6 +4,9 @@
   const activeAssignments = (draft.assignments || []).filter((assignment) => assignment.isActive !== false);
   const selectedClauseIds = new Set((draft.selectedClauses || []).map((clause) => clause.id));
   const issueByVariable = new Map((draft.validationIssues || []).map((issue) => [issue.variableKey, issue]));
+  const uploadedFiles = Array.isArray(draft.uploadedFiles) && draft.uploadedFiles.length
+    ? draft.uploadedFiles
+    : (draft.uploadedFile ? [draft.uploadedFile] : []);
   const sectionLabel = (sectionKey) => {
     const section = sections.find((candidate) => candidate.key === sectionKey);
     return section ? (draft.language === 'zh' ? section.labelZh : section.labelEn) : sectionKey;
@@ -25,19 +28,21 @@
               <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/file" enctype="multipart/form-data">
                 <%- csrfField() %>
                 <div class="technical-upload-field">
-                  <label for="technical-draft-detail-file-<%= draft.id %>"><%= draft.uploadedFile ? t('replaceTechnicalFile') : t('uploadTechnicalFile') %></label>
-                  <%- include('../partials/_localized-file-picker', { pickerId: `technical-draft-detail-file-${draft.id}`, inputName: 'attachment', labelText: draft.uploadedFile ? t('replaceTechnicalFile') : t('uploadTechnicalFile') }) %>
+                  <label for="technical-draft-detail-file-<%= draft.id %>"><%= uploadedFiles.length ? t('replaceTechnicalFile') : t('uploadTechnicalFile') %></label>
+                  <%- include('../partials/_localized-file-picker', { pickerId: `technical-draft-detail-file-${draft.id}`, inputName: 'attachment', labelText: uploadedFiles.length ? t('replaceTechnicalFile') : t('uploadTechnicalFile'), multiple: true }) %>
                 </div>
                 <p class="muted"><%= t('technicalFileUploadLimit') %> <%= technicalFileLimitMb %> MB</p>
                 <button type="submit"><%= t('upload') %></button>
               </form>
             <% } %>
-            <% if (draft.uploadedFile) { %>
-              <p><%= draft.uploadedFile.originalName %>
-                <a href="/opportunities/<%= opportunity.id %>/attachments/<%= draft.uploadedFile.id %>/preview"><%= t('preview') %></a>
-                <a href="/opportunities/<%= opportunity.id %>/attachments/<%= draft.uploadedFile.id %>/download"><%= t('download') %></a>
-              </p>
-              <% if (draft.uploadedFile.materialVersionId && canManageDraft) { %><p class="muted"><%= t('replaceWithdrawnTechnicalFile') %></p><% } %>
+            <% if (uploadedFiles.length) { %>
+              <% for (const uploadedFile of uploadedFiles) { %>
+                <p><%= draft.draftLabel %> · <%= uploadedFile.originalName %>
+                  <a href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/preview"><%= t('preview') %></a>
+                  <a href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/download"><%= t('download') %></a>
+                </p>
+              <% } %>
+              <% if (uploadedFiles.some((file) => file.materialVersionId) && canManageDraft) { %><p class="muted"><%= t('replaceWithdrawnTechnicalFile') %></p><% } %>
             <% } else { %><p class="muted"><%= t('technicalFileNotUploaded') %></p><% } %>
           </section>
         <% } else { %>

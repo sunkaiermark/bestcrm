@@ -661,7 +661,10 @@ export async function removeOpportunityTechnicalDraftSectionAssignment(repositor
 export async function markOpportunityTechnicalDraftReady(repository, actor, opportunity, draft) {
   ensureLead(actor, opportunity);
   ensureEditableDraft(draft);
-  if (draft.sourceKind === 'uploaded_file' && !draft.uploadedAttachmentId) {
+  const uploadedFiles = Array.isArray(draft.uploadedFiles) && draft.uploadedFiles.length
+    ? draft.uploadedFiles
+    : (draft.uploadedFile ? [draft.uploadedFile] : []);
+  if (draft.sourceKind === 'uploaded_file' && !uploadedFiles.length && !draft.uploadedAttachmentId) {
     conflict('Upload the technical file before submitting it for approval');
   }
   const validationIssues = validateTechnicalDraftVariables(draft.variableSchemaSnapshot, draft.variableValues);
@@ -685,7 +688,11 @@ export function technicalDraftDisplayLabel(draft) {
 
 export function technicalDraftSubmissionSummary(draft) {
   if (draft.sourceKind === 'uploaded_file') {
-    return `${technicalDraftLabel(draft)} · ${draft.templateNameSnapshot} · ${draft.uploadedFile?.originalName || 'uploaded file'}`;
+    const uploadedFiles = Array.isArray(draft.uploadedFiles) && draft.uploadedFiles.length
+      ? draft.uploadedFiles
+      : (draft.uploadedFile ? [draft.uploadedFile] : []);
+    const filenames = uploadedFiles.map((file) => file.originalName).filter(Boolean);
+    return `${technicalDraftLabel(draft)} · ${draft.templateNameSnapshot} · ${filenames.join(', ') || 'uploaded file'}`;
   }
   const language = technicalContentLanguage(draft.language);
   const sections = (draft.renderedContent?.sections || [])

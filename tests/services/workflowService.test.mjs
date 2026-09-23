@@ -1025,7 +1025,7 @@ test('versioned technical draft submission is required and frozen inside the exi
   assert.ok(repositories.calls.some(([method]) => method === 'submitTechnicalDraft'));
 });
 
-test('uploaded TS-D submission binds only its selected file to the pending material version', async () => {
+test('uploaded TS-D submission binds every selected file to the same pending material version', async () => {
   const before = {
     id: 10, opportunityNo: 'OPP-10', title: 'Mixer Project',
     status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
@@ -1036,14 +1036,16 @@ test('uploaded TS-D submission binds only its selected file to the pending mater
     originalName: 'Agreement.pdf', sha256: 'a'.repeat(64),
     opportunityMaterialVersionId: null, retiredAt: null
   };
-  const repositories = createMaterialRepositories(before, [file, {
+  const secondFile = {
     id: 82, opportunityId: 10, category: 'technical_solution',
-    sha256: 'b'.repeat(64), opportunityMaterialVersionId: null, retiredAt: null
-  }]);
-  repositories.attachmentRepository.findById = async (id) => Number(id) === 81 ? file : null;
-  repositories.attachmentRepository.bindSelectedToMaterialVersion = async (input) => {
-    repositories.calls.push(['bindSelectedTechnicalFile', input]);
-    return [81];
+    originalName: 'Datasheet.xlsx', sha256: 'b'.repeat(64),
+    opportunityMaterialVersionId: null, retiredAt: null
+  };
+  const repositories = createMaterialRepositories(before, [file, secondFile]);
+  repositories.attachmentRepository.findById = async (id) => [file, secondFile].find((item) => item.id === Number(id)) || null;
+  repositories.attachmentRepository.bindSelectedManyToMaterialVersion = async (input) => {
+    repositories.calls.push(['bindSelectedTechnicalFiles', input]);
+    return [81, 82];
   };
   repositories.opportunityTechnicalDraftRepository = {
     supportsVersionedTechnicalApproval: true,
@@ -1052,6 +1054,10 @@ test('uploaded TS-D submission binds only its selected file to the pending mater
         id: 41, opportunityId: 10, status: 'ready', sourceKind: 'uploaded_file',
         draftRevisionNo: 1, templateNameSnapshot: 'Technical Agreement',
         uploadedAttachmentId: 81, uploadedFile: { originalName: 'Agreement.pdf' },
+        uploadedFiles: [
+          { id: 81, originalName: 'Agreement.pdf' },
+          { id: 82, originalName: 'Datasheet.xlsx' }
+        ],
         validationIssues: []
       };
     },
@@ -1067,8 +1073,8 @@ test('uploaded TS-D submission binds only its selected file to the pending mater
     payload: { technicalDraftId: 41 },
     repositories
   });
-  assert.deepEqual(repositories.calls.find(([name]) => name === 'bindSelectedTechnicalFile')[1], {
-    attachmentId: 81, opportunityId: 10, opportunityMaterialVersionId: 300
+  assert.deepEqual(repositories.calls.find(([name]) => name === 'bindSelectedTechnicalFiles')[1], {
+    attachmentIds: [81, 82], opportunityId: 10, opportunityMaterialVersionId: 300
   });
   assert.equal(repositories.calls.some(([name]) => name === 'bindAttachmentsToMaterialVersion'), false);
 });

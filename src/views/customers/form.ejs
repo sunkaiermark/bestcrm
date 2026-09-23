@@ -4,7 +4,7 @@
           <h1><%= customer.id ? t('editCustomer') : t('newCustomer') %></h1>
         </header>
 
-        <form class="form-panel" method="post" action="<%= action %>">
+        <form class="form-panel customer-form" method="post" action="<%= action %>">
           <%- csrfField() %>
           <% if (typeof duplicateCustomers !== 'undefined' && duplicateCustomers.length) { %>
             <section class="duplicate-warning" role="alert">
@@ -32,16 +32,16 @@
               </table>
             </section>
           <% } %>
-          <label>
-            <%= t('name') %>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('name') %></span>
             <input name="name" value="<%= customer.name || '' %>" required>
           </label>
-          <label>
-            <%= t('website') %>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('website') %></span>
             <input name="website" type="text" inputmode="url" placeholder="https://www.example.com" value="<%= customer.website || '' %>">
           </label>
-          <label>
-            <%= t('industry') %>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('industry') %></span>
             <select name="industry">
               <% const currentIndustry = customer.industry || ''; %>
               <% const availableIndustries = typeof industryOptions !== 'undefined' ? industryOptions : []; %>
@@ -54,12 +54,12 @@
               <% } %>
             </select>
           </label>
-          <label>
-            <%= t('parentCompany') %>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('parentCompany') %></span>
             <input name="parentCompany" value="<%= customer.parentCompany || '' %>">
           </label>
-          <label>
-            <%= t('enterpriseNature') %>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('enterpriseNature') %></span>
             <select name="enterpriseNature">
               <% const currentEnterpriseNature = customer.enterpriseNature || ''; %>
               <% const availableEnterpriseNatures = typeof enterpriseNatureOptions !== 'undefined' ? enterpriseNatureOptions : []; %>
@@ -72,8 +72,8 @@
               <% } %>
             </select>
           </label>
-          <label>
-            <%= t('country') %>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('country') %></span>
             <select name="country">
               <% const currentCountry = customer.country || ''; %>
               <% const availableCountries = typeof countryOptions !== 'undefined' ? countryOptions : []; %>
@@ -86,8 +86,8 @@
               <% } %>
             </select>
           </label>
-          <label>
-            <%= t('region') %>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('region') %></span>
             <select name="region">
               <% const currentRegion = customer.region || ''; %>
               <% const availableRegions = typeof regionOptions !== 'undefined' ? regionOptions : []; %>
@@ -100,17 +100,17 @@
               <% } %>
             </select>
           </label>
-          <label>
-            <%= t('address') %>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('address') %></span>
             <input name="address" value="<%= customer.address || '' %>">
           </label>
-          <label>
-            <%= t('companyHighlights') %>
+          <label class="customer-form-row customer-form-row-textarea">
+            <span class="customer-form-label"><%= t('companyHighlights') %></span>
             <textarea name="companyHighlights"><%= customer.companyHighlights || '' %></textarea>
           </label>
-          <label>
-            <%= t('customerOutline') %>
-            <textarea name="notes"><%= customer.notes || '' %></textarea>
+          <label class="customer-form-row customer-form-row-textarea">
+            <span class="customer-form-label"><%= t('customerOutline') %></span>
+            <textarea class="customer-outline-input" name="notes"><%= customer.notes || '' %></textarea>
           </label>
           <button type="submit"><%= t('save') %></button>
         </form>

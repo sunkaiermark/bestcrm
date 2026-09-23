@@ -218,6 +218,14 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.match(form.text, /<select name="enterpriseNature">/);
   assert.match(form.text, /<option value="Private">Private<\/option>/);
   assert.match(form.text, /name="companyHighlights"/);
+  assert.match(form.text, /<form class="form-panel customer-form"/);
+  assert.equal((form.text.match(/<label class="customer-form-row(?: customer-form-row-textarea)?">/g) || []).length, 10);
+  assert.match(form.text, /<span class="customer-form-label">Name<\/span>\s*<input name="name"/);
+  assert.match(form.text, /class="customer-outline-input" name="notes"/);
+  assert.match(form.text, /\.form-panel\.customer-form\s*\{[\s\S]*max-width:\s*none;[\s\S]*width:\s*100%;/);
+  assert.match(form.text, /\.customer-form-row\s*\{[\s\S]*grid-template-columns:\s*220px minmax\(0, 1fr\);/);
+  assert.match(form.text, /\.customer-form \.customer-outline-input\s*\{[\s\S]*min-height:\s*246px;/);
+  assert.match(form.text, /@media \(max-width: 900px\)[\s\S]*\.customer-form-row\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\);/);
 
   const editForm = await agent.get('/customers/10/edit');
   assert.equal(editForm.status, 200);
@@ -337,6 +345,12 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.match(form.text, /name="educationBackground"/);
   assert.match(form.text, /name="workExperience"/);
   assert.match(form.text, /name="keyAchievements"/);
+  assert.match(form.text, /<form class="form-panel contact-form"/);
+  assert.equal((form.text.match(/<label class="contact-form-row(?: contact-form-row-textarea)?">/g) || []).length, 10);
+  assert.match(form.text, /<span class="contact-form-label">Customer<\/span>\s*<select name="customerId"/);
+  assert.match(form.text, /\.form-panel\.contact-form\s*\{[\s\S]*max-width:\s*none;[\s\S]*width:\s*100%;/);
+  assert.match(form.text, /\.contact-form-row\s*\{[\s\S]*grid-template-columns:\s*220px minmax\(0, 1fr\);/);
+  assert.match(form.text, /@media \(max-width: 900px\)[\s\S]*\.customer-form-row,[\s\S]*\.contact-form-row\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\);/);
 
   const opportunityContactForm = await agent.get('/contacts/new?customerId=10&returnTo=opportunity-initiation');
   assert.equal(opportunityContactForm.status, 200);
@@ -370,6 +384,7 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.equal(editForm.status, 200);
   assert.match(editForm.text, /<input value="CT000020" readonly>/);
   assert.doesNotMatch(editForm.text, /name="contactCode"/);
+  assert.equal((editForm.text.match(/<label class="contact-form-row(?: contact-form-row-textarea)?">/g) || []).length, 11);
 });
 
 test('contact list search preserves owner scope and displays the retained query', async () => {

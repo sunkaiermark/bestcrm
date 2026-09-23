@@ -645,33 +645,43 @@ function generatePdfBuffer(draft, opportunity, reviewer, fontPath) {
 
 export function createTechnicalDocumentService(options = {}) {
   return {
-    async generateApprovedDocuments({ draft, opportunity, reviewer, sourceAttachment }) {
+    async generateApprovedDocuments({ draft, opportunity, reviewer, sourceAttachment, sourceAttachments = [] }) {
       ensureApprovedDraft(draft);
       const number = documentNo(draft);
       if (draft.sourceKind === 'uploaded_file') {
-        const storedPath = sourceAttachment?.storedPath;
-        const filePath = options.uploadDir && resolveStoredPath(options.uploadDir, storedPath);
-        if (!filePath || !sourceAttachment?.sha256 || !sourceAttachment?.originalName) {
+        const attachments = sourceAttachments.length ? sourceAttachments : (sourceAttachment ? [sourceAttachment] : []);
+        if (!attachments.length) {
           const error = new Error('Approved technical file is unavailable');
           error.statusCode = 409;
           throw error;
         }
-        const content = await readFile(filePath);
-        if (content.length !== Number(sourceAttachment.fileSize)
-            || checksum(content) !== sourceAttachment.sha256) {
-          const error = new Error('Approved technical file failed integrity verification');
-          error.statusCode = 409;
-          throw error;
+        const documents = [];
+        for (const attachment of attachments) {
+          const storedPath = attachment?.storedPath;
+          const filePath = options.uploadDir && resolveStoredPath(options.uploadDir, storedPath);
+          if (!filePath || !attachment?.sha256 || !attachment?.originalName) {
+            const error = new Error('Approved technical file is unavailable');
+            error.statusCode = 409;
+            throw error;
+          }
+          const content = await readFile(filePath);
+          if (content.length !== Number(attachment.fileSize)
+              || checksum(content) !== attachment.sha256) {
+            const error = new Error('Approved technical file failed integrity verification');
+            error.statusCode = 409;
+            throw error;
+          }
+          documents.push({
+            documentNo: number,
+            format: 'uploaded',
+            originalName: attachment.originalName,
+            mimeType: attachment.mimeType || 'application/octet-stream',
+            content,
+            byteSize: content.length,
+            sha256: attachment.sha256
+          });
         }
-        return [{
-          documentNo: number,
-          format: 'uploaded',
-          originalName: sourceAttachment.originalName,
-          mimeType: sourceAttachment.mimeType || 'application/octet-stream',
-          content,
-          byteSize: content.length,
-          sha256: sourceAttachment.sha256
-        }];
+        return documents;
       }
       const fileBase = `${safeFilePart(opportunity.opportunityNo)}_${number}`;
       const [docxContent, pdfContent] = await Promise.all([

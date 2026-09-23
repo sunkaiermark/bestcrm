@@ -917,17 +917,11 @@
         gap: 8px 16px;
       }
 
-      .opportunity-technical-links {
-        display: inline-flex;
-        flex-wrap: wrap;
-        font-size: 16px;
-        font-weight: 400;
-        gap: 12px;
-      }
-
-      .opportunity-technical-links a {
-        color: inherit;
-        text-decoration: underline;
+      .business-section-technical {
+        --technical-download-action-width: 122px;
+        --technical-proposal-action-columns: minmax(320px, 360px) minmax(330px, 360px) minmax(260px, 296px);
+        --technical-proposal-file-columns: minmax(175px, 190px) fit-content(230px) minmax(300px, 1fr) minmax(260px, 296px);
+        --technical-proposal-layout-width: 1320px;
       }
 
       .business-section-technical .section-body > .form-panel,
@@ -935,73 +929,272 @@
         max-width: none;
       }
 
-      .technical-draft-create-form,
-      .technical-proposal-upload-form {
+      .business-section-technical .technical-proposal-upload-panel {
+        background: transparent;
+        border: 0;
+        border-radius: 0;
+        padding: 14px 14px 0;
+      }
+
+      .technical-draft-create-form {
         align-items: center;
         display: flex;
         flex-wrap: wrap;
         gap: 10px;
       }
 
-      .technical-draft-create-form > label,
-      .technical-proposal-upload-form > label {
+      .technical-draft-create-form > label {
         flex: 0 0 190px;
         font-weight: 700;
         margin: 0;
       }
 
-      .technical-draft-create-form > select,
-      .technical-proposal-upload-form > .localized-file-picker {
+      .technical-draft-create-form > select {
         flex: 1 1 280px;
         min-width: 0;
         width: auto;
       }
 
-      .technical-draft-create-form > button,
-      .technical-proposal-upload-form > button {
+      .technical-draft-create-form > button {
         flex: 0 0 auto;
         white-space: nowrap;
       }
 
-      .technical-uploaded-files > strong {
-        display: block;
-        margin-bottom: 4px;
+      .technical-proposal-upload-form {
+        align-items: center;
+        display: grid;
+        gap: 10px 16px;
+        grid-template-columns: var(--technical-proposal-file-columns);
+        max-width: var(--technical-proposal-layout-width);
       }
 
-      .technical-uploaded-file-row {
-        justify-content: space-between;
+      .technical-proposal-upload-form > label {
+        font-weight: 700;
+        grid-column: 1;
+        margin: 0;
+      }
+
+      .technical-proposal-upload-form > .localized-file-picker {
+        display: grid;
+        grid-column: 2 / 4;
+        grid-template-columns: minmax(150px, 0.55fr) minmax(0, 1fr);
+        width: 100%;
+      }
+
+      .technical-proposal-upload-form > button {
+        border: 1px solid var(--accent);
+        grid-column: 4;
+        justify-self: end;
+        padding: 7px 12px;
+        white-space: nowrap;
+        width: var(--technical-download-action-width);
+      }
+
+      .technical-uploaded-files {
+        display: grid;
+        gap: 0 16px;
+        grid-template-columns: var(--technical-proposal-file-columns);
+        max-width: var(--technical-proposal-layout-width);
+        width: 100%;
+      }
+
+      .technical-uploaded-files > .technical-uploaded-files-label {
+        align-self: center;
+        grid-column: 1;
+        margin: 0;
+        padding: 9px 0;
+      }
+
+      .technical-version-row.technical-uploaded-file-row {
+        border: 0;
+        display: contents;
+        padding: 0;
+      }
+
+      .technical-version-row.technical-uploaded-file-row .technical-version-summary {
+        grid-column: 2;
+        min-width: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .technical-version-row.technical-uploaded-file-row > .technical-version-summary,
+      .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-name,
+      .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-actions {
+        align-self: stretch;
+        border-bottom: 1px solid var(--line);
+        padding: 9px 0;
+      }
+
+      .technical-uploaded-file-name {
+        align-items: center;
+        display: flex;
+        grid-column: 3;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .technical-uploaded-file-actions {
+        grid-column: 4;
+        justify-content: flex-start;
+      }
+
+      .technical-file-action {
+        border: 1px solid transparent;
+        border-radius: 6px;
+        display: inline-block;
+        font-weight: 700;
+        padding: 7px 12px;
+      }
+
+      .technical-file-preview-action {
+        background: #dbeafe;
+        border-color: #93c5fd;
+        color: #1d4ed8;
+      }
+
+      .technical-file-download-action {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #ffffff;
+        text-align: center;
+        width: var(--technical-download-action-width);
       }
 
       .technical-proposal-submit-form {
+        display: grid;
+        grid-template-columns: minmax(320px, 360px);
+        margin-left: -14px;
         margin-top: 14px;
+        max-width: var(--technical-proposal-layout-width);
       }
 
-      .opportunity-technical-secondary-links {
-        border-top: 1px solid var(--line);
-        color: var(--muted);
-        display: flex;
-        justify-content: flex-end;
-        margin-top: 14px;
-        padding-top: 10px;
+      .technical-proposal-submit-form > button {
+        grid-column: 1;
+        text-align: left;
+        width: 100%;
+      }
+
+      .business-section-technical .stage-workflow-actions {
+        margin-top: 28px;
+      }
+
+      .business-section-technical .stage-workflow-actions .workflow-compact-row {
+        display: grid;
+        gap: 10px 16px;
+        grid-template-columns: var(--technical-proposal-action-columns);
+        max-width: 1050px;
+      }
+
+      .business-section-technical .stage-workflow-actions .workflow-action-button {
+        flex: none;
+        grid-column: 1;
+        text-align: left;
+        width: 100%;
+      }
+
+      .business-section-technical .stage-workflow-actions .workflow-inline-field {
+        display: contents;
+      }
+
+      .business-section-technical .stage-workflow-actions .workflow-inline-field > span {
+        grid-column: 2;
+      }
+
+      .business-section-technical .stage-workflow-actions .workflow-inline-field > input,
+      .business-section-technical .stage-workflow-actions .workflow-inline-field > select,
+      .business-section-technical .stage-workflow-actions .workflow-inline-field > details {
+        grid-column: 3;
+      }
+
+      .business-section-technical .stage-workflow-actions .workflow-missing-requirements {
+        grid-column: 2 / 4;
+        margin-left: 0;
+      }
+
+      @media (max-width: 1100px) {
+        .technical-proposal-upload-form {
+          align-items: stretch;
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .technical-proposal-upload-form > label,
+        .technical-proposal-upload-form > .localized-file-picker,
+        .technical-proposal-upload-form > button {
+          grid-column: 1;
+          width: 100%;
+        }
+
+        .technical-uploaded-files {
+          display: grid;
+          gap: 8px;
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .technical-uploaded-files > .technical-uploaded-files-label,
+        .technical-version-row.technical-uploaded-file-row {
+          grid-column: 1;
+        }
+
+        .technical-version-row.technical-uploaded-file-row {
+          display: grid;
+          gap: 8px;
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .technical-version-row.technical-uploaded-file-row .technical-version-summary,
+        .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-name,
+        .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-actions {
+          border-bottom: 0;
+          grid-column: 1;
+          padding: 0;
+        }
+
+        .technical-version-row.technical-uploaded-file-row {
+          border-bottom: 1px solid var(--line);
+          padding: 9px 0;
+        }
+
+        .technical-proposal-submit-form {
+          grid-template-columns: minmax(0, 1fr);
+          margin-left: 0;
+        }
+
+        .business-section-technical .stage-workflow-actions .workflow-compact-row {
+          align-items: stretch;
+          display: flex;
+          flex-direction: column;
+        }
+
+        .business-section-technical .stage-workflow-actions .workflow-inline-field {
+          display: grid;
+          grid-template-columns: 150px minmax(0, 1fr);
+          width: 100%;
+        }
+
+        .business-section-technical .stage-workflow-actions .workflow-inline-field > span,
+        .business-section-technical .stage-workflow-actions .workflow-inline-field > input,
+        .business-section-technical .stage-workflow-actions .workflow-inline-field > select,
+        .business-section-technical .stage-workflow-actions .workflow-inline-field > details {
+          grid-column: auto;
+        }
       }
 
       @media (max-width: 700px) {
-        .technical-draft-create-form,
-        .technical-proposal-upload-form {
+        .technical-draft-create-form {
           align-items: stretch;
           flex-direction: column;
         }
 
         .technical-draft-create-form > label,
-        .technical-proposal-upload-form > label,
-        .technical-draft-create-form > select,
-        .technical-proposal-upload-form > .localized-file-picker {
+        .technical-draft-create-form > select {
           flex-basis: auto;
           width: 100%;
         }
 
-        .opportunity-technical-secondary-links {
-          justify-content: flex-start;
+        .technical-proposal-upload-form > .localized-file-picker {
+          grid-template-columns: minmax(0, 1fr);
         }
       }
 
@@ -1967,6 +2160,64 @@
         border: 1px solid var(--line);
         border-radius: 8px;
         padding: 14px;
+      }
+
+      .form-panel.customer-form {
+        max-width: none;
+        width: 100%;
+      }
+
+      .customer-form-row {
+        align-items: center;
+        display: grid;
+        gap: 16px;
+        grid-template-columns: 220px minmax(0, 1fr);
+      }
+
+      .customer-form-row-textarea {
+        align-items: start;
+      }
+
+      .customer-form-row-textarea .customer-form-label {
+        padding-top: 8px;
+      }
+
+      .customer-form .customer-outline-input {
+        min-height: 246px;
+      }
+
+      .form-panel.contact-form {
+        max-width: none;
+        width: 100%;
+      }
+
+      .contact-form-row {
+        align-items: center;
+        display: grid;
+        gap: 16px;
+        grid-template-columns: 220px minmax(0, 1fr);
+      }
+
+      .contact-form-row-textarea {
+        align-items: start;
+      }
+
+      .contact-form-row-textarea .contact-form-label {
+        padding-top: 8px;
+      }
+
+      @media (max-width: 900px) {
+        .customer-form-row,
+        .contact-form-row {
+          align-items: stretch;
+          gap: 5px;
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .customer-form-row-textarea .customer-form-label,
+        .contact-form-row-textarea .contact-form-label {
+          padding-top: 0;
+        }
       }
 
       .form-panel.lead-submission-form {
@@ -4465,6 +4716,7 @@
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>
           <a class="<%= navClass('customers') %>" href="/customers"><%= t('customers') %></a>
           <a class="<%= navClass('contacts') %>" href="/contacts"><%= t('contacts') %></a>
+          <a class="<%= navClass('analytics') %>" href="/analytics"><%= t('analytics') %></a>
           <% if (canSeeTechnicalStandardsNav) { %>
             <div class="nav-parent"><%= t('technicalDocumentsCenter') %></div>
             <div class="nav-subgroup">

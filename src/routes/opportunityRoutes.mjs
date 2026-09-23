@@ -298,8 +298,7 @@ function formForAction(action, usersByRole, opportunity = {}, teamMembers = []) 
             'Quotation Engineer',
             usersByRole[ROLES.QUOTATION_ENGINEER] || [],
             opportunity.quotationEngineerId
-          ),
-          textareaField('comment', 'Comment', false)
+          )
         ]
       };
     case ACTIONS.SUBMIT_TECHNICAL_SOLUTION:
@@ -1126,6 +1125,9 @@ export function opportunityRoutes({
       ]);
       const opportunityWithTeam = { ...opportunity, teamMembers };
       const activeTechnicalDraft = technicalDrafts.find((draft) => ['draft', 'ready', 'pending'].includes(draft.status)) || null;
+      const activeTechnicalDraftFiles = Array.isArray(activeTechnicalDraft?.uploadedFiles) && activeTechnicalDraft.uploadedFiles.length
+        ? activeTechnicalDraft.uploadedFiles
+        : (activeTechnicalDraft?.uploadedFile ? [activeTechnicalDraft.uploadedFile] : []);
       const isTechnicalPreparationStage = ['technical_solution_in_progress', 'technical_solution_rejected'].includes(opportunity.status);
       const workflowForms = buildWorkflowForms(
         req.currentUser,
@@ -1161,7 +1163,8 @@ export function opportunityRoutes({
         canSubmitUploadedTechnicalDraft: isTechnicalPreparationStage
           && activeTechnicalDraft?.sourceKind === 'uploaded_file'
           && activeTechnicalDraft.status === 'ready'
-          && !activeTechnicalDraft.uploadedFile?.materialVersionId
+          && activeTechnicalDraftFiles.length > 0
+          && activeTechnicalDraftFiles.every((file) => !file.materialVersionId)
           && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
         canWithdrawTechnicalDraft: activeTechnicalDraft?.status === 'pending'
           && opportunity.status === 'technical_solution_pending'

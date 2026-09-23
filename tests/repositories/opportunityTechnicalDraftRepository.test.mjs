@@ -158,6 +158,35 @@ test('marking ready records an append-only readiness event', async () => {
   assert.deepEqual(calls[0].params, [41, '[]', 3]);
 });
 
+test('one uploaded batch links every file to one TS-D and keeps the first file as the legacy primary', async () => {
+  const calls = [];
+  const repository = createOpportunityTechnicalDraftRepository({
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [draftRow({
+        source_kind: 'uploaded_file',
+        uploaded_attachment_id: '81',
+        uploaded_attachments: JSON.stringify([
+          { id: 81, originalName: 'Agreement.pdf', sha256: 'a'.repeat(64) },
+          { id: 82, originalName: 'Datasheet.xlsx', sha256: 'b'.repeat(64) }
+        ])
+      })] };
+    }
+  });
+  const draft = await repository.setUploadedFiles({
+    draftId: 41,
+    attachmentIds: [81, 82],
+    previousAttachmentId: null,
+    previousAttachmentIds: [],
+    actorUserId: 3
+  });
+  assert.equal(draft.uploadedAttachmentId, 81);
+  assert.deepEqual(draft.uploadedFiles.map((file) => file.originalName), ['Agreement.pdf', 'Datasheet.xlsx']);
+  assert.match(calls[0].sql, /unnest\(\$2::bigint\[\]\) WITH ORDINALITY/);
+  assert.match(calls[0].sql, /'attachmentIds', \$2::bigint\[\]/);
+  assert.deepEqual(calls[0].params[1], [81, 82]);
+});
+
 test('submission freezes a validated ready draft and writes an audit event', async () => {
   const calls = [];
   const repository = createOpportunityTechnicalDraftRepository({
@@ -227,6 +256,6 @@ test('approved DOCX and PDF bytes are stored with their SHA-256 metadata', async
   });
   assert.equal(documents[0].documentNo, 'TS-V1');
   assert.equal(documents[0].byteSize, content.length);
-  assert.match(calls[0].sql, /ON CONFLICT \(technical_draft_id, format\) DO NOTHING/);
+  assert.match(calls[0].sql, /ON CONFLICT DO NOTHING/);
   assert.match(calls[1].sql, /'documents_generated'/);
 });

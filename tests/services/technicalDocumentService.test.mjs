@@ -100,6 +100,36 @@ test('approved uploaded technical file is the exact official TS-V content', asyn
   }
 });
 
+test('approved uploaded technical file batch keeps every file in one TS-V', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-technical-version-batch-'));
+  try {
+    const sources = [];
+    for (const [storedPath, originalName, contentText] of [
+      ['agreement.pdf', 'Agreement.pdf', '%PDF-1.4\nAgreement'],
+      ['datasheet.xlsx', 'Datasheet.xlsx', 'PK\u0003\u0004Datasheet']
+    ]) {
+      const content = Buffer.from(contentText);
+      await writeFile(path.join(uploadDir, storedPath), content);
+      sources.push({
+        storedPath,
+        originalName,
+        mimeType: 'application/octet-stream',
+        fileSize: content.length,
+        sha256: createHash('sha256').update(content).digest('hex')
+      });
+    }
+    const service = createTechnicalDocumentService({ uploadDir });
+    const draft = approvedDraft({ sourceKind: 'uploaded_file', formalVersionNo: 3 });
+    const documents = await service.generateApprovedDocuments({ draft, sourceAttachments: sources });
+    assert.equal(documents.length, 2);
+    assert.deepEqual(documents.map((document) => document.documentNo), ['TS-V3', 'TS-V3']);
+    assert.deepEqual(documents.map((document) => document.originalName), ['Agreement.pdf', 'Datasheet.xlsx']);
+    assert.ok(documents.every((document) => document.format === 'uploaded'));
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('approved technical solution preserves controlled template layout', async () => {
   const draft = approvedDraft();
   draft.renderedContent.sections[0].layout = {

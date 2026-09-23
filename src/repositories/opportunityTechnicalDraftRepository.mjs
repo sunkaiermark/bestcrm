@@ -20,23 +20,44 @@ function jsonValue(value, fallback) {
   return value;
 }
 
+function mapUploadedFile(file) {
+  if (!file?.id) return null;
+  return {
+    id: Number(file.id),
+    originalName: file.originalName || file.original_name || '',
+    mimeType: file.mimeType || file.mime_type || 'application/octet-stream',
+    fileSize: Number(file.fileSize || file.file_size || 0),
+    sha256: file.sha256 || null,
+    materialVersionId: numberOrNull(file.materialVersionId ?? file.material_version_id)
+  };
+}
+
 function mapDraftRow(row) {
   if (!row) return null;
+  const uploadedAttachmentRows = jsonValue(row.uploaded_attachments, []);
+  const linkedUploadedFiles = (Array.isArray(uploadedAttachmentRows) ? uploadedAttachmentRows : [])
+    .map(mapUploadedFile)
+    .filter(Boolean);
+  const legacyUploadedFile = row.uploaded_attachment_id ? mapUploadedFile({
+    id: row.uploaded_attachment_id,
+    originalName: row.uploaded_attachment_name,
+    mimeType: row.uploaded_attachment_mime_type,
+    fileSize: row.uploaded_attachment_file_size,
+    sha256: row.uploaded_attachment_sha256,
+    materialVersionId: row.uploaded_attachment_material_version_id
+  }) : null;
+  const uploadedFiles = linkedUploadedFiles.length
+    ? linkedUploadedFiles
+    : (legacyUploadedFile ? [legacyUploadedFile] : []);
   return {
     id: Number(row.id),
     opportunityId: Number(row.opportunity_id),
     templateRevisionId: numberOrNull(row.template_revision_id),
     sourceKind: row.source_kind || 'template',
     deliverableType: row.deliverable_type || 'technical_agreement',
-    uploadedAttachmentId: numberOrNull(row.uploaded_attachment_id),
-    uploadedFile: row.uploaded_attachment_id ? {
-      id: Number(row.uploaded_attachment_id),
-      originalName: row.uploaded_attachment_name || '',
-      mimeType: row.uploaded_attachment_mime_type || 'application/octet-stream',
-      fileSize: Number(row.uploaded_attachment_file_size || 0),
-      sha256: row.uploaded_attachment_sha256 || null,
-      materialVersionId: numberOrNull(row.uploaded_attachment_material_version_id)
-    } : null,
+    uploadedAttachmentId: uploadedFiles[0]?.id || numberOrNull(row.uploaded_attachment_id),
+    uploadedFile: uploadedFiles[0] || null,
+    uploadedFiles,
     draftRevisionNo: Number(row.draft_revision_no),
     draftLabel: opportunityTechnicalDraftLabel(row.draft_revision_no),
     sourceDraftId: numberOrNull(row.source_draft_id),
@@ -145,16 +166,88 @@ const draftSelect = `
     file_attachment.mime_type AS uploaded_attachment_mime_type,
     file_attachment.file_size AS uploaded_attachment_file_size,
     file_attachment.sha256 AS uploaded_attachment_sha256,
-    file_attachment.opportunity_material_version_id AS uploaded_attachment_material_version_id
+    file_attachment.opportunity_material_version_id AS uploaded_attachment_material_version_id,
+    uploaded_attachments.files AS uploaded_attachments
   FROM opportunity_technical_drafts d
   JOIN users creator ON creator.id = d.created_by
   JOIN users updater ON updater.id = d.updated_by
   LEFT JOIN users submitter ON submitter.id = d.submitted_by
   LEFT JOIN users reviewer ON reviewer.id = d.reviewed_by
   LEFT JOIN attachments file_attachment ON file_attachment.id = d.uploaded_attachment_id
+  LEFT JOIN LATERAL (
+    SELECT jsonb_agg(
+      jsonb_build_object(
+        'id', attachment.id,
+        'originalName', attachment.original_name,
+        'mimeType', attachment.mime_type,
+        'fileSize', attachment.file_size,
+        'sha256', attachment.sha256,
+        'materialVersionId', attachment.opportunity_material_version_id
+      ) ORDER BY link.sort_order ASC, link.id ASC
+    ) AS files
+    FROM opportunity_technical_draft_attachments link
+    JOIN attachments attachment ON attachment.id = link.attachment_id
+    WHERE link.technical_draft_id = d.id
+      AND attachment.retired_at IS NULL
+  ) uploaded_attachments ON true
 `;
 
 export function createOpportunityTechnicalDraftRepository(queryTarget) {
+  async function setUploadedFiles(input) {
+    const attachmentIds = [...new Set((input.attachmentIds || []).map(Number).filter(Number.isInteger))];
+    if (!attachmentIds.length) return null;
+    const previousAttachmentIds = [...new Set((input.previousAttachmentIds || []).map(Number).filter(Number.isInteger))];
+    const result = await queryTarget.query(`
+      WITH updated AS (
+        UPDATE opportunity_technical_drafts
+        SET uploaded_attachment_id = ($2::bigint[])[1],
+            status = 'ready',
+            validation_issues = '[]'::jsonb,
+            updated_by = $3,
+            updated_at = now()
+        WHERE id = $1
+          AND source_kind = 'uploaded_file'
+          AND status IN ('draft', 'ready')
+          AND uploaded_attachment_id IS NOT DISTINCT FROM $4::bigint
+        RETURNING *
+      ), next_position AS (
+        SELECT COALESCE(MAX(sort_order), 0) AS base_position
+        FROM opportunity_technical_draft_attachments
+        WHERE technical_draft_id = $1
+      ), inserted_links AS (
+        INSERT INTO opportunity_technical_draft_attachments (
+          technical_draft_id, attachment_id, sort_order, added_by
+        )
+        SELECT updated.id, selected.attachment_id,
+          next_position.base_position + selected.position::integer, $3
+        FROM updated
+        CROSS JOIN next_position
+        CROSS JOIN unnest($2::bigint[]) WITH ORDINALITY AS selected(attachment_id, position)
+        RETURNING attachment_id
+      ), inserted_event AS (
+        INSERT INTO opportunity_technical_draft_events (
+          technical_draft_id, event_type, actor_user_id, details
+        )
+        SELECT id,
+          CASE WHEN $4::bigint IS NULL THEN 'file_uploaded' ELSE 'file_replaced' END,
+          $3, jsonb_build_object(
+            'attachmentIds', $2::bigint[],
+            'previousAttachmentIds', $5::bigint[],
+            'fileCount', cardinality($2::bigint[])
+          )
+        FROM updated
+      )
+      SELECT * FROM updated
+    `, [
+      input.draftId,
+      attachmentIds,
+      input.actorUserId,
+      input.previousAttachmentId || null,
+      previousAttachmentIds
+    ]);
+    return mapDraftRow(result.rows[0]);
+  }
+
   return {
     supportsVersionedTechnicalApproval: true,
     async getGenerationContext(opportunityId) {
@@ -265,32 +358,14 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
       return mapDraftRow(result.rows[0]);
     },
 
+    setUploadedFiles,
+
     async setUploadedFile(input) {
-      const result = await queryTarget.query(`
-        WITH updated AS (
-          UPDATE opportunity_technical_drafts
-          SET uploaded_attachment_id = $2,
-              status = 'ready',
-              validation_issues = '[]'::jsonb,
-              updated_by = $3,
-              updated_at = now()
-          WHERE id = $1
-            AND source_kind = 'uploaded_file'
-            AND status IN ('draft', 'ready')
-            AND uploaded_attachment_id IS NOT DISTINCT FROM $4::bigint
-          RETURNING *
-        ), inserted_event AS (
-          INSERT INTO opportunity_technical_draft_events (
-            technical_draft_id, event_type, actor_user_id, details
-          )
-          SELECT id,
-            CASE WHEN $4::bigint IS NULL THEN 'file_uploaded' ELSE 'file_replaced' END,
-            $3, jsonb_build_object('attachmentId', $2::bigint, 'previousAttachmentId', $4::bigint)
-          FROM updated
-        )
-        SELECT * FROM updated
-      `, [input.draftId, input.attachmentId, input.actorUserId, input.previousAttachmentId || null]);
-      return mapDraftRow(result.rows[0]);
+      return setUploadedFiles({
+        ...input,
+        attachmentIds: [input.attachmentId],
+        previousAttachmentIds: input.previousAttachmentId ? [input.previousAttachmentId] : []
+      });
     },
 
     async listByOpportunity(opportunityId) {
@@ -307,6 +382,9 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
         SELECT EXISTS (
           SELECT 1 FROM opportunity_technical_drafts
           WHERE uploaded_attachment_id = $1
+          UNION ALL
+          SELECT 1 FROM opportunity_technical_draft_attachments
+          WHERE attachment_id = $1
         ) AS linked
       `, [attachmentId]);
       return result.rows[0]?.linked === true;
@@ -728,7 +806,7 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
             mime_type, content, byte_size, sha256, generated_by
           )
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-          ON CONFLICT (technical_draft_id, format) DO NOTHING
+          ON CONFLICT DO NOTHING
           RETURNING *
         `, [
           input.draftId,

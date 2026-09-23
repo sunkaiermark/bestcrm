@@ -112,8 +112,8 @@ export function opportunityTechnicalDraftRoutes({
     });
   const technicalFileUpload = multer({
     storage: technicalUploadStorage,
-    limits: { fileSize: technicalFileLimitMb * 1024 * 1024 }
-  }).single('attachment');
+    limits: { fileSize: technicalFileLimitMb * 1024 * 1024, files: 10 }
+  }).array('attachment', 10);
   const reviewFileUpload = multer({
     storage: technicalUploadStorage,
     limits: { fileSize: technicalFileLimitMb * 1024 * 1024, files: 10 }
@@ -231,8 +231,13 @@ export function opportunityTechnicalDraftRoutes({
       }
       technicalFileUpload(req, res, async (uploadError) => {
         if (uploadError) {
+          await Promise.all((req.files || []).map((file) => file?.path && rm(file.path, { force: true })));
           if (uploadError instanceof multer.MulterError && uploadError.code === 'LIMIT_FILE_SIZE') {
             res.status(413).send(`File exceeds the ${technicalFileLimitMb} MB upload limit`);
+            return;
+          }
+          if (uploadError instanceof multer.MulterError && uploadError.code === 'LIMIT_FILE_COUNT') {
+            res.status(413).send('A maximum of 10 technical files can be uploaded together');
             return;
           }
           next(uploadError);
@@ -244,34 +249,45 @@ export function opportunityTechnicalDraftRoutes({
             res.status(403).send('Invalid CSRF token');
             return;
           }
-          if (!req.file) {
-            res.status(400).send('Technical file is required');
+          const files = Array.isArray(req.files) ? req.files : [];
+          if (!files.length) {
+            res.status(400).send('At least one technical file is required');
             return;
           }
           const save = async (transactionRepositories = {}) => {
             const repositories = { ...dependencies, ...transactionRepositories };
             const previousAttachmentId = context.draft.uploadedAttachmentId || null;
-            const attachment = await persistUploadedOpportunityAttachment({
-              attachmentRepository: repositories.attachmentRepository,
-              uploadDir,
-              file: req.file,
-              opportunityId: context.opportunity.id,
-              category: 'technical_solution',
-              actorUserId: req.currentUser.id
-            });
-            const updated = await repositories.opportunityTechnicalDraftRepository.setUploadedFile({
+            const previousAttachmentIds = (Array.isArray(context.draft.uploadedFiles) && context.draft.uploadedFiles.length
+              ? context.draft.uploadedFiles
+              : (context.draft.uploadedFile ? [context.draft.uploadedFile] : []))
+              .map((file) => Number(file.id))
+              .filter(Boolean);
+            if (!previousAttachmentIds.length && previousAttachmentId) previousAttachmentIds.push(Number(previousAttachmentId));
+            const attachments = [];
+            for (const file of files) {
+              attachments.push(await persistUploadedOpportunityAttachment({
+                attachmentRepository: repositories.attachmentRepository,
+                uploadDir,
+                file,
+                opportunityId: context.opportunity.id,
+                category: 'technical_solution',
+                actorUserId: req.currentUser.id
+              }));
+            }
+            const updated = await repositories.opportunityTechnicalDraftRepository.setUploadedFiles({
               draftId: context.draft.id,
-              attachmentId: attachment.id,
+              attachmentIds: attachments.map((attachment) => attachment.id),
               previousAttachmentId,
+              previousAttachmentIds,
               actorUserId: req.currentUser.id
             });
             if (!updated) throw new WorkflowValidationError('Technical draft is no longer editable', 409);
-            if (previousAttachmentId) {
+            for (const previousId of previousAttachmentIds) {
               const retired = await repositories.attachmentRepository.retireById({
-                id: previousAttachmentId,
+                id: previousId,
                 actorUserId: req.currentUser.id,
                 reason: 'replaced_before_technical_submission',
-                replacedByAttachmentId: attachment.id
+                replacedByAttachmentId: attachments[0].id
               });
               if (!retired) throw new WorkflowValidationError('Previous technical file could not be replaced', 409);
             }
@@ -285,7 +301,9 @@ export function opportunityTechnicalDraftRoutes({
         } catch (error) {
           handleError(error, res, next);
         } finally {
-          if (!saved && req.file?.path) await rm(req.file.path, { force: true });
+          if (!saved) {
+            await Promise.all((req.files || []).map((file) => file?.path && rm(file.path, { force: true })));
+          }
         }
       });
     } catch (error) {

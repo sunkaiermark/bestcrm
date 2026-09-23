@@ -374,6 +374,13 @@ function materialVersionRepository(repositories) {
   return repositories.opportunityMaterialVersionRepository;
 }
 
+function uploadedTechnicalFileIds(draft) {
+  const ids = Array.isArray(draft?.uploadedFiles) && draft.uploadedFiles.length
+    ? draft.uploadedFiles.map((file) => Number(file.id))
+    : [Number(draft?.uploadedAttachmentId || draft?.uploadedFile?.id)];
+  return [...new Set(ids.filter(Number.isInteger))];
+}
+
 async function createPendingMaterialVersion({ action, actor, opportunityId, payload, repositories }) {
   const materialType = materialSubmissionTypes.get(action);
   if (!materialType) {
@@ -386,12 +393,27 @@ async function createPendingMaterialVersion({ action, actor, opportunityId, payl
     submittedBy: actor.id
   });
   if (version && payload?.technicalDraft?.sourceKind === 'uploaded_file') {
-    const bound = await repositories.attachmentRepository?.bindSelectedToMaterialVersion?.({
-      attachmentId: payload.technicalDraft.uploadedAttachmentId,
-      opportunityId: Number(opportunityId),
-      opportunityMaterialVersionId: version.id
-    });
-    if (!bound) throw new WorkflowValidationError('The uploaded technical file could not be bound to this version');
+    const attachmentIds = uploadedTechnicalFileIds(payload.technicalDraft);
+    if (!attachmentIds.length) throw new WorkflowValidationError('The uploaded technical files could not be bound to this version');
+    if (typeof repositories.attachmentRepository?.bindSelectedManyToMaterialVersion === 'function') {
+      const boundIds = await repositories.attachmentRepository.bindSelectedManyToMaterialVersion({
+        attachmentIds,
+        opportunityId: Number(opportunityId),
+        opportunityMaterialVersionId: version.id
+      });
+      if (boundIds.length !== attachmentIds.length) {
+        throw new WorkflowValidationError('The uploaded technical files could not be bound to this version');
+      }
+    } else {
+      for (const attachmentId of attachmentIds) {
+        const bound = await repositories.attachmentRepository?.bindSelectedToMaterialVersion?.({
+          attachmentId,
+          opportunityId: Number(opportunityId),
+          opportunityMaterialVersionId: version.id
+        });
+        if (!bound) throw new WorkflowValidationError('The uploaded technical files could not be bound to this version');
+      }
+    }
   } else if (version && typeof repositories.attachmentRepository?.bindUnboundToMaterialVersion === 'function') {
     await repositories.attachmentRepository.bindUnboundToMaterialVersion({
       opportunityId: Number(opportunityId),
@@ -477,13 +499,14 @@ async function payloadWithTechnicalDraft({ action, opportunityId, payload, repos
     throw new WorkflowValidationError('A validated ready project technical draft is required');
   }
   if (draft.sourceKind === 'uploaded_file') {
-    const file = draft.uploadedAttachmentId
-      ? await repositories.attachmentRepository?.findById?.(draft.uploadedAttachmentId)
-      : null;
-    if (!file || file.opportunityId !== Number(opportunityId)
+    const attachmentIds = uploadedTechnicalFileIds(draft);
+    const files = await Promise.all(attachmentIds.map((attachmentId) => (
+      repositories.attachmentRepository?.findById?.(attachmentId)
+    )));
+    if (!files.length || files.some((file) => !file || file.opportunityId !== Number(opportunityId)
         || file.category !== 'technical_solution' || file.retiredAt
-        || file.opportunityMaterialVersionId || !file.sha256) {
-      throw new WorkflowValidationError('Upload a valid technical file before submitting this draft');
+        || file.opportunityMaterialVersionId || !file.sha256)) {
+      throw new WorkflowValidationError('Upload valid technical files before submitting this draft');
     }
   }
   return {
@@ -626,19 +649,25 @@ async function persistTechnicalSolutionReviewData({ action, actor, opportunity, 
       if (typeof draftRepository.getDraftDetail === 'function') {
         approvedDraft = await draftRepository.getDraftDetail(approvedDraft.id) || approvedDraft;
       }
-      const sourceAttachment = approvedDraft.sourceKind === 'uploaded_file'
-        ? await repositories.attachmentRepository?.findById?.(approvedDraft.uploadedAttachmentId)
-        : null;
+      const sourceAttachments = approvedDraft.sourceKind === 'uploaded_file'
+        ? await Promise.all(uploadedTechnicalFileIds(approvedDraft).map((attachmentId) => (
+          repositories.attachmentRepository?.findById?.(attachmentId)
+        )))
+        : [];
+      const sourceAttachment = sourceAttachments[0] || null;
       if (approvedDraft.sourceKind === 'uploaded_file'
-          && (!sourceAttachment || sourceAttachment.opportunityId !== Number(opportunityId)
-            || sourceAttachment.category !== 'technical_solution' || sourceAttachment.retiredAt)) {
-        throw new WorkflowValidationError('Approved technical file is unavailable');
+          && (!sourceAttachments.length || sourceAttachments.some((attachment) => (
+            !attachment || attachment.opportunityId !== Number(opportunityId)
+            || attachment.category !== 'technical_solution' || attachment.retiredAt
+          )))) {
+        throw new WorkflowValidationError('Approved technical files are unavailable');
       }
       const documents = await repositories.technicalDocumentService.generateApprovedDocuments({
         draft: approvedDraft,
         opportunity,
         reviewer: actor,
-        sourceAttachment
+        sourceAttachment,
+        sourceAttachments
       });
       await draftRepository.saveApprovedDocuments({
         draftId: approvedDraft.id,

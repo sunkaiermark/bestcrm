@@ -44,6 +44,7 @@ import { createUserRepository } from './repositories/userRepository.mjs';
 import { createWorkbenchRepository } from './repositories/workbenchRepository.mjs';
 import { createWorkflowEventRepository } from './repositories/workflowEventRepository.mjs';
 import { accountRoutes } from './routes/accountRoutes.mjs';
+import { analyticsRoutes } from './routes/analyticsRoutes.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
@@ -850,6 +851,7 @@ export function createApp(options = {}) {
     salesWorkRepository,
     notificationRepository
   }));
+  app.use(analyticsRoutes());
   app.use(notificationRoutes({
     notificationRepository,
     webPushPublicKey: configuredWebPushPublicKey
