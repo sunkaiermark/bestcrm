@@ -43,6 +43,20 @@ async function buildApp({
     isActive: true,
     roles: [ROLES.SALESPERSON]
   };
+  const quotationEngineer = {
+    id: 3,
+    username: 'engineer01',
+    displayName: 'Engineer One',
+    isActive: true,
+    roles: [ROLES.QUOTATION_ENGINEER]
+  };
+  const supportingEngineer = {
+    id: 9,
+    username: 'engineer02',
+    displayName: 'Engineer Two',
+    isActive: true,
+    roles: [ROLES.QUOTATION_ENGINEER]
+  };
   const receipt = {
     id: 11,
     source: 'manual',
@@ -75,7 +89,9 @@ async function buildApp({
     userRepository: {
       async findByIdWithRoles(id) { return Number(id) === user.id ? user : null; },
       async findByUsernameWithRoles(username) { return username === user.username ? user : null; },
-      async listUsersWithRoles() { return [user, manager, salesperson]; }
+      async listUsersWithRoles() {
+        return [user, manager, salesperson, quotationEngineer, supportingEngineer];
+      }
     },
     inquiryRepository: {
       async listInquiries(filter) {
@@ -301,8 +317,12 @@ test('assigned sales manager sees approve return and reject controls on lead det
     assert.match(page.text, /action="\/lead-submissions\/11\/approve"/);
     assert.match(page.text, /action="\/lead-submissions\/11\/return"/);
     assert.match(page.text, /action="\/lead-submissions\/11\/reject"/);
-    assert.match(page.text, />Approve and create opportunity</);
-    assert.match(page.text, />Sales manager review</);
+    assert.match(page.text, />Approve, initiate, and assign engineers</);
+    assert.match(page.text, />Sales manager approval and initiation</);
+    assert.match(page.text, /name="quotationEngineerIds"[^>]*value="3"/);
+    assert.match(page.text, /name="quotationEngineerIds"[^>]*value="9"/);
+    assert.match(page.text, /name="quotationEngineerLeadId"/);
+    assert.match(page.text, /name="technicalPlanSubmitDate"[^>]*required/);
     assert.match(page.text, /workflow-compact-row workflow-approve-row/);
     assert.match(page.text, /workflow-compact-row workflow-reject-row/);
     assert.equal((page.text.match(/class="lead-review-action-fields/g) || []).length, 3);
@@ -349,6 +369,9 @@ test('duplicate customer approval returns to the lead review page with actionabl
         estimatedAmount: '125000',
         deliveryCycle: '16 weeks',
         expectedBidDate: '2026-12-15',
+        quotationEngineerIds: ['3', '9'],
+        quotationEngineerLeadId: '3',
+        technicalPlanSubmitDate: '2026-10-06',
         requirementText: 'Preserved requirement',
         reviewNote: 'Preserved review note'
       });
@@ -364,6 +387,10 @@ test('duplicate customer approval returns to the lead review page with actionabl
     assert.match(response.text, /name="estimatedAmount" value="125000"/);
     assert.match(response.text, /name="deliveryCycle" value="16 weeks"/);
     assert.match(response.text, /name="expectedBidDate" value="2026-12-15"/);
+    assert.match(response.text, /name="quotationEngineerIds"[^>]*value="3"[^>]*checked/);
+    assert.match(response.text, /name="quotationEngineerIds"[^>]*value="9"[^>]*checked/);
+    assert.match(response.text, /name="quotationEngineerLeadId" value="3"/);
+    assert.match(response.text, /name="technicalPlanSubmitDate" value="2026-10-06" required/);
     assert.match(response.text, />Preserved requirement<\/textarea>/);
     assert.match(response.text, /name="reviewNote"[^>]*value="Preserved review note"/);
     assert.doesNotMatch(response.text, /^Duplicate customer$/);

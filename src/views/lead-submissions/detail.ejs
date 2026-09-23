@@ -31,6 +31,27 @@
           const selectedCustomerId = leadApprovalValue('customerId', submission.matchedCustomerId);
           const selectedContactId = leadApprovalValue('primaryContactId', submission.matchedContactId);
           const selectedSalespersonId = leadApprovalValue('salespersonId', submission.recommendedSalespersonId);
+          const rawSelectedQuotationEngineerIds = leadApprovalValue('quotationEngineerIds', []);
+          const selectedQuotationEngineerIds = [...new Set(
+            (Array.isArray(rawSelectedQuotationEngineerIds)
+              ? rawSelectedQuotationEngineerIds
+              : [rawSelectedQuotationEngineerIds])
+              .map(Number)
+              .filter((userId) => Number.isSafeInteger(userId) && userId > 0)
+          )];
+          const requestedQuotationEngineerLeadId = Number(leadApprovalValue(
+            'quotationEngineerLeadId',
+            selectedQuotationEngineerIds[0]
+          ));
+          const selectedQuotationEngineerLeadId = selectedQuotationEngineerIds.includes(requestedQuotationEngineerLeadId)
+            ? requestedQuotationEngineerLeadId
+            : selectedQuotationEngineerIds[0];
+          const orderedQuotationEngineerIds = selectedQuotationEngineerLeadId
+            ? [
+                selectedQuotationEngineerLeadId,
+                ...selectedQuotationEngineerIds.filter((userId) => userId !== selectedQuotationEngineerLeadId)
+              ]
+            : [];
         %>
         <p class="breadcrumb"><a href="/lead-submissions"><%= t('myLeadSubmissions') %></a></p>
         <header class="page-header">
@@ -141,6 +162,38 @@
                 <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount" value="<%= leadApprovalValue('estimatedAmount') || '' %>"></label>
                 <label><%= t('deliveryPeriod') %><input name="deliveryCycle" value="<%= leadApprovalValue('deliveryCycle') || '' %>"></label>
                 <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate" value="<%= leadApprovalValue('expectedBidDate') || '' %>"></label>
+                  <div class="workflow-inline-field workflow-engineer-field inquiry-field-wide">
+                    <span><%= t('workflowField.quotationEngineerIds') %></span>
+                    <details class="workflow-engineer-picker" data-engineer-picker data-selected-order="<%= orderedQuotationEngineerIds.join(',') %>">
+                      <summary data-engineer-summary><%= orderedQuotationEngineerIds.length > 0
+                        ? orderedQuotationEngineerIds
+                            .map((id) => quotationEngineers.find((user) => Number(user.id) === id))
+                            .filter(Boolean)
+                            .map((user) => user.displayName || user.username)
+                            .join(', ')
+                        : t('workflowField.quotationEngineerIds') %></summary>
+                      <input type="hidden" name="quotationEngineerLeadId" value="<%= selectedQuotationEngineerLeadId || '' %>" data-engineer-lead>
+                      <div class="workflow-engineer-options">
+                        <% for (const engineer of quotationEngineers) { %>
+                          <label>
+                            <input
+                              type="checkbox"
+                              name="quotationEngineerIds"
+                              value="<%= engineer.id %>"
+                              data-engineer-option
+                              data-engineer-name="<%= engineer.displayName || engineer.username %>"
+                              <%= selectedQuotationEngineerIds.includes(Number(engineer.id)) ? 'checked' : '' %>
+                            >
+                            <span><%= engineer.displayName || engineer.username %></span>
+                          </label>
+                        <% } %>
+                      </div>
+                    </details>
+                  </div>
+                  <label>
+                    <%= t('workflowField.technicalPlanSubmitDate') %>
+                    <input type="date" name="technicalPlanSubmitDate" value="<%= leadApprovalValue('technicalPlanSubmitDate') || '' %>" required>
+                  </label>
                   <label class="inquiry-field-full"><%= t('requirement') %><textarea name="requirementText" required><%= leadApprovalValue('requirementText', submission.requirementText) || '' %></textarea></label>
                 </div>
                 <div class="workflow-action-list lead-review-action-list">
@@ -251,6 +304,37 @@
               customerSelect.addEventListener('change', filterContacts);
               filterContacts();
             })();
+            document.querySelectorAll('[data-engineer-picker]').forEach((picker) => {
+              const options = [...picker.querySelectorAll('[data-engineer-option]')];
+              const summary = picker.querySelector('[data-engineer-summary]');
+              const leadInput = picker.querySelector('[data-engineer-lead]');
+              let selectionOrder = String(picker.dataset.selectedOrder || '')
+                .split(',')
+                .filter(Boolean);
+              const refresh = () => {
+                const selected = options.filter((option) => option.checked);
+                const selectedIds = new Set(selected.map((option) => option.value));
+                selectionOrder = selectionOrder.filter((id) => selectedIds.has(id));
+                for (const option of selected) {
+                  if (!selectionOrder.includes(option.value)) selectionOrder.push(option.value);
+                }
+                leadInput.value = selectionOrder[0] || '';
+                summary.textContent = selectionOrder
+                  .map((id) => options.find((option) => option.value === id)?.dataset.engineerName)
+                  .filter(Boolean)
+                  .join(', ') || <%- JSON.stringify(t('workflowField.quotationEngineerIds')) %>;
+              };
+              for (const option of options) option.addEventListener('change', refresh);
+              picker.closest('form').addEventListener('submit', (event) => {
+                refresh();
+                if (!leadInput.value) {
+                  event.preventDefault();
+                  picker.open = true;
+                  options[0]?.focus();
+                }
+              });
+              refresh();
+            });
           </script>
         <% } %>
 <%- include('../partials/app-end') %>

@@ -30,6 +30,7 @@ import {
   canSubmitNewLead,
   canViewLeadSubmission,
   leadSubmissionListFilterFor,
+  listEligibleQuotationEngineers,
   listEligibleReviewManagers,
   listEligibleSalespeople,
   reassignLeadReviewer,
@@ -207,6 +208,7 @@ async function loadLeadFormOptions(dependencies, actor) {
     : [];
   return {
     users,
+    quotationEngineers: listEligibleQuotationEngineers(users),
     reviewManagers: listEligibleReviewManagers(users),
     salespeople: listEligibleSalespeople(users),
     showSalesOwnerField: !hasRole(actor, ROLES.SALESPERSON)
@@ -267,6 +269,11 @@ function handleLeadError(error, res, next) {
     'Company or contact is required',
     'Sales manager is required',
     'Sales owner is required',
+    'Quotation engineer is required',
+    'Quotation engineer is invalid',
+    'Lead quotation engineer must be selected',
+    'Plan to Submit is required',
+    'Plan to Submit must be a valid date',
     'Invalid submission token',
     'Decision reason is required',
     'Email disposition is required',
@@ -305,8 +312,11 @@ export function leadSubmissionRoutes({
   customerRepository = null,
   contactRepository = null,
   emailArchiveRepository = null,
+  attachmentRepository = null,
   opportunityRepository = null,
   opportunityResponsibilityRepository = null,
+  workflowEventRepository = null,
+  todoRepository = null,
   emailArchiveTransaction = null,
   sharedAddress = 'sales@sunkaier.com',
   uploadDir = './var/uploads',
@@ -426,8 +436,12 @@ export function leadSubmissionRoutes({
   const dependencies = {
     ...emailDependencies,
     inquiryAttachmentRepository,
+    attachmentRepository,
     customerRepository,
-    contactRepository
+    contactRepository,
+    workflowEventRepository,
+    todoRepository,
+    uploadDir
   };
 
   router.use('/lead-submissions', requireLogin);

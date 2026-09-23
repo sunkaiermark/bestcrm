@@ -1,6 +1,7 @@
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import {
   copyStoredAttachmentFile,
+  inspectStoredAttachmentFile,
   removeStoredAttachmentFile,
   storeAttachmentBuffer
 } from './attachmentFileService.mjs';
@@ -141,4 +142,60 @@ export async function copyInquiryAttachmentsToOpportunity({
   }
 
   return copied;
+}
+
+export async function referenceInquiryAttachmentsToOpportunity({
+  inquiryAttachmentRepository,
+  attachmentRepository,
+  inquiryId,
+  opportunityId,
+  actor,
+  uploadDir
+}) {
+  if (!inquiryAttachmentRepository?.listByInquiry || !attachmentRepository?.createAttachment) {
+    return [];
+  }
+  const [inquiryAttachments, opportunityAttachments] = await Promise.all([
+    inquiryAttachmentRepository.listByInquiry(inquiryId),
+    typeof attachmentRepository.listByOpportunity === 'function'
+      ? attachmentRepository.listByOpportunity(opportunityId)
+      : []
+  ]);
+  const existingBySourceId = new Map(opportunityAttachments
+    .filter((attachment) => attachment.sourceInquiryAttachmentId)
+    .map((attachment) => [Number(attachment.sourceInquiryAttachmentId), attachment]));
+  const referenced = [];
+
+  for (const inquiryAttachment of inquiryAttachments) {
+    const existing = existingBySourceId.get(Number(inquiryAttachment.id));
+    if (existing) {
+      referenced.push(existing);
+      continue;
+    }
+    const inspected = await inspectStoredAttachmentFile({
+      uploadDir,
+      storedPath: inquiryAttachment.storedPath
+    });
+    if (inquiryAttachment.sha256 && inquiryAttachment.sha256 !== inspected.sha256) {
+      throw new Error('Inquiry attachment digest does not match its stored file');
+    }
+    if (Number.isFinite(Number(inquiryAttachment.fileSize))
+        && Number(inquiryAttachment.fileSize) !== inspected.fileSize) {
+      throw new Error('Inquiry attachment size does not match its stored file');
+    }
+    const attachment = await attachmentRepository.createAttachment({
+      opportunityId,
+      category: 'requirement',
+      originalName: inquiryAttachment.originalName,
+      storedPath: inquiryAttachment.storedPath,
+      mimeType: inquiryAttachment.mimeType || 'application/octet-stream',
+      fileSize: inspected.fileSize,
+      uploadedBy: actor.id,
+      sourceInquiryAttachmentId: inquiryAttachment.id,
+      sha256: inspected.sha256
+    });
+    referenced.push(attachment);
+  }
+
+  return referenced;
 }

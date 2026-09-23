@@ -16,13 +16,18 @@ test('email archive transaction exposes scoped repositories and commits', async 
   });
 
   const result = await transaction(async (repositories) => {
+    assert.equal(typeof repositories.attachmentRepository.createAttachment, 'function');
     assert.equal(typeof repositories.emailArchiveRepository.createInboundMessage, 'function');
     assert.equal(typeof repositories.contactRepository.findUniqueByEmail, 'function');
     assert.equal(typeof repositories.customerRepository.getCustomerDetail, 'function');
+    assert.equal(typeof repositories.inquiryAttachmentRepository.listByInquiry, 'function');
     assert.equal(typeof repositories.inquiryRepository.createInquiry, 'function');
     assert.equal(typeof repositories.opportunityRepository.createOpportunity, 'function');
+    assert.equal(typeof repositories.opportunityResponsibilityRepository.addTeamMember, 'function');
+    assert.equal(typeof repositories.todoRepository.create, 'function');
     assert.equal(typeof repositories.userRepository.listUsersByRole, 'function');
     assert.equal(typeof repositories.quotationPackageRepository.markSent, 'function');
+    assert.equal(typeof repositories.workflowEventRepository.create, 'function');
     return 'archived';
   });
 

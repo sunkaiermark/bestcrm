@@ -1,4 +1,6 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
+import { ACTIONS } from '../domain/workflow.mjs';
+import { STATUSES } from '../domain/statuses.mjs';
 import {
   LEAD_ACTIVE_STATUSES,
   LEAD_PROCESSED_STATUSES,
@@ -6,6 +8,8 @@ import {
   isSalesLeadSourceChannel
 } from '../domain/inquiries.mjs';
 import { convertInquiryToOpportunity } from './inquiryService.mjs';
+import { referenceInquiryAttachmentsToOpportunity } from './emailInquiryAttachmentService.mjs';
+import { applyWorkflowAction } from './workflowService.mjs';
 
 function forbidden() {
   throw new Error('Forbidden');
@@ -87,6 +91,10 @@ export function listEligibleSalespeople(users = []) {
   return users.filter((user) => user?.isActive !== false && hasRole(user, ROLES.SALESPERSON));
 }
 
+export function listEligibleQuotationEngineers(users = []) {
+  return users.filter((user) => user?.isActive !== false && hasRole(user, ROLES.QUOTATION_ENGINEER));
+}
+
 export function normalizeLeadSubmissionInput(input, actor) {
   const sourceChannel = isSalesLeadSourceChannel(input.sourceChannel) ? input.sourceChannel : 'other';
   const submissionToken = text(input.submissionToken);
@@ -154,6 +162,54 @@ async function validateLeadRouting(userRepository, normalized, options = {}) {
       throw new Error('Sales owner is required');
     }
   }
+}
+
+function selectedQuotationEngineerIds(value) {
+  const values = Array.isArray(value) ? value : [value];
+  return [...new Set(values
+    .map(Number)
+    .filter((userId) => Number.isSafeInteger(userId) && userId > 0))];
+}
+
+function assertValidTechnicalPlanSubmitDate(value) {
+  if (!text(value)) {
+    throw new Error('Plan to Submit is required');
+  }
+  const normalized = text(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    throw new Error('Plan to Submit must be a valid date');
+  }
+  const parsed = new Date(`${normalized}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== normalized) {
+    throw new Error('Plan to Submit must be a valid date');
+  }
+  return normalized;
+}
+
+async function validateLeadInitiationAssignment(userRepository, input) {
+  const users = typeof userRepository?.listUsersWithRoles === 'function'
+    ? await userRepository.listUsersWithRoles()
+    : [];
+  const eligibleIds = new Set(listEligibleQuotationEngineers(users).map((user) => Number(user.id)));
+  const quotationEngineerIds = selectedQuotationEngineerIds(input.quotationEngineerIds);
+  if (quotationEngineerIds.length === 0) {
+    throw new Error('Quotation engineer is required');
+  }
+  if (quotationEngineerIds.some((userId) => !eligibleIds.has(userId))) {
+    throw new Error('Quotation engineer is invalid');
+  }
+  const requestedLeadId = Number(input.quotationEngineerLeadId);
+  const quotationEngineerId = Number.isSafeInteger(requestedLeadId) && requestedLeadId > 0
+    ? requestedLeadId
+    : quotationEngineerIds[0];
+  if (!quotationEngineerIds.includes(quotationEngineerId)) {
+    throw new Error('Lead quotation engineer must be selected');
+  }
+  return {
+    quotationEngineerId,
+    quotationEngineerIds,
+    technicalPlanSubmitDate: assertValidTechnicalPlanSubmitDate(input.technicalPlanSubmitDate)
+  };
 }
 
 export async function submitSalesLead({ inquiryRepository, userRepository }, actor, input) {
@@ -324,10 +380,38 @@ export async function approveSalesLead(dependencies, actor, leadId, input = {}) 
   return withLeadTransaction(dependencies, async (repositories) => {
     const lead = await lockLead(repositories.inquiryRepository, leadId);
     assertLeadReviewable(actor, lead);
+    const initiation = await validateLeadInitiationAssignment(repositories.userRepository, input);
     const opportunity = await convertInquiryToOpportunity(repositories, actor, lead, input, {
       copyAttachments: false
     });
-    await transitionLeadEmailToOpportunity(repositories.emailArchiveRepository, actor, lead, opportunity);
+    const referencedAttachments = await referenceInquiryAttachmentsToOpportunity({
+      inquiryAttachmentRepository: repositories.inquiryAttachmentRepository,
+      attachmentRepository: repositories.attachmentRepository,
+      inquiryId: lead.id,
+      opportunityId: opportunity.id,
+      actor,
+      uploadDir: repositories.uploadDir || './var/uploads'
+    });
+    await repositories.opportunityRepository.updateWorkflowState(opportunity.id, {
+      status: STATUSES.INITIATION_PENDING,
+      salesManagerId: actor.id
+    });
+    const activeOpportunity = await applyWorkflowAction({
+      actor,
+      opportunityId: opportunity.id,
+      action: ACTIONS.APPROVE_INITIATION,
+      payload: {
+        ...initiation,
+        comment: text(input.reviewNote)
+      },
+      repositories
+    });
+    await transitionLeadEmailToOpportunity(
+      repositories.emailArchiveRepository,
+      actor,
+      lead,
+      activeOpportunity
+    );
     await createLeadReviewEvent(repositories.inquiryRepository, {
       inquiryId: lead.id,
       eventType: 'approved',
@@ -335,11 +419,17 @@ export async function approveSalesLead(dependencies, actor, leadId, input = {}) 
       toStatus: 'converted',
       actorUserId: actor.id,
       assignedUserId: lead.assignedUserId,
-      opportunityId: opportunity.id,
+      opportunityId: activeOpportunity.id,
       reason: text(input.reviewNote),
-      details: { attachmentsCopied: false }
+      details: {
+        attachmentsCopied: false,
+        attachmentsReferenced: referencedAttachments.length,
+        opportunityInitialStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+        quotationEngineerIds: initiation.quotationEngineerIds,
+        technicalPlanSubmitDate: initiation.technicalPlanSubmitDate
+      }
     });
-    return opportunity;
+    return activeOpportunity;
   });
 }
 

@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ROLES } from '../../src/domain/roles.mjs';
+import { STATUSES } from '../../src/domain/statuses.mjs';
 import {
   approveSalesLead,
   canEditLeadSubmission,
@@ -10,6 +11,7 @@ import {
   canSubmitNewLead,
   canViewLeadSubmission,
   leadSubmissionListFilterFor,
+  listEligibleQuotationEngineers,
   listEligibleReviewManagers,
   listEligibleSalespeople,
   reassignLeadReviewer,
@@ -22,6 +24,8 @@ import {
 
 const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
 const manager = { id: 2, displayName: 'Sales Manager', isActive: true, roles: [ROLES.SALES_MANAGER] };
+const engineer = { id: 3, displayName: 'Engineer One', isActive: true, roles: [ROLES.QUOTATION_ENGINEER] };
+const supportingEngineer = { id: 9, displayName: 'Engineer Two', isActive: true, roles: [ROLES.QUOTATION_ENGINEER] };
 
 test('salespeople see their own leads while managers can use the shared lead list', () => {
   assert.equal(canSubmitNewLead(salesperson), true);
@@ -122,10 +126,14 @@ test('only active sales managers can review a submitted lead', () => {
   const users = [
     manager,
     { id: 3, isActive: false, roles: [ROLES.SALES_MANAGER] },
-    salesperson
+    salesperson,
+    engineer,
+    supportingEngineer,
+    { id: 10, isActive: false, roles: [ROLES.QUOTATION_ENGINEER] }
   ];
   assert.deepEqual(listEligibleReviewManagers(users).map((user) => user.id), [2]);
   assert.deepEqual(listEligibleSalespeople(users).map((user) => user.id), [7]);
+  assert.deepEqual(listEligibleQuotationEngineers(users).map((user) => user.id), [3, 9]);
 });
 
 test('salesperson submission becomes a manager-assigned inquiry with salesperson recommendation', async () => {
@@ -263,20 +271,24 @@ test('assigned manager return and creator resubmission create immutable workflow
   assert.equal(events[1].eventType, 'resubmitted');
 });
 
-test('lead approval creates one opportunity without copying lead or email attachments', async () => {
+test('lead approval creates one active technical opportunity with assignments, todos, and audit events', async () => {
   const lead = workflowLead();
-  const events = [];
+  const leadEvents = [];
+  const workflowEvents = [];
+  const todos = [];
+  const teamAssignments = [];
   let createdOpportunityInput;
+  let opportunity;
   const dependencies = {
     inquiryRepository: {
       async findLeadByIdForUpdate() { return lead; },
       async markConverted(id, input) {
         return { ...lead, status: 'converted', convertedOpportunityId: input.convertedOpportunityId };
       },
-      async createLeadReviewEvent(input) { events.push(input); return input; }
+      async createLeadReviewEvent(input) { leadEvents.push(input); return input; }
     },
     userRepository: {
-      async listUsersWithRoles() { return [manager, salesperson]; }
+      async listUsersWithRoles() { return [manager, salesperson, engineer, supportingEngineer]; }
     },
     customerRepository: {
       async getCustomerDetail() { return { id: 20, name: 'Acme', ownerUserId: 7 }; }
@@ -287,29 +299,118 @@ test('lead approval creates one opportunity without copying lead or email attach
     opportunityRepository: {
       async createOpportunity(input) {
         createdOpportunityInput = input;
-        return { id: 40, opportunityNo: '800040', ...input };
+        opportunity = {
+          id: 40,
+          opportunityNo: '800040',
+          ...input,
+          salesManagerId: null,
+          quotationEngineerId: null,
+          technicalPlanSubmitDate: null,
+          archivedAt: null
+        };
+        return opportunity;
+      },
+      async findById() { return opportunity; },
+      async updateWorkflowState(id, changes) {
+        opportunity = { ...opportunity, ...changes };
+        return opportunity;
       }
     },
     inquiryAttachmentRepository: {
-      async listByInquiry() { assert.fail('lead attachments must not be copied'); }
+      async listByInquiry() { return []; }
     },
     attachmentRepository: {
-      async createAttachment() { assert.fail('opportunity attachment copy must not run'); }
+      async listByOpportunity() { return []; },
+      async createAttachment() { assert.fail('no attachment exists to reference'); }
+    },
+    opportunityResponsibilityRepository: {
+      async listTeamMembersByOpportunity() { return []; },
+      async addTeamMember(input) { teamAssignments.push(input); return { id: 1 }; },
+      async removeTeamMember() { assert.fail('no existing assignment should be removed'); }
+    },
+    workflowEventRepository: {
+      async create(input) { workflowEvents.push(input); return input; }
+    },
+    todoRepository: {
+      async closePendingForOpportunity() { return []; },
+      async create(input) { todos.push(input); return input; }
     }
   };
 
-  const opportunity = await approveSalesLead(dependencies, manager, 11, {
+  const approved = await approveSalesLead(dependencies, manager, 11, {
     customerId: '20',
     primaryContactId: '30',
     salespersonId: '7',
     title: 'Acme dryer',
-    requirementText: 'Need a dryer'
+    requirementText: 'Need a dryer',
+    quotationEngineerIds: ['3', '9'],
+    quotationEngineerLeadId: '3',
+    technicalPlanSubmitDate: '2026-10-06',
+    reviewNote: 'Qualified project'
   });
 
-  assert.equal(opportunity.id, 40);
+  assert.equal(approved.id, 40);
+  assert.equal(approved.status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+  assert.equal(approved.salesManagerId, 2);
+  assert.equal(approved.quotationEngineerId, 3);
+  assert.equal(approved.technicalPlanSubmitDate, '2026-10-06');
   assert.equal(createdOpportunityInput.originInquiryId, 11);
-  assert.equal(events[0].eventType, 'approved');
-  assert.deepEqual(events[0].details, { attachmentsCopied: false });
+  assert.equal(workflowEvents[0].eventType, 'approve_initiation');
+  assert.equal(workflowEvents[0].fromStatus, STATUSES.INITIATION_PENDING);
+  assert.equal(workflowEvents[0].toStatus, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+  assert.deepEqual(todos.map((todo) => todo.assigneeUserId), [3, 9]);
+  assert.ok(todos.every((todo) => todo.dueAt === '2026-10-06T23:59:59+08:00'));
+  assert.deepEqual(teamAssignments.map((assignment) => assignment.userId), [9]);
+  assert.equal(leadEvents[0].eventType, 'approved');
+  assert.deepEqual(leadEvents[0].details, {
+    attachmentsCopied: false,
+    attachmentsReferenced: 0,
+    opportunityInitialStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    quotationEngineerIds: [3, 9],
+    technicalPlanSubmitDate: '2026-10-06'
+  });
+});
+
+test('lead approval validates quotation engineers and plan date before creating an opportunity', async () => {
+  const lead = workflowLead();
+  const dependencies = {
+    inquiryRepository: {
+      async findLeadByIdForUpdate() { return lead; }
+    },
+    userRepository: {
+      async listUsersWithRoles() { return [manager, salesperson, engineer]; }
+    },
+    opportunityRepository: {
+      async createOpportunity() { assert.fail('invalid approval must not create an opportunity'); }
+    }
+  };
+  const base = {
+    customerId: '20',
+    salespersonId: '7',
+    title: 'Acme dryer',
+    requirementText: 'Need a dryer',
+    technicalPlanSubmitDate: '2026-10-06'
+  };
+
+  await assert.rejects(
+    () => approveSalesLead(dependencies, manager, 11, base),
+    /Quotation engineer is required/
+  );
+  await assert.rejects(
+    () => approveSalesLead(dependencies, manager, 11, {
+      ...base,
+      quotationEngineerIds: '999'
+    }),
+    /Quotation engineer is invalid/
+  );
+  await assert.rejects(
+    () => approveSalesLead(dependencies, manager, 11, {
+      ...base,
+      quotationEngineerIds: '3',
+      technicalPlanSubmitDate: '2026-02-30'
+    }),
+    /Plan to Submit must be a valid date/
+  );
 });
 
 test('email lead approval atomically links the unchanged canonical thread to the opportunity', async () => {
@@ -331,11 +432,28 @@ test('email lead approval atomically links the unchanged canonical thread to the
   const contactRepository = {
     async getContactDetail() { return { id: 30, customerId: 20, customerOwnerUserId: 7 }; }
   };
+  let opportunity;
   const opportunityRepository = {
-    async createOpportunity(input) { return { id: 40, opportunityNo: '800040', ...input }; }
+    async createOpportunity(input) {
+      opportunity = {
+        id: 40,
+        opportunityNo: '800040',
+        ...input,
+        salesManagerId: null,
+        quotationEngineerId: null,
+        technicalPlanSubmitDate: null,
+        archivedAt: null
+      };
+      return opportunity;
+    },
+    async findById() { return opportunity; },
+    async updateWorkflowState(id, changes) {
+      opportunity = { ...opportunity, ...changes };
+      return opportunity;
+    }
   };
   const userRepository = {
-    async listUsersWithRoles() { return [manager, salesperson]; }
+    async listUsersWithRoles() { return [manager, salesperson, engineer]; }
   };
   const emailArchiveRepository = {
     async findThreadById() {
@@ -356,6 +474,20 @@ test('email lead approval atomically links the unchanged canonical thread to the
     opportunityRepository,
     userRepository,
     emailArchiveRepository,
+    inquiryAttachmentRepository: { async listByInquiry() { return []; } },
+    attachmentRepository: { async listByOpportunity() { return []; } },
+    opportunityResponsibilityRepository: {
+      async listTeamMembersByOpportunity() { return []; },
+      async addTeamMember() { return { id: 1 }; },
+      async removeTeamMember() { return null; }
+    },
+    workflowEventRepository: {
+      async create(input) { calls.push(['workflowEvent', input]); return input; }
+    },
+    todoRepository: {
+      async closePendingForOpportunity() { return []; },
+      async create(input) { calls.push(['todo', input]); return input; }
+    },
     emailArchiveTransaction: async (callback) => {
       transactionCalled = true;
       return callback({
@@ -374,7 +506,10 @@ test('email lead approval atomically links the unchanged canonical thread to the
     primaryContactId: '30',
     salespersonId: '7',
     title: 'Acme dryer',
-    requirementText: 'Need a dryer'
+    requirementText: 'Need a dryer',
+    quotationEngineerIds: '3',
+    quotationEngineerLeadId: '3',
+    technicalPlanSubmitDate: '2026-10-06'
   });
 
   assert.equal(transactionCalled, true);
@@ -382,6 +517,7 @@ test('email lead approval atomically links the unchanged canonical thread to the
   assert.equal(calls.find((call) => call[0] === 'transition')[1].triageStatus, 'linked_opportunity');
   assert.equal(calls.find((call) => call[0] === 'emailEvent')[1].opportunityId, 40);
   assert.equal(calls.find((call) => call[0] === 'leadEvent')[1].opportunityId, 40);
+  assert.equal(calls.find((call) => call[0] === 'workflowEvent')[1].eventType, 'approve_initiation');
 });
 
 test('rejecting an email lead releases the canonical thread to the selected mailbox queue', async () => {

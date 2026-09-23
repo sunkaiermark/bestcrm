@@ -7,6 +7,7 @@ import path from 'node:path';
 import { storeAttachmentBuffer } from '../../src/services/attachmentFileService.mjs';
 import {
   copyInquiryAttachmentsToOpportunity,
+  referenceInquiryAttachmentsToOpportunity,
   storeEmailInquiryAttachments
 } from '../../src/services/emailInquiryAttachmentService.mjs';
 
@@ -112,6 +113,92 @@ test('inquiry conversion fails closed and removes a copy whose source digest doe
     assert.equal(createCalled, false);
     const files = await readdir(uploadDir, { recursive: true });
     assert.equal(files.some((entry) => /converted-inquiries[\\/].+\.pdf$/i.test(String(entry))), false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('lead conversion references the original attachment bytes without creating a file copy', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-inquiry-reference-'));
+  const source = await storeAttachmentBuffer({
+    uploadDir,
+    originalName: 'equipment-list.xlsx',
+    content: Buffer.from('one canonical attachment'),
+    prefix: 'lead-submissions'
+  });
+  const beforeFiles = await readdir(uploadDir, { recursive: true });
+  let createdInput = null;
+  try {
+    const referenced = await referenceInquiryAttachmentsToOpportunity({
+      inquiryAttachmentRepository: {
+        async listByInquiry() {
+          return [{
+            id: 92,
+            storedPath: source.storedPath,
+            originalName: 'equipment-list.xlsx',
+            mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            fileSize: source.fileSize,
+            sha256: source.sha256
+          }];
+        }
+      },
+      attachmentRepository: {
+        async listByOpportunity() { return []; },
+        async createAttachment(input) {
+          createdInput = input;
+          return { id: 102, ...input };
+        }
+      },
+      inquiryId: 27,
+      opportunityId: 31,
+      actor: { id: 2 },
+      uploadDir
+    });
+
+    assert.equal(referenced.length, 1);
+    assert.equal(createdInput.category, 'requirement');
+    assert.equal(createdInput.sourceInquiryAttachmentId, 92);
+    assert.equal(createdInput.storedPath, source.storedPath);
+    assert.equal(createdInput.sha256, source.sha256);
+    assert.deepEqual(await readdir(uploadDir, { recursive: true }), beforeFiles);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('lead conversion refuses to reference changed attachment bytes', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-inquiry-reference-mismatch-'));
+  const source = await storeAttachmentBuffer({
+    uploadDir,
+    originalName: 'requirement.pdf',
+    content: Buffer.from('actual bytes'),
+    prefix: 'lead-submissions'
+  });
+  let createCalled = false;
+  try {
+    await assert.rejects(() => referenceInquiryAttachmentsToOpportunity({
+      inquiryAttachmentRepository: {
+        async listByInquiry() {
+          return [{
+            id: 92,
+            storedPath: source.storedPath,
+            originalName: 'requirement.pdf',
+            mimeType: 'application/pdf',
+            fileSize: source.fileSize,
+            sha256: 'f'.repeat(64)
+          }];
+        }
+      },
+      attachmentRepository: {
+        async listByOpportunity() { return []; },
+        async createAttachment() { createCalled = true; }
+      },
+      inquiryId: 27,
+      opportunityId: 31,
+      actor: { id: 2 },
+      uploadDir
+    }), /digest does not match/);
+    assert.equal(createCalled, false);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
