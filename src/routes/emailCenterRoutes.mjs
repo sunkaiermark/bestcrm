@@ -50,8 +50,19 @@ function emailCategory(value) {
   return EMAIL_CLASSIFICATION_CATEGORIES.includes(value) ? value : '';
 }
 
-function emailFolderFilter(folder, mailboxKey, category = '') {
-  const base = { mailboxKey, classificationCategory: emailCategory(category) };
+function supportsRuleCategoryFilter(folder) {
+  return !['inbox', 'spam', 'non_business'].includes(folder);
+}
+
+function emailSearchTerm(value) {
+  return String(value || '').trim().slice(0, 200);
+}
+
+function emailFolderFilter(folder, mailboxKey, category = '', searchTerm = '') {
+  const base = {
+    mailboxKey,
+    classificationCategory: supportsRuleCategoryFilter(folder) ? emailCategory(category) : ''
+  };
   if (folder === 'pending') return { ...base, archiveDisposition: 'active', triageStatus: 'pending', direction: 'inbound' };
   if (folder === 'inbox') return {
     ...base,
@@ -63,7 +74,8 @@ function emailFolderFilter(folder, mailboxKey, category = '') {
       'linked_inquiry',
       'converted_inquiry'
     ],
-    direction: 'inbound'
+    direction: 'inbound',
+    searchTerm: emailSearchTerm(searchTerm)
   };
   if (folder === 'sent') return { ...base, archiveDisposition: 'active', direction: 'outbound' };
   if (folder === 'non_business') return { ...base, archiveDisposition: 'archived', triageStatus: 'archived' };
@@ -78,9 +90,12 @@ function threadRedirect(threadId, body = {}) {
   const query = new URLSearchParams();
   const mailbox = String(body.mailbox || '').trim().toLowerCase();
   if (mailbox) query.set('mailbox', mailbox);
-  query.set('from', emailFolder(String(body.from || 'pending')));
-  const category = emailCategory(String(body.category || ''));
+  const from = emailFolder(String(body.from || 'pending'));
+  query.set('from', from);
+  const category = supportsRuleCategoryFilter(from) ? emailCategory(String(body.category || '')) : '';
   if (category) query.set('category', category);
+  const searchTerm = from === 'inbox' ? emailSearchTerm(body.q) : '';
+  if (searchTerm) query.set('q', searchTerm);
   return `/email-center/threads/${threadId}?${query.toString()}`;
 }
 
@@ -224,7 +239,10 @@ export function emailCenterRoutes({
   router.get('/email-center', async (req, res, next) => {
     try {
       const folder = emailFolder(String(req.query.folder || 'pending'));
-      const category = emailCategory(String(req.query.category || ''));
+      const category = supportsRuleCategoryFilter(folder)
+        ? emailCategory(String(req.query.category || ''))
+        : '';
+      const searchTerm = folder === 'inbox' ? emailSearchTerm(req.query.q) : '';
       const { mailbox, mailboxes } = await resolveVisibleEmailMailbox(
         dependencies,
         req.currentUser,
@@ -234,7 +252,7 @@ export function emailCenterRoutes({
         ? await listVisibleEmailThreads(
             dependencies,
             req.currentUser,
-            emailFolderFilter(folder, mailbox.key, category)
+            emailFolderFilter(folder, mailbox.key, category, searchTerm)
           )
         : [];
       const cleanup = ['spam', 'non_business'].includes(folder) && mailbox && canPurgeEmailSpam(req.currentUser)
@@ -244,6 +262,7 @@ export function emailCenterRoutes({
         threads,
         folder,
         category,
+        searchTerm,
         classificationCategories: EMAIL_CLASSIFICATION_CATEGORIES,
         mailbox,
         mailboxes,
@@ -266,7 +285,10 @@ export function emailCenterRoutes({
       const thread = await getVisibleEmailThread(dependencies, req.currentUser, req.params.threadId);
       const backFolder = emailFolder(String(req.query.from || 'pending'));
       const backMailbox = String(req.query.mailbox || thread.mailboxKey || '').trim().toLowerCase();
-      const backCategory = emailCategory(String(req.query.category || ''));
+      const backCategory = supportsRuleCategoryFilter(backFolder)
+        ? emailCategory(String(req.query.category || ''))
+        : '';
+      const backSearchTerm = backFolder === 'inbox' ? emailSearchTerm(req.query.q) : '';
       const canTriage = ['pending', 'outbound_only'].includes(thread.triageStatus || 'pending');
       const canReclassifyAsSpam = await canReclassifyOrphanedConvertedInquiryAsSpam(
         dependencies,
@@ -292,6 +314,7 @@ export function emailCenterRoutes({
         backFolder,
         backMailbox,
         backCategory,
+        backSearchTerm,
         canTriage,
         canReclassifyAsSpam,
         canManageEmailCleanup,

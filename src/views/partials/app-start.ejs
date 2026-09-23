@@ -3220,6 +3220,31 @@
         white-space: nowrap;
       }
 
+      .email-search-filter {
+        align-items: center;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: 88px minmax(260px, 560px) max-content max-content;
+        margin: -6px 0 16px;
+      }
+
+      .email-search-filter label {
+        color: var(--muted);
+        font-weight: 700;
+        margin: 0;
+        white-space: nowrap;
+      }
+
+      .email-search-filter input[type="search"] {
+        min-width: 0;
+        width: 100%;
+      }
+
+      .email-search-filter button,
+      .email-search-filter .secondary-action {
+        white-space: nowrap;
+      }
+
       .email-category-filter label {
         color: var(--muted);
         display: block;
@@ -3235,6 +3260,22 @@
         text-overflow: ellipsis;
         white-space: nowrap;
         width: min(360px, 100%);
+      }
+
+      .email-spam-cleanup.is-compact .inline-form {
+        align-items: end;
+        display: grid;
+        gap: 12px;
+        grid-template-columns: minmax(260px, 520px) max-content;
+      }
+
+      .email-spam-cleanup.is-compact label {
+        margin: 0;
+      }
+
+      .email-spam-cleanup.is-compact button {
+        min-height: 42px;
+        white-space: nowrap;
       }
 
       .email-category-badge {
@@ -4042,6 +4083,25 @@
 
         .email-category-filter select {
           min-width: 0;
+          width: 100%;
+        }
+
+        .email-search-filter {
+          align-items: stretch;
+          grid-template-columns: 1fr;
+        }
+
+        .email-search-filter button,
+        .email-search-filter .secondary-action {
+          text-align: center;
+          width: 100%;
+        }
+
+        .email-spam-cleanup.is-compact .inline-form {
+          grid-template-columns: 1fr;
+        }
+
+        .email-spam-cleanup.is-compact button {
           width: 100%;
         }
 

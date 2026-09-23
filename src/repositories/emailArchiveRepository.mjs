@@ -819,7 +819,8 @@ export function createEmailArchiveRepository(queryTarget) {
       triageStatuses = [],
       mailboxKey = '',
       direction = '',
-      classificationCategory = ''
+      classificationCategory = '',
+      searchTerm = ''
     } = {}) {
       const normalizedDisposition = ['active', 'archived', 'spam'].includes(archiveDisposition)
         ? archiveDisposition
@@ -833,6 +834,7 @@ export function createEmailArchiveRepository(queryTarget) {
       const normalizedClassificationCategory = EMAIL_CLASSIFICATION_CATEGORIES.includes(classificationCategory)
         ? classificationCategory
         : '';
+      const normalizedSearchTerm = text(searchTerm).trim().slice(0, 200);
       const params = [];
       const where = [];
       let mailboxParamIndex = 0;
@@ -895,6 +897,30 @@ export function createEmailArchiveRepository(queryTarget) {
       if (normalizedClassificationCategory) {
         params.push(normalizedClassificationCategory);
         where.push(`thread.classification_category = $${params.length}`);
+      }
+      if (normalizedSearchTerm) {
+        params.push(`%${normalizedSearchTerm.replace(/[\\%_]/g, '\\$&')}%`);
+        const searchParam = `$${params.length}`;
+        where.push(`(
+          thread.subject ILIKE ${searchParam} ESCAPE '\\'
+          OR opportunity.opportunity_no ILIKE ${searchParam} ESCAPE '\\'
+          OR opportunity.title ILIKE ${searchParam} ESCAPE '\\'
+          OR customer.customer_code ILIKE ${searchParam} ESCAPE '\\'
+          OR customer.name ILIKE ${searchParam} ESCAPE '\\'
+          OR contact.contact_code ILIKE ${searchParam} ESCAPE '\\'
+          OR contact.name ILIKE ${searchParam} ESCAPE '\\'
+          OR EXISTS (
+            SELECT 1
+            FROM email_messages search_message
+            WHERE search_message.thread_id = thread.id
+              AND search_message.canonical_message_id IS NULL
+              AND (
+                search_message.from_name ILIKE ${searchParam} ESCAPE '\\'
+                OR search_message.from_address ILIKE ${searchParam} ESCAPE '\\'
+                OR search_message.subject ILIKE ${searchParam} ESCAPE '\\'
+              )
+          )
+        )`);
       }
       const result = await queryTarget.query(`
         ${threadSelect}

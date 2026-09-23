@@ -42,6 +42,7 @@ async function createAgent({
   linkableOpportunities = [],
   onLinkOpportunity = null,
   onPurgeThread = null,
+  onListThreads = null,
   purgeEligibleThreadIds = [1],
   spamCleanupSummary = { eligibleThreads: 0, messages: 0, attachments: 0, attachmentBytes: 0, rawMessages: 0, rawMessageBytes: 0 },
   nonBusinessCleanupSummary = { eligibleThreads: 0, messages: 0, attachments: 0, attachmentBytes: 0, rawMessages: 0, rawMessageBytes: 0 },
@@ -97,7 +98,10 @@ async function createAgent({
   linked.messageCount = 2;
   const opportunityThreads = [linked, ...additionalOpportunityThreads];
   const repository = {
-    async listThreads() { return [unlinked, ...opportunityThreads]; },
+    async listThreads(filter) {
+      onListThreads?.(filter);
+      return [unlinked, ...opportunityThreads];
+    },
     async listActivePersonalMailboxAssignments() {
       return [{ userId: user.id, mailboxAddress: user.email, displayName: user.displayName }];
     },
@@ -291,6 +295,40 @@ test('sales manager sees the shared mailbox pending threads and plain-text escap
   assert.equal((await agent.post('/email-center/threads/1/convert-inquiry')).status, 404);
 });
 
+test('inbox replaces rule categories with server-side search and preserves the query on return', async () => {
+  let listFilter = null;
+  const agent = await createAgent({
+    userId: 2,
+    roles: [ROLES.SALES_MANAGER],
+    language: 'zh',
+    onListThreads(filter) { listFilter = filter; }
+  });
+
+  const list = await agent.get(
+    '/email-center?mailbox=sales%40sunkaier.com&folder=inbox&category=newsletter&q=%20buyer%40example.com%20'
+  );
+
+  assert.equal(list.status, 200);
+  assert.equal(listFilter?.classificationCategory, '');
+  assert.equal(listFilter?.searchTerm, 'buyer@example.com');
+  assert.doesNotMatch(list.text, /<form class="email-category-filter"/);
+  assert.doesNotMatch(list.text, /<label for="email-category">规则分类<\/label>/);
+  assert.match(list.text, /<form class="email-search-filter" method="get" action="\/email-center">/);
+  assert.match(list.text, /<label for="email-search">搜索<\/label>/);
+  assert.match(list.text, /name="q" type="search" value="buyer@example\.com"[^>]*placeholder="发件人、邮箱、主题、商机号等"/);
+  assert.match(list.text, /<button type="submit">查询<\/button>/);
+  assert.match(list.text, /href="\/email-center\?mailbox=sales%40sunkaier\.com&folder=inbox">清除筛选<\/a>/);
+  assert.match(list.text, /from=inbox&amp;q=buyer%40example\.com/);
+  assert.doesNotMatch(list.text, /folder=inbox(?:&|&amp;)category=/);
+
+  const detail = await agent.get(
+    '/email-center/threads/2?mailbox=sales%40sunkaier.com&from=inbox&category=newsletter&q=800020'
+  );
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /href="\/email-center\?mailbox=sales%40sunkaier\.com&folder=inbox&amp;q=800020">← 返回邮件列表<\/a>/);
+  assert.doesNotMatch(detail.text, /folder=inbox(?:&|&amp;)category=/);
+});
+
 test('email thread back action preserves its source folder', async () => {
   const agent = await createAgent({ userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh' });
   const detail = await agent.get('/email-center/threads/1?mailbox=sales%40sunkaier.com&from=sent');
@@ -366,10 +404,13 @@ test('only an administrator sees and can invoke immediate permanent spam cleanup
   });
   const adminSpam = await administrator.get('/email-center?mailbox=sales%40sunkaier.com&folder=spam');
   assert.equal(adminSpam.status, 200);
-  assert.match(adminSpam.text, /垃圾邮件清理/);
-  assert.match(adminSpam.text, /可永久删除的垃圾邮件会话[^]*?<strong>3<\/strong>/);
-  assert.match(adminSpam.text, /3\.0 MB/);
+  assert.doesNotMatch(adminSpam.text, /管理员可永久删除当前垃圾邮件列表/);
+  assert.doesNotMatch(adminSpam.text, /可永久删除的垃圾邮件会话/);
+  assert.doesNotMatch(adminSpam.text, /3\.0 MB/);
+  assert.match(adminSpam.text, /class="form-panel email-spam-cleanup is-compact"/);
+  assert.match(adminSpam.text, /<span>输入：DELETE<\/span>/);
   assert.match(adminSpam.text, /name="confirmation"[^>]*pattern="DELETE"/);
+  assert.match(adminSpam.text, /<button class="danger-action" type="submit">确认永久删除<\/button>/);
   assert.match(adminSpam.text, /class="danger-action email-spam-row-delete" href="\/email-center\/threads\/1[^>]*>永久删除<\/a>/);
   assert.match(adminSpam.text, /class="danger-action email-spam-row-delete" href="\/email-center\/threads\/2[^>]*>永久删除<\/a>/);
 
@@ -385,6 +426,34 @@ test('only an administrator sees and can invoke immediate permanent spam cleanup
   });
   assert.equal(accepted.status, 302);
   assert.match(accepted.headers.location, /folder=spam/);
+});
+
+test('final disposition folders omit and ignore the advisory rule-category filter', async () => {
+  let listFilter = null;
+  const manager = await createAgent({
+    userId: 2,
+    roles: [ROLES.SALES_MANAGER],
+    language: 'zh',
+    onListThreads(filter) { listFilter = filter; },
+    unlinkedOverrides: {
+      classificationCategory: 'marketing_spam',
+      triageStatus: 'spam',
+      archiveDisposition: 'spam'
+    }
+  });
+
+  for (const folder of ['spam', 'non_business']) {
+    const response = await manager.get(
+      `/email-center?mailbox=sales%40sunkaier.com&folder=${folder}&category=marketing_spam`
+    );
+
+    assert.equal(response.status, 200);
+    assert.equal(listFilter?.classificationCategory, '');
+    assert.doesNotMatch(response.text, /<form class="email-category-filter"/);
+    assert.doesNotMatch(response.text, /<label for="email-category">规则分类<\/label>/);
+    assert.doesNotMatch(response.text, new RegExp(`folder=${folder}&category=`));
+    assert.match(response.text, /class="email-category-badge">营销垃圾邮件<\/span>/);
+  }
 });
 
 test('administrator can clean eligible non-business mail and restore a mistaken classification', async () => {
@@ -415,10 +484,12 @@ test('administrator can clean eligible non-business mail and restore a mistaken 
 
   const list = await administrator.get('/email-center?mailbox=sales%40sunkaier.com&folder=non_business');
   assert.equal(list.status, 200);
-  assert.match(list.text, /非业务邮件清理/);
-  assert.match(list.text, /可永久删除的非业务邮件会话[^]*?<strong>1<\/strong>/);
-  assert.match(list.text, /2\.0 MB/);
+  assert.doesNotMatch(list.text, /管理员可永久删除符合条件的非业务邮件/);
+  assert.doesNotMatch(list.text, /可永久删除的非业务邮件会话/);
+  assert.doesNotMatch(list.text, /2\.0 MB/);
+  assert.match(list.text, /<span>输入：DELETE<\/span>/);
   assert.match(list.text, /action="\/email-center\/non_business\/purge"/);
+  assert.match(list.text, /<button class="danger-action" type="submit">确认永久删除<\/button>/);
   assert.match(list.text, /href="\/email-center\/threads\/1\?mailbox=sales%40sunkaier\.com&from=non_business[^>]*>永久删除<\/a>/);
 
   const detail = await administrator.get('/email-center/threads/1?mailbox=sales%40sunkaier.com&from=non_business');
@@ -467,9 +538,10 @@ test('administrator always sees disabled non-business deletion controls with the
   const list = await administrator.get('/email-center?mailbox=sales%40sunkaier.com&folder=non_business');
 
   assert.equal(list.status, 200);
-  assert.match(list.text, /可永久删除的非业务邮件会话[^]*?<strong>0<\/strong>/);
+  assert.match(list.text, /<span>输入：DELETE<\/span>/);
   assert.match(list.text, /name="confirmation"[^>]*pattern="DELETE"[^>]*disabled/);
-  assert.match(list.text, /当前列表没有符合永久删除条件的邮件/);
+  assert.match(list.text, /<button class="danger-action" type="submit" disabled>确认永久删除<\/button>/);
+  assert.doesNotMatch(list.text, /当前列表没有符合永久删除条件的邮件/);
   assert.match(list.text, /不可删除原因：该会话包含已发邮件。/);
   assert.match(list.text, /不可删除原因：该会话已经关联商机。/);
   assert.equal((list.text.match(/email-spam-row-delete" type="button" disabled/g) || []).length, 2);
@@ -548,10 +620,12 @@ test('administrator can delete confirmed non-business mail but pending and linke
   assert.match(unlinkedDetail.text, /<button class="danger-action" type="button" disabled>彻底删除邮件<\/button>/);
   assert.match(unlinkedDetail.text, /请先将该会话标记为垃圾邮件或非业务邮件。/);
 
-  const linkedDetail = await administrator.get('/email-center/threads/2');
+  const linkedDetail = await administrator.get('/email-center/threads/2?from=inbox');
   assert.equal(linkedDetail.status, 200);
   assert.doesNotMatch(linkedDetail.text, /action="\/email-center\/threads\/2\/purge"/);
-  assert.match(linkedDetail.text, /该会话已经关联商机。/);
+  assert.doesNotMatch(linkedDetail.text, /id="email-delete"/);
+  assert.doesNotMatch(linkedDetail.text, /彻底删除邮件/);
+  assert.doesNotMatch(linkedDetail.text, /该会话已经关联商机。/);
 
   const protectedPending = await administrator.post('/email-center/threads/1/purge').type('form').send({
     mailbox: 'sales@sunkaier.com',

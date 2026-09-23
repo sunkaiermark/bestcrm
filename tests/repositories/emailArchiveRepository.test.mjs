@@ -324,6 +324,36 @@ test('email archive repository filters one advisory rule category without changi
   assert.match(calls[0].sql, /thread\.classification_category = \$3/);
 });
 
+test('email archive repository searches sender email subject opportunity and linked record identities', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) { calls.push({ sql: String(sql), params }); return { rows: [] }; }
+  });
+
+  await repository.listThreads({
+    archiveDisposition: 'active',
+    mailboxKey: 'sales@sunkaier.com',
+    direction: 'inbound',
+    searchTerm: ' Jane_100% '
+  });
+
+  assert.deepEqual(calls[0].params, [
+    'active',
+    'sales@sunkaier.com',
+    'inbound',
+    '%Jane\\_100\\%%'
+  ]);
+  assert.match(calls[0].sql, /thread\.subject ILIKE \$4 ESCAPE/);
+  assert.match(calls[0].sql, /search_message\.from_name ILIKE \$4 ESCAPE/);
+  assert.match(calls[0].sql, /search_message\.from_address ILIKE \$4 ESCAPE/);
+  assert.match(calls[0].sql, /search_message\.subject ILIKE \$4 ESCAPE/);
+  assert.match(calls[0].sql, /opportunity\.opportunity_no ILIKE \$4 ESCAPE/);
+  assert.match(calls[0].sql, /opportunity\.title ILIKE \$4 ESCAPE/);
+  assert.match(calls[0].sql, /customer\.name ILIKE \$4 ESCAPE/);
+  assert.match(calls[0].sql, /contact\.name ILIKE \$4 ESCAPE/);
+  assert.doesNotMatch(calls[0].sql, /search_message\.text_body ILIKE/);
+});
+
 test('email archive repository lists one opportunity using its indexed relationship', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({

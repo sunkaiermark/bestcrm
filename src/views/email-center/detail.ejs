@@ -1,7 +1,7 @@
 <%- include('../partials/app-start', { title: `${thread.subject || t('noSubject')} - BESTCRM`, activeNav: 'email-center', mainClass: 'email-reader-page' }) %>
       <div class="email-reader-shell">
         <div class="email-reader-head">
-        <p class="breadcrumb"><a class="secondary-action email-list-back" href="/email-center?mailbox=<%= encodeURIComponent(backMailbox) %>&folder=<%= backFolder %><%= backCategory ? `&category=${encodeURIComponent(backCategory)}` : '' %>">← <%= t('backToEmailList') %></a></p>
+        <p class="breadcrumb"><a class="secondary-action email-list-back" href="/email-center?mailbox=<%= encodeURIComponent(backMailbox) %>&folder=<%= backFolder %><%= backCategory ? `&category=${encodeURIComponent(backCategory)}` : '' %><%= backSearchTerm ? `&q=${encodeURIComponent(backSearchTerm)}` : '' %>">← <%= t('backToEmailList') %></a></p>
         <header class="page-header">
           <div>
             <h1><%= thread.subject || t('noSubject') %></h1>
@@ -32,6 +32,7 @@
                 <input type="hidden" name="mailbox" value="<%= backMailbox %>">
                 <input type="hidden" name="from" value="<%= backFolder %>">
                 <input type="hidden" name="category" value="<%= backCategory %>">
+                <input type="hidden" name="q" value="<%= backSearchTerm %>">
                 <button type="submit"><%= t('linkOpportunity') %></button>
                 <select name="opportunityId" aria-label="<%= t('selectOpportunity') %>" required><option value=""><%= t('selectOpportunity') %></option><% for (const opportunity of linkableOpportunities) { %><option value="<%= opportunity.id %>"><%= opportunity.opportunityNo || `#${opportunity.id}` %> · <%= opportunity.title %></option><% } %></select>
               </form>
@@ -45,6 +46,7 @@
                   <input type="hidden" name="mailbox" value="<%= backMailbox %>">
                   <input type="hidden" name="from" value="<%= backFolder %>">
                   <input type="hidden" name="category" value="<%= backCategory %>">
+                  <input type="hidden" name="q" value="<%= backSearchTerm %>">
                   <input type="hidden" name="action" value="spam">
                   <button class="danger-action" type="submit"><%= t('emailSpamAction') %></button>
                 </form>
@@ -53,6 +55,7 @@
                   <input type="hidden" name="mailbox" value="<%= backMailbox %>">
                   <input type="hidden" name="from" value="<%= backFolder %>">
                   <input type="hidden" name="category" value="<%= backCategory %>">
+                  <input type="hidden" name="q" value="<%= backSearchTerm %>">
                   <input type="hidden" name="action" value="non_business">
                   <button class="secondary-action" type="submit"><%= t('emailNonBusinessAction') %></button>
                 </form>
@@ -68,6 +71,7 @@
               <input type="hidden" name="mailbox" value="<%= backMailbox %>">
               <input type="hidden" name="from" value="<%= backFolder %>">
               <input type="hidden" name="category" value="<%= backCategory %>">
+              <input type="hidden" name="q" value="<%= backSearchTerm %>">
               <input type="hidden" name="action" value="spam">
               <button class="danger-action" type="submit"><%= t('emailSpamAction') %></button>
             </form>
@@ -81,13 +85,14 @@
               <%- csrfField() %>
               <input type="hidden" name="mailbox" value="<%= backMailbox %>">
               <input type="hidden" name="from" value="<%= isSpam ? 'spam' : 'non_business' %>">
+              <input type="hidden" name="q" value="<%= backSearchTerm %>">
               <input type="hidden" name="action" value="restore">
               <button type="submit"><%= t(isSpam ? 'emailSpamRestoreAction' : 'emailNonBusinessRestoreAction') %></button>
             </form>
           </section>
         <% } %>
 
-        <% if (canManageEmailCleanup) { %>
+        <% if (canManageEmailCleanup && !(backFolder === 'inbox' && thread.opportunityId)) { %>
           <section id="email-delete" class="form-panel email-thread-delete" aria-label="<%= t('emailDeleteAction') %>">
             <h2><%= t('emailDeleteAction') %></h2>
             <p><%= t('emailDeleteRule') %></p>
@@ -96,6 +101,7 @@
                 <%- csrfField() %>
                 <input type="hidden" name="mailbox" value="<%= backMailbox %>">
                 <input type="hidden" name="from" value="<%= backFolder %>">
+                <input type="hidden" name="q" value="<%= backSearchTerm %>">
                 <label><span><%= t('emailSpamCleanupTypeDelete') %></span><input name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE"></label>
                 <button class="danger-action" type="submit"><%= t('emailDeleteAction') %></button>
               </form>
