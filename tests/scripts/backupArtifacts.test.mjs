@@ -243,7 +243,10 @@ test('production backup and rollback scripts record and enforce artifact checksu
   assert.match(backupScript, /email_evidence_inventory_sha256=\$EMAIL_EVIDENCE_INVENTORY_SHA256/);
   assert.match(backupScript, /email-evidence-files\.sha256/);
   assert.match(backupScript, /attachment-evidence-files\.jsonl/);
-  assert.match(backupScript, /export-attachment-evidence-inventory\.mjs/);
+  assert.match(
+    backupScript,
+    /ATTACHMENT_EVIDENCE_EXPORTER="\$\{BESTCRM_ATTACHMENT_EVIDENCE_EXPORTER:-\$APP_DIR\/scripts\/export-attachment-evidence-inventory\.mjs\}"/
+  );
   assert.match(backupScript, /attachment_evidence_inventory_sha256=\$ATTACHMENT_EVIDENCE_INVENTORY_SHA256/);
   assert.match(backupScript, /email-outbound/);
   assert.match(backupScript, /lead-submissions\/\.staging/);
