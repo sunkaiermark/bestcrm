@@ -197,6 +197,9 @@ async function createLoggedInAgent(extraOptions = {}) {
       async archiveById() {
         throw new Error('not used');
       },
+      async deleteById() {
+        throw new Error('not used');
+      },
       async reopenById() {
         throw new Error('not used');
       },
@@ -1227,6 +1230,10 @@ test('administrator sees opportunity archive action with a required reason on de
   assert.match(detail.text, /action="\/opportunities\/30\/archive"/);
   assert.match(detail.text, /name="reason"/);
   assert.match(detail.text, />Archive</);
+  assert.match(detail.text, /data-opportunity-delete-toggle/);
+  assert.match(detail.text, /action="\/opportunities\/30\/delete"/);
+  assert.match(detail.text, /name="confirmation" required pattern="DELETE"/);
+  assert.match(detail.text, />Delete opportunity<\/button>/);
 });
 
 test('salesperson edits opportunity fields from the detail action', async () => {
@@ -1295,6 +1302,70 @@ test('non administrators cannot archive opportunities directly', async () => {
 
   assert.equal(response.status, 403);
   assert.equal(archiveCalled, false);
+});
+
+test('only administrators can delete opportunities and the route requires reason plus exact DELETE confirmation', async () => {
+  let deleteCalled = false;
+  const manager = await createLoggedInAgent({
+    user: {
+      id: 2,
+      username: 'manager01',
+      displayName: 'Sales Manager',
+      roles: [ROLES.SALES_MANAGER]
+    },
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return opportunityDetail({ salesManagerId: 2 });
+      },
+      async deleteById() {
+        deleteCalled = true;
+        return { id: 30 };
+      }
+    }
+  });
+  const managerDetail = await manager.agent.get('/opportunities/30');
+  assert.equal(managerDetail.status, 200);
+  const managerHeader = managerDetail.text.match(/<header class="page-header opportunity-detail-header">[\s\S]*?<\/header>/)?.[0] || '';
+  assert.doesNotMatch(managerHeader, /data-opportunity-delete-toggle|\/opportunities\/30\/delete/);
+  const forbidden = await manager.agent.post('/opportunities/30/delete').type('form').send({
+    reason: 'Duplicate opportunity',
+    confirmation: 'DELETE'
+  });
+  assert.equal(forbidden.status, 403);
+  assert.equal(deleteCalled, false);
+
+  const deleted = [];
+  const administrator = await createLoggedInAgent({
+    user: {
+      id: 99,
+      username: 'admin01',
+      displayName: 'Admin User',
+      roles: [ROLES.ADMINISTRATOR]
+    },
+    opportunityRepository: {
+      async deleteById(id, input) {
+        deleted.push({ id: Number(id), ...input });
+        return { id: Number(id), lifecycleEventId: 55, unlinkedEmailThreadCount: 2 };
+      }
+    }
+  });
+  const wrongConfirmation = await administrator.agent.post('/opportunities/30/delete').type('form').send({
+    reason: 'Duplicate opportunity',
+    confirmation: 'delete'
+  });
+  assert.equal(wrongConfirmation.status, 400);
+  const missingReason = await administrator.agent.post('/opportunities/30/delete').type('form').send({
+    reason: '   ',
+    confirmation: 'DELETE'
+  });
+  assert.equal(missingReason.status, 400);
+  const accepted = await administrator.agent.post('/opportunities/30/delete').type('form').send({
+    reason: 'Duplicate opportunity',
+    confirmation: 'DELETE'
+  });
+  assert.equal(accepted.status, 302);
+  assert.equal(accepted.headers.location, '/opportunities');
+  assert.deepEqual(deleted, [{ id: 30, actorUserId: 99, reason: 'Duplicate opportunity' }]);
 });
 
 test('administrator archives opportunity and preserves stored attachment files', async () => {

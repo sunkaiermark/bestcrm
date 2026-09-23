@@ -94,6 +94,7 @@ test('opportunity repository lists opportunities with customer and contact names
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN users quotation_engineer/);
   assert.match(queryTarget.queries[0].sql, /WHERE o\.salesperson_id = \$1/);
   assert.match(queryTarget.queries[0].sql, /o\.status NOT IN \(\$2, \$3\)/);
+  assert.match(queryTarget.queries[0].sql, /o\.deleted_at IS NULL/);
   assert.deepEqual(queryTarget.queries[0].params, [7, STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
 });
 
@@ -174,6 +175,7 @@ test('opportunity repository excludes archived opportunities by default', async 
   await repository.listOpportunities();
 
   assert.match(queryTarget.queries[0].sql, /o\.archived_at IS NULL/);
+  assert.match(queryTarget.queries[0].sql, /o\.deleted_at IS NULL/);
   assert.match(queryTarget.queries[0].sql, /o\.status NOT IN \(\$1, \$2\)/);
   assert.deepEqual(queryTarget.queries[0].params, [STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
 });
@@ -190,6 +192,7 @@ test('opportunity repository can list only archived opportunities', async () => 
 
   assert.equal(opportunities[0].status, STATUSES.CONTRACT_ARCHIVED);
   assert.match(queryTarget.queries[0].sql, /o\.archived_at IS NOT NULL OR o\.status IN \(\$1, \$2\)/);
+  assert.match(queryTarget.queries[0].sql, /o\.deleted_at IS NULL/);
   assert.deepEqual(queryTarget.queries[0].params, [STATUSES.LOST_ARCHIVED, STATUSES.CONTRACT_ARCHIVED]);
 });
 
@@ -200,6 +203,7 @@ test('opportunity repository can list all opportunities including archived', asy
   await repository.listOpportunities({ archiveScope: 'all' });
 
   assert.doesNotMatch(queryTarget.queries[0].sql, /o\.status (?:NOT )?IN/);
+  assert.match(queryTarget.queries[0].sql, /o\.deleted_at IS NULL/);
   assert.deepEqual(queryTarget.queries[0].params, []);
 });
 
@@ -216,6 +220,7 @@ test('opportunity repository gets detail with customer and contact names', async
   assert.equal(opportunity.primaryContactName, 'Alice');
   assert.equal(opportunity.salespersonDisplayName, 'Sales One');
   assert.match(queryTarget.queries[0].sql, /WHERE o\.id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /AND o\.deleted_at IS NULL/);
 });
 
 test('opportunity repository creates draft opportunity rows', async () => {
@@ -308,6 +313,37 @@ test('opportunity repository archives and reopens without deleting the row', asy
   assert.deepEqual(queryTarget.queries[0].params, [30, 99, 'Cancelled duplicate']);
   assert.match(queryTarget.queries[1].sql, /archived_at = NULL/);
   assert.deepEqual(queryTarget.queries[1].params, [30, 99, 'Cancellation reversed']);
+});
+
+test('opportunity repository logically deletes the opportunity, unlinks email, and writes one lifecycle event', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    id: '30',
+    lifecycle_event_id: '55',
+    unlinked_email_thread_count: '2'
+  }]);
+  const repository = createOpportunityRepository(queryTarget);
+
+  const deleted = await repository.deleteById(30, {
+    actorUserId: 99,
+    reason: 'Duplicate opportunity'
+  });
+
+  assert.deepEqual(deleted, {
+    id: 30,
+    lifecycleEventId: 55,
+    unlinkedEmailThreadCount: 2
+  });
+  assert.deepEqual(queryTarget.queries[0].params, [30, 99, 'Duplicate opportunity']);
+  assert.match(queryTarget.queries[0].sql, /SET deleted_at = now\(\)/);
+  assert.match(queryTarget.queries[0].sql, /set_config\('bestcrm\.opportunity_delete', 'enabled', true\)/);
+  assert.match(queryTarget.queries[0].sql, /deleted_by = \$2/);
+  assert.match(queryTarget.queries[0].sql, /delete_reason = \$3/);
+  assert.match(queryTarget.queries[0].sql, /UPDATE email_threads thread[\s\S]*SET opportunity_id = NULL/);
+  assert.match(queryTarget.queries[0].sql, /WHEN linked_thread\.triage_status = 'linked_opportunity' THEN 'pending'/);
+  assert.match(queryTarget.queries[0].sql, /INSERT INTO email_thread_triage_events/);
+  assert.match(queryTarget.queries[0].sql, /'opportunity'[\s\S]*'delete'/);
+  assert.match(queryTarget.queries[0].sql, /unlinkedEmailThreadCount/);
+  assert.doesNotMatch(queryTarget.queries[0].sql, /DELETE FROM opportunities/);
 });
 
 test('opportunity repository generates six digit opportunity numbers from sequence', async () => {

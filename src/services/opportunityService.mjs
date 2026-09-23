@@ -51,6 +51,10 @@ export function canArchiveOpportunity(user, opportunity) {
   return hasRole(user, ROLES.ADMINISTRATOR) && !opportunity.archivedAt;
 }
 
+export function canDeleteOpportunity(user) {
+  return hasRole(user, ROLES.ADMINISTRATOR);
+}
+
 export function canReopenOpportunity(user, opportunity) {
   return hasRole(user, ROLES.ADMINISTRATOR)
     && Boolean(opportunity.archivedAt)
@@ -255,6 +259,23 @@ export async function archiveOpportunity(opportunityRepository, actor, opportuni
   if (!archived) {
     throw new Error('Opportunity not found or already archived');
   }
+}
+
+export async function deleteOpportunity(opportunityRepository, actor, opportunity, input = {}) {
+  if (!canDeleteOpportunity(actor)) {
+    forbidden();
+  }
+  if (text(input.confirmation) !== 'DELETE') {
+    throw new Error('Type DELETE to confirm opportunity deletion');
+  }
+  const deleted = await opportunityRepository.deleteById(Number(opportunity.id), {
+    actorUserId: Number(actor.id),
+    reason: lifecycleReason(input.reason, 'Delete')
+  });
+  if (!deleted) {
+    throw new Error('Opportunity not found or already deleted');
+  }
+  return deleted;
 }
 
 export async function reopenOpportunity(opportunityRepository, actor, opportunity, reason) {

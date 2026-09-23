@@ -212,6 +212,9 @@
               <% if (typeof canArchiveOpportunity !== 'undefined' && canArchiveOpportunity) { %>
                 <button class="opportunity-detail-archive-toggle" type="button" aria-expanded="false" aria-controls="opportunity-detail-archive-panel" data-opportunity-archive-toggle><%= t('archive') %>…</button>
               <% } %>
+              <% if (typeof canDeleteOpportunity !== 'undefined' && canDeleteOpportunity) { %>
+                <button class="danger-action" type="button" aria-expanded="false" aria-controls="opportunity-detail-delete-panel" data-opportunity-delete-toggle><%= t('delete') %>…</button>
+              <% } %>
               <% if (typeof canReopenOpportunity !== 'undefined' && canReopenOpportunity) { %>
                 <form method="post" action="/opportunities/<%= opportunity.id %>/reopen">
                   <%- csrfField() %>
@@ -232,6 +235,18 @@
                 <label><%= t('archiveReason') %><input name="reason" required maxlength="500" placeholder="<%= t('archiveReason') %>"></label>
                 <button class="danger-action" type="submit"><%= t('archive') %></button>
                 <button class="secondary-action" type="button" data-opportunity-archive-cancel><%= t('cancel') %></button>
+              </form>
+            </div>
+          <% } %>
+          <% if (typeof canDeleteOpportunity !== 'undefined' && canDeleteOpportunity) { %>
+            <div class="opportunity-detail-archive-panel" id="opportunity-detail-delete-panel" data-opportunity-delete-panel hidden>
+              <p class="warning-text"><%= t('deleteOpportunityRule') %></p>
+              <form method="post" action="/opportunities/<%= opportunity.id %>/delete">
+                <%- csrfField() %>
+                <label><%= t('deleteOpportunityReason') %><input name="reason" required maxlength="500" placeholder="<%= t('deleteOpportunityReason') %>"></label>
+                <label><%= t('deleteOpportunityConfirmation') %><input name="confirmation" required pattern="DELETE" autocomplete="off" spellcheck="false" placeholder="DELETE"></label>
+                <button class="danger-action" type="submit"><%= t('deleteOpportunityAction') %></button>
+                <button class="secondary-action" type="button" data-opportunity-delete-cancel><%= t('cancel') %></button>
               </form>
             </div>
           <% } %>
@@ -697,6 +712,17 @@
     };
     archiveToggle.addEventListener('click', () => setArchiveOpen(archivePanel.hidden));
     archivePanel.querySelector('[data-opportunity-archive-cancel]')?.addEventListener('click', () => setArchiveOpen(false));
+  }
+  const deleteToggle = document.querySelector('[data-opportunity-delete-toggle]');
+  const deletePanel = document.querySelector('[data-opportunity-delete-panel]');
+  if (deleteToggle && deletePanel) {
+    const setDeleteOpen = (open) => {
+      deletePanel.hidden = !open;
+      deleteToggle.setAttribute('aria-expanded', String(open));
+      if (open) deletePanel.querySelector('input[name="reason"]')?.focus();
+    };
+    deleteToggle.addEventListener('click', () => setDeleteOpen(deletePanel.hidden));
+    deletePanel.querySelector('[data-opportunity-delete-cancel]')?.addEventListener('click', () => setDeleteOpen(false));
   }
   document.querySelectorAll('[data-engineer-picker]').forEach((picker) => {
     const options = [...picker.querySelectorAll('[data-engineer-option]')];

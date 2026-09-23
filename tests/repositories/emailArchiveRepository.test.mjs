@@ -71,7 +71,7 @@ test('email archive repository supports explicit archived, spam, and all-mail vi
   assert.deepEqual(calls[1].params, []);
 });
 
-test('email archive repository exposes the first exact permanent-deletion blocking reason', async () => {
+test('email archive repository blocks only opportunity-linked threads from administrator deletion', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({
     async query(sql, params) {
@@ -79,8 +79,9 @@ test('email archive repository exposes the first exact permanent-deletion blocki
       return {
         rows: [threadRow({
           inquiry_id: 8,
+          opportunity_id: 20,
           purge_eligible: false,
-          purge_blocked_reason: 'linked_inquiry'
+          purge_blocked_reason: 'linked_opportunity'
         })]
       };
     }
@@ -89,14 +90,13 @@ test('email archive repository exposes the first exact permanent-deletion blocki
   const [thread] = await repository.listThreads({ archiveDisposition: 'archived' });
 
   assert.equal(thread.purgeEligible, false);
-  assert.equal(thread.purgeBlockedReason, 'linked_inquiry');
-  assert.match(calls[0].sql, /AS purge_blocked_reason/);
-  assert.match(calls[0].sql, /THEN 'linked_inquiry'/);
-  assert.match(calls[0].sql, /THEN 'has_outbound_message'/);
-  assert.match(calls[0].sql, /THEN 'reply_chain_dependency'/);
+  assert.equal(thread.purgeBlockedReason, 'linked_opportunity');
+  assert.match(calls[0].sql, /thread\.opportunity_id IS NULL\) AS purge_eligible/);
+  assert.match(calls[0].sql, /WHEN thread\.opportunity_id IS NOT NULL THEN 'linked_opportunity'/);
+  assert.doesNotMatch(calls[0].sql, /linked_inquiry|linked_customer|linked_contact|has_outbound_message|reply_chain_dependency/);
 });
 
-test('spam cleanup includes every confirmed spam thread regardless of business-link history', async () => {
+test('spam cleanup includes confirmed spam except opportunity-linked threads', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({
     async query(sql, params) {
@@ -121,12 +121,13 @@ test('spam cleanup includes every confirmed spam thread regardless of business-l
   assert.deepEqual(calls[0].params, ['sales@sunkaier.com']);
   assert.match(calls[0].sql, /thread\.archive_disposition = 'spam'/);
   assert.match(calls[0].sql, /thread\.triage_status = 'spam'/);
+  assert.match(calls[0].sql, /thread\.opportunity_id IS NULL/);
   assert.doesNotMatch(calls[0].sql, /spam_inquiry/);
   assert.doesNotMatch(calls[0].sql, /opportunity_activity_links/);
   assert.doesNotMatch(calls[0].sql, /quotation_package_versions/);
 });
 
-test('non-business cleanup includes only unlinked archived mail without outbound or historical business links', async () => {
+test('non-business cleanup excludes only opportunity-linked mail', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({
     async query(sql, params) {
@@ -147,11 +148,14 @@ test('non-business cleanup includes only unlinked archived mail without outbound
   assert.match(calls[0].sql, /thread\.archive_disposition = 'archived'/);
   assert.match(calls[0].sql, /thread\.triage_status = 'archived'/);
   assert.match(calls[0].sql, /thread\.opportunity_id IS NULL/);
-  assert.match(calls[0].sql, /outbound\.direction = 'outbound'/);
-  assert.match(calls[0].sql, /business_event\.event_type IN/);
+  assert.doesNotMatch(calls[0].sql, /thread\.inquiry_id IS NULL/);
+  assert.doesNotMatch(calls[0].sql, /thread\.customer_id IS NULL/);
+  assert.doesNotMatch(calls[0].sql, /thread\.contact_id IS NULL/);
+  assert.doesNotMatch(calls[0].sql, /outbound\.direction = 'outbound'/);
+  assert.doesNotMatch(calls[0].sql, /business_event\.event_type IN/);
 });
 
-test('individual email deletion allows confirmed spam and keeps the non-spam business guard', async () => {
+test('individual email deletion accepts every existing thread except opportunity-linked mail', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({
     async query(sql, params) {
@@ -162,12 +166,9 @@ test('individual email deletion allows confirmed spam and keeps the non-spam bus
 
   assert.equal(await repository.isThreadPurgeEligible(88), true);
   assert.deepEqual(calls[0].params, [88]);
-  assert.match(calls[0].sql, /thread\.archive_disposition = 'spam'[\s\S]*OR \([\s\S]*thread\.archive_disposition = 'archived'/);
-  assert.match(calls[0].sql, /thread\.triage_status = 'spam'/);
-  assert.match(calls[0].sql, /thread\.inquiry_id IS NULL/);
-  assert.match(calls[0].sql, /thread\.opportunity_id IS NULL/);
-  assert.match(calls[0].sql, /business_event\.event_type IN \([\s\S]*'linked_opportunity'[\s\S]*'converted_lead'[\s\S]*'converted_inquiry'[\s\S]*\)/);
-  assert.match(calls[0].sql, /outbound\.direction = 'outbound'/);
+  assert.match(calls[0].sql, /WHERE thread\.id = \$1[\s\S]*AND thread\.opportunity_id IS NULL/);
+  assert.doesNotMatch(calls[0].sql, /thread\.archive_disposition = 'spam'/);
+  assert.doesNotMatch(calls[0].sql, /thread\.inquiry_id IS NULL|thread\.customer_id IS NULL|thread\.contact_id IS NULL/);
 });
 
 test('orphaned converted mail reclassification excludes outbound and historical business dependencies', async () => {
@@ -220,18 +221,30 @@ test('email purge repository writes the audit before deleting the isolated email
 
   assert.equal(purged.threadId, 8);
   assert.equal(purged.purgeAuditId, 91);
-  assert.equal(purged.fileJobCount, 2);
+  assert.equal(purged.fileJobCount, 3);
   const statements = calls.map((call) => call.sql);
   const auditIndex = statements.findIndex((sql) => sql.includes('INSERT INTO email_purge_audits'));
   const attachmentJobIndex = statements.findIndex((sql) => sql.includes("'attachment'"));
   const rawJobIndex = statements.findIndex((sql) => sql.includes("'raw_email'"));
+  const outboundJobIndex = statements.findIndex((sql) => sql.includes("'outbound_email'"));
+  const replyDetachIndex = statements.findIndex((sql) => sql.includes('SET reply_to_message_id = NULL'));
+  const quotationDetachIndex = statements.findIndex((sql) => sql.includes('SET sent_email_message_id = NULL'));
+  const activityLinkDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM opportunity_activity_links'));
+  const mergeAuditDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_message_merge_audits'));
+  const outboundArtifactDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_outbound_mime_artifacts'));
   const messageDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_messages WHERE'));
   const threadDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_threads WHERE'));
   const rawDeleteIndex = statements.findIndex((sql) => sql.includes('DELETE FROM email_raw_messages WHERE'));
   assert.ok(auditIndex > 0);
   assert.ok(attachmentJobIndex > auditIndex);
   assert.ok(rawJobIndex > attachmentJobIndex);
-  assert.ok(messageDeleteIndex > rawJobIndex);
+  assert.ok(outboundJobIndex > rawJobIndex);
+  assert.ok(replyDetachIndex > outboundJobIndex);
+  assert.ok(quotationDetachIndex > replyDetachIndex);
+  assert.ok(activityLinkDeleteIndex > quotationDetachIndex);
+  assert.ok(mergeAuditDeleteIndex > activityLinkDeleteIndex);
+  assert.ok(outboundArtifactDeleteIndex > mergeAuditDeleteIndex);
+  assert.ok(messageDeleteIndex > outboundArtifactDeleteIndex);
   assert.ok(threadDeleteIndex > messageDeleteIndex);
   assert.ok(rawDeleteIndex > threadDeleteIndex);
   assert.match(statements[1], /set_config\('bestcrm\.email_purge', 'enabled', true\)/);

@@ -1134,14 +1134,12 @@ export async function purgeEmailThread(dependencies, actor, threadId, input = {}
       threadId: thread.id,
       actorUserId: actor.id,
       subjectSha256,
-      reason: thread.triageStatus === 'spam' && thread.archiveDisposition === 'spam'
-        ? 'administrator-confirmed permanent deletion from the spam list'
-        : 'administrator-confirmed permanent deletion from the non-business mail list'
+      reason: 'administrator-confirmed unrestricted permanent deletion from the email center'
     })
   ));
   if (!candidate) {
     throw new EmailArchiveError(
-      'Only confirmed spam or eligible non-business mail can be permanently deleted',
+      'Delete the linked opportunity before permanently deleting this email conversation',
       409
     );
   }

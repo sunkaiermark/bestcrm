@@ -73,6 +73,39 @@ const emailMessageCanonicalIdentityMigrationPath = new URL('../../src/db/migrati
 const leadCreatorEditAuditMigrationPath = new URL('../../src/db/migrations/072_lead_creator_edit_audit.sql', import.meta.url);
 const uploadedTechnicalDraftVersionsMigrationPath = new URL('../../src/db/migrations/073_uploaded_technical_draft_versions.sql', import.meta.url);
 const technicalReviewAttachmentsMigrationPath = new URL('../../src/db/migrations/074_technical_review_attachments.sql', import.meta.url);
+const unrestrictedAdministratorEmailPurgeMigrationPath = new URL('../../src/db/migrations/075_unrestricted_administrator_email_purge.sql', import.meta.url);
+const administratorOpportunityDeletionMigrationPath = new URL('../../src/db/migrations/076_administrator_opportunity_deletion.sql', import.meta.url);
+
+test('administrator email purge migration permits dependency cleanup only inside the guarded purge transaction', async () => {
+  const sql = await readFile(unrestrictedAdministratorEmailPurgeMigrationPath, 'utf8');
+
+  assert.match(sql, /file_kind IN \('attachment', 'raw_email', 'outbound_email'\)/);
+  for (const trigger of [
+    'email_messages_protect_content',
+    'quotation_package_sent_email_guard',
+    'quotation_package_immutable_guard',
+    'opportunity_activity_links_append_only_guard',
+    'email_outbound_mime_artifacts_no_change'
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TRIGGER ${trigger}`));
+  }
+  assert.equal((sql.match(/current_setting\('bestcrm\.email_purge', true\) IS DISTINCT FROM 'enabled'/g) || []).length, 5);
+  assert.doesNotMatch(sql, /DELETE FROM opportunities|DROP TRIGGER IF EXISTS opportunities_prevent_delete/);
+});
+
+test('administrator opportunity deletion is logical, audited, and retains database guardrails', async () => {
+  const sql = await readFile(administratorOpportunityDeletionMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS deleted_at timestamptz/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS deleted_by bigint/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS delete_reason text/);
+  assert.match(sql, /FOREIGN KEY \(deleted_by\) REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /opportunities_deleted_state_check/);
+  assert.match(sql, /event_type IN \('archive', 'reopen', 'merge', 'delete'\)/);
+  assert.match(sql, /current_setting\('bestcrm\.opportunity_delete', true\) = 'enabled'/);
+  assert.match(sql, /An indexed email thread cannot be unlinked from its opportunity/);
+  assert.doesNotMatch(sql, /DELETE FROM opportunities|DROP TRIGGER IF EXISTS opportunities_prevent_delete|ON DELETE CASCADE/);
+});
 
 test('technical review attachment migration binds immutable rejection files to pending uploaded drafts', async () => {
   const sql = await readFile(technicalReviewAttachmentsMigrationPath, 'utf8');

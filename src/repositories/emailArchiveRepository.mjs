@@ -326,8 +326,6 @@ function mapEmailPurgeFileJob(row) {
 
 const emailPurgeNonInquiryEligibility = `
   thread.opportunity_id IS NULL
-  AND thread.customer_id IS NULL
-  AND thread.contact_id IS NULL
   AND NOT EXISTS (
     SELECT 1 FROM email_messages outbound
     WHERE outbound.thread_id = thread.id AND outbound.direction = 'outbound'
@@ -371,6 +369,7 @@ const strictEmailInquiryEligibility = `
 const confirmedSpamEligibility = `
   thread.archive_disposition = 'spam'
   AND thread.triage_status = 'spam'
+  AND thread.opportunity_id IS NULL
 `;
 
 const spamPurgeEligibility = `
@@ -380,62 +379,14 @@ const spamPurgeEligibility = `
 const confirmedNonBusinessEligibility = `
   thread.archive_disposition = 'archived'
   AND thread.triage_status = 'archived'
-  AND ${emailPurgeNonInquiryEligibility}
-  AND ${strictEmailInquiryEligibility}
+  AND thread.opportunity_id IS NULL
 `;
 
-const emailPurgeBusinessEligibility = `
-  (
-    (${confirmedSpamEligibility})
-    OR (${confirmedNonBusinessEligibility})
-  )
-`;
+const emailPurgeBusinessEligibility = `thread.opportunity_id IS NULL`;
 
 const emailPurgeBlockedReason = `
   CASE
-    WHEN ${confirmedSpamEligibility} THEN ''
-    WHEN NOT (
-      thread.archive_disposition = 'archived'
-      AND thread.triage_status = 'archived'
-    ) THEN 'not_confirmed_for_deletion'
     WHEN thread.opportunity_id IS NOT NULL THEN 'linked_opportunity'
-    WHEN thread.inquiry_id IS NOT NULL THEN 'linked_inquiry'
-    WHEN thread.customer_id IS NOT NULL THEN 'linked_customer'
-    WHEN thread.contact_id IS NOT NULL THEN 'linked_contact'
-    WHEN EXISTS (
-      SELECT 1 FROM email_messages outbound
-      WHERE outbound.thread_id = thread.id AND outbound.direction = 'outbound'
-    ) THEN 'has_outbound_message'
-    WHEN EXISTS (
-      SELECT 1
-      FROM opportunity_activity_links activity_link
-      JOIN email_messages activity_message ON activity_message.id = activity_link.email_message_id
-      WHERE activity_message.thread_id = thread.id
-    ) THEN 'linked_opportunity_activity'
-    WHEN EXISTS (
-      SELECT 1
-      FROM quotation_package_versions package_version
-      JOIN email_messages package_message ON package_message.id = package_version.sent_email_message_id
-      WHERE package_message.thread_id = thread.id
-    ) THEN 'linked_quotation_package'
-    WHEN EXISTS (
-      SELECT 1
-      FROM email_messages referenced_message
-      JOIN email_messages external_reply ON external_reply.reply_to_message_id = referenced_message.id
-      WHERE referenced_message.thread_id = thread.id
-        AND external_reply.thread_id <> thread.id
-    ) THEN 'reply_chain_dependency'
-    WHEN EXISTS (
-      SELECT 1 FROM email_thread_triage_events business_event
-      WHERE business_event.thread_id = thread.id
-        AND business_event.event_type IN (
-          'linked_opportunity',
-          'linked_lead',
-          'converted_lead',
-          'linked_inquiry',
-          'converted_inquiry'
-        )
-    ) THEN 'historical_business_link'
     ELSE ''
   END
 `;
@@ -1571,6 +1522,25 @@ export function createEmailArchiveRepository(queryTarget) {
         ORDER BY purge_file.stored_path, purge_file.sort_id
         ON CONFLICT (purge_audit_id, stored_path) DO NOTHING
       `, [candidate.threadId, purgeAuditId]);
+      const outboundEmailJobs = await queryTarget.query(`
+        INSERT INTO email_purge_file_jobs (
+          purge_audit_id,
+          file_kind,
+          stored_path,
+          expected_size,
+          expected_sha256
+        )
+        SELECT
+          $2,
+          'outbound_email',
+          artifact.stored_path,
+          artifact.file_size,
+          artifact.sha256
+        FROM email_outbound_mime_artifacts artifact
+        JOIN email_messages message ON message.id = artifact.message_id
+        WHERE message.thread_id = $1
+        ON CONFLICT (purge_audit_id, stored_path) DO NOTHING
+      `, [candidate.threadId, purgeAuditId]);
 
       await queryTarget.query(`
         DELETE FROM email_attachment_scan_attempts
@@ -1596,6 +1566,42 @@ export function createEmailArchiveRepository(queryTarget) {
         DELETE FROM email_message_mailbox_deliveries
         WHERE message_id IN (SELECT id FROM email_messages WHERE thread_id = $1)
       `, [candidate.threadId]);
+      await queryTarget.query(`
+        UPDATE email_messages
+        SET reply_to_message_id = NULL
+        WHERE thread_id <> $1
+          AND reply_to_message_id IN (
+            SELECT id FROM email_messages WHERE thread_id = $1
+          )
+      `, [candidate.threadId]);
+      await queryTarget.query(`
+        UPDATE quotation_package_versions
+        SET sent_email_message_id = NULL
+        WHERE sent_email_message_id IN (
+          SELECT id FROM email_messages WHERE thread_id = $1
+        )
+      `, [candidate.threadId]);
+      await queryTarget.query(`
+        DELETE FROM opportunity_activity_links
+        WHERE email_message_id IN (
+          SELECT id FROM email_messages WHERE thread_id = $1
+        )
+      `, [candidate.threadId]);
+      await queryTarget.query(`
+        DELETE FROM email_message_merge_audits
+        WHERE canonical_message_id IN (
+          SELECT id FROM email_messages WHERE thread_id = $1
+        )
+        OR duplicate_message_id IN (
+          SELECT id FROM email_messages WHERE thread_id = $1
+        )
+      `, [candidate.threadId]);
+      await queryTarget.query(`
+        DELETE FROM email_outbound_mime_artifacts
+        WHERE message_id IN (
+          SELECT id FROM email_messages WHERE thread_id = $1
+        )
+      `, [candidate.threadId]);
       await queryTarget.query(`DELETE FROM email_thread_assignment_events WHERE thread_id = $1`, [candidate.threadId]);
       await queryTarget.query(`DELETE FROM email_thread_triage_events WHERE thread_id = $1`, [candidate.threadId]);
       await queryTarget.query(`DELETE FROM email_messages WHERE thread_id = $1`, [candidate.threadId]);
@@ -1608,7 +1614,9 @@ export function createEmailArchiveRepository(queryTarget) {
       return {
         ...candidate,
         purgeAuditId,
-        fileJobCount: Number(attachmentJobs.rowCount || 0) + Number(rawEmailJobs.rowCount || 0)
+        fileJobCount: Number(attachmentJobs.rowCount || 0)
+          + Number(rawEmailJobs.rowCount || 0)
+          + Number(outboundEmailJobs.rowCount || 0)
       };
     },
 

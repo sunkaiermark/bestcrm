@@ -190,6 +190,7 @@ function opportunityListConditions(filter = {}) {
     )`);
   }
   addArchiveScopeFilter(where, params, filter);
+  where.push('o.deleted_at IS NULL');
   return { where, params };
 }
 
@@ -278,6 +279,7 @@ export function createOpportunityRepository(queryTarget) {
       const result = await queryTarget.query(`
         ${opportunitySelect}
         WHERE o.id = $1
+          AND o.deleted_at IS NULL
         LIMIT 1
       `, [id]);
       return mapOpportunityRow(result.rows[0]);
@@ -335,6 +337,7 @@ export function createOpportunityRepository(queryTarget) {
           expected_bid_date = $9,
           updated_at = now()
         WHERE id = $10
+          AND deleted_at IS NULL
         RETURNING *
       `, [
         input.title,
@@ -356,7 +359,9 @@ export function createOpportunityRepository(queryTarget) {
         WITH archived AS (
           UPDATE opportunities
           SET archived_at = now(), archived_by = $2, archive_reason = $3, updated_at = now()
-          WHERE id = $1 AND archived_at IS NULL
+          WHERE id = $1
+            AND archived_at IS NULL
+            AND deleted_at IS NULL
           RETURNING id, record_uid, archived_at
         ), lifecycle_event AS (
           INSERT INTO record_lifecycle_events (
@@ -374,12 +379,130 @@ export function createOpportunityRepository(queryTarget) {
       return result.rowCount > 0;
     },
 
+    async deleteById(id, input) {
+      const result = await queryTarget.query(`
+        WITH delete_context AS MATERIALIZED (
+          SELECT set_config('bestcrm.opportunity_delete', 'enabled', true)
+        ), target AS (
+          SELECT opportunity.id, opportunity.record_uid, opportunity.opportunity_no, opportunity.title
+          FROM opportunities opportunity
+          CROSS JOIN delete_context
+          WHERE opportunity.id = $1
+            AND opportunity.deleted_at IS NULL
+          FOR UPDATE OF opportunity
+        ), linked_email_threads AS MATERIALIZED (
+          SELECT thread.id, thread.triage_status
+          FROM email_threads thread
+          JOIN target ON target.id = thread.opportunity_id
+        ), deleted AS (
+          UPDATE opportunities opportunity
+          SET deleted_at = now(),
+              deleted_by = $2,
+              delete_reason = $3,
+              updated_at = now()
+          FROM target
+          WHERE opportunity.id = target.id
+          RETURNING
+            opportunity.id,
+            opportunity.record_uid,
+            opportunity.deleted_at,
+            target.opportunity_no,
+            target.title
+        ), unlinked_email_threads AS (
+          UPDATE email_threads thread
+          SET opportunity_id = NULL,
+              triage_status = CASE
+                WHEN linked_thread.triage_status = 'linked_opportunity' THEN 'pending'
+                ELSE linked_thread.triage_status
+              END,
+              archive_disposition = CASE
+                WHEN linked_thread.triage_status = 'linked_opportunity' THEN 'active'
+                ELSE thread.archive_disposition
+              END,
+              triaged_by = CASE
+                WHEN linked_thread.triage_status = 'linked_opportunity' THEN $2
+                ELSE thread.triaged_by
+              END,
+              triaged_at = CASE
+                WHEN linked_thread.triage_status = 'linked_opportunity' THEN now()
+                ELSE thread.triaged_at
+              END,
+              triage_note = CASE
+                WHEN linked_thread.triage_status = 'linked_opportunity' THEN 'Opportunity deleted by administrator'
+                ELSE thread.triage_note
+              END,
+              updated_at = now()
+          FROM deleted, linked_email_threads linked_thread
+          WHERE thread.id = linked_thread.id
+          RETURNING thread.id
+        ), triage_events AS (
+          INSERT INTO email_thread_triage_events (
+            thread_id,
+            event_type,
+            from_status,
+            to_status,
+            actor_user_id,
+            opportunity_id,
+            note
+          )
+          SELECT
+            unlinked_thread.id,
+            'reopened',
+            'linked_opportunity',
+            'pending',
+            $2,
+            deleted.id,
+            'Opportunity deleted by administrator: ' || $3
+          FROM unlinked_email_threads unlinked_thread
+          JOIN linked_email_threads linked_thread ON linked_thread.id = unlinked_thread.id
+          CROSS JOIN deleted
+          WHERE linked_thread.triage_status = 'linked_opportunity'
+          RETURNING id
+        ), lifecycle_event AS (
+          INSERT INTO record_lifecycle_events (
+            record_type, record_id, record_uid, event_type, actor_user_id, reason, event_data
+          )
+          SELECT
+            'opportunity',
+            deleted.id,
+            deleted.record_uid,
+            'delete',
+            $2,
+            $3,
+            jsonb_build_object(
+              'deletedAt', deleted.deleted_at,
+              'opportunityNo', deleted.opportunity_no,
+              'title', deleted.title,
+              'unlinkedEmailThreadCount', (SELECT count(*) FROM unlinked_email_threads),
+              'emailTriageEventCount', (SELECT count(*) FROM triage_events)
+            )
+          FROM deleted
+          RETURNING id
+        )
+        SELECT
+          deleted.id,
+          lifecycle_event.id AS lifecycle_event_id,
+          (SELECT count(*) FROM unlinked_email_threads)::integer AS unlinked_email_thread_count
+        FROM deleted
+        JOIN lifecycle_event ON true
+      `, [id, input.actorUserId, input.reason]);
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        id: Number(row.id),
+        lifecycleEventId: Number(row.lifecycle_event_id),
+        unlinkedEmailThreadCount: Number(row.unlinked_email_thread_count || 0)
+      };
+    },
+
     async reopenById(id, input) {
       const result = await queryTarget.query(`
         WITH previous AS (
           SELECT id, record_uid, archived_at, archived_by, archive_reason
           FROM opportunities
-          WHERE id = $1 AND archived_at IS NOT NULL
+          WHERE id = $1
+            AND archived_at IS NOT NULL
+            AND deleted_at IS NULL
           FOR UPDATE
         ), reopened AS (
           UPDATE opportunities opportunity
@@ -440,6 +563,7 @@ export function createOpportunityRepository(queryTarget) {
           archive_reason
         FROM opportunities
         WHERE id = $1
+          AND deleted_at IS NULL
         LIMIT 1
       `, [id]);
       return mapOpportunityRow(result.rows[0]);
@@ -465,6 +589,7 @@ export function createOpportunityRepository(queryTarget) {
         UPDATE opportunities
         SET ${assignments.join(', ')}, updated_at = now()
         WHERE id = $${params.length}
+          AND deleted_at IS NULL
         RETURNING *
       `, params);
       return mapOpportunityRow(result.rows[0]);

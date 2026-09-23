@@ -5,11 +5,13 @@ import {
   canManageOpportunityEngineeringTeam,
   canManageOpportunityResponsibility,
   canArchiveOpportunity,
+  canDeleteOpportunity,
   canEditOpportunity,
   canReopenOpportunity,
   canViewOpportunity,
   archiveOpportunity,
   createOpportunityDraft,
+  deleteOpportunity,
   isProjectLeadEngineer,
   isSupportingEngineer,
   reopenOpportunity,
@@ -316,6 +318,44 @@ test('administrator archives and reopens an opportunity with audited reasons', a
     ['archive', 30, { actorUserId: 99, reason: 'Duplicate opportunity' }],
     ['reopen', 30, { actorUserId: 99, reason: 'Restored after review' }]
   ]);
+});
+
+test('only an administrator can delete an opportunity with a reason and exact DELETE confirmation', async () => {
+  const calls = [];
+  const repository = {
+    async deleteById(id, input) {
+      calls.push({ id, input });
+      return { id, lifecycleEventId: 55, unlinkedEmailThreadCount: 2 };
+    }
+  };
+  const administrator = { id: 99, roles: [ROLES.ADMINISTRATOR] };
+  const salesManager = { id: 2, roles: [ROLES.SALES_MANAGER] };
+  const opportunity = { id: 30, status: STATUSES.DRAFT, archivedAt: null };
+
+  assert.equal(canDeleteOpportunity(administrator), true);
+  assert.equal(canDeleteOpportunity(salesManager), false);
+  await assert.rejects(
+    () => deleteOpportunity(repository, salesManager, opportunity, { confirmation: 'DELETE', reason: 'Duplicate' }),
+    /Forbidden/
+  );
+  await assert.rejects(
+    () => deleteOpportunity(repository, administrator, opportunity, { confirmation: 'delete', reason: 'Duplicate' }),
+    /Type DELETE/
+  );
+  await assert.rejects(
+    () => deleteOpportunity(repository, administrator, opportunity, { confirmation: 'DELETE', reason: '   ' }),
+    /Delete reason is required/
+  );
+
+  const result = await deleteOpportunity(repository, administrator, opportunity, {
+    confirmation: 'DELETE',
+    reason: 'Duplicate opportunity'
+  });
+  assert.equal(result.unlinkedEmailThreadCount, 2);
+  assert.deepEqual(calls, [{
+    id: 30,
+    input: { actorUserId: 99, reason: 'Duplicate opportunity' }
+  }]);
 });
 
 test('opportunity archival requires reasons and archived records are read-only', async () => {

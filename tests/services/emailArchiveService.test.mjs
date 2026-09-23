@@ -1161,7 +1161,7 @@ test('permanent email deletion refuses to start without the durable file cleanup
   assert.equal(purgeCalled, false);
 });
 
-test('administrator may immediately delete only a repository-approved unlinked inbound thread', async () => {
+test('administrator may delete any visible non-opportunity email while opportunity-linked mail remains protected', async () => {
   const administrator = { id: 1, roles: [ROLES.ADMINISTRATOR] };
   const manager = { id: 2, roles: [ROLES.SALES_MANAGER] };
   const unlinked = {
@@ -1170,8 +1170,8 @@ test('administrator may immediately delete only a repository-approved unlinked i
     mailboxKey: 'sales@sunkaier.com',
     inquiryId: null,
     opportunityId: null,
-    customerId: null,
-    contactId: null
+    customerId: 10,
+    contactId: 20
   };
   let eligible = true;
   const repository = {
@@ -1182,6 +1182,7 @@ test('administrator may immediately delete only a repository-approved unlinked i
       assert.equal(input.threadId, 8);
       assert.equal(input.actorUserId, 1);
       assert.match(input.subjectSha256, /^[0-9a-f]{64}$/);
+      assert.match(input.reason, /unrestricted permanent deletion/);
       return {
         threadId: 8,
         purgeAuditId: 91,
@@ -1214,11 +1215,12 @@ test('administrator may immediately delete only a repository-approved unlinked i
   const result = await purgeEmailThread(dependencies, administrator, 8, { confirmation: 'DELETE' });
   assert.equal(result.purgedThreads, 1);
   assert.equal(result.purgedMessages, 1);
+  assert.equal(await canPurgeEmailThread(dependencies, administrator, 8), true);
 
   eligible = false;
   assert.equal(await canPurgeEmailThread(dependencies, administrator, 8), false);
   await assert.rejects(
     () => purgeEmailThread(dependencies, administrator, 8, { confirmation: 'DELETE' }),
-    (error) => error.statusCode === 409
+    (error) => error.statusCode === 409 && /Delete the linked opportunity/.test(error.message)
   );
 });

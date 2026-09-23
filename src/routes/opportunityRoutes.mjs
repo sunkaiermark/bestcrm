@@ -25,12 +25,14 @@ import {
   canArchiveOpportunity,
   canContributeOpportunityEngineering,
   canCreateOpportunityManually,
+  canDeleteOpportunity,
   canManageOpportunityResponsibility,
   canManageOpportunityEngineeringTeam,
   canEditOpportunity,
   canReopenOpportunity,
   canViewOpportunity,
   createOpportunityDraft,
+  deleteOpportunity,
   isSupportingEngineer,
   reopenOpportunity,
   updateOpportunity
@@ -1031,6 +1033,40 @@ export function opportunityRoutes({
     }
   });
 
+  router.post('/opportunities/:id/delete', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      await deleteOpportunity(opportunityRepository, req.currentUser, opportunity, {
+        confirmation: req.body.confirmation,
+        reason: req.body.reason
+      });
+      res.redirect('/opportunities');
+    } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Opportunity not found or already deleted') {
+        res.status(404).send('Opportunity not found');
+        return;
+      }
+      if (['Delete reason is required', 'Type DELETE to confirm opportunity deletion'].includes(error.message)) {
+        res.status(400).send(error.message);
+        return;
+      }
+      next(error);
+    }
+  });
+
   router.get('/opportunities/:id', async (req, res, next) => {
     try {
       const opportunity = await loadOpportunityOrSend({
@@ -1144,6 +1180,7 @@ export function opportunityRoutes({
         canUploadAttachments: uploadPermissionsFor(req.currentUser, opportunity),
         canEditOpportunity: canEditOpportunity(req.currentUser, opportunity),
         canArchiveOpportunity: canArchiveOpportunity(req.currentUser, opportunity),
+        canDeleteOpportunity: canDeleteOpportunity(req.currentUser),
         canReopenOpportunity: canReopenOpportunity(req.currentUser, opportunity)
       });
     } catch (error) {
