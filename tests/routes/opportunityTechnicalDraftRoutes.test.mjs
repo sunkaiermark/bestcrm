@@ -111,8 +111,12 @@ async function createDraftAgent(options = {}) {
     async createDraft(input) { calls.push(['createDraft', input]); return { ...draft, ...input }; },
     async setUploadedFiles(input) {
       calls.push(['setUploadedFiles', input]);
-      draft.uploadedAttachmentId = input.attachmentIds[0];
-      draft.uploadedFiles = input.attachmentIds.map((id) => ({ id }));
+      draft.uploadedAttachmentId ||= input.attachmentIds[0];
+      draft.uploadedFiles = [
+        ...(draft.uploadedFiles || []),
+        ...input.attachmentIds.map((id) => ({ id }))
+      ];
+      draft.uploadedFile = draft.uploadedFiles[0] || null;
       draft.status = 'ready';
       return draft;
     },
@@ -287,6 +291,43 @@ test('one upload can persist several technical files under the same TS-D version
     assert.equal(setFilesCall[1].draftId, 41);
     assert.equal((await readFile(path.join(uploadDir, savedAttachments[0].storedPath))).toString(), '%PDF-1.4\nAgreement');
     assert.equal((await readFile(path.join(uploadDir, savedAttachments[1].storedPath))).toString(), 'PK\u0003\u0004Datasheet');
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('later uploads append to the same TS-D without retiring its existing files', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-technical-append-upload-'));
+  const savedAttachments = [];
+  let retireCalled = false;
+  try {
+    const attachmentRepository = {
+      async createAttachment(input) {
+        const attachment = { id: 81 + savedAttachments.length, ...input };
+        savedAttachments.push(attachment);
+        return attachment;
+      },
+      async findById(id) { return savedAttachments.find((file) => file.id === Number(id)) || null; },
+      async retireById() { retireCalled = true; return null; }
+    };
+    const { agent, calls, draft } = await createDraftAgent({
+      sourceKind: 'uploaded_file', deliverableType: 'technical_agreement',
+      uploadDir, attachmentRepository
+    });
+
+    const first = await agent.post('/opportunities/20/technical-drafts/41/file')
+      .field('returnTo', 'opportunity')
+      .attach('attachment', Buffer.from('%PDF-1.4\nAgreement'), 'Agreement.pdf');
+    const second = await agent.post('/opportunities/20/technical-drafts/41/file')
+      .field('returnTo', 'opportunity')
+      .attach('attachment', Buffer.from('PK\u0003\u0004Datasheet'), 'Datasheet.xlsx');
+
+    assert.equal(first.status, 302);
+    assert.equal(second.status, 302);
+    assert.deepEqual(savedAttachments.map((file) => file.originalName), ['Agreement.pdf', 'Datasheet.xlsx']);
+    assert.deepEqual(draft.uploadedFiles.map((file) => file.id), [81, 82]);
+    assert.deepEqual(calls.filter(([method]) => method === 'setUploadedFiles').map(([, input]) => input.attachmentIds), [[81], [82]]);
+    assert.equal(retireCalled, false);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

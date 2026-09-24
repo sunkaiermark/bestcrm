@@ -256,13 +256,6 @@ export function opportunityTechnicalDraftRoutes({
           }
           const save = async (transactionRepositories = {}) => {
             const repositories = { ...dependencies, ...transactionRepositories };
-            const previousAttachmentId = context.draft.uploadedAttachmentId || null;
-            const previousAttachmentIds = (Array.isArray(context.draft.uploadedFiles) && context.draft.uploadedFiles.length
-              ? context.draft.uploadedFiles
-              : (context.draft.uploadedFile ? [context.draft.uploadedFile] : []))
-              .map((file) => Number(file.id))
-              .filter(Boolean);
-            if (!previousAttachmentIds.length && previousAttachmentId) previousAttachmentIds.push(Number(previousAttachmentId));
             const attachments = [];
             for (const file of files) {
               attachments.push(await persistUploadedOpportunityAttachment({
@@ -277,20 +270,9 @@ export function opportunityTechnicalDraftRoutes({
             const updated = await repositories.opportunityTechnicalDraftRepository.setUploadedFiles({
               draftId: context.draft.id,
               attachmentIds: attachments.map((attachment) => attachment.id),
-              previousAttachmentId,
-              previousAttachmentIds,
               actorUserId: req.currentUser.id
             });
             if (!updated) throw new WorkflowValidationError('Technical draft is no longer editable', 409);
-            for (const previousId of previousAttachmentIds) {
-              const retired = await repositories.attachmentRepository.retireById({
-                id: previousId,
-                actorUserId: req.currentUser.id,
-                reason: 'replaced_before_technical_submission',
-                replacedByAttachmentId: attachments[0].id
-              });
-              if (!retired) throw new WorkflowValidationError('Previous technical file could not be replaced', 409);
-            }
           };
           if (typeof workflowTransaction === 'function') await workflowTransaction(save);
           else await save();

@@ -196,11 +196,10 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
   async function setUploadedFiles(input) {
     const attachmentIds = [...new Set((input.attachmentIds || []).map(Number).filter(Number.isInteger))];
     if (!attachmentIds.length) return null;
-    const previousAttachmentIds = [...new Set((input.previousAttachmentIds || []).map(Number).filter(Number.isInteger))];
     const result = await queryTarget.query(`
       WITH updated AS (
         UPDATE opportunity_technical_drafts
-        SET uploaded_attachment_id = ($2::bigint[])[1],
+        SET uploaded_attachment_id = COALESCE(uploaded_attachment_id, ($2::bigint[])[1]),
             status = 'ready',
             validation_issues = '[]'::jsonb,
             updated_by = $3,
@@ -208,7 +207,6 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
         WHERE id = $1
           AND source_kind = 'uploaded_file'
           AND status IN ('draft', 'ready')
-          AND uploaded_attachment_id IS NOT DISTINCT FROM $4::bigint
         RETURNING *
       ), next_position AS (
         SELECT COALESCE(MAX(sort_order), 0) AS base_position
@@ -228,11 +226,8 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
         INSERT INTO opportunity_technical_draft_events (
           technical_draft_id, event_type, actor_user_id, details
         )
-        SELECT id,
-          CASE WHEN $4::bigint IS NULL THEN 'file_uploaded' ELSE 'file_replaced' END,
-          $3, jsonb_build_object(
+        SELECT id, 'file_uploaded', $3, jsonb_build_object(
             'attachmentIds', $2::bigint[],
-            'previousAttachmentIds', $5::bigint[],
             'fileCount', cardinality($2::bigint[])
           )
         FROM updated
@@ -241,9 +236,7 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
     `, [
       input.draftId,
       attachmentIds,
-      input.actorUserId,
-      input.previousAttachmentId || null,
-      previousAttachmentIds
+      input.actorUserId
     ]);
     return mapDraftRow(result.rows[0]);
   }
@@ -363,8 +356,7 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
     async setUploadedFile(input) {
       return setUploadedFiles({
         ...input,
-        attachmentIds: [input.attachmentId],
-        previousAttachmentIds: input.previousAttachmentId ? [input.previousAttachmentId] : []
+        attachmentIds: [input.attachmentId]
       });
     },
 

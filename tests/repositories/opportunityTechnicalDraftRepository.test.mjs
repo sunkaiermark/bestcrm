@@ -158,7 +158,7 @@ test('marking ready records an append-only readiness event', async () => {
   assert.deepEqual(calls[0].params, [41, '[]', 3]);
 });
 
-test('one uploaded batch links every file to one TS-D and keeps the first file as the legacy primary', async () => {
+test('one uploaded batch appends every file to one TS-D and keeps the first file as the legacy primary', async () => {
   const calls = [];
   const repository = createOpportunityTechnicalDraftRepository({
     async query(sql, params) {
@@ -182,9 +182,13 @@ test('one uploaded batch links every file to one TS-D and keeps the first file a
   });
   assert.equal(draft.uploadedAttachmentId, 81);
   assert.deepEqual(draft.uploadedFiles.map((file) => file.originalName), ['Agreement.pdf', 'Datasheet.xlsx']);
+  assert.match(calls[0].sql, /uploaded_attachment_id = COALESCE\(uploaded_attachment_id, \(\$2::bigint\[\]\)\[1\]\)/);
   assert.match(calls[0].sql, /unnest\(\$2::bigint\[\]\) WITH ORDINALITY/);
   assert.match(calls[0].sql, /'attachmentIds', \$2::bigint\[\]/);
+  assert.match(calls[0].sql, /SELECT id, 'file_uploaded'/);
+  assert.doesNotMatch(calls[0].sql, /file_replaced|previousAttachmentIds/);
   assert.deepEqual(calls[0].params[1], [81, 82]);
+  assert.deepEqual(calls[0].params, [41, [81, 82], 3]);
 });
 
 test('submission freezes a validated ready draft and writes an audit event', async () => {
