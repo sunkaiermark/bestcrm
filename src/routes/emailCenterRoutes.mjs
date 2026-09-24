@@ -25,7 +25,6 @@ import {
 } from '../services/emailArchiveService.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
 import { canSubmitNewLead } from '../services/leadSubmissionService.mjs';
-import { canCreateOpportunityManually } from '../services/opportunityService.mjs';
 import {
   CustomerEmailError,
   createCustomerEmailDraft,
@@ -304,7 +303,6 @@ export function emailCenterRoutes({
         canManageEmailCleanup,
         canDeleteThread,
         canCreateLead: canSubmitNewLead(req.currentUser),
-        canCreateOpportunity: canCreateOpportunityManually(req.currentUser) && Boolean(thread.customerId),
         linkableOpportunities
       });
     } catch (error) {

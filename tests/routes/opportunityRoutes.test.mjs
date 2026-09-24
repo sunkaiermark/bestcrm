@@ -2557,10 +2557,10 @@ test('all uploaded technical proposal drafts are listed between upload and appro
           id: 42, opportunityId: 30, draftLabel: 'TS-D2', status: 'ready',
           sourceKind: 'uploaded_file', templateNameSnapshot: 'Bidding Document',
           uploadedAttachmentId: 82,
-          uploadedFile: { id: 82, originalName: 'Bidding_Document_V2.pdf' },
+          uploadedFile: { id: 82, originalName: 'Bidding_Document_V2.pdf', uploadedAt: '2026-09-24T02:00:00.000Z' },
           uploadedFiles: [
-            { id: 82, originalName: 'Bidding_Document_V2.pdf' },
-            { id: 83, originalName: 'Equipment_List_V2.xlsx' }
+            { id: 82, originalName: 'Bidding_Document_V2.pdf', uploadedAt: '2026-09-24T02:00:00.000Z' },
+            { id: 83, originalName: 'Equipment_List_V2.xlsx', uploadedAt: '2026-09-24T02:05:00.000Z' }
           ]
         }, {
           id: 41, opportunityId: 30, draftLabel: 'TS-D1', formalVersionLabel: 'TS-V1', status: 'approved',
@@ -2589,12 +2589,15 @@ test('all uploaded technical proposal drafts are listed between upload and appro
   assert.match(section, /class="technical-uploaded-file-name" title="Technical_Agreement_V1\.pdf">Technical_Agreement_V1\.pdf/);
   assert.match(section, /class="technical-file-action technical-file-preview-action"[^>]*>Preview<\/a>/);
   assert.match(section, /class="technical-file-action technical-file-download-action"[^>]*>Download<\/a>/);
+  assert.match(section, /class="technical-uploaded-file-time"[^>]*>2026-09-24 10:00<\/time>/);
+  assert.equal((section.match(/files\/(82|83)\/withdraw/g) || []).length, 2);
+  assert.doesNotMatch(section, /files\/81\/withdraw/);
   assert.doesNotMatch(section, />Open Draft<\/a>/);
   assert.match(detail.text, /\.technical-proposal-upload-form\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*var\(--technical-proposal-file-columns\);/);
   assert.match(detail.text, /\.technical-proposal-upload-form > button\s*\{[^}]*justify-self:\s*end;[^}]*width:\s*var\(--technical-download-action-width\);/);
-  assert.match(detail.text, /--technical-proposal-file-columns:\s*minmax\(175px, 190px\) fit-content\(230px\) minmax\(300px, 1fr\) minmax\(260px, 296px\);/);
+  assert.match(detail.text, /--technical-proposal-file-columns:\s*minmax\(175px, 190px\) fit-content\(230px\) minmax\(280px, 1fr\) minmax\(140px, 160px\) minmax\(330px, 360px\);/);
   assert.match(detail.text, /\.technical-uploaded-files\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*var\(--technical-proposal-file-columns\);/);
-  assert.match(detail.text, /--technical-proposal-layout-width:\s*1320px;/);
+  assert.match(detail.text, /--technical-proposal-layout-width:\s*1580px;/);
   assert.match(detail.text, /\.technical-uploaded-file-name\s*\{[^}]*text-overflow:\s*ellipsis;[^}]*white-space:\s*nowrap;/);
   assert.match(detail.text, /\.technical-version-row\.technical-uploaded-file-row\s*\{[^}]*display:\s*contents;/);
   assert.match(detail.text, /\.technical-proposal-submit-form\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(320px, 360px\);[^}]*margin-left:\s*-14px;/);
@@ -2606,6 +2609,7 @@ test('all uploaded technical proposal drafts are listed between upload and appro
   assert.match(detail.text, /\.business-section-technical \.stage-workflow-actions \.workflow-inline-field > select,[\s\S]*grid-column:\s*3;/);
   assert.match(detail.text, /\.technical-file-preview-action\s*\{[^}]*background:\s*#dbeafe;/);
   assert.match(detail.text, /\.technical-file-download-action\s*\{[^}]*background:\s*var\(--accent\);[^}]*text-align:\s*center;[^}]*width:\s*var\(--technical-download-action-width\);/);
+  assert.match(detail.text, /\.technical-file-withdraw-action\s*\{[^}]*background:\s*#fff1f2;[^}]*color:\s*#be123c;/);
   assert.doesNotMatch(section, />Comment</);
   assert.doesNotMatch(section, /Maximum file size:|Uploading another file replaces this draft file\./);
   assert.doesNotMatch(section.match(/<h2>[\s\S]*?<\/h2>/)?.[0] || '', /Technical Document|Project Technical Drafts/);

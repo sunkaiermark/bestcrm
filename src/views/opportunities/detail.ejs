@@ -490,9 +490,16 @@
                               </span><% } %>
                             </span>
                             <span class="technical-uploaded-file-name" title="<%= uploadedFile.originalName %>"><%= uploadedFile.originalName %></span>
+                            <time class="technical-uploaded-file-time" datetime="<%= attachmentUploadedAtSortValue(uploadedFile.uploadedAt) %>"><%= formatShortDate(uploadedFile.uploadedAt) %></time>
                             <span class="technical-version-actions technical-uploaded-file-actions">
                               <a class="technical-file-action technical-file-preview-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/preview"><%= t('preview') %></a>
                               <a class="technical-file-action technical-file-download-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/download"><%= t('download') %></a>
+                              <% if (canManageUploadedTechnicalDraft && Number(draft.id) === Number(activeTechnicalDraft?.id) && !uploadedFile.materialVersionId) { %>
+                                <form class="technical-file-withdraw-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/files/<%= uploadedFile.id %>/withdraw" onsubmit="return confirm('<%= t('withdrawUploadedTechnicalFileConfirm') %>')">
+                                  <%- csrfField() %><input type="hidden" name="returnTo" value="opportunity">
+                                  <button class="technical-file-action technical-file-withdraw-action" type="submit"><%= t('withdrawUploadedTechnicalFile') %></button>
+                                </form>
+                              <% } %>
                             </span>
                           </div>
                           <% } %>

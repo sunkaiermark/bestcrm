@@ -275,7 +275,9 @@ test('sales manager sees shared mailbox pending threads without a rule-category 
   assert.match(detail.text, /href="\/email-center\?mailbox=sales%40sunkaier\.com&folder=pending">← 返回邮件列表<\/a>/);
   assert.doesNotMatch(detail.text, /name="assignedUserId"|\/assignment/);
   assert.match(detail.text, /<button type="submit">关联商机<\/button>[\s\S]*?<select name="opportunityId"/);
-  assert.match(detail.text, /class="email-triage-final-actions"[\s\S]*?新建线索[\s\S]*?标记为垃圾邮件[\s\S]*?标记为非业务邮件/);
+  assert.match(detail.text, /class="email-pending-actions-row"[\s\S]*?关联商机[\s\S]*?选择商机[\s\S]*?新建线索[\s\S]*?标记为垃圾邮件/);
+  assert.match(detail.text, /href="\/lead-submissions\/new\?emailThreadId=1"/);
+  assert.doesNotMatch(detail.text, /新建商机|标记为非业务邮件/);
   assert.doesNotMatch(detail.text, /关联询价|转为询价|name="inquiryId"|convert-inquiry/);
   assert.doesNotMatch(detail.text, /<summary>其他处理<\/summary>/);
   assert.match(detail.text, /class="email-conversation-list"/);
@@ -564,6 +566,11 @@ test('administrator can delete unlinked non-business mail while opportunity-link
   assert.match(list.text, /href="\/email-center\/threads\/1[^>]*#email-delete"/);
   assert.doesNotMatch(list.text, /href="\/email-center\/threads\/2[^>]*#email-delete"/);
   assert.match(list.text, /请先删除关联商机/);
+
+  const linkedDetail = await administrator.get('/email-center/threads/2?mailbox=sales%40sunkaier.com&from=non_business');
+  assert.equal(linkedDetail.status, 200);
+  assert.doesNotMatch(linkedDetail.text, /id="email-delete"/);
+  assert.doesNotMatch(linkedDetail.text, /彻底删除邮件|请先删除关联商机，再永久删除该邮件/);
 });
 
 test('administrator can move an orphaned converted inquiry from Inbox to Spam for permanent cleanup', async () => {
@@ -629,20 +636,21 @@ test('administrator can delete active inbox mail without reclassification but op
     userId: 1,
     roles: [ROLES.ADMINISTRATOR],
     language: 'zh',
+    linkableOpportunities: [{ id: 20, opportunityNo: '800020', title: 'Mixer Project' }],
     onPurgeThread: (input) => purgeCalls.push(input)
   });
   const unlinkedDetail = await administrator.get('/email-center/threads/1');
   assert.equal(unlinkedDetail.status, 200);
   assert.match(unlinkedDetail.text, /action="\/email-center\/threads\/1\/purge"/);
   assert.match(unlinkedDetail.text, /id="email-delete"/);
-  assert.match(unlinkedDetail.text, /管理员可永久删除未关联商机的邮件会话/);
+  assert.match(unlinkedDetail.text, /class="email-pending-actions-row"[\s\S]*?关联商机[\s\S]*?选择商机[\s\S]*?新建线索[\s\S]*?标记为垃圾邮件[\s\S]*?placeholder="DELETE"[\s\S]*?永久删除/);
+  assert.doesNotMatch(unlinkedDetail.text, /管理员可永久删除未关联商机的邮件会话|受保护的未关联邮件|标记为非业务邮件/);
 
   const linkedDetail = await administrator.get('/email-center/threads/2?from=inbox');
   assert.equal(linkedDetail.status, 200);
   assert.doesNotMatch(linkedDetail.text, /action="\/email-center\/threads\/2\/purge"/);
-  assert.match(linkedDetail.text, /id="email-delete"/);
-  assert.match(linkedDetail.text, /彻底删除邮件/);
-  assert.match(linkedDetail.text, /请先删除关联商机/);
+  assert.doesNotMatch(linkedDetail.text, /id="email-delete"/);
+  assert.doesNotMatch(linkedDetail.text, /彻底删除邮件|请先删除关联商机/);
 
   const rejected = await administrator.post('/email-center/threads/1/purge').type('form').send({
     mailbox: 'sales@sunkaier.com',
@@ -826,6 +834,7 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.doesNotMatch(salesCompose.text, />Additional attachments</);
   assert.match(salesCompose.text, />Upload local files</);
   assert.match(salesCompose.text, />Choose from opportunity files</);
+  assert.doesNotMatch(salesCompose.text, /Only approved files from this opportunity are available/);
   assert.match(salesCompose.text, /name="approvedOpportunityFileTokens" value="technical_document:61"/);
   assert.match(salesCompose.text, /name="approvedOpportunityFileTokens" value="opportunity_attachment:71"/);
   assert.match(salesCompose.text, /Mixer_Datasheet\.pdf/);

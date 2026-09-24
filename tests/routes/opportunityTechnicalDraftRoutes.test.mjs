@@ -120,6 +120,14 @@ async function createDraftAgent(options = {}) {
       draft.status = 'ready';
       return draft;
     },
+    async withdrawUploadedFile(input) {
+      calls.push(['withdrawUploadedFile', input]);
+      draft.uploadedFiles = (draft.uploadedFiles || []).filter((file) => Number(file.id) !== Number(input.attachmentId));
+      draft.uploadedFile = draft.uploadedFiles[0] || null;
+      draft.uploadedAttachmentId = draft.uploadedFile?.id || null;
+      draft.status = draft.uploadedFiles.length ? 'ready' : 'draft';
+      return draft;
+    },
     async addReviewAttachments(input) {
       calls.push(['addReviewAttachments', input]);
       for (const attachmentId of input.attachmentIds) {
@@ -331,6 +339,85 @@ test('later uploads append to the same TS-D without retiring its existing files'
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
+});
+
+test('same TS-D rejects a duplicate technical file name before creating another attachment', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-technical-duplicate-upload-'));
+  let createCalls = 0;
+  try {
+    const attachmentRepository = {
+      async createAttachment(input) { createCalls += 1; return { id: 82, ...input }; },
+      async findById() { return null; }
+    };
+    const { agent } = await createDraftAgent({
+      sourceKind: 'uploaded_file', deliverableType: 'datasheet', draftStatus: 'ready', uploadDir,
+      uploadedAttachmentId: 81,
+      uploadedFile: { id: 81, originalName: 'Datasheet.pdf', sha256: 'a'.repeat(64) },
+      attachmentRepository
+    });
+    const duplicate = await agent.post('/opportunities/20/technical-drafts/41/file')
+      .attach('attachment', Buffer.from('%PDF-1.4\nChanged content'), 'DATASHEET.PDF');
+    assert.equal(duplicate.status, 409);
+    assert.match(duplicate.text, /same name or content already exists/);
+    assert.equal(createCalls, 0);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('same upload rejects duplicate technical file content under different names', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-technical-duplicate-content-'));
+  let createCalls = 0;
+  try {
+    const attachmentRepository = {
+      async createAttachment(input) { createCalls += 1; return { id: 81 + createCalls, ...input }; },
+      async findById() { return null; }
+    };
+    const { agent } = await createDraftAgent({
+      sourceKind: 'uploaded_file', deliverableType: 'datasheet', uploadDir, attachmentRepository
+    });
+    const duplicate = await agent.post('/opportunities/20/technical-drafts/41/file')
+      .attach('attachment', Buffer.from('identical bytes'), 'Motor.pdf')
+      .attach('attachment', Buffer.from('identical bytes'), 'Gearbox.pdf');
+    assert.equal(duplicate.status, 409);
+    assert.match(duplicate.text, /same name or content already exists/);
+    assert.equal(createCalls, 0);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('project lead can withdraw an unapproved uploaded file from an editable TS-D', async () => {
+  const { agent, calls, draft } = await createDraftAgent({
+    sourceKind: 'uploaded_file', deliverableType: 'datasheet', draftStatus: 'ready',
+    uploadedAttachmentId: 81,
+    uploadedFiles: [
+      { id: 81, originalName: 'Datasheet.pdf', uploadedAt: '2026-09-24T02:00:00.000Z' },
+      { id: 82, originalName: 'Motor.pdf', uploadedAt: '2026-09-24T02:05:00.000Z' }
+    ]
+  });
+  const detail = await agent.get('/opportunities/20/technical-drafts/41');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Uploaded at/);
+  assert.match(detail.text, /2026-09-24/);
+  assert.match(detail.text, /files\/81\/withdraw/);
+  const withdrawn = await agent.post('/opportunities/20/technical-drafts/41/files/81/withdraw');
+  assert.equal(withdrawn.status, 302);
+  assert.equal(withdrawn.headers.location, '/opportunities/20/technical-drafts/41');
+  assert.ok(calls.some(([method, input]) => method === 'withdrawUploadedFile'
+    && input.draftId === 41 && Number(input.attachmentId) === 81));
+  assert.deepEqual(draft.uploadedFiles.map((file) => file.id), [82]);
+});
+
+test('individual technical files cannot be withdrawn while approval is pending', async () => {
+  const { agent, calls } = await createDraftAgent({
+    sourceKind: 'uploaded_file', deliverableType: 'datasheet', draftStatus: 'pending',
+    uploadedAttachmentId: 81,
+    uploadedFile: { id: 81, originalName: 'Datasheet.pdf' }
+  });
+  const response = await agent.post('/opportunities/20/technical-drafts/41/files/81/withdraw');
+  assert.equal(response.status, 403);
+  assert.equal(calls.some(([method]) => method === 'withdrawUploadedFile'), false);
 });
 
 test('technical manager must enter a rejection reason before the existing review action runs', async () => {

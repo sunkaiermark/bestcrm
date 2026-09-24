@@ -9,8 +9,10 @@ import { ACTIONS } from '../domain/workflow.mjs';
 import { localizedTechnicalField } from '../domain/technicalTemplates.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { applyWorkflowAction, WorkflowValidationError } from '../services/workflowService.mjs';
+import { inspectStoredAttachmentFile } from '../services/attachmentFileService.mjs';
 import { persistUploadedOpportunityAttachment } from '../services/attachmentIntegrityService.mjs';
 import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
+import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import {
   assignOpportunityTechnicalDraftSection,
   canCreateOpportunityTechnicalDraft,
@@ -33,6 +35,10 @@ function handleError(error, res, next) {
     res.status(error.statusCode).send(error.message);
     return;
   }
+  if (error?.code === '23505' && error?.constraint === 'opportunity_technical_draft_attachments_unique_file') {
+    res.status(409).send(res.locals.t('duplicateTechnicalFileInVersion'));
+    return;
+  }
   if (error?.code === '23505') {
     res.status(409).send('This technical draft or section assignment already exists');
     return;
@@ -42,6 +48,37 @@ function handleError(error, res, next) {
     return;
   }
   next(error);
+}
+
+function technicalFileNameKey(value) {
+  return normalizeUploadedFilename(value).normalize('NFKC').trim().toLocaleLowerCase('en-US');
+}
+
+function assertUniqueTechnicalFiles(existingFiles, candidateFiles, duplicateMessage) {
+  const names = new Set((existingFiles || []).map((file) => technicalFileNameKey(file.originalName)).filter(Boolean));
+  const hashes = new Set((existingFiles || []).map((file) => String(file.sha256 || '').toLowerCase()).filter(Boolean));
+  for (const file of candidateFiles) {
+    const nameKey = technicalFileNameKey(file.originalName);
+    const sha256 = String(file.sha256 || '').toLowerCase();
+    if ((nameKey && names.has(nameKey)) || (sha256 && hashes.has(sha256))) {
+      const error = new Error(duplicateMessage);
+      error.statusCode = 409;
+      throw error;
+    }
+    if (nameKey) names.add(nameKey);
+    if (sha256) hashes.add(sha256);
+  }
+}
+
+async function inspectTechnicalUploads(uploadDir, files) {
+  return Promise.all(files.map(async (file) => {
+    const storedPath = path.relative(path.resolve(uploadDir), path.resolve(file.path)).split(path.sep).join('/');
+    const inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath });
+    return {
+      originalName: normalizeUploadedFilename(file.originalname),
+      sha256: inspected.sha256
+    };
+  }));
 }
 
 async function loadOpportunity({
@@ -254,6 +291,12 @@ export function opportunityTechnicalDraftRoutes({
             res.status(400).send('At least one technical file is required');
             return;
           }
+          const candidateFiles = await inspectTechnicalUploads(uploadDir, files);
+          assertUniqueTechnicalFiles(
+            context.draft.uploadedFiles || (context.draft.uploadedFile ? [context.draft.uploadedFile] : []),
+            candidateFiles,
+            res.locals.t('duplicateTechnicalFileInVersion')
+          );
           const save = async (transactionRepositories = {}) => {
             const repositories = { ...dependencies, ...transactionRepositories };
             const attachments = [];
@@ -288,6 +331,40 @@ export function opportunityTechnicalDraftRoutes({
           }
         }
       });
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/opportunities/:opportunityId/technical-drafts/:draftId/files/:attachmentId/withdraw', async (req, res, next) => {
+    try {
+      const context = await loadDraftContext(dependencies, req, res);
+      if (!context) return;
+      if (!canCreateOpportunityTechnicalDraft(req.currentUser, context.opportunity)
+          || context.draft.sourceKind !== 'uploaded_file'
+          || !['draft', 'ready'].includes(context.draft.status)
+          || !['technical_solution_in_progress', 'technical_solution_rejected'].includes(context.opportunity.status)) {
+        res.status(403).send('Technical file withdrawal is not allowed');
+        return;
+      }
+      const save = async (transactionRepositories = {}) => {
+        const repository = transactionRepositories.opportunityTechnicalDraftRepository
+          || opportunityTechnicalDraftRepository;
+        const updated = await repository.withdrawUploadedFile({
+          draftId: context.draft.id,
+          opportunityId: context.opportunity.id,
+          attachmentId: req.params.attachmentId,
+          actorUserId: req.currentUser.id
+        });
+        if (!updated) {
+          throw new WorkflowValidationError('Technical file is no longer available for withdrawal', 409);
+        }
+      };
+      if (typeof workflowTransaction === 'function') await workflowTransaction(save);
+      else await save();
+      res.redirect(req.body.returnTo === 'opportunity'
+        ? `/opportunities/${context.opportunity.id}#technical-proposal`
+        : `/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}`);
     } catch (error) {
       handleError(error, res, next);
     }

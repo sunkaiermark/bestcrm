@@ -77,6 +77,7 @@ const unrestrictedAdministratorEmailPurgeMigrationPath = new URL('../../src/db/m
 const administratorOpportunityDeletionMigrationPath = new URL('../../src/db/migrations/076_administrator_opportunity_deletion.sql', import.meta.url);
 const multiFileTechnicalDraftsMigrationPath = new URL('../../src/db/migrations/077_multi_file_technical_drafts.sql', import.meta.url);
 const emailAttachmentBusinessSourcesMigrationPath = new URL('../../src/db/migrations/078_email_attachment_business_sources.sql', import.meta.url);
+const technicalDraftFileControlsMigrationPath = new URL('../../src/db/migrations/079_technical_draft_file_controls.sql', import.meta.url);
 
 test('outbound email attachments retain an immutable link to the approved business source', async () => {
   const sql = await readFile(emailAttachmentBusinessSourcesMigrationPath, 'utf8');
@@ -100,6 +101,16 @@ test('multi-file technical drafts keep one immutable version relationship for ev
   assert.match(sql, /BEFORE UPDATE OR DELETE ON opportunity_technical_draft_attachments/);
   assert.match(sql, /A submitted technical draft file cannot be retired/);
   assert.match(sql, /technical_solution_documents_uploaded_file_idx/);
+});
+
+test('technical draft file controls reject only new same-version duplicates while retaining historical files', async () => {
+  const sql = await readFile(technicalDraftFileControlsMigrationPath, 'utf8');
+  assert.match(sql, /CREATE OR REPLACE FUNCTION validate_opportunity_technical_draft_attachment/);
+  assert.match(sql, /lower\(btrim\(existing_attachment\.original_name\)\) = lower\(btrim\(attachment_row\.original_name\)\)/);
+  assert.match(sql, /existing_attachment\.sha256 = attachment_row\.sha256/);
+  assert.match(sql, /existing_attachment\.retired_at IS NULL/);
+  assert.match(sql, /opportunity_technical_draft_attachments_unique_file/);
+  assert.doesNotMatch(sql, /DELETE FROM|UPDATE attachments/);
 });
 
 test('administrator email purge migration permits dependency cleanup only inside the guarded purge transaction', async () => {

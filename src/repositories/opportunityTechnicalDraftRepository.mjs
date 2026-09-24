@@ -28,6 +28,7 @@ function mapUploadedFile(file) {
     mimeType: file.mimeType || file.mime_type || 'application/octet-stream',
     fileSize: Number(file.fileSize || file.file_size || 0),
     sha256: file.sha256 || null,
+    uploadedAt: file.uploadedAt || file.uploaded_at || null,
     materialVersionId: numberOrNull(file.materialVersionId ?? file.material_version_id)
   };
 }
@@ -44,6 +45,7 @@ function mapDraftRow(row) {
     mimeType: row.uploaded_attachment_mime_type,
     fileSize: row.uploaded_attachment_file_size,
     sha256: row.uploaded_attachment_sha256,
+    uploadedAt: row.uploaded_attachment_uploaded_at,
     materialVersionId: row.uploaded_attachment_material_version_id
   }) : null;
   const uploadedFiles = linkedUploadedFiles.length
@@ -166,6 +168,7 @@ const draftSelect = `
     file_attachment.mime_type AS uploaded_attachment_mime_type,
     file_attachment.file_size AS uploaded_attachment_file_size,
     file_attachment.sha256 AS uploaded_attachment_sha256,
+    file_attachment.uploaded_at AS uploaded_attachment_uploaded_at,
     file_attachment.opportunity_material_version_id AS uploaded_attachment_material_version_id,
     uploaded_attachments.files AS uploaded_attachments
   FROM opportunity_technical_drafts d
@@ -182,6 +185,7 @@ const draftSelect = `
         'mimeType', attachment.mime_type,
         'fileSize', attachment.file_size,
         'sha256', attachment.sha256,
+        'uploadedAt', attachment.uploaded_at,
         'materialVersionId', attachment.opportunity_material_version_id
       ) ORDER BY link.sort_order ASC, link.id ASC
     ) AS files
@@ -197,7 +201,9 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
     const attachmentIds = [...new Set((input.attachmentIds || []).map(Number).filter(Number.isInteger))];
     if (!attachmentIds.length) return null;
     const result = await queryTarget.query(`
-      WITH updated AS (
+      WITH draft_lock AS (
+        SELECT pg_advisory_xact_lock($1::bigint)
+      ), updated AS (
         UPDATE opportunity_technical_drafts
         SET uploaded_attachment_id = COALESCE(uploaded_attachment_id, ($2::bigint[])[1]),
             status = 'ready',
@@ -207,6 +213,7 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
         WHERE id = $1
           AND source_kind = 'uploaded_file'
           AND status IN ('draft', 'ready')
+          AND EXISTS (SELECT 1 FROM draft_lock)
         RETURNING *
       ), next_position AS (
         SELECT COALESCE(MAX(sort_order), 0) AS base_position
@@ -352,6 +359,74 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
     },
 
     setUploadedFiles,
+
+    async withdrawUploadedFile(input) {
+      const result = await queryTarget.query(`
+        WITH target AS MATERIALIZED (
+          SELECT draft.id AS draft_id, attachment.id AS attachment_id,
+            attachment.original_name
+          FROM opportunity_technical_drafts draft
+          JOIN opportunity_technical_draft_attachments link
+            ON link.technical_draft_id = draft.id
+          JOIN attachments attachment ON attachment.id = link.attachment_id
+          WHERE draft.id = $1
+            AND draft.opportunity_id = $2
+            AND draft.source_kind = 'uploaded_file'
+            AND draft.status IN ('draft', 'ready')
+            AND attachment.id = $3
+            AND attachment.opportunity_id = $2
+            AND attachment.category = 'technical_solution'
+            AND attachment.opportunity_material_version_id IS NULL
+            AND attachment.retired_at IS NULL
+          FOR UPDATE OF draft, attachment
+        ), retired AS (
+          UPDATE attachments attachment
+          SET retired_at = now(),
+              retired_by = $4,
+              retirement_reason = 'Withdrawn from editable technical draft before approval'
+          FROM target
+          WHERE attachment.id = target.attachment_id
+          RETURNING attachment.id
+        ), next_file AS (
+          SELECT link.attachment_id
+          FROM opportunity_technical_draft_attachments link
+          JOIN attachments attachment ON attachment.id = link.attachment_id
+          WHERE link.technical_draft_id = $1
+            AND link.attachment_id <> $3
+            AND attachment.retired_at IS NULL
+          ORDER BY link.sort_order ASC, link.id ASC
+          LIMIT 1
+        ), updated AS (
+          UPDATE opportunity_technical_drafts draft
+          SET uploaded_attachment_id = (SELECT attachment_id FROM next_file),
+              status = CASE WHEN EXISTS (SELECT 1 FROM next_file) THEN 'ready' ELSE 'draft' END,
+              validation_issues = '[]'::jsonb,
+              updated_by = $4,
+              updated_at = now()
+          FROM target, retired
+          WHERE draft.id = target.draft_id
+          RETURNING draft.*
+        ), inserted_event AS (
+          INSERT INTO opportunity_technical_draft_events (
+            technical_draft_id, event_type, actor_user_id, details
+          )
+          SELECT updated.id, 'file_withdrawn', $4,
+            jsonb_build_object(
+              'attachmentId', target.attachment_id,
+              'originalName', target.original_name
+            )
+          FROM updated
+          JOIN target ON target.draft_id = updated.id
+        )
+        SELECT * FROM updated
+      `, [
+        input.draftId,
+        input.opportunityId,
+        input.attachmentId,
+        input.actorUserId
+      ]);
+      return mapDraftRow(result.rows[0]);
+    },
 
     async setUploadedFile(input) {
       return setUploadedFiles({

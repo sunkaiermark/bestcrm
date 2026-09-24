@@ -7,6 +7,15 @@
   const uploadedFiles = Array.isArray(draft.uploadedFiles) && draft.uploadedFiles.length
     ? draft.uploadedFiles
     : (draft.uploadedFile ? [draft.uploadedFile] : []);
+  const formatUploadedAt = (value) => {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Singapore', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).format(date).replace(',', '');
+  };
   const sectionLabel = (sectionKey) => {
     const section = sections.find((candidate) => candidate.key === sectionKey);
     return section ? (draft.language === 'zh' ? section.labelZh : section.labelEn) : sectionKey;
@@ -38,8 +47,14 @@
             <% if (uploadedFiles.length) { %>
               <% for (const uploadedFile of uploadedFiles) { %>
                 <p><%= draft.draftLabel %> · <%= uploadedFile.originalName %>
+                  <% if (uploadedFile.uploadedAt) { %><span class="muted">· <%= t('technicalFileUploadedAt') %> <%= formatUploadedAt(uploadedFile.uploadedAt) %></span><% } %>
                   <a href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/preview"><%= t('preview') %></a>
                   <a href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/download"><%= t('download') %></a>
+                  <% if (canManageDraft && !uploadedFile.materialVersionId) { %>
+                    <form class="inline-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/files/<%= uploadedFile.id %>/withdraw" onsubmit="return confirm('<%= t('withdrawUploadedTechnicalFileConfirm') %>')">
+                      <%- csrfField() %><button class="danger-action" type="submit"><%= t('withdrawUploadedTechnicalFile') %></button>
+                    </form>
+                  <% } %>
                 </p>
               <% } %>
               <% if (uploadedFiles.some((file) => file.materialVersionId) && canManageDraft) { %><p class="muted"><%= t('replaceWithdrawnTechnicalFile') %></p><% } %>

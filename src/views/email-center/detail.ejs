@@ -14,7 +14,7 @@
           <% if (thread.opportunityId) { %><a class="status" href="/opportunities/<%= thread.opportunityId %>"><%= t('opportunity') %> <%= thread.opportunityNo || `#${thread.opportunityId}` %> · <%= thread.opportunityTitle %></a>
           <% } else if (thread.inquiryId && ['linked_lead', 'converted_lead'].includes(thread.triageStatus)) { %><a class="status" href="/lead-submissions/<%= thread.inquiryId %>"><%= t('lead') %> #<%= thread.inquiryId %></a>
           <% } else if (thread.inquiryId) { %><a class="status" href="/inquiries/<%= thread.inquiryId %>"><%= t('legacyInquiry') %> #<%= thread.inquiryId %></a>
-          <% } else if (!thread.customerId) { %><span class="muted"><%= t('unlinkedEmail') %></span><% } %>
+          <% } %>
           <% if (thread.customerId) { %><a class="secondary-action" href="/customers/<%= thread.customerId %>"><%= t('customer') %> <%= thread.customerCode ? `${thread.customerCode} · ` : '' %><%= thread.customerName %></a><% } %>
           <% if (thread.contactId) { %><a class="secondary-action" href="/contacts/<%= thread.contactId %>"><%= t('contact') %> <%= thread.contactCode ? `${thread.contactCode} · ` : '' %><%= thread.contactName %></a><% } %>
           <% if (thread.triageAssignedDisplayName) { %><span class="status"><%= t('emailHandledBy') %>: <%= thread.triageAssignedDisplayName %></span><% } %>
@@ -24,10 +24,10 @@
         <div class="email-reader-scroll" tabindex="0">
 
         <% if (canTriage) { %>
-          <section class="email-triage-panel" aria-label="<%= t('emailManualTriage') %>">
-            <div class="email-triage-grid">
+          <section class="email-triage-panel email-pending-actions-panel" aria-label="<%= t('emailManualTriage') %>">
+            <div class="email-pending-actions-row">
             <% if (!thread.opportunityId && linkableOpportunities.length) { %>
-              <form class="email-triage-grid-row" method="post" action="/email-center/threads/<%= thread.id %>/opportunity">
+              <form class="email-pending-link-form" method="post" action="/email-center/threads/<%= thread.id %>/opportunity">
                 <%- csrfField() %>
                 <input type="hidden" name="mailbox" value="<%= backMailbox %>">
                 <input type="hidden" name="from" value="<%= backFolder %>">
@@ -37,26 +37,30 @@
               </form>
             <% } %>
 
-              <div class="email-triage-final-actions">
-                <% if (canCreateLead && !thread.inquiryId) { %><a class="quick-action" href="/lead-submissions/new?emailThreadId=<%= thread.id %>"><%= t('emailCreateLead') %></a><% } %>
-                <% if (canCreateOpportunity && !thread.opportunityId) { %><a class="quick-action" href="/opportunities/new?emailThreadId=<%= thread.id %>"><%= t('emailCreateOpportunity') %></a><% } %>
-                <form class="email-triage-spam-action" method="post" action="/email-center/threads/<%= thread.id %>/disposition">
+              <% if (canCreateLead && !thread.inquiryId) { %>
+                <a class="quick-action email-pending-create-lead" href="/lead-submissions/new?emailThreadId=<%= thread.id %>"><%= t('emailCreateLead') %></a>
+              <% } %>
+
+              <form class="email-pending-spam-form" method="post" action="/email-center/threads/<%= thread.id %>/disposition">
+                <%- csrfField() %>
+                <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+                <input type="hidden" name="from" value="<%= backFolder %>">
+                <input type="hidden" name="q" value="<%= backSearchTerm %>">
+                <input type="hidden" name="action" value="spam">
+                <button class="danger-action" type="submit"><%= t('emailSpamAction') %></button>
+              </form>
+
+              <% if (canManageEmailCleanup && !thread.opportunityId && canDeleteThread) { %>
+                <form id="email-delete" class="email-pending-delete-form" method="post" action="/email-center/threads/<%= thread.id %>/purge" onsubmit="return confirm('<%= t('emailDeleteConfirm') %>')">
                   <%- csrfField() %>
                   <input type="hidden" name="mailbox" value="<%= backMailbox %>">
                   <input type="hidden" name="from" value="<%= backFolder %>">
                   <input type="hidden" name="q" value="<%= backSearchTerm %>">
-                  <input type="hidden" name="action" value="spam">
-                  <button class="danger-action" type="submit"><%= t('emailSpamAction') %></button>
+                  <label class="visually-hidden" for="email-delete-confirmation"><%= t('emailSpamCleanupTypeDelete') %></label>
+                  <input id="email-delete-confirmation" name="confirmation" autocomplete="off" required pattern="DELETE" placeholder="DELETE">
+                  <button class="danger-action" type="submit"><%= t('emailSpamDeleteOneAction') %></button>
                 </form>
-                <form method="post" action="/email-center/threads/<%= thread.id %>/disposition">
-                  <%- csrfField() %>
-                  <input type="hidden" name="mailbox" value="<%= backMailbox %>">
-                  <input type="hidden" name="from" value="<%= backFolder %>">
-                  <input type="hidden" name="q" value="<%= backSearchTerm %>">
-                  <input type="hidden" name="action" value="non_business">
-                  <button class="secondary-action" type="submit"><%= t('emailNonBusinessAction') %></button>
-                </form>
-              </div>
+              <% } %>
             </div>
           </section>
         <% } %>
@@ -88,12 +92,10 @@
           </section>
         <% } %>
 
-        <% if (canManageEmailCleanup) { %>
+        <% if (canManageEmailCleanup && !thread.opportunityId && !canTriage) { %>
           <section id="email-delete" class="form-panel email-thread-delete" aria-label="<%= t('emailDeleteAction') %>">
-            <h2><%= t('emailDeleteAction') %></h2>
-            <p><%= t('emailDeleteRule') %></p>
             <% if (canDeleteThread) { %>
-              <form class="inline-form" method="post" action="/email-center/threads/<%= thread.id %>/purge" onsubmit="return confirm('<%= t('emailDeleteConfirm') %>')">
+              <form class="inline-form email-thread-delete-form" method="post" action="/email-center/threads/<%= thread.id %>/purge" onsubmit="return confirm('<%= t('emailDeleteConfirm') %>')">
                 <%- csrfField() %>
                 <input type="hidden" name="mailbox" value="<%= backMailbox %>">
                 <input type="hidden" name="from" value="<%= backFolder %>">

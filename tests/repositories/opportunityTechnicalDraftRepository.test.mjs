@@ -168,7 +168,7 @@ test('one uploaded batch appends every file to one TS-D and keeps the first file
         uploaded_attachment_id: '81',
         uploaded_attachments: JSON.stringify([
           { id: 81, originalName: 'Agreement.pdf', sha256: 'a'.repeat(64) },
-          { id: 82, originalName: 'Datasheet.xlsx', sha256: 'b'.repeat(64) }
+          { id: 82, originalName: 'Datasheet.xlsx', sha256: 'b'.repeat(64), uploadedAt: '2026-09-24T02:05:00.000Z' }
         ])
       })] };
     }
@@ -182,6 +182,8 @@ test('one uploaded batch appends every file to one TS-D and keeps the first file
   });
   assert.equal(draft.uploadedAttachmentId, 81);
   assert.deepEqual(draft.uploadedFiles.map((file) => file.originalName), ['Agreement.pdf', 'Datasheet.xlsx']);
+  assert.equal(draft.uploadedFiles[1].uploadedAt, '2026-09-24T02:05:00.000Z');
+  assert.match(calls[0].sql, /pg_advisory_xact_lock/);
   assert.match(calls[0].sql, /uploaded_attachment_id = COALESCE\(uploaded_attachment_id, \(\$2::bigint\[\]\)\[1\]\)/);
   assert.match(calls[0].sql, /unnest\(\$2::bigint\[\]\) WITH ORDINALITY/);
   assert.match(calls[0].sql, /'attachmentIds', \$2::bigint\[\]/);
@@ -189,6 +191,27 @@ test('one uploaded batch appends every file to one TS-D and keeps the first file
   assert.doesNotMatch(calls[0].sql, /file_replaced|previousAttachmentIds/);
   assert.deepEqual(calls[0].params[1], [81, 82]);
   assert.deepEqual(calls[0].params, [41, [81, 82], 3]);
+});
+
+test('unapproved uploaded technical file withdrawal retires the attachment and repairs the draft primary file', async () => {
+  const calls = [];
+  const repository = createOpportunityTechnicalDraftRepository({
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [draftRow({
+        source_kind: 'uploaded_file', status: 'ready', uploaded_attachment_id: '82'
+      })] };
+    }
+  });
+  const draft = await repository.withdrawUploadedFile({
+    draftId: 41, opportunityId: 20, attachmentId: 81, actorUserId: 3
+  });
+  assert.equal(draft.status, 'ready');
+  assert.match(calls[0].sql, /draft\.status IN \('draft', 'ready'\)/);
+  assert.match(calls[0].sql, /retirement_reason = 'Withdrawn from editable technical draft before approval'/);
+  assert.match(calls[0].sql, /status = CASE WHEN EXISTS \(SELECT 1 FROM next_file\) THEN 'ready' ELSE 'draft' END/);
+  assert.match(calls[0].sql, /'file_withdrawn'/);
+  assert.deepEqual(calls[0].params, [41, 20, 81, 3]);
 });
 
 test('submission freezes a validated ready draft and writes an audit event', async () => {

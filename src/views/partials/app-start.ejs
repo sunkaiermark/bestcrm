@@ -920,8 +920,8 @@
       .business-section-technical {
         --technical-download-action-width: 122px;
         --technical-proposal-action-columns: minmax(320px, 360px) minmax(330px, 360px) minmax(260px, 296px);
-        --technical-proposal-file-columns: minmax(175px, 190px) fit-content(230px) minmax(300px, 1fr) minmax(260px, 296px);
-        --technical-proposal-layout-width: 1320px;
+        --technical-proposal-file-columns: minmax(175px, 190px) fit-content(230px) minmax(280px, 1fr) minmax(140px, 160px) minmax(330px, 360px);
+        --technical-proposal-layout-width: 1580px;
       }
 
       .business-section-technical .section-body > .form-panel,
@@ -976,14 +976,14 @@
 
       .technical-proposal-upload-form > .localized-file-picker {
         display: grid;
-        grid-column: 2 / 4;
+        grid-column: 2 / 5;
         grid-template-columns: minmax(150px, 0.55fr) minmax(0, 1fr);
         width: 100%;
       }
 
       .technical-proposal-upload-form > button {
         border: 1px solid var(--accent);
-        grid-column: 4;
+        grid-column: 5;
         justify-self: end;
         padding: 7px 12px;
         white-space: nowrap;
@@ -1019,6 +1019,7 @@
 
       .technical-version-row.technical-uploaded-file-row > .technical-version-summary,
       .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-name,
+      .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-time,
       .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-actions {
         align-self: stretch;
         border-bottom: 1px solid var(--line);
@@ -1036,8 +1037,27 @@
       }
 
       .technical-uploaded-file-actions {
-        grid-column: 4;
+        grid-column: 5;
         justify-content: flex-start;
+      }
+
+      .technical-uploaded-file-time {
+        align-items: center;
+        color: var(--muted);
+        display: flex;
+        grid-column: 4;
+        white-space: nowrap;
+      }
+
+      .technical-file-withdraw-form {
+        display: inline-flex;
+        margin: 0;
+      }
+
+      .technical-file-withdraw-action {
+        background: #fff1f2;
+        border-color: #fecdd3;
+        color: #be123c;
       }
 
       .technical-file-action {
@@ -1145,6 +1165,7 @@
 
         .technical-version-row.technical-uploaded-file-row .technical-version-summary,
         .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-name,
+        .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-time,
         .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-actions {
           border-bottom: 0;
           grid-column: 1;
@@ -3544,36 +3565,61 @@
         margin: 0;
       }
 
-      .email-triage-grid {
-        display: grid;
-        gap: 10px;
-        max-width: 712px;
+      .email-pending-actions-panel {
+        background: transparent;
+        border: 0;
+        padding: 14px 18px;
       }
 
-      .email-triage-grid-row {
+      .email-pending-actions-row {
         align-items: center;
         display: grid;
-        gap: 12px;
-        grid-template-columns: 180px minmax(280px, 520px);
+        gap: clamp(16px, 1.5vw, 28px);
+        grid-template-columns: minmax(500px, 1.35fr) minmax(180px, 220px) minmax(180px, 220px) minmax(390px, 1fr);
+      }
+
+      .email-pending-actions-row form {
         margin: 0;
       }
 
-      .email-triage-grid-row > button,
-      .email-triage-grid-row > select {
-        width: 100%;
-      }
-
-      .email-triage-final-actions {
+      .email-pending-link-form,
+      .email-pending-delete-form {
+        align-items: center;
         display: grid;
-        gap: 12px;
-        grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+        gap: clamp(16px, 2.3vw, 42px);
       }
 
-      .email-triage-final-actions > a,
-      .email-triage-final-actions form,
-      .email-triage-final-actions button {
+      .email-pending-link-form {
+        grid-template-columns: minmax(180px, 220px) minmax(280px, 1fr);
+      }
+
+      .email-pending-delete-form {
+        grid-template-columns: minmax(170px, 1fr) minmax(180px, 220px);
+      }
+
+      .email-pending-link-form > button,
+      .email-pending-link-form > select,
+      .email-pending-create-lead,
+      .email-pending-spam-form > button,
+      .email-pending-delete-form > input,
+      .email-pending-delete-form > button {
+        align-items: center;
+        display: inline-flex;
+        height: 48px;
+        justify-content: center;
         margin: 0;
+        text-align: center;
         width: 100%;
+      }
+
+      .email-pending-actions-row button,
+      .email-pending-create-lead {
+        white-space: nowrap;
+      }
+
+      .email-pending-delete-form > input {
+        min-width: 0;
+        text-align: center;
       }
 
       .email-triage-spam-action {
@@ -4198,6 +4244,15 @@
       }
 
       @media (max-width: 1280px) {
+        .email-pending-actions-row {
+          grid-template-columns: minmax(500px, 1fr) minmax(180px, 220px);
+        }
+
+        .email-pending-delete-form {
+          grid-column: 1 / -1;
+          max-width: 560px;
+        }
+
         .email-inbox-row {
           gap: 5px 12px;
           grid-template-columns: minmax(0, 1fr) auto;
@@ -4402,10 +4457,15 @@
           width: 100%;
         }
 
-        .email-triage-grid-row,
-        .email-triage-final-actions,
+        .email-pending-actions-row,
+        .email-pending-link-form,
+        .email-pending-delete-form,
         .email-triage-archive-form {
           grid-template-columns: 1fr;
+        }
+
+        .email-pending-delete-form {
+          max-width: none;
         }
 
         .email-triage-spam-action {
