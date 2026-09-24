@@ -462,6 +462,8 @@ test('email archive repository persists inline MIME disposition and maps legacy 
         sha256: 'b'.repeat(64),
         content_id: 'logo@example.com',
         content_disposition: 'inline',
+        source_opportunity_attachment_id: null,
+        source_technical_document_id: 61,
         created_at: '2026-09-03'
       }] };
     }
@@ -476,13 +478,20 @@ test('email archive repository persists inline MIME disposition and maps legacy 
     fileSize: 4,
     sha256: 'b'.repeat(64),
     contentId: 'logo@example.com',
-    contentDisposition: 'inline'
+    contentDisposition: 'inline',
+    sourceTechnicalDocumentId: 61
   });
 
   assert.match(calls[0].sql, /content_disposition/);
+  assert.match(calls[0].sql, /source_opportunity_attachment_id/);
+  assert.match(calls[0].sql, /source_technical_document_id/);
   assert.equal(calls[0].params[8], 'inline');
+  assert.equal(calls[0].params[9], null);
+  assert.equal(calls[0].params[10], 61);
   assert.equal(attachment.contentDisposition, 'inline');
   assert.equal(attachment.isInline, true);
+  assert.equal(attachment.sourceOpportunityAttachmentId, null);
+  assert.equal(attachment.sourceTechnicalDocumentId, 61);
 });
 
 test('email archive repository writes RFC and provider identities with conflict protection', async () => {

@@ -86,6 +86,27 @@ function mapAttachmentRow(row) {
   };
 }
 
+function mapApprovedEmailAttachmentRow(row) {
+  const sourceKind = row.source_kind;
+  const sourceId = Number(row.source_id);
+  return {
+    token: `${sourceKind}:${sourceId}`,
+    sourceKind,
+    sourceId,
+    category: sourceKind === 'technical_document' ? 'technical' : 'commercial',
+    versionNo: Number(row.version_no),
+    versionLabel: row.version_label,
+    fileType: row.file_type,
+    originalName: row.original_name,
+    mimeType: row.mime_type,
+    byteSize: Number(row.byte_size),
+    sha256: row.sha256,
+    approvedAt: row.approved_at,
+    content: row.content || null,
+    storedPath: row.stored_path || ''
+  };
+}
+
 function mapEventRow(row) {
   return {
     id: Number(row.id),
@@ -236,6 +257,135 @@ export function createQuotationPackageRepository(queryTarget) {
         content: row.content || null,
         storedPath: row.stored_path || ''
       }));
+    },
+
+    async listApprovedEmailAttachmentChoices(opportunityId) {
+      const result = await queryTarget.query(`
+        SELECT *
+        FROM (
+          SELECT
+            'technical_document'::text AS source_kind,
+            document.id AS source_id,
+            draft.formal_version_no AS version_no,
+            ('TS-V' || draft.formal_version_no::text) AS version_label,
+            draft.deliverable_type AS file_type,
+            document.original_name,
+            document.mime_type,
+            document.byte_size,
+            document.sha256,
+            draft.reviewed_at AS approved_at
+          FROM technical_solution_documents document
+          JOIN opportunity_technical_drafts draft
+            ON draft.id = document.technical_draft_id
+          WHERE draft.opportunity_id = $1
+            AND draft.status = 'approved'
+            AND draft.formal_version_no IS NOT NULL
+
+          UNION ALL
+
+          SELECT
+            'opportunity_attachment'::text AS source_kind,
+            attachment.id AS source_id,
+            quote.version_no,
+            ('CQ-V' || quote.version_no::text) AS version_label,
+            'commercial_quote'::text AS file_type,
+            attachment.original_name,
+            attachment.mime_type,
+            attachment.file_size AS byte_size,
+            attachment.sha256,
+            quote.reviewed_at AS approved_at
+          FROM attachments attachment
+          JOIN opportunity_material_versions material_version
+            ON material_version.id = attachment.opportunity_material_version_id
+          JOIN commercial_quotes quote
+            ON quote.opportunity_id = material_version.opportunity_id
+           AND quote.version_no = material_version.version_no
+          WHERE material_version.opportunity_id = $1
+            AND material_version.material_type = 'commercial_quote'
+            AND material_version.status = 'approved'
+            AND quote.status = 'approved'
+            AND attachment.category = 'commercial_quote'
+            AND attachment.retired_at IS NULL
+            AND attachment.file_size IS NOT NULL
+            AND attachment.sha256 IS NOT NULL
+        ) approved_file
+        ORDER BY
+          CASE approved_file.source_kind WHEN 'technical_document' THEN 1 ELSE 2 END,
+          approved_file.version_no DESC,
+          approved_file.original_name ASC,
+          approved_file.source_id ASC
+      `, [opportunityId]);
+      return result.rows.map(mapApprovedEmailAttachmentRow);
+    },
+
+    async getApprovedEmailAttachmentSources({
+      opportunityId,
+      technicalDocumentIds = [],
+      opportunityAttachmentIds = []
+    }) {
+      if (!technicalDocumentIds.length && !opportunityAttachmentIds.length) return [];
+      const result = await queryTarget.query(`
+        SELECT *
+        FROM (
+          SELECT
+            'technical_document'::text AS source_kind,
+            document.id AS source_id,
+            draft.formal_version_no AS version_no,
+            ('TS-V' || draft.formal_version_no::text) AS version_label,
+            draft.deliverable_type AS file_type,
+            document.original_name,
+            document.mime_type,
+            document.byte_size,
+            document.sha256,
+            draft.reviewed_at AS approved_at,
+            document.content,
+            NULL::text AS stored_path
+          FROM technical_solution_documents document
+          JOIN opportunity_technical_drafts draft
+            ON draft.id = document.technical_draft_id
+          WHERE draft.opportunity_id = $1
+            AND draft.status = 'approved'
+            AND draft.formal_version_no IS NOT NULL
+            AND document.id = ANY($2::bigint[])
+
+          UNION ALL
+
+          SELECT
+            'opportunity_attachment'::text AS source_kind,
+            attachment.id AS source_id,
+            quote.version_no,
+            ('CQ-V' || quote.version_no::text) AS version_label,
+            'commercial_quote'::text AS file_type,
+            attachment.original_name,
+            attachment.mime_type,
+            attachment.file_size AS byte_size,
+            attachment.sha256,
+            quote.reviewed_at AS approved_at,
+            NULL::bytea AS content,
+            attachment.stored_path
+          FROM attachments attachment
+          JOIN opportunity_material_versions material_version
+            ON material_version.id = attachment.opportunity_material_version_id
+          JOIN commercial_quotes quote
+            ON quote.opportunity_id = material_version.opportunity_id
+           AND quote.version_no = material_version.version_no
+          WHERE material_version.opportunity_id = $1
+            AND material_version.material_type = 'commercial_quote'
+            AND material_version.status = 'approved'
+            AND quote.status = 'approved'
+            AND attachment.category = 'commercial_quote'
+            AND attachment.retired_at IS NULL
+            AND attachment.file_size IS NOT NULL
+            AND attachment.sha256 IS NOT NULL
+            AND attachment.id = ANY($3::bigint[])
+        ) approved_file
+        ORDER BY
+          CASE approved_file.source_kind WHEN 'technical_document' THEN 1 ELSE 2 END,
+          approved_file.version_no DESC,
+          approved_file.original_name ASC,
+          approved_file.source_id ASC
+      `, [opportunityId, technicalDocumentIds, opportunityAttachmentIds]);
+      return result.rows.map(mapApprovedEmailAttachmentRow);
     },
 
     async listApprovedTechnicalSolutions(opportunityId) {

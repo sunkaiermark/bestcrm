@@ -76,6 +76,20 @@ const technicalReviewAttachmentsMigrationPath = new URL('../../src/db/migrations
 const unrestrictedAdministratorEmailPurgeMigrationPath = new URL('../../src/db/migrations/075_unrestricted_administrator_email_purge.sql', import.meta.url);
 const administratorOpportunityDeletionMigrationPath = new URL('../../src/db/migrations/076_administrator_opportunity_deletion.sql', import.meta.url);
 const multiFileTechnicalDraftsMigrationPath = new URL('../../src/db/migrations/077_multi_file_technical_drafts.sql', import.meta.url);
+const emailAttachmentBusinessSourcesMigrationPath = new URL('../../src/db/migrations/078_email_attachment_business_sources.sql', import.meta.url);
+
+test('outbound email attachments retain an immutable link to the approved business source', async () => {
+  const sql = await readFile(emailAttachmentBusinessSourcesMigrationPath, 'utf8');
+  assert.match(sql, /source_opportunity_attachment_id bigint/);
+  assert.match(sql, /REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /source_technical_document_id bigint/);
+  assert.match(sql, /REFERENCES technical_solution_documents\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /num_nonnulls\(/);
+  assert.match(sql, /email_attachments_single_business_source_check/);
+  assert.match(sql, /email_attachments_source_opportunity_attachment_idx/);
+  assert.match(sql, /email_attachments_source_technical_document_idx/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
+});
 
 test('multi-file technical drafts keep one immutable version relationship for every uploaded file', async () => {
   const sql = await readFile(multiFileTechnicalDraftsMigrationPath, 'utf8');

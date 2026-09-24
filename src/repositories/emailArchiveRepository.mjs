@@ -239,6 +239,8 @@ function mapAttachmentRow(row) {
     contentId,
     contentDisposition,
     isInline: contentDisposition === 'inline',
+    sourceOpportunityAttachmentId: numberOrNull(row.source_opportunity_attachment_id),
+    sourceTechnicalDocumentId: numberOrNull(row.source_technical_document_id),
     createdAt: row.created_at
   };
 }
@@ -2058,9 +2060,11 @@ export function createEmailArchiveRepository(queryTarget) {
           file_size,
           sha256,
           content_id,
-          content_disposition
+          content_disposition,
+          source_opportunity_attachment_id,
+          source_technical_document_id
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
         ON CONFLICT (message_id, source_index) DO NOTHING
         RETURNING *
       `, [
@@ -2072,7 +2076,9 @@ export function createEmailArchiveRepository(queryTarget) {
         input.fileSize,
         input.sha256,
         input.contentId || '',
-        input.contentDisposition || ''
+        input.contentDisposition || '',
+        input.sourceOpportunityAttachmentId || null,
+        input.sourceTechnicalDocumentId || null
       ]);
       return mapAttachmentRow(result.rows[0]);
     },

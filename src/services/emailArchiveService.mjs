@@ -519,7 +519,9 @@ export async function storeEmailArchiveAttachments({
         fileSize: file.fileSize,
         sha256: createHash('sha256').update(content).digest('hex'),
         contentId: attachment.cid || attachment.contentId || '',
-        contentDisposition: normalizedContentDisposition(attachment.contentDisposition)
+        contentDisposition: normalizedContentDisposition(attachment.contentDisposition),
+        sourceOpportunityAttachmentId: attachment.sourceOpportunityAttachmentId || null,
+        sourceTechnicalDocumentId: attachment.sourceTechnicalDocumentId || null
       });
       if (record) {
         if (scan && typeof emailArchiveRepository.createAttachmentScanAttempt === 'function') {

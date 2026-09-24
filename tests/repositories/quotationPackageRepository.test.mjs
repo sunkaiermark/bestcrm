@@ -87,6 +87,68 @@ test('customer email falls back to legacy frozen attachments before controlled o
   assert.doesNotMatch(target.queries[1].sql, /retired_at IS NULL/);
 });
 
+test('customer email lists only approved technical and commercial opportunity files', async () => {
+  const target = fakeTarget([{ rows: [
+    {
+      source_kind: 'technical_document', source_id: '61', version_no: '2', version_label: 'TS-V2',
+      file_type: 'datasheet', original_name: 'Mixer_Datasheet.pdf', mime_type: 'application/pdf',
+      byte_size: '4', sha256: 'a'.repeat(64), approved_at: '2026-09-23'
+    },
+    {
+      source_kind: 'opportunity_attachment', source_id: '71', version_no: '3', version_label: 'CQ-V3',
+      file_type: 'commercial_quote', original_name: 'Commercial_Quote.pdf', mime_type: 'application/pdf',
+      byte_size: '5', sha256: 'b'.repeat(64), approved_at: '2026-09-24'
+    }
+  ] }]);
+  const repository = createQuotationPackageRepository(target);
+
+  const choices = await repository.listApprovedEmailAttachmentChoices(20);
+
+  assert.deepEqual(choices.map((item) => item.token), [
+    'technical_document:61',
+    'opportunity_attachment:71'
+  ]);
+  assert.deepEqual(choices.map((item) => item.category), ['technical', 'commercial']);
+  assert.match(target.queries[0].sql, /draft\.status = 'approved'/);
+  assert.match(target.queries[0].sql, /material_version\.status = 'approved'/);
+  assert.match(target.queries[0].sql, /quote\.status = 'approved'/);
+  assert.match(target.queries[0].sql, /attachment\.retired_at IS NULL/);
+  assert.deepEqual(target.queries[0].params, [20]);
+});
+
+test('customer email reloads selected approved files inside the current opportunity boundary', async () => {
+  const technicalContent = Buffer.from('tech');
+  const target = fakeTarget([{ rows: [
+    {
+      source_kind: 'technical_document', source_id: '61', version_no: '2', version_label: 'TS-V2',
+      file_type: 'datasheet', original_name: 'Mixer_Datasheet.pdf', mime_type: 'application/pdf',
+      byte_size: '4', sha256: 'a'.repeat(64), approved_at: '2026-09-23',
+      content: technicalContent, stored_path: null
+    },
+    {
+      source_kind: 'opportunity_attachment', source_id: '71', version_no: '3', version_label: 'CQ-V3',
+      file_type: 'commercial_quote', original_name: 'Commercial_Quote.pdf', mime_type: 'application/pdf',
+      byte_size: '5', sha256: 'b'.repeat(64), approved_at: '2026-09-24',
+      content: null, stored_path: 'opportunities/20/quote.pdf'
+    }
+  ] }]);
+  const repository = createQuotationPackageRepository(target);
+
+  const sources = await repository.getApprovedEmailAttachmentSources({
+    opportunityId: 20,
+    technicalDocumentIds: [61],
+    opportunityAttachmentIds: [71]
+  });
+
+  assert.equal(sources[0].content, technicalContent);
+  assert.equal(sources[1].storedPath, 'opportunities/20/quote.pdf');
+  assert.match(target.queries[0].sql, /document\.id = ANY\(\$2::bigint\[\]\)/);
+  assert.match(target.queries[0].sql, /attachment\.id = ANY\(\$3::bigint\[\]\)/);
+  assert.match(target.queries[0].sql, /draft\.opportunity_id = \$1/);
+  assert.match(target.queries[0].sql, /material_version\.opportunity_id = \$1/);
+  assert.deepEqual(target.queries[0].params, [20, [61], [71]]);
+});
+
 test('new package creation selects only active hash-bound commercial attachments', async () => {
   const target = fakeTarget([
     { rows: [{

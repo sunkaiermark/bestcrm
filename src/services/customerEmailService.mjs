@@ -13,6 +13,8 @@ const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
 const COMPANY_ADDRESS = '2 Venture Drive, #10-30, Vision Exchange, Singapore 608526';
 const CONFIDENTIALITY_NOTICE = 'CONFIDENTIALITY NOTICE: This email and any attachments may contain confidential or privileged information intended only for the named recipient. If you received it in error, please notify the sender and delete it. Any unauthorized use, disclosure, copying, or distribution is prohibited.';
 const SIGNATURE_LOGO_PATH = fileURLToPath(new URL('../public/assets/sunkaier-logo-email.png', import.meta.url));
+const APPROVED_FILE_TOKEN_PATTERN = /^(technical_document|opportunity_attachment):(\d+)$/;
+const MAX_APPROVED_FILE_SELECTIONS = 30;
 
 function text(value) {
   return String(value || '').trim();
@@ -261,11 +263,95 @@ async function approvedQuotationPackage(dependencies, opportunity, packageId) {
   return packageVersion;
 }
 
+function approvedOpportunityFileTokens(value) {
+  const values = Array.isArray(value) ? value : [value];
+  const tokens = [...new Set(values.map(text).filter(Boolean))];
+  if (tokens.length > MAX_APPROVED_FILE_SELECTIONS) {
+    throw new CustomerEmailError('Too many approved opportunity files were selected');
+  }
+  return tokens.map((token) => {
+    const match = token.match(APPROVED_FILE_TOKEN_PATTERN);
+    const sourceId = match ? positiveId(match[2]) : null;
+    if (!match || !sourceId) throw new CustomerEmailError('Selected opportunity file is invalid');
+    return { token, sourceKind: match[1], sourceId };
+  });
+}
+
+async function approvedOpportunityAttachments(dependencies, opportunity, value) {
+  const selections = approvedOpportunityFileTokens(value);
+  if (!selections.length) return [];
+  if (!opportunity) {
+    throw new CustomerEmailError('Approved opportunity files require an opportunity');
+  }
+  if (typeof dependencies.quotationPackageRepository.getApprovedEmailAttachmentSources !== 'function') {
+    throw new CustomerEmailError('Approved opportunity files are unavailable', 409);
+  }
+  const technicalDocumentIds = selections
+    .filter((item) => item.sourceKind === 'technical_document')
+    .map((item) => item.sourceId);
+  const opportunityAttachmentIds = selections
+    .filter((item) => item.sourceKind === 'opportunity_attachment')
+    .map((item) => item.sourceId);
+  const sources = await dependencies.quotationPackageRepository.getApprovedEmailAttachmentSources({
+    opportunityId: opportunity.id,
+    technicalDocumentIds,
+    opportunityAttachmentIds
+  });
+  const sourceByToken = new Map(sources.map((source) => [source.token, source]));
+  if (sourceByToken.size !== selections.length
+      || selections.some((selection) => !sourceByToken.has(selection.token))) {
+    throw new CustomerEmailError('One or more selected files are no longer approved for this opportunity', 409);
+  }
+
+  const attachments = [];
+  for (const selection of selections) {
+    const source = sourceByToken.get(selection.token);
+    let content = Buffer.isBuffer(source.content) ? source.content : null;
+    if (!content && source.storedPath) {
+      const sourcePath = resolveStoredPath(dependencies.uploadDir, source.storedPath);
+      if (!sourcePath) {
+        throw new CustomerEmailError(`Approved opportunity file is unavailable: ${source.originalName}`, 409);
+      }
+      content = await readFile(sourcePath);
+    }
+    if (!content || content.length !== Number(source.byteSize)) {
+      throw new CustomerEmailError(`Approved opportunity file size mismatch: ${source.originalName}`, 409);
+    }
+    const checksum = createHash('sha256').update(content).digest('hex');
+    if (checksum !== source.sha256) {
+      throw new CustomerEmailError(`Approved opportunity file checksum mismatch: ${source.originalName}`, 409);
+    }
+    attachments.push({
+      filename: source.originalName,
+      contentType: source.mimeType,
+      content,
+      sourceTechnicalDocumentId: source.sourceKind === 'technical_document' ? source.sourceId : null,
+      sourceOpportunityAttachmentId: source.sourceKind === 'opportunity_attachment' ? source.sourceId : null
+    });
+  }
+  return attachments;
+}
+
+function assertAttachmentTotalWithinLimit(attachments, maxUploadMb) {
+  const configuredMb = Number(maxUploadMb);
+  if (!Number.isFinite(configuredMb) || configuredMb <= 0) return;
+  const totalBytes = attachments.reduce((sum, attachment) => (
+    sum + (Buffer.isBuffer(attachment?.content) ? attachment.content.length : 0)
+  ), 0);
+  if (totalBytes > configuredMb * 1024 * 1024) {
+    throw new CustomerEmailError(`Total email attachments exceed ${configuredMb} MB`, 413);
+  }
+}
+
 export async function getCustomerEmailComposeContext(dependencies, actor, input) {
   const context = await resolveComposeContext(dependencies, actor, input);
   const packages = context.opportunity
     ? (await dependencies.quotationPackageRepository.listByOpportunity(context.opportunity.id))
       .filter((item) => item.status === 'approved' && item.versionNo)
+    : [];
+  const approvedOpportunityFiles = context.opportunity
+    && typeof dependencies.quotationPackageRepository.listApprovedEmailAttachmentChoices === 'function'
+    ? await dependencies.quotationPackageRepository.listApprovedEmailAttachmentChoices(context.opportunity.id)
     : [];
   const opportunityThreads = context.opportunity
     ? (typeof dependencies.emailArchiveRepository.listThreadsByOpportunity === 'function'
@@ -294,6 +380,7 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
     opportunityThreads,
     threadSelectionRequired,
     packages,
+    approvedOpportunityFiles,
     signaturePreview: personalEmailSignaturePreview(actor, dependencies.sharedAddress),
     signatureHtmlPreview: personalEmailSignatureHtmlPreview(actor, dependencies.sharedAddress),
     defaults: {
@@ -330,11 +417,20 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
     input.quotationPackageVersionId
   );
   const packageFiles = await quotationAttachments(dependencies, packageVersion);
+  const opportunityFiles = await approvedOpportunityAttachments(
+    dependencies,
+    context.opportunity,
+    input.approvedOpportunityFileTokens
+  );
   const uploadFiles = uploadedFiles.map((file) => ({
     filename: file.originalname,
     contentType: file.mimetype,
     content: file.buffer
   }));
+  assertAttachmentTotalWithinLimit(
+    [...packageFiles, ...opportunityFiles, ...uploadFiles],
+    dependencies.maxUploadMb
+  );
   const signatureLogo = {
     filename: 'sunkaier-logo.png',
     contentType: 'image/png',
@@ -342,7 +438,7 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
     cid: SUNKAIER_SIGNATURE_LOGO_CID,
     contentDisposition: 'inline'
   };
-  const attachments = [...packageFiles, ...uploadFiles, signatureLogo];
+  const attachments = [...packageFiles, ...opportunityFiles, ...uploadFiles, signatureLogo];
 
   let thread = context.thread;
   if (!thread) {

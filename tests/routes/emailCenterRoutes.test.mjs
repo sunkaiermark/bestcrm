@@ -39,6 +39,7 @@ async function createAgent({
   uploadDir = './var/uploads',
   sendingEnabled = false,
   teamMembers = [],
+  approvedOpportunityFiles = [],
   linkableOpportunities = [],
   onLinkOpportunity = null,
   onPurgeThread = null,
@@ -194,7 +195,11 @@ async function createAgent({
     },
     inquiryRepository: { async listInquiries() { return []; } },
     opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return teamMembers; } },
-    quotationPackageRepository: { async listByOpportunity() { return []; }, async getPackageDetail() { return null; } }
+    quotationPackageRepository: {
+      async listByOpportunity() { return []; },
+      async getPackageDetail() { return null; },
+      async listApprovedEmailAttachmentChoices() { return approvedOpportunityFiles; }
+    }
   });
   const agent = request.agent(app);
   if (language === 'zh') await agent.get('/language?lang=zh&returnTo=/login');
@@ -771,7 +776,18 @@ test('compose route is separately disabled until customer SMTP sending is enable
 });
 
 test('compose page shows send only to an authorized opportunity member and remains bilingual', async () => {
-  const salesperson = await createAgent({ userId: 7, roles: [ROLES.SALESPERSON], sendingEnabled: true });
+  const salesperson = await createAgent({
+    userId: 7,
+    roles: [ROLES.SALESPERSON],
+    sendingEnabled: true,
+    approvedOpportunityFiles: [{
+      token: 'technical_document:61', category: 'technical', versionLabel: 'TS-V2',
+      fileType: 'datasheet', originalName: 'Mixer_Datasheet.pdf', byteSize: 4096
+    }, {
+      token: 'opportunity_attachment:71', category: 'commercial', versionLabel: 'CQ-V3',
+      fileType: 'commercial_quote', originalName: 'Commercial_Quote.pdf', byteSize: 8192
+    }]
+  });
   const salesCompose = await salesperson.get('/email-center/compose?opportunityId=20');
   assert.equal(salesCompose.status, 200);
   assert.match(salesCompose.text, /Compose customer email/);
@@ -808,7 +824,13 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(salesCompose.text, /data-customer-email-file-picker/);
   assert.match(salesCompose.text, />Attachments</);
   assert.doesNotMatch(salesCompose.text, />Additional attachments</);
-  assert.match(salesCompose.text, />Choose files</);
+  assert.match(salesCompose.text, />Upload local files</);
+  assert.match(salesCompose.text, />Choose from opportunity files</);
+  assert.match(salesCompose.text, /name="approvedOpportunityFileTokens" value="technical_document:61"/);
+  assert.match(salesCompose.text, /name="approvedOpportunityFileTokens" value="opportunity_attachment:71"/);
+  assert.match(salesCompose.text, /Mixer_Datasheet\.pdf/);
+  assert.match(salesCompose.text, /Commercial_Quote\.pdf/);
+  assert.match(salesCompose.text, /25 MB total across all attachments/);
   assert.match(salesCompose.text, />No files selected</);
   assert.match(salesCompose.text, /src="\/assets\/email-compose\.js"/);
   assert.match(salesCompose.text, /value="buyer@example\.com"/);
@@ -829,7 +851,9 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(supportingCompose.text, />邮件签名预览</);
   assert.doesNotMatch(supportingCompose.text, /所有客户邮件统一通过 sales@sunkaier\.com 发出/);
   assert.match(supportingCompose.text, />附件</);
-  assert.match(supportingCompose.text, />选择文件</);
+  assert.match(supportingCompose.text, />上传本地文件</);
+  assert.match(supportingCompose.text, />从商机文件选择</);
+  assert.match(supportingCompose.text, /25 MB，全部附件合计/);
   assert.match(supportingCompose.text, />未选择任何文件</);
   assert.match(supportingCompose.text, /value="draft"/);
   assert.doesNotMatch(supportingCompose.text, /value="send"/);

@@ -13,3 +13,17 @@ for (const picker of document.querySelectorAll('[data-customer-email-file-picker
   input.addEventListener('change', updateStatus);
   updateStatus();
 }
+
+for (const picker of document.querySelectorAll('[data-approved-file-picker]')) {
+  const checkboxes = Array.from(picker.querySelectorAll('input[type="checkbox"]'));
+  const count = picker.querySelector('[data-approved-file-count]');
+  if (!count) continue;
+
+  const updateCount = () => {
+    const selected = checkboxes.filter((checkbox) => checkbox.checked).length;
+    count.textContent = `${selected} ${picker.dataset.selectedLabel || ''}`.trim();
+  };
+
+  for (const checkbox of checkboxes) checkbox.addEventListener('change', updateCount);
+  updateCount();
+}

@@ -1,3 +1,4 @@
+<% const formatFileSize = (bytes) => { const value = Number(bytes || 0); if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`; if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`; return `${value} B`; }; %>
 <%- include('../partials/app-start', { title: `${t('composeCustomerEmail')} - BESTCRM`, activeNav: 'email-center', mainClass: context.opportunity ? 'opportunity-email-page' : '' }) %>
         <div class="<%= context.opportunity ? 'opportunity-email-heading' : '' %>">
           <p class="breadcrumb"><a href="/email-center"><%= t('emailCenter') %></a> / <%= t('composeCustomerEmail') %></p>
@@ -86,11 +87,45 @@
           </div>
           <div class="customer-email-attachment-field">
             <span class="customer-email-field-label" id="customer-email-attachments-label"><%= t('emailAttachments') %></span>
-            <div class="customer-email-file-picker" data-customer-email-file-picker data-empty-label="<%= t('noFilesSelected') %>">
-              <input class="customer-email-file-input" id="customer-email-attachments" type="file" name="attachments" multiple aria-labelledby="customer-email-attachments-label" aria-describedby="customer-email-attachments-status customer-email-attachments-limit">
-              <label class="secondary-action customer-email-file-button" for="customer-email-attachments"><%= t('chooseFiles') %></label>
-              <span class="customer-email-file-status" id="customer-email-attachments-status" data-customer-email-file-status><%= t('noFilesSelected') %></span>
-              <span class="muted customer-email-file-limit" id="customer-email-attachments-limit"><%= maxUploadMb %> MB / file</span>
+            <div class="customer-email-attachment-controls">
+              <div class="customer-email-file-picker" data-customer-email-file-picker data-empty-label="<%= t('noFilesSelected') %>">
+                <input class="customer-email-file-input" id="customer-email-attachments" type="file" name="attachments" multiple aria-labelledby="customer-email-attachments-label" aria-describedby="customer-email-attachments-status customer-email-attachments-limit">
+                <label class="secondary-action customer-email-file-button" for="customer-email-attachments"><%= t('chooseLocalFiles') %></label>
+                <span class="customer-email-file-status" id="customer-email-attachments-status" data-customer-email-file-status><%= t('noFilesSelected') %></span>
+              </div>
+              <% if (context.opportunity) { %>
+                <details class="customer-email-approved-file-picker" data-approved-file-picker data-selected-label="<%= t('approvedOpportunityFilesSelected') %>">
+                  <summary class="secondary-action customer-email-approved-file-summary">
+                    <span><%= t('chooseFromOpportunityFiles') %></span>
+                    <span class="customer-email-approved-file-count" data-approved-file-count>0 <%= t('approvedOpportunityFilesSelected') %></span>
+                  </summary>
+                  <div class="customer-email-approved-file-panel">
+                    <p class="muted customer-email-approved-file-help"><%= t('approvedOpportunityFilesHelp') %></p>
+                    <% if (context.approvedOpportunityFiles.length) { %>
+                      <% for (const group of [
+                        { category: 'technical', label: t('approvedTechnicalFiles') },
+                        { category: 'commercial', label: t('approvedCommercialFiles') }
+                      ]) { const files = context.approvedOpportunityFiles.filter((file) => file.category === group.category); %>
+                        <% if (files.length) { %>
+                          <fieldset class="customer-email-approved-file-group">
+                            <legend><%= group.label %></legend>
+                            <% for (const file of files) { %>
+                              <label class="customer-email-approved-file-row">
+                                <input type="checkbox" name="approvedOpportunityFileTokens" value="<%= file.token %>">
+                                <span class="customer-email-approved-file-name"><%= file.originalName %></span>
+                                <span class="muted customer-email-approved-file-meta"><%= file.versionLabel %> · <%= file.category === 'technical' ? t(`technicalDocumentType.${file.fileType}`) : t('commercialQuote') %> · <%= formatFileSize(file.byteSize) %></span>
+                              </label>
+                            <% } %>
+                          </fieldset>
+                        <% } %>
+                      <% } %>
+                    <% } else { %>
+                      <p class="empty customer-email-approved-file-empty"><%= t('noApprovedOpportunityFiles') %></p>
+                    <% } %>
+                  </div>
+                </details>
+              <% } %>
+              <span class="muted customer-email-file-limit" id="customer-email-attachments-limit"><%= maxUploadMb %> <%= t('emailAttachmentTotalLimit') %></span>
             </div>
           </div>
           <div class="inline-actions customer-email-actions">

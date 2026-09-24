@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { simpleParser } from 'mailparser';
@@ -90,6 +90,7 @@ function createDependencies(uploadDir, options = {}) {
     lastMessageAt: '2026-09-03T00:00:00.000Z'
   };
   const packageContent = Buffer.from('approved quotation');
+  const approvedFileSources = options.approvedFileSources || [];
   const packageVersion = {
     id: 71,
     opportunityId: 20,
@@ -180,6 +181,18 @@ function createDependencies(uploadDir, options = {}) {
         storedPath: ''
       }];
     },
+    async listApprovedEmailAttachmentChoices() {
+      return approvedFileSources.map(({ content, storedPath, ...source }) => source);
+    },
+    async getApprovedEmailAttachmentSources(input) {
+      const technicalIds = new Set(input.technicalDocumentIds.map(Number));
+      const attachmentIds = new Set(input.opportunityAttachmentIds.map(Number));
+      return approvedFileSources.filter((source) => (
+        source.sourceKind === 'technical_document'
+          ? technicalIds.has(Number(source.sourceId))
+          : attachmentIds.has(Number(source.sourceId))
+      ));
+    },
     async markSent(input) {
       if (packageVersion.status !== 'approved') return null;
       packageVersion.status = 'sent';
@@ -213,7 +226,7 @@ function createDependencies(uploadDir, options = {}) {
     transport: options.transport || { async sendMail() { return { messageId: '<provider-default@example.com>' }; } },
     sharedAddress: 'sales@sunkaier.com',
     uploadDir,
-    maxUploadMb: 5,
+    maxUploadMb: options.maxUploadMb ?? 5,
     now: () => '2026-09-03T10:00:00.000Z',
     randomUUID: () => '00000000-0000-4000-8000-000000000009',
     state: { thread, messages, attachments, attempts, sentPackages, outboundMimeArtifacts, packageVersion }
@@ -242,6 +255,132 @@ test('a CRM-native outbound opportunity thread starts linked and never enters pe
     assert.equal(archivedLogo.mimeType, 'image/png');
     assert.equal(archivedLogo.contentDisposition, 'inline');
     assert.ok(archivedLogo.fileSize > 0);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('selected approved opportunity files are revalidated and copied into the immutable outbound archive', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));
+  const sent = [];
+  const content = Buffer.from('approved technical datasheet');
+  const commercialContent = Buffer.from('approved commercial quote');
+  const commercialStoredPath = 'approved/Commercial_Quote.pdf';
+  const source = {
+    token: 'technical_document:61',
+    sourceKind: 'technical_document',
+    sourceId: 61,
+    category: 'technical',
+    versionNo: 2,
+    versionLabel: 'TS-V2',
+    fileType: 'datasheet',
+    originalName: 'Mixer_Datasheet.pdf',
+    mimeType: 'application/pdf',
+    byteSize: content.length,
+    sha256: createHash('sha256').update(content).digest('hex'),
+    content,
+    storedPath: ''
+  };
+  const commercialSource = {
+    token: 'opportunity_attachment:71',
+    sourceKind: 'opportunity_attachment',
+    sourceId: 71,
+    category: 'commercial',
+    versionNo: 3,
+    versionLabel: 'CQ-V3',
+    fileType: 'commercial_quote',
+    originalName: 'Commercial_Quote.pdf',
+    mimeType: 'application/pdf',
+    byteSize: commercialContent.length,
+    sha256: createHash('sha256').update(commercialContent).digest('hex'),
+    content: null,
+    storedPath: commercialStoredPath
+  };
+  try {
+    await mkdir(path.join(uploadDir, 'approved'), { recursive: true });
+    await writeFile(path.join(uploadDir, commercialStoredPath), commercialContent);
+    const dependencies = createDependencies(uploadDir, {
+      approvedFileSources: [source, commercialSource],
+      transport: { async sendMail(message) { sent.push(message); return { messageId: '<approved-file@example.com>' }; } }
+    });
+    const result = await createCustomerEmailDraft(dependencies, actor(), {
+      threadId: 1,
+      approvedOpportunityFileTokens: [source.token, commercialSource.token],
+      to: 'buyer@example.com',
+      subject: 'Approved datasheet',
+      body: 'Please find the approved datasheet attached.',
+      action: 'send'
+    });
+
+    assert.equal(result.deliveryStatus, 'sent');
+    const archived = dependencies.state.attachments.find((item) => item.sourceTechnicalDocumentId === 61);
+    assert.equal(archived.sourceOpportunityAttachmentId, null);
+    assert.equal(archived.originalName, 'Mixer_Datasheet.pdf');
+    assert.equal(archived.sha256, source.sha256);
+    assert.deepEqual(await readFile(path.join(uploadDir, archived.storedPath)), content);
+    const archivedCommercial = dependencies.state.attachments.find((item) => item.sourceOpportunityAttachmentId === 71);
+    assert.equal(archivedCommercial.sourceTechnicalDocumentId, null);
+    assert.equal(archivedCommercial.sha256, commercialSource.sha256);
+    assert.deepEqual(await readFile(path.join(uploadDir, archivedCommercial.storedPath)), commercialContent);
+    const parsed = await simpleParser(sent[0].raw);
+    assert.deepEqual(
+      parsed.attachments.find((item) => item.filename === 'Mixer_Datasheet.pdf').content,
+      content
+    );
+    assert.deepEqual(
+      parsed.attachments.find((item) => item.filename === 'Commercial_Quote.pdf').content,
+      commercialContent
+    );
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('tampered or no-longer-approved opportunity file selections are rejected before draft creation', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));
+  try {
+    const dependencies = createDependencies(uploadDir);
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+      threadId: 1,
+      approvedOpportunityFileTokens: 'technical_document:999',
+      to: 'buyer@example.com',
+      subject: 'Datasheet',
+      body: 'Please find the datasheet attached.',
+      action: 'draft'
+    }), /no longer approved for this opportunity/);
+    assert.equal(dependencies.state.messages.filter((item) => item.direction === 'outbound').length, 0);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('formal package, approved opportunity files, and local uploads share one total attachment limit', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));
+  const content = Buffer.alloc(1024 * 1024 + 1, 1);
+  try {
+    const dependencies = createDependencies(uploadDir, {
+      maxUploadMb: 1,
+      approvedFileSources: [{
+        token: 'technical_document:61',
+        sourceKind: 'technical_document',
+        sourceId: 61,
+        originalName: 'Large_Datasheet.pdf',
+        mimeType: 'application/pdf',
+        byteSize: content.length,
+        sha256: createHash('sha256').update(content).digest('hex'),
+        content,
+        storedPath: ''
+      }]
+    });
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+      threadId: 1,
+      approvedOpportunityFileTokens: 'technical_document:61',
+      to: 'buyer@example.com',
+      subject: 'Datasheet',
+      body: 'Please find the datasheet attached.',
+      action: 'draft'
+    }), /Total email attachments exceed 1 MB/);
+    assert.equal(dependencies.state.messages.filter((item) => item.direction === 'outbound').length, 0);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
