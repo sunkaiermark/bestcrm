@@ -78,6 +78,35 @@ const administratorOpportunityDeletionMigrationPath = new URL('../../src/db/migr
 const multiFileTechnicalDraftsMigrationPath = new URL('../../src/db/migrations/077_multi_file_technical_drafts.sql', import.meta.url);
 const emailAttachmentBusinessSourcesMigrationPath = new URL('../../src/db/migrations/078_email_attachment_business_sources.sql', import.meta.url);
 const technicalDraftFileControlsMigrationPath = new URL('../../src/db/migrations/079_technical_draft_file_controls.sql', import.meta.url);
+const leadCustomerWebsiteMigrationPath = new URL('../../src/db/migrations/080_lead_customer_website.sql', import.meta.url);
+const productCategoryMigrationPath = new URL('../../src/db/migrations/081_lead_opportunity_product_category.sql', import.meta.url);
+const reviewedProductCategoriesMigrationPath = new URL('../../src/db/migrations/082_reviewed_product_categories.sql', import.meta.url);
+
+test('reviewed product classifications are fixed, multi-valued, auditable, and separate from email content', async () => {
+  const sql = await readFile(reviewedProductCategoriesMigrationPath, 'utf8');
+  assert.match(sql, /CREATE OR REPLACE FUNCTION bestcrm_valid_reviewed_product_categories/);
+  assert.match(sql, /'process-line'/);
+  assert.match(sql, /cardinality\(codes\) = \(SELECT count\(DISTINCT code\)/);
+  assert.match(sql, /ALTER TABLE inquiries[\s\S]*confirmed_product_category_codes text\[\]/);
+  assert.match(sql, /ALTER TABLE opportunities[\s\S]*confirmed_product_category_codes text\[\]/);
+  assert.match(sql, /ALTER TABLE email_threads[\s\S]*confirmed_product_category_codes text\[\]/);
+  assert.match(sql, /CREATE TABLE product_category_review_events/);
+  assert.match(sql, /Product category review events are immutable/);
+  assert.match(sql, /actor_user_id bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /product_category_review_pending_idx/);
+  assert.doesNotMatch(sql, /ALTER TABLE email_messages/);
+});
+
+test('lead and opportunity product category migration keeps the fixed taxonomy and legacy rows', async () => {
+  const sql = await readFile(productCategoryMigrationPath, 'utf8');
+  assert.match(sql, /ALTER TABLE inquiries[\s\S]*product_category_code text NOT NULL DEFAULT ''/);
+  assert.match(sql, /ALTER TABLE opportunities[\s\S]*product_category_code text NOT NULL DEFAULT ''/);
+  assert.match(sql, /inquiries_product_category_code_check/);
+  assert.match(sql, /opportunities_product_category_code_check/);
+  assert.match(sql, /'custom-machines'[\s\S]*'separation'/);
+  assert.equal((sql.match(/'process-line'/g) || []).length, 2);
+  assert.doesNotMatch(sql, /UPDATE\s+inquiries|UPDATE\s+opportunities/i);
+});
 
 test('outbound email attachments retain an immutable link to the approved business source', async () => {
   const sql = await readFile(emailAttachmentBusinessSourcesMigrationPath, 'utf8');
@@ -619,6 +648,12 @@ test('sales lead submissions migration enforces inquiry-first opportunity creati
   assert.match(sql, /ADD COLUMN IF NOT EXISTS recommended_salesperson_id bigint REFERENCES users\(id\)/);
   assert.match(sql, /ADD COLUMN IF NOT EXISTS origin_inquiry_id bigint REFERENCES inquiries\(id\) ON DELETE RESTRICT/);
   assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS opportunities_origin_inquiry_unique_idx/);
+});
+
+test('lead customer website migration adds an optional persistent inquiry field', async () => {
+  const sql = await readFile(leadCustomerWebsiteMigrationPath, 'utf8');
+  assert.match(sql, /ALTER TABLE inquiries/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS company_website text NOT NULL DEFAULT ''/);
 });
 
 test('sales lead review workflow adds returned and rejected states with immutable review history', async () => {

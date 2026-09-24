@@ -22,11 +22,16 @@ function mapInquiryRow(row) {
     sourceReceivedAt: row.source_received_at,
     subject: textOrEmpty(row.subject),
     companyName: textOrEmpty(row.company_name),
+    companyWebsite: textOrEmpty(row.company_website),
     contactName: textOrEmpty(row.contact_name),
     contactEmail: textOrEmpty(row.contact_email),
     contactPhone: textOrEmpty(row.contact_phone),
     country: textOrEmpty(row.country),
     productInterest: textOrEmpty(row.product_interest),
+    productCategoryCode: textOrEmpty(row.product_category_code),
+    confirmedProductCategoryCodes: row.confirmed_product_category_codes || [],
+    productCategoryReviewedBy: numberOrNull(row.product_category_reviewed_by),
+    productCategoryReviewedAt: row.product_category_reviewed_at || null,
     opportunityType: textOrEmpty(row.opportunity_type),
     requirementText: row.requirement_text,
     rawPayload: row.raw_payload || {},
@@ -38,6 +43,7 @@ function mapInquiryRow(row) {
     recommendedSalespersonDisplayName: textOrEmpty(row.recommended_salesperson_display_name),
     matchedCustomerId: numberOrNull(row.matched_customer_id),
     matchedCustomerName: textOrEmpty(row.matched_customer_name),
+    matchedCustomerWebsite: textOrEmpty(row.matched_customer_website),
     matchedContactId: numberOrNull(row.matched_contact_id),
     matchedContactCode: textOrEmpty(row.matched_contact_code),
     matchedContactName: textOrEmpty(row.matched_contact_name),
@@ -66,11 +72,16 @@ const inquirySelect = `
     i.source_received_at,
     i.subject,
     i.company_name,
+    i.company_website,
     i.contact_name,
     i.contact_email,
     i.contact_phone,
     i.country,
     i.product_interest,
+    i.product_category_code,
+    i.confirmed_product_category_codes,
+    i.product_category_reviewed_by,
+    i.product_category_reviewed_at,
     i.opportunity_type,
     i.requirement_text,
     i.raw_payload,
@@ -82,6 +93,7 @@ const inquirySelect = `
     recommended_salesperson.display_name AS recommended_salesperson_display_name,
     i.matched_customer_id,
     matched_customer.name AS matched_customer_name,
+    matched_customer.website AS matched_customer_website,
     i.matched_contact_id,
     matched_contact.contact_code AS matched_contact_code,
     matched_contact.name AS matched_contact_name,
@@ -254,6 +266,7 @@ export function createInquiryRepository(queryTarget) {
           source_received_at,
           subject,
           company_name,
+          company_website,
           contact_name,
           contact_email,
           contact_phone,
@@ -269,9 +282,13 @@ export function createInquiryRepository(queryTarget) {
           matched_customer_id,
           matched_contact_id,
           created_by,
-          review_note
+          review_note,
+          product_category_code,
+          confirmed_product_category_codes,
+          product_category_reviewed_by,
+          product_category_reviewed_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16, $17, $18, $19, $20, $21, $22, $23)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16::jsonb, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26::text[], $27, CASE WHEN cardinality($26::text[]) > 0 THEN now() ELSE NULL END)
         ON CONFLICT (source, source_reference) WHERE source_reference <> ''
         DO NOTHING
         RETURNING *
@@ -283,6 +300,7 @@ export function createInquiryRepository(queryTarget) {
         input.sourceReceivedAt,
         input.subject,
         input.companyName,
+        input.companyWebsite || '',
         input.contactName,
         input.contactEmail,
         input.contactPhone,
@@ -298,7 +316,10 @@ export function createInquiryRepository(queryTarget) {
         input.matchedCustomerId,
         input.matchedContactId,
         input.createdBy,
-        input.reviewNote
+        input.reviewNote,
+        input.productCategoryCode || '',
+        input.confirmedProductCategoryCodes || [],
+        input.productCategoryReviewedBy || null
       ]);
       const created = mapInquiryRow(result.rows[0]);
       if (created) {
@@ -342,6 +363,10 @@ export function createInquiryRepository(queryTarget) {
           review_note = $15,
           reviewed_by = $16,
           reviewed_at = now(),
+          product_category_code = $18,
+          confirmed_product_category_codes = $19::text[],
+          product_category_reviewed_by = $20,
+          product_category_reviewed_at = CASE WHEN confirmed_product_category_codes IS DISTINCT FROM $19::text[] THEN now() ELSE product_category_reviewed_at END,
           updated_at = now()
         WHERE id = $17
           AND status IN ('new', 'reviewing')
@@ -363,7 +388,10 @@ export function createInquiryRepository(queryTarget) {
         input.requirementText,
         input.reviewNote,
         input.reviewedBy,
-        id
+        id,
+        input.productCategoryCode || '',
+        input.confirmedProductCategoryCodes || [],
+        input.productCategoryReviewedBy || input.reviewedBy || null
       ]);
       return mapInquiryRow(result.rows[0]);
     },
@@ -376,6 +404,10 @@ export function createInquiryRepository(queryTarget) {
           matched_customer_id = $1,
           matched_contact_id = $2,
           converted_opportunity_id = $3,
+          product_category_code = $6,
+          confirmed_product_category_codes = $7::text[],
+          product_category_reviewed_by = $4,
+          product_category_reviewed_at = CASE WHEN confirmed_product_category_codes IS DISTINCT FROM $7::text[] THEN now() ELSE product_category_reviewed_at END,
           reviewed_by = $4,
           reviewed_at = now(),
           updated_at = now()
@@ -387,7 +419,9 @@ export function createInquiryRepository(queryTarget) {
         input.matchedContactId,
         input.convertedOpportunityId,
         input.reviewedBy,
-        id
+        id,
+        input.productCategoryCode || '',
+        input.confirmedProductCategoryCodes || []
       ]);
       return mapInquiryRow(result.rows[0]);
     },
@@ -436,16 +470,21 @@ export function createInquiryRepository(queryTarget) {
           source_channel = $2,
           subject = $3,
           company_name = $4,
-          contact_name = $5,
-          contact_email = $6,
-          contact_phone = $7,
-          country = $8,
-          product_interest = $9,
-          opportunity_type = $10,
-          requirement_text = $11,
-          priority = $12,
-          assigned_user_id = $13,
-          recommended_salesperson_id = $14,
+          company_website = $5,
+          contact_name = $6,
+          contact_email = $7,
+          contact_phone = $8,
+          country = $9,
+          product_interest = $10,
+          product_category_code = $17,
+          confirmed_product_category_codes = $18::text[],
+          product_category_reviewed_by = $19,
+          product_category_reviewed_at = CASE WHEN confirmed_product_category_codes IS DISTINCT FROM $18::text[] THEN now() ELSE product_category_reviewed_at END,
+          opportunity_type = $11,
+          requirement_text = $12,
+          priority = $13,
+          assigned_user_id = $14,
+          recommended_salesperson_id = $15,
           review_note = '',
           reviewed_by = NULL,
           reviewed_at = NULL,
@@ -453,13 +492,14 @@ export function createInquiryRepository(queryTarget) {
         WHERE id = $1
           AND submission_type = 'sales_lead'
           AND status = 'returned'
-          AND created_by = $15
+          AND created_by = $16
         RETURNING *
       `, [
         id,
         input.sourceChannel,
         input.subject,
         input.companyName,
+        input.companyWebsite || '',
         input.contactName,
         input.contactEmail,
         input.contactPhone,
@@ -470,7 +510,10 @@ export function createInquiryRepository(queryTarget) {
         input.priority,
         input.assignedUserId,
         input.recommendedSalespersonId,
-        input.actorUserId
+        input.actorUserId,
+        input.productCategoryCode || '',
+        input.confirmedProductCategoryCodes || [],
+        input.productCategoryReviewedBy || input.actorUserId || null
       ]);
       return mapInquiryRow(result.rows[0]);
     },
@@ -482,27 +525,33 @@ export function createInquiryRepository(queryTarget) {
           source_channel = $2,
           subject = $3,
           company_name = $4,
-          contact_name = $5,
-          contact_email = $6,
-          contact_phone = $7,
-          country = $8,
-          product_interest = $9,
-          opportunity_type = $10,
-          requirement_text = $11,
-          priority = $12,
-          assigned_user_id = $13,
-          recommended_salesperson_id = $14,
+          company_website = $5,
+          contact_name = $6,
+          contact_email = $7,
+          contact_phone = $8,
+          country = $9,
+          product_interest = $10,
+          product_category_code = $17,
+          confirmed_product_category_codes = $18::text[],
+          product_category_reviewed_by = $19,
+          product_category_reviewed_at = CASE WHEN confirmed_product_category_codes IS DISTINCT FROM $18::text[] THEN now() ELSE product_category_reviewed_at END,
+          opportunity_type = $11,
+          requirement_text = $12,
+          priority = $13,
+          assigned_user_id = $14,
+          recommended_salesperson_id = $15,
           updated_at = now()
         WHERE id = $1
           AND submission_type = 'sales_lead'
           AND status = 'new'
-          AND created_by = $15
+          AND created_by = $16
         RETURNING *
       `, [
         id,
         input.sourceChannel,
         input.subject,
         input.companyName,
+        input.companyWebsite || '',
         input.contactName,
         input.contactEmail,
         input.contactPhone,
@@ -513,7 +562,10 @@ export function createInquiryRepository(queryTarget) {
         input.priority,
         input.assignedUserId,
         input.recommendedSalespersonId,
-        input.actorUserId
+        input.actorUserId,
+        input.productCategoryCode || '',
+        input.confirmedProductCategoryCodes || [],
+        input.productCategoryReviewedBy || input.actorUserId || null
       ]);
       return mapInquiryRow(result.rows[0]);
     },

@@ -84,6 +84,7 @@ test('signed website inquiry API creates an inbox record without login or csrf t
       contactPhone: '+86 510 1234',
       country: 'China',
       productInterest: 'MVR Evaporator',
+      productCategoryCode: '',
       opportunityType: 'Expansion',
       requirementText: 'Need evaporation package for wastewater.',
       rawPayload: payload,

@@ -74,6 +74,7 @@
             <span><strong><%= t('reviewSalesManager') %>:</strong> <%= submission.assignedDisplayName || '-' %></span>
             <span><strong><%= t('leadSourceChannel') %>:</strong> <%= t(`leadSourceChannel.${submission.sourceChannel}`) %></span>
             <span><strong><%= t('companyName') %>:</strong> <%= submission.companyName || '-' %></span>
+            <span><strong><%= t('website') %>:</strong> <%= submission.companyWebsite || submission.matchedCustomerWebsite || '-' %></span>
             <span><strong><%= t('contactName') %>:</strong> <%= submission.contactName || '-' %></span>
             <span><strong><%= t('email') %>:</strong> <%= submission.contactEmail || '-' %></span>
             <span><strong><%= t('phone') %>:</strong> <%= submission.contactPhone || '-' %></span>
@@ -84,6 +85,8 @@
             <% if (submission.reviewNote) { %><p class="inquiry-field-full detail-text-cell"><strong><%= t('latestDecisionReason') %>:</strong><br><%= submission.reviewNote %></p><% } %>
           </div>
         </section>
+
+        <%- include('../partials/product-category-review', { record: submission, action: `/lead-submissions/${submission.id}/product-categories`, canEditCategories: canEditCategories, suggestions: suggestProductCategoryCodes({ productInterest: submission.productInterest, subject: submission.subject, requirementText: submission.requirementText }) }) %>
 
         <% if (canReview) { %>
           <section class="content-section business-section business-section-project-approval lead-sales-manager-review">
@@ -130,6 +133,7 @@
                   </select>
                 </label>
                 <label><%= t('customerName') %><input name="companyName" value="<%= leadApprovalValue('companyName', submission.companyName) || '' %>"></label>
+                <label><%= t('website') %><input name="companyWebsite" type="text" inputmode="url" placeholder="https://www.example.com" value="<%= leadApprovalValue('companyWebsite', submission.companyWebsite) || '' %>"></label>
                 <label>
                   <%= t('country') %>
                   <select name="country">
@@ -159,6 +163,7 @@
                   </select>
                 </label>
                 <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" value="<%= leadApprovalValue('title', submission.subject || submission.productInterest || submission.companyName) || '' %>" required></label>
+                <%- include('../partials/product-category-picker', { record: submission, subjectInput: 'title', requirementInput: 'requirementText', formId: '', className: '' }) %>
                 <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount" value="<%= leadApprovalValue('estimatedAmount') || '' %>"></label>
                 <label><%= t('deliveryPeriod') %><input name="deliveryCycle" value="<%= leadApprovalValue('deliveryCycle') || '' %>"></label>
                 <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate" value="<%= leadApprovalValue('expectedBidDate') || '' %>"></label>

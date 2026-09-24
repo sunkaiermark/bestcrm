@@ -51,6 +51,9 @@ function mapThreadRow(row) {
     archiveDisposition: text(row.archive_disposition) || 'active',
     classificationCategory: text(row.classification_category) || 'inquiry',
     classificationReason: text(row.classification_reason) || 'manual_review',
+    confirmedProductCategoryCodes: row.confirmed_product_category_codes || [],
+    productCategoryReviewedBy: numberOrNull(row.product_category_reviewed_by),
+    productCategoryReviewedAt: row.product_category_reviewed_at || null,
     triageStatus: text(row.triage_status) || 'pending',
     triageAssignedUserId: numberOrNull(row.triage_assigned_user_id),
     triageAssignedDisplayName: text(row.triage_assigned_display_name),
@@ -424,6 +427,9 @@ const threadSelect = `
     thread.archive_disposition,
     thread.classification_category,
     thread.classification_reason,
+    thread.confirmed_product_category_codes,
+    thread.product_category_reviewed_by,
+    thread.product_category_reviewed_at,
     thread.triage_status,
     thread.triage_assigned_user_id,
     triage_assignee.display_name AS triage_assigned_display_name,
@@ -773,6 +779,7 @@ export function createEmailArchiveRepository(queryTarget) {
       mailboxKey = '',
       direction = '',
       classificationCategory = '',
+      productCategoryCode = '',
       searchTerm = ''
     } = {}) {
       const normalizedDisposition = ['active', 'archived', 'spam'].includes(archiveDisposition)
@@ -850,6 +857,10 @@ export function createEmailArchiveRepository(queryTarget) {
       if (normalizedClassificationCategory) {
         params.push(normalizedClassificationCategory);
         where.push(`thread.classification_category = $${params.length}`);
+      }
+      if (productCategoryCode) {
+        params.push(productCategoryCode);
+        where.push(`$${params.length} = ANY(thread.confirmed_product_category_codes)`);
       }
       if (normalizedSearchTerm) {
         params.push(`%${normalizedSearchTerm.replace(/[\\%_]/g, '\\$&')}%`);

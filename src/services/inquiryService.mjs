@@ -10,6 +10,7 @@ import {
   isInquiryStatus
 } from '../domain/inquiries.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
+import { confirmedProductCategoriesFromInput, resolveProductCategoryCode } from '../domain/productCategories.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
 import { createContact } from './contactService.mjs';
 import { canMaintainCustomer, createCustomer } from './customerService.mjs';
@@ -203,6 +204,9 @@ export function normalizeInquiryInput(input, actor) {
     contactPhone: text(input.contactPhone),
     country: text(input.country),
     productInterest: text(input.productInterest),
+    productCategoryCode: resolveProductCategoryCode(input),
+    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input),
+    productCategoryReviewedBy: Number(actor.id),
     opportunityType: text(input.opportunityType),
     requirementText: text(input.requirementText),
     rawPayload: input.rawPayload && typeof input.rawPayload === 'object' ? input.rawPayload : {},
@@ -233,6 +237,9 @@ export function normalizeInquiryReviewInput(input, actor, currentInquiry = {}) {
     contactPhone: textInputOrCurrent(input, 'contactPhone', currentInquiry),
     country: textInputOrCurrent(input, 'country', currentInquiry),
     productInterest: textInputOrCurrent(input, 'productInterest', currentInquiry),
+    productCategoryCode: resolveProductCategoryCode(input, currentInquiry.productCategoryCode),
+    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input, currentInquiry.confirmedProductCategoryCodes),
+    productCategoryReviewedBy: Number(actor.id),
     opportunityType: textInputOrCurrent(input, 'opportunityType', currentInquiry),
     requirementText: textInputOrCurrent(input, 'requirementText', currentInquiry),
     reviewNote: text(input.reviewNote),
@@ -316,6 +323,9 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     const customer = await createCustomer(repositories.customerRepository, actor, {
       name: customerName,
       ownerUserId: salespersonId,
+      website: Object.hasOwn(input, 'companyWebsite')
+        ? text(input.companyWebsite)
+        : text(inquiry.companyWebsite),
       country: text(input.newCustomerCountry) || text(input.country) || inquiry.country,
       notes: text(input.newCustomerNotes) || inquiry.requirementText
     }, { managedInquiry: true });
@@ -346,6 +356,7 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     }, { managedInquiry: true });
     primaryContactId = contact.id;
   }
+  const productCategoryCode = resolveProductCategoryCode(input, inquiry.productCategoryCode);
   const opportunity = await createOpportunityDraft(repositories, actor, {
     opportunityNo: null,
     title: opportunityTitleForInquiry(inquiry, input),
@@ -354,6 +365,8 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     requirement: text(input.requirement) || text(input.requirementText) || inquiry.requirementText,
     estimatedAmount: input.estimatedAmount,
     productInterest: text(input.productInterest) || inquiry.productInterest,
+    productCategoryCode,
+    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input, inquiry.confirmedProductCategoryCodes),
     projectType: text(input.projectType) || text(input.opportunityType) || inquiry.opportunityType,
     deliveryCycle: input.deliveryCycle,
     expectedBidDate: input.expectedBidDate,
@@ -378,6 +391,8 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     matchedCustomerId: customerId,
     matchedContactId: primaryContactId,
     convertedOpportunityId: opportunity.id,
+    productCategoryCode,
+    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input, inquiry.confirmedProductCategoryCodes),
     reviewedBy: actor.id
   });
   if (!converted) {
@@ -563,6 +578,8 @@ function customerApprovalPayload(inquiry, input) {
     requirement: text(input.requirementText) || text(input.requirement) || inquiry.requirementText,
     estimatedAmount: numberOrNull(input.estimatedAmount),
     productInterest: text(input.productInterest) || inquiry.productInterest,
+    productCategoryCode: resolveProductCategoryCode(input, inquiry.productCategoryCode),
+    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input, inquiry.confirmedProductCategoryCodes),
     projectType: text(input.opportunityType) || text(input.projectType) || inquiry.opportunityType,
     deliveryCycle: text(input.deliveryCycle),
     expectedBidDate: text(input.expectedBidDate) || null
@@ -680,6 +697,8 @@ export async function approveInquiryCustomerApproval(repositories, actor, inquir
 
   const opportunity = await repositories.inquiryCustomerApprovalRepository.completeApproval(approval.id, {
     ...payload,
+    productCategoryCode: resolveProductCategoryCode(payload, inquiry.productCategoryCode),
+    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(payload, inquiry.confirmedProductCategoryCodes),
     decidedBy: actor.id,
     decisionNote: text(input.decisionNote),
     allowAnyReviewer,

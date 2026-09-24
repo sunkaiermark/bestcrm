@@ -7,7 +7,11 @@
 </header>
 
 <section class="form-panel">
-  <p class="muted"><%= t('noAnalyticsReports') %></p>
+  <% if (canViewProductReport) { %>
+    <a class="quick-action" href="/analytics/products"><%= t('productCategoryReport') %></a>
+  <% } else { %>
+    <p class="muted"><%= t('noAnalyticsReports') %></p>
+  <% } %>
 </section>
 
 <%- include('../partials/app-end') %>

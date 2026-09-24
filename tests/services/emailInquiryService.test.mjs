@@ -39,6 +39,7 @@ test('normalizeEmailInquiryPayload maps sender body fields and attachments into 
     contactPhone: '+1 555 0000',
     country: 'United States',
     productInterest: 'Evaporator',
+    productCategoryCode: '',
     opportunityType: 'Expansion',
     requirementText: parsed.text,
     rawPayload: {

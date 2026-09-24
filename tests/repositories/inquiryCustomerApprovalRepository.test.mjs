@@ -98,7 +98,8 @@ test('approval completion locks the approval and inquiry and creates opportunity
     title: 'Acme project',
     requirement: 'Need quote',
     estimatedAmount: 1000,
-    productInterest: 'Evaporator',
+    productInterest: 'Reactor',
+    productCategoryCode: 'reactors',
     projectType: 'Expansion',
     deliveryCycle: '90 days',
     expectedBidDate: '2026-10-01',
@@ -124,9 +125,10 @@ test('approval completion locks the approval and inquiry and creates opportunity
   assert.match(queryTarget.queries[0].sql, /SET status = 'approved'/);
   assert.deepEqual(queryTarget.queries[0].params, [
     80, 2, 'Approved', null, 'Alice', 'Director', '123', 'alice@example.com', 'Need quote',
-    'Acme project', 'Need quote', 1000, 'Evaporator', 'Expansion', '90 days', '2026-10-01',
-    false, 11, 7
+    'Acme project', 'Need quote', 1000, 'Reactor', 'Expansion', '90 days', '2026-10-01',
+    false, 11, 7, 'reactors', []
   ]);
+  assert.match(queryTarget.queries[0].sql, /product_category_code = opportunity\.product_category_code/);
 });
 
 test('approval rejection returns the inquiry to the requesting salesperson', async () => {

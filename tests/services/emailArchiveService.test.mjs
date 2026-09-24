@@ -666,6 +666,23 @@ function triageMemory(threadOverrides = {}) {
   return { thread, events, repository };
 }
 
+test('email intake suggests Plug screw feeder without locking the category', async () => {
+  const memory = triageMemory({
+    messages: [{
+      id: 40,
+      direction: 'inbound',
+      fromAddress: 'buyer@example.com',
+      subject: 'Requirement of Plug screw feeder | 24-09-2026',
+      textBody: 'Please quote a Plug screw feeder for bagasse processing.'
+    }]
+  });
+  const actor = { id: 2, roles: [ROLES.SALES_MANAGER] };
+  const context = await getEmailThreadIntakeContext({ emailArchiveRepository: memory.repository }, actor, 30);
+
+  assert.equal(context.draft.productInterest, 'Plug screw feeder');
+  assert.equal(context.draft.productCategoryCode, 'custom-machines');
+});
+
 test('manual inquiry conversion is atomic idempotent and records one audit event', async () => {
   const memory = triageMemory();
   const inquiries = [];
@@ -741,6 +758,8 @@ test('email intake context prefills a lead and converted mail becomes a lead ins
     assignedUserId: 2,
     recommendedSalespersonId: 7,
     companyName: 'Acme',
+    contactName: 'Buyer',
+    contactPhone: '+65 6123 4567',
     requirementText: 'Please quote one mixer'
   });
   const second = await convertEmailThreadToLead(dependencies, actor, 30, {});

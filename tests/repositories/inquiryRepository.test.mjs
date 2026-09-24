@@ -22,6 +22,7 @@ const inquiryRow = {
   source_received_at: '2026-07-30T08:00:00.000Z',
   subject: 'Need evaporator quote',
   company_name: 'Acme Co',
+  company_website: 'https://acme.example',
   contact_name: 'Alice',
   contact_email: 'alice@example.com',
   contact_phone: '+1 555',
@@ -38,6 +39,7 @@ const inquiryRow = {
   recommended_salesperson_display_name: 'Sales One',
   matched_customer_id: '20',
   matched_customer_name: 'Acme Co',
+  matched_customer_website: 'https://current-acme.example',
   matched_contact_id: '30',
   matched_contact_code: 'CT000030',
   matched_contact_name: 'Alice',
@@ -70,11 +72,16 @@ test('inquiry repository lists mapped inquiries with visibility filter', async (
     sourceReceivedAt: '2026-07-30T08:00:00.000Z',
     subject: 'Need evaporator quote',
     companyName: 'Acme Co',
+    companyWebsite: 'https://acme.example',
     contactName: 'Alice',
     contactEmail: 'alice@example.com',
     contactPhone: '+1 555',
     country: 'United States',
     productInterest: 'Evaporator',
+    productCategoryCode: '',
+    confirmedProductCategoryCodes: [],
+    productCategoryReviewedBy: null,
+    productCategoryReviewedAt: null,
     opportunityType: 'Expansion',
     requirementText: 'Need wastewater evaporation package.',
     rawPayload: { messageId: 'msg-1' },
@@ -86,6 +93,7 @@ test('inquiry repository lists mapped inquiries with visibility filter', async (
     recommendedSalespersonDisplayName: 'Sales One',
     matchedCustomerId: 20,
     matchedCustomerName: 'Acme Co',
+    matchedCustomerWebsite: 'https://current-acme.example',
     matchedContactId: 30,
     matchedContactCode: 'CT000030',
     matchedContactName: 'Alice',
@@ -105,6 +113,8 @@ test('inquiry repository lists mapped inquiries with visibility filter', async (
   assert.match(queryTarget.queries[0].sql, /FROM inquiries i/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN users assigned/);
   assert.match(queryTarget.queries[0].sql, /matched_contact\.contact_code AS matched_contact_code/);
+  assert.match(queryTarget.queries[0].sql, /i\.company_website/);
+  assert.match(queryTarget.queries[0].sql, /matched_customer\.website AS matched_customer_website/);
   assert.match(queryTarget.queries[0].sql, /i\.status = \$1/);
   assert.match(queryTarget.queries[0].sql, /i\.source = \$2/);
   assert.match(queryTarget.queries[0].sql, /i\.assigned_user_id = \$3 OR i\.created_by = \$3/);
@@ -184,6 +194,7 @@ test('inquiry repository creates review and conversion updates', async () => {
     sourceReceivedAt: null,
     subject: 'Manual RFQ',
     companyName: 'Beta',
+    companyWebsite: 'https://beta.example',
     contactName: 'Bob',
     contactEmail: 'bob@example.com',
     contactPhone: '',
@@ -203,8 +214,11 @@ test('inquiry repository creates review and conversion updates', async () => {
   });
   assert.match(queryTarget.queries[0].sql, /INSERT INTO inquiries/);
   assert.match(queryTarget.queries[0].sql, /ON CONFLICT \(source, source_reference\)/);
+  assert.equal(queryTarget.queries[0].params.length, 27);
+  assert.equal(queryTarget.queries[0].params[24], '');
   assert.deepEqual(queryTarget.queries[0].params.slice(0, 6), ['manual', 'standard', 'manual', '', null, 'Manual RFQ']);
-  assert.equal(queryTarget.queries[0].params[14], '{}');
+  assert.equal(queryTarget.queries[0].params[7], 'https://beta.example');
+  assert.equal(queryTarget.queries[0].params[15], '{}');
 
   await repository.updateReview(12, {
     status: 'reviewing',
@@ -229,7 +243,7 @@ test('inquiry repository creates review and conversion updates', async () => {
   assert.deepEqual(queryTarget.queries[1].params, [
     'reviewing', 'high', 8, 20, 30,
     'Manual RFQ', 'Beta', 'Bob', 'bob@example.com', '', 'Singapore', 'Dryer', 'New build',
-    'Need dryer quote', 'Qualified', 7, 12
+    'Need dryer quote', 'Qualified', 7, 12, '', [], 7
   ]);
 
   await repository.markConverted(12, {
@@ -239,7 +253,7 @@ test('inquiry repository creates review and conversion updates', async () => {
     reviewedBy: 7
   });
   assert.match(queryTarget.queries[2].sql, /status = 'converted'/);
-  assert.deepEqual(queryTarget.queries[2].params, [20, 30, 40, 7, 12]);
+  assert.deepEqual(queryTarget.queries[2].params, [20, 30, 40, 7, 12, '', []]);
 
   await repository.markDisposition(12, {
     status: 'customer_saved',
@@ -336,6 +350,7 @@ test('inquiry repository locks and transitions leads while recording immutable r
     sourceChannel: 'email',
     subject: 'Updated RFQ',
     companyName: 'Acme Co',
+    companyWebsite: 'https://updated-acme.example',
     contactName: 'Alice',
     contactEmail: 'alice@example.com',
     contactPhone: '+1 555',
@@ -392,8 +407,10 @@ test('inquiry repository locks and transitions leads while recording immutable r
   assert.match(queryTarget.queries[2].sql, /status = 'rejected'/);
   assert.deepEqual(queryTarget.queries[2].params, [11, 'Not a business lead', 7]);
   assert.match(queryTarget.queries[3].sql, /status = 'returned'/);
-  assert.match(queryTarget.queries[3].sql, /created_by = \$15/);
-  assert.equal(queryTarget.queries[3].params[14], 7);
+  assert.match(queryTarget.queries[3].sql, /company_website = \$5/);
+  assert.match(queryTarget.queries[3].sql, /created_by = \$16/);
+  assert.equal(queryTarget.queries[3].params[4], 'https://updated-acme.example');
+  assert.equal(queryTarget.queries[3].params[15], 7);
   assert.match(queryTarget.queries[4].sql, /status IN \('new', 'returned'\)/);
   assert.deepEqual(queryTarget.queries[4].params, [11, 8]);
   assert.match(queryTarget.queries[5].sql, /INSERT INTO lead_review_events/);
@@ -410,4 +427,32 @@ test('inquiry repository locks and transitions leads while recording immutable r
   ]);
   assert.match(queryTarget.queries[6].sql, /ORDER BY event\.id/);
   assert.deepEqual(queryTarget.queries[6].params, [11]);
+});
+
+test('pending lead update persists the customer website without changing its owner guard', async () => {
+  const queryTarget = createFakeQueryTarget([{ ...inquiryRow, submission_type: 'sales_lead' }]);
+  const repository = createInquiryRepository(queryTarget);
+
+  await repository.updatePendingLead(11, {
+    sourceChannel: 'email',
+    subject: 'Updated RFQ',
+    companyName: 'Acme Co',
+    companyWebsite: 'https://new-acme.example',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '+1 555',
+    country: 'United States',
+    productInterest: 'Evaporator',
+    opportunityType: 'Expansion',
+    requirementText: 'Updated requirement',
+    priority: 'high',
+    assignedUserId: 8,
+    recommendedSalespersonId: 7,
+    actorUserId: 7
+  });
+
+  assert.match(queryTarget.queries[0].sql, /company_website = \$5/);
+  assert.match(queryTarget.queries[0].sql, /created_by = \$16/);
+  assert.equal(queryTarget.queries[0].params[4], 'https://new-acme.example');
+  assert.equal(queryTarget.queries[0].params[15], 7);
 });

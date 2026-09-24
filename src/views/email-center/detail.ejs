@@ -23,6 +23,8 @@
 
         <div class="email-reader-scroll" tabindex="0">
 
+        <%- include('../partials/product-category-review', { record: thread, action: `/email-center/threads/${thread.id}/product-categories`, canEditCategories: canReviewProductCategories, suggestions: productCategorySuggestions }) %>
+
         <% if (canTriage) { %>
           <section class="email-triage-panel email-pending-actions-panel" aria-label="<%= t('emailManualTriage') %>">
             <div class="email-pending-actions-row">

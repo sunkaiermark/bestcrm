@@ -128,6 +128,9 @@ test('createInquiry normalizes input and requires requirement text', async () =>
     contactPhone: '',
     country: '',
     productInterest: 'Evaporator',
+    productCategoryCode: '',
+    confirmedProductCategoryCodes: [],
+    productCategoryReviewedBy: 7,
     opportunityType: '',
     requirementText: 'Need quote',
     rawPayload: {},
@@ -217,6 +220,9 @@ test('updateInquiryReview validates matched customer and contact', async () => {
       contactPhone: '123',
       country: 'Singapore',
       productInterest: 'Dryer',
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
+      productCategoryReviewedBy: 7,
       opportunityType: 'Expansion',
       requirementText: 'Need a dryer',
       reviewNote: 'Qualified',
@@ -284,6 +290,9 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
       requirement: 'Need wastewater evaporation package.',
       estimatedAmount: null,
       productInterest: 'Evaporator',
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
+      productCategoryReviewedBy: 7,
       projectType: 'Expansion',
       deliveryCycle: '',
       expectedBidDate: null,
@@ -294,6 +303,8 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
       matchedCustomerId: 20,
       matchedContactId: 30,
       convertedOpportunityId: 40,
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
       reviewedBy: 7
     }]
   ]);
@@ -348,6 +359,7 @@ test('conversion can create missing customer and contact from extracted inquiry 
     assignedUserId: 7,
     subject: 'New line RFQ',
     companyName: 'Acme',
+    companyWebsite: 'www.acme.example',
     country: 'United States',
     contactName: 'Alice',
     contactEmail: 'alice@example.com',
@@ -363,6 +375,7 @@ test('conversion can create missing customer and contact from extracted inquiry 
   assert.equal(opportunity.primaryContactId, 30);
   assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].name, 'Acme');
   assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].ownerUserId, 9);
+  assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].website, 'https://www.acme.example');
   assert.equal(calls.find((call) => call[0] === 'createContact')[1].email, 'alice@example.com');
   assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].productInterest, 'Evaporator');
   assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].projectType, 'Expansion');
@@ -473,6 +486,8 @@ test('cross-sales customer request is assigned to a sales manager with proposed 
       requirement: 'Updated requirement',
       estimatedAmount: null,
       productInterest: 'Evaporator',
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
       projectType: 'New project',
       deliveryCycle: '',
       expectedBidDate: null
@@ -522,6 +537,8 @@ test('sales manager approval creates the opportunity for the requesting inquiry 
       newContactName: 'Alice',
       title: 'Acme project',
       requirement: 'Need quote',
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
       decidedBy: 2,
       decisionNote: 'Approved for collaboration',
       allowAnyReviewer: false,

@@ -321,6 +321,8 @@
             </div>
           </section>
 
+          <%- include('../partials/product-category-review', { record: opportunity, action: `/opportunities/${opportunity.id}/product-categories`, canEditCategories: canReviewProductCategories, suggestions: suggestProductCategoryCodes({ productInterest: opportunity.productInterest, subject: opportunity.title, requirementText: opportunity.requirement }) }) %>
+
           <% if (emailCenterEnabled) { %>
             <section class="content-section business-section business-section-correspondence" id="opportunity-correspondence">
               <h2>

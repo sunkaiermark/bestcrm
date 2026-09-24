@@ -1,4 +1,6 @@
 import { Router } from 'express';
+import { PRODUCT_CATEGORIES, suggestProductCategoryCodes } from '../domain/productCategories.mjs';
+import { ROLES, hasRole } from '../domain/roles.mjs';
 import multer from 'multer';
 import { createHash, randomUUID as nodeRandomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
@@ -233,6 +235,10 @@ export function emailCenterRoutes({
     try {
       const folder = emailFolder(String(req.query.folder || 'pending'));
       const searchTerm = folder === 'inbox' ? emailSearchTerm(req.query.q) : '';
+      const categoryFilter = String(req.query.productCategory || '').trim();
+      if (categoryFilter && !PRODUCT_CATEGORIES.some((category) => category.code === categoryFilter)) {
+        return res.status(400).send('Invalid product category');
+      }
       const { mailbox, mailboxes } = await resolveVisibleEmailMailbox(
         dependencies,
         req.currentUser,
@@ -242,7 +248,7 @@ export function emailCenterRoutes({
         ? await listVisibleEmailThreads(
             dependencies,
             req.currentUser,
-            emailFolderFilter(folder, mailbox.key, searchTerm)
+            { ...emailFolderFilter(folder, mailbox.key, searchTerm), productCategoryCode: categoryFilter }
           )
         : [];
       const cleanup = ['spam', 'non_business'].includes(folder) && mailbox && canPurgeEmailSpam(req.currentUser)
@@ -253,6 +259,7 @@ export function emailCenterRoutes({
         threads,
         folder,
         searchTerm,
+        categoryFilter,
         mailbox,
         mailboxes,
         cleanup,
@@ -291,8 +298,26 @@ export function emailCenterRoutes({
         req.currentUser,
         thread.id
       );
+      const categoryOpportunity = thread.opportunityId
+        ? await opportunityRepository.getOpportunityDetail(thread.opportunityId)
+        : null;
+      const canReviewProductCategories = (thread.archiveDisposition || 'active') === 'active'
+        && !['spam', 'archived'].includes(thread.triageStatus || 'pending')
+        && (hasRole(req.currentUser, ROLES.ADMINISTRATOR)
+        || hasRole(req.currentUser, ROLES.SALES_MANAGER)
+        || (categoryOpportunity && !categoryOpportunity.archivedAt
+          && Number(categoryOpportunity.salespersonId) === Number(req.currentUser.id)));
       res.render('email-center/detail', {
         thread,
+        canReviewProductCategories,
+        productCategorySuggestions: suggestProductCategoryCodes({
+          subject: thread.subject,
+          requirementText: (thread.messages || [])
+            .filter((message) => message.direction === 'inbound')
+            .slice(-4)
+            .map((message) => message.textBody || '')
+            .join('\n')
+        }),
         formatEmailListDate,
         formatPlainEmailForReading,
         backFolder,

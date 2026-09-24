@@ -2256,6 +2256,35 @@
         min-width: 0;
       }
 
+      .lead-submission-form-new > label:not(.lead-submission-form-wide) {
+        align-items: center;
+        gap: 12px;
+        grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+      }
+
+      .lead-submission-form-new > label.lead-submission-subject {
+        background: #f0fafa;
+        border: 1px solid #c5e6e3;
+        border-left: 4px solid var(--accent);
+        border-radius: 6px;
+        color: var(--ink);
+        font-size: 24px;
+        font-weight: 700;
+        grid-column: 1 / -1;
+        grid-template-columns: 105px minmax(0, 1fr);
+        padding: 14px 16px;
+      }
+
+      .lead-submission-form-new > .lead-submission-subject input {
+        font-size: 24px;
+        font-weight: 700;
+      }
+
+      .lead-required-mark {
+        color: #b91c1c;
+        padding-left: 2px;
+      }
+
       .lead-submission-form > .lead-submission-form-wide,
       .lead-submission-form > button {
         grid-column: 1 / -1;
@@ -2279,6 +2308,20 @@
         .lead-submission-form > button {
           justify-self: stretch;
           width: 100%;
+        }
+      }
+
+      @media (max-width: 700px) {
+        .lead-submission-form-new > label:not(.lead-submission-form-wide),
+        .lead-submission-form-new > label.lead-submission-subject {
+          align-items: stretch;
+          gap: 5px;
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .lead-submission-form-new > label.lead-submission-subject,
+        .lead-submission-form-new > .lead-submission-subject input {
+          font-size: 20px;
         }
       }
 
@@ -3431,11 +3474,12 @@
       }
 
       .lead-staged-attachment-list .link-button {
-        background: transparent;
-        border: 0;
+        background: #fff1f2;
+        border: 1px solid #fecdd3;
+        border-radius: 6px;
         color: #991b1b;
         font-weight: 600;
-        padding: 0;
+        padding: 7px 12px;
       }
 
       .email-recipient-line {
@@ -4825,6 +4869,53 @@
         .account-recovery-code-list {
           grid-template-columns: 1fr;
         }
+      }
+      .product-category-picker,
+      .product-category-review {
+        border: 1px solid #d7e2ee;
+        border-radius: 8px;
+        background: #f8fbfe;
+        padding: 0.8rem 1rem;
+      }
+      .product-category-picker {
+        grid-column: 1 / -1;
+      }
+      .product-category-picker p,
+      .product-category-review p {
+        margin: 0.3rem 0 0.55rem;
+      }
+      .product-category-suggestions,
+      .product-category-confirmed {
+        display: flex;
+        gap: 0.45rem;
+        align-items: center;
+        flex-wrap: wrap;
+        margin-bottom: 0.55rem;
+      }
+      .product-category-suggestion {
+        padding: 0.3rem 0.55rem;
+        font-size: 0.9rem;
+      }
+      .product-category-choices summary {
+        cursor: pointer;
+        font-weight: 600;
+      }
+      .product-category-options {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+        gap: 0.35rem 0.8rem;
+        margin-top: 0.6rem;
+      }
+      .product-category-options label {
+        display: flex;
+        align-items: center;
+        gap: 0.45rem;
+        margin: 0;
+        font-weight: 400;
+      }
+      .product-category-options input[type="checkbox"] {
+        width: auto;
+        min-height: auto;
       }
     </style>
   </head>

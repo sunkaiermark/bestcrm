@@ -814,6 +814,9 @@ test('sales manager reviews inquiry and converts it to opportunity', async () =>
       contactPhone: '+1 555',
       country: 'United States',
       productInterest: 'Evaporator',
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
+      productCategoryReviewedBy: 7,
       opportunityType: 'Expansion',
       requirementText: 'Need wastewater evaporation package.',
       reviewNote: 'Ready for opportunity',
@@ -828,6 +831,9 @@ test('sales manager reviews inquiry and converts it to opportunity', async () =>
       requirement: 'Need wastewater evaporation package',
       estimatedAmount: null,
       productInterest: 'Evaporator',
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
+      productCategoryReviewedBy: 7,
       projectType: 'Evaporator',
       deliveryCycle: '',
       expectedBidDate: null,
@@ -838,6 +844,8 @@ test('sales manager reviews inquiry and converts it to opportunity', async () =>
       matchedCustomerId: 20,
       matchedContactId: 30,
       convertedOpportunityId: 40,
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
       reviewedBy: 7
     }]
   ]);

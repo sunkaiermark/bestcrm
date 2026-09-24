@@ -19,20 +19,22 @@
 
           <nav class="email-folder-tabs" aria-label="<%= t('emailArchiveFolders') %>">
             <% for (const item of ['pending', 'inbox', 'sent', 'spam', 'non_business']) { %>
-              <a class="email-folder-tab<%= folder === item ? ' is-active' : '' %>" href="/email-center?mailbox=<%= encodeURIComponent(mailbox.key) %>&folder=<%= item %><%= searchTerm && item === 'inbox' ? `&q=${encodeURIComponent(searchTerm)}` : '' %>"<% if (folder === item) { %> aria-current="page"<% } %>><%= t(`emailTriageFolder.${item}`) %></a>
+              <a class="email-folder-tab<%= folder === item ? ' is-active' : '' %>" href="/email-center?mailbox=<%= encodeURIComponent(mailbox.key) %>&folder=<%= item %><%= searchTerm && item === 'inbox' ? `&q=${encodeURIComponent(searchTerm)}` : '' %><%= categoryFilter ? `&productCategory=${encodeURIComponent(categoryFilter)}` : '' %>"<% if (folder === item) { %> aria-current="page"<% } %>><%= t(`emailTriageFolder.${item}`) %></a>
             <% } %>
           </nav>
 
-          <% if (folder === 'inbox') { %>
-            <form class="email-search-filter" method="get" action="/email-center">
+          <form class="email-search-filter" method="get" action="/email-center">
               <input type="hidden" name="mailbox" value="<%= mailbox.key %>">
-              <input type="hidden" name="folder" value="inbox">
-              <label for="email-search"><%= t('emailSearchLabel') %></label>
-              <input id="email-search" name="q" type="search" value="<%= searchTerm %>" maxlength="200" placeholder="<%= t('emailSearchPlaceholder') %>">
+              <input type="hidden" name="folder" value="<%= folder %>">
+              <% if (folder === 'inbox') { %>
+                <label for="email-search"><%= t('emailSearchLabel') %></label>
+                <input id="email-search" name="q" type="search" value="<%= searchTerm %>" maxlength="200" placeholder="<%= t('emailSearchPlaceholder') %>">
+              <% } %>
+              <label for="email-product-category"><%= t('productCategory') %></label>
+              <select id="email-product-category" name="productCategory"><option value=""><%= t('selectProductCategory') %></option><% for (const category of productCategories) { %><option value="<%= category.code %>"<% if (categoryFilter === category.code) { %> selected<% } %>><%= category.label %></option><% } %></select>
               <button type="submit"><%= t('search') %></button>
-              <% if (searchTerm) { %><a class="secondary-action" href="/email-center?mailbox=<%= encodeURIComponent(mailbox.key) %>&folder=inbox"><%= t('clearFilters') %></a><% } %>
+              <% if (searchTerm || categoryFilter) { %><a class="secondary-action" href="/email-center?mailbox=<%= encodeURIComponent(mailbox.key) %>&folder=<%= folder %>"><%= t('clearFilters') %></a><% } %>
             </form>
-          <% } %>
 
           <% if (folder === 'pending') { %><p class="email-pending-definition"><%= t('emailPendingDefinition') %></p><% } %>
 
@@ -60,7 +62,7 @@
                     <span class="email-inbox-separator" aria-hidden="true">—</span>
                     <span class="email-inbox-preview" title="<%= thread.lastTextPreview %>"><%= thread.lastTextPreview %></span>
                   </span>
-                  <span class="email-inbox-triage"><span class="email-category-badge"><%= t(`emailCategory.${thread.classificationCategory}`) %></span> · <%= t(`emailTriageStatus.${thread.triageStatus}`) %><% if (thread.triageAssignedDisplayName) { %> · <%= thread.triageAssignedDisplayName %><% } %></span>
+                  <span class="email-inbox-triage"><span class="email-category-badge"><%= t(`emailCategory.${thread.classificationCategory}`) %></span> · <%= t(`emailTriageStatus.${thread.triageStatus}`) %><% for (const code of (thread.confirmedProductCategoryCodes || []).slice(0, 2)) { %> · <%= productCategoryLabel(code) %><% } %><% if ((thread.confirmedProductCategoryCodes || []).length > 2) { %> · +<%= thread.confirmedProductCategoryCodes.length - 2 %><% } %><% if (thread.triageAssignedDisplayName) { %> · <%= thread.triageAssignedDisplayName %><% } %></span>
                 </span>
                 <span class="email-inbox-attachment<%= thread.attachmentCount ? '' : ' is-empty' %>" title="<%= t('attachmentCount') %>"><% if (thread.attachmentCount) { %><span aria-hidden="true">📎</span> <%= thread.attachmentCount %><% } %></span>
                 <time class="email-inbox-time" datetime="<%= thread.lastMessageAt || '' %>"><%= formatEmailListDate(thread.lastMessageAt) %></time>

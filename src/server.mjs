@@ -4,6 +4,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadConfig } from './config.mjs';
 import { createPool } from './db/pool.mjs';
+import {
+  PRODUCT_CATEGORIES,
+  PRODUCT_CATEGORY_SUGGESTION_RULES,
+  productCategoryLabel,
+  suggestProductCategoryCodes
+} from './domain/productCategories.mjs';
 import { createSessionStore } from './db/sessionStore.mjs';
 import { createWorkflowTransaction } from './db/workflowTransaction.mjs';
 import { createEmailArchiveTransaction } from './db/emailArchiveTransaction.mjs';
@@ -30,6 +36,7 @@ import { createNotificationRepository } from './repositories/notificationReposit
 import { createOpportunityMaterialVersionRepository } from './repositories/opportunityMaterialVersionRepository.mjs';
 import { createOpportunityRepository } from './repositories/opportunityRepository.mjs';
 import { createProjectExecutionRepository } from './repositories/projectExecutionRepository.mjs';
+import { createProductCategoryRepository } from './repositories/productCategoryRepository.mjs';
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
 import { createOpportunityTechnicalDraftRepository } from './repositories/opportunityTechnicalDraftRepository.mjs';
 import { createOpportunityTechnicalDocumentRepository } from './repositories/opportunityTechnicalDocumentRepository.mjs';
@@ -55,6 +62,7 @@ import { leadSubmissionRoutes } from './routes/leadSubmissionRoutes.mjs';
 import { notificationRoutes } from './routes/notificationRoutes.mjs';
 import { opportunityRoutes } from './routes/opportunityRoutes.mjs';
 import { projectExecutionRoutes } from './routes/projectExecutionRoutes.mjs';
+import { productCategoryRoutes } from './routes/productCategoryRoutes.mjs';
 import { opportunityTechnicalDraftRoutes } from './routes/opportunityTechnicalDraftRoutes.mjs';
 import { opportunityTechnicalDocumentRoutes } from './routes/opportunityTechnicalDocumentRoutes.mjs';
 import { quotationPackageRoutes } from './routes/quotationPackageRoutes.mjs';
@@ -693,6 +701,7 @@ export function createApp(options = {}) {
     || (pool ? createOpportunityMaterialVersionRepository(pool) : emptyOpportunityMaterialVersionRepository);
   const contractApprovalRepository = options.contractApprovalRepository || (pool ? createContractApprovalRepository(pool) : emptyContractApprovalRepository);
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
+  const productCategoryRepository = options.productCategoryRepository || (pool ? createProductCategoryRepository(pool) : null);
   const projectExecutionRepository = options.projectExecutionRepository
     || (pool ? createProjectExecutionRepository(pool) : emptyProjectExecutionRepository);
   const opportunityResponsibilityRepository = options.opportunityResponsibilityRepository
@@ -801,6 +810,10 @@ export function createApp(options = {}) {
     res.locals.language = language;
     res.locals.currentPath = req.originalUrl || req.url || '/workbench';
     res.locals.t = createTranslator(language);
+    res.locals.productCategories = PRODUCT_CATEGORIES;
+    res.locals.productCategoryRules = PRODUCT_CATEGORY_SUGGESTION_RULES;
+    res.locals.productCategoryLabel = productCategoryLabel;
+    res.locals.suggestProductCategoryCodes = suggestProductCategoryCodes;
     res.locals.statusLabel = createStatusLabeler(language);
     res.locals.workflowEventLabel = createWorkflowEventLabeler(language);
     res.locals.messageLabel = createMessageLabeler(language);
@@ -851,7 +864,7 @@ export function createApp(options = {}) {
     salesWorkRepository,
     notificationRepository
   }));
-  app.use(analyticsRoutes());
+  app.use(analyticsRoutes({ productCategoryRepository }));
   app.use(notificationRoutes({
     notificationRepository,
     webPushPublicKey: configuredWebPushPublicKey
@@ -986,6 +999,15 @@ export function createApp(options = {}) {
     workflowTransaction,
     uploadDir: config.uploadDir,
     maxUploadMb: config.maxUploadMb
+  }));
+
+  app.use(productCategoryRoutes({
+    productCategoryRepository,
+    inquiryRepository,
+    opportunityRepository,
+    opportunityResponsibilityRepository,
+    emailArchiveRepository,
+    sharedAddress: config.customerEmail?.sharedAddress || 'sales@sunkaier.com'
   }));
 
   app.get('/health', (req, res) => {

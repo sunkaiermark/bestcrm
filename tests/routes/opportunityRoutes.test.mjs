@@ -1254,6 +1254,8 @@ test('salesperson edits opportunity fields from the detail action', async () => 
   assert.match(editForm.text, /value="Factory upgrade"/);
   assert.match(editForm.text, /<option value="automation" selected>automation<\/option>/);
   assert.match(editForm.text, /Save changes/);
+  assert.match(editForm.text, /name="confirmedProductCategoryCodes" value="kneaders"/);
+  assert.match(editForm.text, /name="confirmedProductCategoryCodes" value="process-line"/);
 
   const response = await agent
     .post('/opportunities/30')
@@ -1265,6 +1267,7 @@ test('salesperson edits opportunity fields from the detail action', async () => 
       requirement: 'Upgrade production line and packing line',
       estimatedAmount: '180000',
       productInterest: 'Industrial mixer',
+      productCategoryCode: 'mixers',
       projectType: 'automation',
       deliveryCycle: '60 days',
       expectedBidDate: '2026-08-01'
@@ -1281,6 +1284,9 @@ test('salesperson edits opportunity fields from the detail action', async () => 
       requirement: 'Upgrade production line and packing line',
       estimatedAmount: 180000,
       productInterest: 'Industrial mixer',
+      productCategoryCode: 'mixers',
+      confirmedProductCategoryCodes: [],
+      productCategoryReviewedBy: 7,
       projectType: 'automation',
       deliveryCycle: '60 days',
       expectedBidDate: '2026-08-01'

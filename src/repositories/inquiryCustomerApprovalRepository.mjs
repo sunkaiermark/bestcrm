@@ -159,6 +159,10 @@ export function createInquiryCustomerApprovalRepository(queryTarget) {
             requirement,
             estimated_amount,
             product_interest,
+            product_category_code,
+            confirmed_product_category_codes,
+            product_category_reviewed_by,
+            product_category_reviewed_at,
             project_type,
             delivery_cycle,
             expected_bid_date,
@@ -174,6 +178,10 @@ export function createInquiryCustomerApprovalRepository(queryTarget) {
             $11,
             $12,
             $13,
+            $20,
+            $21::text[],
+            $2,
+            CASE WHEN cardinality($21::text[]) > 0 THEN now() ELSE NULL END,
             $14,
             $15,
             $16,
@@ -188,6 +196,10 @@ export function createInquiryCustomerApprovalRepository(queryTarget) {
               matched_customer_id = opportunity.customer_id,
               matched_contact_id = opportunity.primary_contact_id,
               converted_opportunity_id = opportunity.id,
+              product_category_code = opportunity.product_category_code,
+              confirmed_product_category_codes = opportunity.confirmed_product_category_codes,
+              product_category_reviewed_by = $2,
+              product_category_reviewed_at = CASE WHEN inquiry.confirmed_product_category_codes IS DISTINCT FROM opportunity.confirmed_product_category_codes THEN now() ELSE inquiry.product_category_reviewed_at END,
               reviewed_by = $2,
               reviewed_at = now(),
               updated_at = now()
@@ -234,7 +246,9 @@ export function createInquiryCustomerApprovalRepository(queryTarget) {
         input.expectedBidDate,
         input.allowAnyReviewer || false,
         input.inquiryId,
-        input.salespersonId
+        input.salespersonId,
+        input.productCategoryCode || '',
+        input.confirmedProductCategoryCodes || []
       ]);
       const row = result.rows[0];
       return row ? {

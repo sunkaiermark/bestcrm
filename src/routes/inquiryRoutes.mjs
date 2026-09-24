@@ -187,6 +187,7 @@ function handleInquiryError(error, res, next) {
   if ([
     'Contact does not belong to customer',
     'Requirement is required',
+    'Invalid product category',
     'Customer is required',
     'Customer name is required',
     'Contact name is required',

@@ -1,0 +1,35 @@
+<%
+  const selectedCodes = Array.isArray(record?.confirmedProductCategoryCodes)
+    ? record.confirmedProductCategoryCodes : [];
+  const initialSuggestions = suggestProductCategoryCodes({
+    productInterest: record?.productInterest,
+    subject: record?.subject || record?.title,
+    requirementText: record?.requirementText || record?.requirement
+  }).filter((code) => !selectedCodes.includes(code));
+  const targetForm = formId || '';
+%>
+<div class="product-category-picker <%= className || '' %>" data-product-category-picker
+  data-subject-input="<%= subjectInput %>" data-requirement-input="<%= requirementInput %>"
+  data-rules="<%= JSON.stringify(productCategoryRules) %>"
+  data-suggested-label="<%= t('suggestedCategories') %>"
+  data-none-label="<%= t('noCategorySuggestions') %>"
+  data-add-label="<%= t('confirmCategory') %>">
+  <strong><%= t('productCategories') %></strong>
+  <p class="muted"><%= t('productCategoryReviewHint') %></p>
+  <div class="product-category-suggestions" data-product-category-suggestions>
+    <span><%= t('suggestedCategories') %>:</span>
+    <% if (initialSuggestions.length) { %>
+      <% for (const code of initialSuggestions) { %><span class="status"><%= productCategoryLabel(code) %></span><% } %>
+    <% } else { %><span class="muted"><%= t('noCategorySuggestions') %></span><% } %>
+  </div>
+  <input type="hidden" name="productCategoriesSubmitted" value="1"<% if (targetForm) { %> form="<%= targetForm %>"<% } %>>
+  <details class="product-category-choices">
+    <summary><%= t('chooseProductCategories') %> · <span data-product-category-count><%= selectedCodes.length %></span> <%= t('confirmedCategories') %></summary>
+    <div class="product-category-options">
+      <% for (const category of productCategories) { %>
+        <label><input type="checkbox" name="confirmedProductCategoryCodes" value="<%= category.code %>"<% if (selectedCodes.includes(category.code)) { %> checked<% } %><% if (targetForm) { %> form="<%= targetForm %>"<% } %>> <%= category.label %></label>
+      <% } %>
+    </div>
+  </details>
+</div>
+<script src="/assets/product-category-suggest.js" defer></script>

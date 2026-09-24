@@ -3,9 +3,7 @@
   const pendingEditMode = typeof isPendingEdit !== 'undefined' && isPendingEdit;
   const editingMode = resubmissionMode || pendingEditMode;
   const pageTitleKey = resubmissionMode ? 'resubmitLead' : pendingEditMode ? 'editLead' : 'submitNewLead';
-  const noticeKey = resubmissionMode
-    ? 'leadResubmissionNotice'
-    : pendingEditMode ? 'leadPendingEditNotice' : 'leadSubmissionNotice';
+  const noticeKey = resubmissionMode ? 'leadResubmissionNotice' : 'leadPendingEditNotice';
   const submitLabelKey = resubmissionMode
     ? 'resubmitForReview'
     : pendingEditMode ? 'saveLeadChanges' : 'submitForReview';
@@ -15,15 +13,16 @@
         <header class="page-header">
           <div>
             <h1><%= t(pageTitleKey) %></h1>
-            <p class="muted"><%= t(noticeKey) %></p>
+            <% if (editingMode) { %><p class="muted"><%= t(noticeKey) %></p><% } %>
           </div>
         </header>
 
-        <form class="form-panel lead-submission-form" method="post" action="<%= formAction || '/lead-submissions' %>" id="lead-submission-form">
+        <form class="form-panel lead-submission-form<%= editingMode ? '' : ' lead-submission-form-new' %>" method="post" action="<%= formAction || '/lead-submissions' %>" id="lead-submission-form">
           <%- csrfField() %>
           <% if (submissionToken) { %><input type="hidden" name="submissionToken" value="<%= submissionToken %>"><% } %>
           <input type="hidden" name="attachmentDraftToken" value="<%= attachmentDraftToken %>">
           <% if (emailThreadId) { %><input type="hidden" name="emailThreadId" value="<%= emailThreadId %>"><% } %>
+          <label class="lead-submission-subject"><span><%= t('subject') %></span><input name="subject" value="<%= submission.subject || '' %>"></label>
           <label>
             <%= t('leadSourceChannel') %>
             <select name="sourceChannel" required>
@@ -32,11 +31,11 @@
               <% } %>
             </select>
           </label>
-          <label><%= t('subject') %><input name="subject" value="<%= submission.subject || '' %>"></label>
-          <label><%= t('companyName') %><input name="companyName" value="<%= submission.companyName || '' %>"></label>
-          <label><%= t('contactName') %><input name="contactName" value="<%= submission.contactName || '' %>"></label>
-          <label><%= t('email') %><input type="email" name="contactEmail" value="<%= submission.contactEmail || '' %>"></label>
-          <label><%= t('phone') %><input name="contactPhone" value="<%= submission.contactPhone || '' %>"></label>
+          <label><span><%= t('companyName') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input name="companyName" value="<%= submission.companyName || '' %>" required></label>
+          <label><%= t('website') %><input name="companyWebsite" type="text" inputmode="url" placeholder="https://www.example.com" value="<%= submission.companyWebsite || '' %>"></label>
+          <label><span><%= t('contactName') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input name="contactName" value="<%= submission.contactName || '' %>" required></label>
+          <label><span><%= t('email') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input type="email" name="contactEmail" value="<%= submission.contactEmail || '' %>" required></label>
+          <label><span><%= t('phone') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input type="tel" name="contactPhone" value="<%= submission.contactPhone || '' %>" required></label>
           <label>
             <%= t('country') %>
             <select name="country">
@@ -47,6 +46,7 @@
             </select>
           </label>
           <label><%= t('productInterest') %><input name="productInterest" value="<%= submission.productInterest || '' %>"></label>
+          <%- include('../partials/product-category-picker', { record: submission, subjectInput: 'subject', requirementInput: 'requirementText', formId: '', className: '' }) %>
           <label><%= t('opportunityType') %><input name="opportunityType" value="<%= submission.opportunityType || '' %>"></label>
           <label>
             <%= t('priority') %>
@@ -99,7 +99,7 @@
             data-upload-url="/lead-submissions/attachment-drafts/<%= attachmentDraftToken %>"
             data-preview-label="<%= t('preview') %>"
             data-download-label="<%= t('download') %>"
-            data-remove-label="<%= t('remove') %>"
+            data-remove-label="<%= t('withdrawLeadAttachment') %>"
             data-no-files-label="<%= t('noUploadedSupportingFiles') %>"
             data-select-files-label="<%= t('selectFilesToUpload') %>"
             data-uploading-label="<%= t('uploadingFiles') %>"
@@ -201,7 +201,7 @@
                 download.textContent = labels.download;
                 const remove = document.createElement('button');
                 remove.type = 'button';
-                remove.className = 'link-button danger-link';
+                remove.className = 'link-button danger-link lead-staged-withdraw';
                 remove.textContent = labels.remove;
                 remove.addEventListener('click', async () => {
                   setBusy(true);

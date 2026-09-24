@@ -64,9 +64,10 @@ async function buildApp({
     sourceChannel: 'referral',
     subject: 'Dryer lead',
     companyName: 'Acme',
+    companyWebsite: 'https://acme.example',
     contactName: 'Alice',
     contactEmail: 'alice@example.com',
-    contactPhone: '',
+    contactPhone: '+65 6123 4567',
     productInterest: 'Dryer',
     opportunityType: 'New project',
     requirementText: 'Need a dryer',
@@ -185,6 +186,7 @@ test('salesperson sees only personal lead submissions and cannot open inquiry in
     const receipt = await agent.get('/lead-submissions/11');
     assert.equal(receipt.status, 200);
     assert.match(receipt.text, /Lead details/);
+    assert.match(receipt.text, /<strong>Company Website:<\/strong>\s*https:\/\/acme\.example/);
     assert.match(receipt.text, /title="Back to list"/);
     assert.match(receipt.text, /2026-09-02 09:00/);
     assert.doesNotMatch(receipt.text, /2026-09-02T01:00:00\.000Z/);
@@ -223,6 +225,40 @@ test('any active CRM user can open the lead queue and submission form', async ()
   }
 });
 
+test('lead submission endpoint rejects each missing required contact field', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-required-fields-'));
+  try {
+    const { agent, calls } = await buildApp({ uploadDir });
+    const form = await agent.get('/lead-submissions/new');
+    const submissionToken = form.text.match(/name="submissionToken" value="([^"]+)"/)?.[1];
+    const attachmentDraftToken = form.text.match(/name="attachmentDraftToken" value="([^"]+)"/)?.[1];
+    const valid = {
+      submissionToken,
+      attachmentDraftToken,
+      assignedUserId: '2',
+      sourceChannel: 'referral',
+      companyName: 'Acme',
+      contactName: 'Alice',
+      contactPhone: '+65 6123 4567',
+      contactEmail: 'alice@example.com',
+      requirementText: 'Need a dryer'
+    };
+    for (const [field, message] of [
+      ['companyName', 'Company name is required'],
+      ['contactName', 'Contact name is required'],
+      ['contactPhone', 'Phone is required'],
+      ['contactEmail', 'Email is required']
+    ]) {
+      const response = await agent.post('/lead-submissions').type('form').send({ ...valid, [field]: '  ' });
+      assert.equal(response.status, 400);
+      assert.equal(response.text, message);
+    }
+    assert.equal(calls.some((call) => call[0] === 'createInquiry'), false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('salesperson uploads and previews a supporting file before submitting the lead', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-upload-'));
   const sourceFile = path.join(uploadDir, 'process.txt');
@@ -232,12 +268,31 @@ test('salesperson uploads and previews a supporting file before submitting the l
     const form = await agent.get('/lead-submissions/new');
     assert.equal(form.status, 200);
     assert.match(form.text, /Sales Manager/);
-    assert.match(form.text, /class="form-panel lead-submission-form"/);
+    assert.match(form.text, /class="form-panel lead-submission-form lead-submission-form-new"/);
+    assert.doesNotMatch(form.text, /Create a lead when the customer, project, or requirement/);
+    assert.ok(form.text.indexOf('name="subject"') < form.text.indexOf('name="sourceChannel"'));
+    assert.match(form.text, /class="lead-submission-subject"/);
+    for (const field of ['companyName', 'contactName', 'contactEmail', 'contactPhone']) {
+      assert.match(form.text, new RegExp(`<input[^>]*name="${field}"[^>]*required>`));
+    }
+    assert.equal((form.text.match(/class="lead-required-mark" aria-hidden="true">\*/g) || []).length, 4);
+    assert.match(form.text, /name="companyWebsite"/);
+    assert.match(form.text, /name="confirmedProductCategoryCodes" value="custom-machines"/);
+    assert.match(form.text, /name="confirmedProductCategoryCodes" value="kneaders"/);
+    assert.match(form.text, /name="confirmedProductCategoryCodes" value="process-line"/);
+    assert.match(form.text, /\/assets\/product-category-suggest\.js/);
+    const suggestionScript = await agent.get('/assets/product-category-suggest.js');
+    assert.equal(suggestionScript.status, 200);
+    assert.match(suggestionScript.text, /data-product-category-picker/);
     assert.match(form.text, /class="lead-submission-form-wide"/);
     assert.match(form.text, /\.form-panel\.lead-submission-form\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*margin-left: auto;[^}]*margin-right: auto;[^}]*max-width: 1180px;/s);
+    assert.match(form.text, /\.lead-submission-form-new > label\.lead-submission-subject\s*\{[^}]*grid-column: 1 \/ -1;[^}]*grid-template-columns: 105px minmax\(0, 1fr\);/s);
     assert.match(form.text, /@media \(max-width: 900px\)\s*\{[^}]*\.form-panel\.lead-submission-form\s*\{[^}]*grid-template-columns: 1fr;/s);
+    assert.match(form.text, /@media \(max-width: 700px\)\s*\{[^}]*\.lead-submission-form-new > label\.lead-submission-subject\s*\{[^}]*grid-template-columns: minmax\(0, 1fr\);/s);
     assert.match(form.text, /type="file" id="lead-attachment-input" multiple/);
     assert.match(form.text, /id="lead-attachment-upload-button">Upload selected files/);
+    assert.match(form.text, /data-remove-label="Withdraw"/);
+    assert.match(form.text, /lead-staged-withdraw/);
     assert.doesNotMatch(form.text, /enctype="multipart\/form-data"/);
     const token = form.text.match(/name="submissionToken" value="([^"]+)"/)?.[1];
     const draftToken = form.text.match(/name="attachmentDraftToken" value="([^"]+)"/)?.[1];
@@ -265,6 +320,11 @@ test('salesperson uploads and previews a supporting file before submitting the l
         assignedUserId: '2',
         sourceChannel: 'referral',
         companyName: 'Acme',
+        companyWebsite: 'https://lead-acme.example',
+        contactName: 'Alice',
+        contactEmail: 'alice@example.com',
+        contactPhone: '+65 6123 4567',
+        productCategoryCode: 'custom-machines',
         requirementText: 'Need a dryer'
       });
 
@@ -274,6 +334,10 @@ test('salesperson uploads and previews a supporting file before submitting the l
     assert.equal(createCall[1].submissionType, 'sales_lead');
     assert.equal(createCall[1].assignedUserId, 2);
     assert.equal(createCall[1].recommendedSalespersonId, 7);
+    assert.equal(createCall[1].companyWebsite, 'https://lead-acme.example');
+    assert.equal(createCall[1].productCategoryCode, 'custom-machines');
+    const detail = await agent.get('/lead-submissions/11');
+    assert.match(detail.text, /<strong>Company Website:<\/strong>\s*https:\/\/lead-acme\.example/);
     const attachmentCall = calls.find((call) => call[0] === 'createInquiryAttachments');
     assert.equal(attachmentCall[1].length, 1);
     assert.equal(attachmentCall[1][0].inquiryId, 11);
@@ -323,6 +387,7 @@ test('assigned sales manager sees approve return and reject controls on lead det
     assert.match(page.text, /name="quotationEngineerIds"[^>]*value="9"/);
     assert.match(page.text, /name="quotationEngineerLeadId"/);
     assert.match(page.text, /name="technicalPlanSubmitDate"[^>]*required/);
+    assert.match(page.text, /name="companyWebsite"[^>]*value="https:\/\/acme\.example"/);
     assert.match(page.text, /workflow-compact-row workflow-approve-row/);
     assert.match(page.text, /workflow-compact-row workflow-reject-row/);
     assert.equal((page.text.match(/class="lead-review-action-fields/g) || []).length, 3);
@@ -441,6 +506,9 @@ test('salesperson submits multiple lead attachments with stable source indexes',
         assignedUserId: '2',
         sourceChannel: 'referral',
         companyName: 'Acme',
+        contactName: 'Alice',
+        contactEmail: 'alice@example.com',
+        contactPhone: '+65 6123 4567',
         requirementText: 'Need a dryer'
       });
 
@@ -617,6 +685,7 @@ test('pending lead creator can open the edit form and save corrected details', a
     const edit = await agent.get('/lead-submissions/11/edit');
     assert.equal(edit.status, 200);
     assert.match(edit.text, /action="\/lead-submissions\/11\/update"/);
+    assert.match(edit.text, /name="companyWebsite"[^>]*value="https:\/\/acme\.example"/);
     assert.match(edit.text, />Save changes</);
     const draftToken = edit.text.match(/name="attachmentDraftToken" value="([^"]+)"/)?.[1];
     assert.ok(draftToken);
@@ -628,6 +697,10 @@ test('pending lead creator can open the edit form and save corrected details', a
         assignedUserId: '2',
         sourceChannel: 'referral',
         companyName: 'Acme corrected',
+        companyWebsite: 'https://corrected-acme.example',
+        contactName: 'Alice',
+        contactEmail: 'alice@example.com',
+        contactPhone: '+65 6123 4567',
         requirementText: 'Need a corrected dryer capacity'
       });
 
@@ -635,6 +708,7 @@ test('pending lead creator can open the edit form and save corrected details', a
     assert.equal(response.headers.location, '/lead-submissions/11');
     const updateCall = calls.find((call) => call[0] === 'updatePendingLead');
     assert.equal(updateCall[2].companyName, 'Acme corrected');
+    assert.equal(updateCall[2].companyWebsite, 'https://corrected-acme.example');
     assert.equal(updateCall[2].requirementText, 'Need a corrected dryer capacity');
     const auditCall = calls.find((call) => call[0] === 'createLeadReviewEvent');
     assert.equal(auditCall[1].eventType, 'creator_edited');

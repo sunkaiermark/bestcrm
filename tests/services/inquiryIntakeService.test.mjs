@@ -74,6 +74,7 @@ test('normalizeWebsiteInquiryPayload maps common sunkaier.com form fields', () =
     contactPhone: '123',
     country: '',
     productInterest: 'Dryer',
+    productCategoryCode: '',
     opportunityType: '改造',
     requirementText: 'Need dryer quote',
     rawPayload: {
@@ -122,6 +123,7 @@ test('normalizeChatwootInquiryPayload maps handoff summary and sender fields', (
     contactPhone: '+65 6000 0000',
     country: '',
     productInterest: 'Industrial Mixer',
+    productCategoryCode: 'mixers',
     opportunityType: '新增',
     requirementText: 'Needs a mixer quotation.',
     rawPayload: {

@@ -1,4 +1,5 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
+import { confirmedProductCategoriesFromInput, resolveProductCategoryCode, suggestProductInterest } from '../domain/productCategories.mjs';
 import { ACTIONS } from '../domain/workflow.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
 import {
@@ -110,11 +111,15 @@ export function normalizeLeadSubmissionInput(input, actor) {
     sourceReceivedAt: null,
     subject: text(input.subject),
     companyName: text(input.companyName),
+    companyWebsite: text(input.companyWebsite),
     contactName: text(input.contactName),
     contactEmail: text(input.contactEmail).toLowerCase(),
     contactPhone: text(input.contactPhone),
     country: text(input.country),
-    productInterest: text(input.productInterest),
+    productInterest: text(input.productInterest) || suggestProductInterest(input),
+    productCategoryCode: resolveProductCategoryCode(input),
+    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input),
+    productCategoryReviewedBy: Number(actor.id),
     opportunityType: text(input.opportunityType),
     requirementText: text(input.requirementText),
     rawPayload: {
@@ -133,10 +138,18 @@ export function normalizeLeadSubmissionInput(input, actor) {
   };
 }
 
+function assertLeadContactDetails(normalized) {
+  if (!normalized.companyName) throw new Error('Company name is required');
+  if (!normalized.contactName) throw new Error('Contact name is required');
+  if (!normalized.contactPhone) throw new Error('Phone is required');
+  if (!normalized.contactEmail) throw new Error('Email is required');
+}
+
 function normalizeLeadResubmissionInput(input, actor, current) {
   const normalized = normalizeLeadSubmissionInput({
     ...current,
     ...input,
+    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input, current.confirmedProductCategoryCodes),
     submissionToken: '00000000-0000-0000-0000-000000000000',
     emailThreadId: current.rawPayload?.emailThreadId
   }, actor);
@@ -220,9 +233,7 @@ export async function submitSalesLead({ inquiryRepository, userRepository }, act
   if (!normalized.requirementText) {
     throw new Error('Requirement is required');
   }
-  if (!normalized.companyName && !normalized.contactName && !normalized.contactEmail && !normalized.contactPhone) {
-    throw new Error('Company or contact is required');
-  }
+  assertLeadContactDetails(normalized);
   if (!normalized.sourceReference || !/^sales-lead:\d+:[0-9a-f-]{36}$/i.test(normalized.sourceReference)) {
     throw new Error('Invalid submission token');
   }
@@ -504,9 +515,7 @@ export async function resubmitSalesLead(dependencies, actor, leadId, input = {})
     }
     const normalized = normalizeLeadResubmissionInput(input, actor, lead);
     if (!normalized.requirementText) throw new Error('Requirement is required');
-    if (!normalized.companyName && !normalized.contactName && !normalized.contactEmail && !normalized.contactPhone) {
-      throw new Error('Company or contact is required');
-    }
+    assertLeadContactDetails(normalized);
     await validateLeadRouting(repositories.userRepository, normalized);
     const resubmitted = await repositories.inquiryRepository.resubmitLead(lead.id, normalized);
     if (!resubmitted) throw new Error('Lead already processed');
@@ -533,9 +542,7 @@ export async function updatePendingSalesLead(dependencies, actor, leadId, input 
     }
     const normalized = normalizeLeadResubmissionInput(input, actor, lead);
     if (!normalized.requirementText) throw new Error('Requirement is required');
-    if (!normalized.companyName && !normalized.contactName && !normalized.contactEmail && !normalized.contactPhone) {
-      throw new Error('Company or contact is required');
-    }
+    assertLeadContactDetails(normalized);
     await validateLeadRouting(repositories.userRepository, normalized);
     const updated = await repositories.inquiryRepository.updatePendingLead(lead.id, normalized);
     if (!updated) throw new Error('Lead already processed');

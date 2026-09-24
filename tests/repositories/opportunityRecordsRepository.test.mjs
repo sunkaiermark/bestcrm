@@ -27,6 +27,7 @@ const opportunityRow = {
   requirement: 'Upgrade production line',
   estimated_amount: '120000.50',
   product_interest: 'Industrial mixer',
+  product_category_code: 'mixers',
   project_type: 'automation',
   delivery_cycle: '45 days',
   expected_bid_date: '2026-07-10',
@@ -66,6 +67,10 @@ test('opportunity repository lists opportunities with customer and contact names
     requirement: 'Upgrade production line',
     estimatedAmount: 120000.50,
     productInterest: 'Industrial mixer',
+    productCategoryCode: 'mixers',
+    confirmedProductCategoryCodes: [],
+    productCategoryReviewedBy: null,
+    productCategoryReviewedAt: null,
     projectType: 'automation',
     deliveryCycle: '45 days',
     expectedBidDate: '2026-07-10',
@@ -257,7 +262,10 @@ test('opportunity repository creates draft opportunity rows', async () => {
     '45 days',
     '2026-07-10',
     STATUSES.DRAFT,
-    7
+    7,
+    '',
+    [],
+    null
   ]);
 });
 
@@ -294,7 +302,10 @@ test('opportunity repository updates editable opportunity fields', async () => {
     'automation',
     '60 days',
     '2026-08-01',
-    30
+    30,
+    '',
+    [],
+    null
   ]);
 });
 
@@ -384,6 +395,9 @@ test('opportunity repository generates six digit opportunity numbers from sequen
     '45 days',
     '2026-07-10',
     STATUSES.DRAFT,
-    7
+    7,
+    '',
+    [],
+    null
   ]);
 });

@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { isInquiryPriority } from '../domain/inquiries.mjs';
+import { suggestProductCategoryCode } from '../domain/productCategories.mjs';
 
 const SIGNATURE_PREFIX = 'sha256=';
 const MAX_CLOCK_SKEW_MS = 5 * 60 * 1000;
@@ -105,6 +106,11 @@ export function normalizeWebsiteInquiryPayload(payload = {}) {
     country: text(fields.country) || fieldFromText(requirementText, ['Country', '国家']),
     productInterest: text(fields.productInterest || fields.product || fields.productName || fields.interest)
       || fieldFromText(requirementText, ['Product Interest', 'Product', 'Equipment', '关注产品', '产品', '设备']),
+    productCategoryCode: suggestProductCategoryCode({
+      productInterest: fields.productInterest || fields.product || fields.productName || fields.interest,
+      subject: fields.subject || fields.title,
+      requirementText
+    }),
     opportunityType: text(
       fields.opportunityType
       || fields.opportunity_type
@@ -138,6 +144,11 @@ export function normalizeChatwootInquiryPayload(payload = {}) {
     contactPhone: text(payload.contactPhone || payload.phone || payload.whatsapp || payload.senderPhone),
     country: text(payload.country),
     productInterest: text(payload.productInterest || payload.product || payload.productName || payload.interest),
+    productCategoryCode: suggestProductCategoryCode({
+      productInterest: payload.productInterest || payload.product || payload.productName || payload.interest,
+      subject: payload.subject || payload.title,
+      requirementText: payload.requirementText || payload.handoffSummary || payload.summary || payload.message
+    }),
     opportunityType: text(
       payload.opportunityType
       || payload.opportunity_type

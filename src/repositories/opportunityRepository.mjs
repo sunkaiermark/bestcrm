@@ -25,6 +25,10 @@ function mapOpportunityRow(row) {
     requirement: row.requirement,
     estimatedAmount: numberOrNull(row.estimated_amount),
     productInterest: row.product_interest || '',
+    productCategoryCode: row.product_category_code || '',
+    confirmedProductCategoryCodes: row.confirmed_product_category_codes || [],
+    productCategoryReviewedBy: numberOrNull(row.product_category_reviewed_by),
+    productCategoryReviewedAt: row.product_category_reviewed_at || null,
     projectType: row.project_type,
     deliveryCycle: row.delivery_cycle,
     expectedBidDate: row.expected_bid_date,
@@ -65,6 +69,10 @@ const opportunitySelect = `
     o.requirement,
     o.estimated_amount,
     o.product_interest,
+    o.product_category_code,
+    o.confirmed_product_category_codes,
+    o.product_category_reviewed_by,
+    o.product_category_reviewed_at,
     o.project_type,
     o.delivery_cycle,
     o.expected_bid_date,
@@ -300,9 +308,13 @@ export function createOpportunityRepository(queryTarget) {
           delivery_cycle,
           expected_bid_date,
           status,
-          salesperson_id
+          salesperson_id,
+          product_category_code,
+          confirmed_product_category_codes,
+          product_category_reviewed_by,
+          product_category_reviewed_at
         )
-        VALUES ($1, COALESCE($2, nextval('opportunity_no_seq')::text), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+        VALUES ($1, COALESCE($2, nextval('opportunity_no_seq')::text), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::text[], $16, CASE WHEN cardinality($15::text[]) > 0 THEN now() ELSE NULL END)
         RETURNING *
       `, [
         input.originInquiryId,
@@ -317,7 +329,10 @@ export function createOpportunityRepository(queryTarget) {
         input.deliveryCycle,
         input.expectedBidDate,
         input.status,
-        input.salespersonId
+        input.salespersonId,
+        input.productCategoryCode || '',
+        input.confirmedProductCategoryCodes || [],
+        input.productCategoryReviewedBy || null
       ]);
       return mapOpportunityRow(result.rows[0]);
     },
@@ -332,6 +347,10 @@ export function createOpportunityRepository(queryTarget) {
           requirement = $4,
           estimated_amount = $5,
           product_interest = $6,
+          product_category_code = $11,
+          confirmed_product_category_codes = $12::text[],
+          product_category_reviewed_by = $13,
+          product_category_reviewed_at = CASE WHEN confirmed_product_category_codes IS DISTINCT FROM $12::text[] THEN now() ELSE product_category_reviewed_at END,
           project_type = $7,
           delivery_cycle = $8,
           expected_bid_date = $9,
@@ -349,7 +368,10 @@ export function createOpportunityRepository(queryTarget) {
         input.projectType,
         input.deliveryCycle,
         input.expectedBidDate,
-        id
+        id,
+        input.productCategoryCode || '',
+        input.confirmedProductCategoryCodes || [],
+        input.productCategoryReviewedBy || null
       ]);
       return mapOpportunityRow(result.rows[0]);
     },
@@ -541,6 +563,7 @@ export function createOpportunityRepository(queryTarget) {
           requirement,
           estimated_amount,
           product_interest,
+          product_category_code,
           project_type,
           delivery_cycle,
           expected_bid_date,

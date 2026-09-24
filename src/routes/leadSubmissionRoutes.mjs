@@ -250,6 +250,9 @@ async function renderLeadDetailPage(dependencies, req, res, submission, {
     ...formOptions,
     canReview,
     canEdit: canEditLeadSubmission(req.currentUser, submission),
+    canEditCategories: hasRole(req.currentUser, ROLES.ADMINISTRATOR)
+      || hasRole(req.currentUser, ROLES.SALES_MANAGER)
+      || Number(submission.createdBy) === Number(req.currentUser.id),
     isEmailLead: submission.sourceChannel === 'email'
       || Number(submission.rawPayload?.emailThreadId) > 0
   });
@@ -266,7 +269,11 @@ function handleLeadError(error, res, next) {
   }
   if ([
     'Requirement is required',
-    'Company or contact is required',
+    'Invalid product category',
+    'Company name is required',
+    'Contact name is required',
+    'Phone is required',
+    'Email is required',
     'Sales manager is required',
     'Sales owner is required',
     'Quotation engineer is required',
@@ -279,7 +286,6 @@ function handleLeadError(error, res, next) {
     'Email disposition is required',
     'Customer is required',
     'Customer name is required',
-    'Contact name is required',
     'Contact does not belong to customer',
     'Attachment upload expired'
   ].includes(error.message)) {

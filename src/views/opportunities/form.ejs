@@ -151,6 +151,7 @@
             <%= t('productInterest') %>
             <input name="productInterest" form="opportunity-form" value="<%= opportunity.productInterest || '' %>">
           </label>
+          <%- include('../partials/product-category-picker', { record: opportunity, subjectInput: 'title', requirementInput: 'requirement', formId: 'opportunity-form', className: '' }) %>
           <label>
             <%= t('opportunityType') %>
             <select name="projectType" form="opportunity-form">

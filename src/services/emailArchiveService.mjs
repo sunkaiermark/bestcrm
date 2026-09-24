@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { suggestProductCategoryCode, suggestProductInterest } from '../domain/productCategories.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import { canAccessInquiryInbox } from './inquiryService.mjs';
@@ -755,6 +756,9 @@ function conversionDraftFromThread(thread) {
   return {
     emailThreadId: thread.id,
     subject,
+    productInterest: suggestProductInterest({ subject, requirementText: requirement }),
+    productCategoryCode: suggestProductCategoryCode({ subject, requirementText: requirement }),
+    confirmedProductCategoryCodes: thread.confirmedProductCategoryCodes || [],
     companyName: thread.customerName || '',
     contactName: sourceMessage.fromName || thread.contactName || '',
     contactEmail: text(sourceMessage.fromAddress).toLowerCase(),
@@ -900,7 +904,8 @@ function inquiryInputFromThread(thread, actor) {
     contactEmail: text(sourceMessage.fromAddress).toLowerCase(),
     contactPhone: '',
     country: '',
-    productInterest: '',
+    productInterest: suggestProductInterest({ subject: sourceMessage.subject, requirementText: sourceMessage.textBody }),
+    productCategoryCode: suggestProductCategoryCode({ subject: sourceMessage.subject, requirementText: sourceMessage.textBody }),
     opportunityType: '',
     requirementText: sourceMessage.textBody || sourceMessage.subject || thread.subject || 'Email inquiry',
     rawPayload: {

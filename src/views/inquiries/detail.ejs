@@ -142,6 +142,7 @@
               <div class="inquiry-form-grid">
                 <label class="inquiry-field-wide"><%= t('subject') %><input name="subject" value="<%= inquiry.subject || '' %>"></label>
                 <label><%= t('productInterest') %><input name="productInterest" value="<%= inquiry.productInterest || '' %>"></label>
+                <%- include('../partials/product-category-picker', { record: inquiry, subjectInput: 'subject', requirementInput: 'requirementText', formId: '', className: '' }) %>
                 <label><%= t('opportunityType') %><input name="opportunityType" value="<%= inquiry.opportunityType || '' %>"></label>
                 <label class="inquiry-field-full"><%= t('requirement') %><textarea name="requirementText" required><%= inquiry.requirementText || '' %></textarea></label>
               </div>
@@ -236,6 +237,8 @@
             </div>
           </section>
         <% } %>
+
+        <%- include('../partials/product-category-review', { record: inquiry, action: `/inquiries/${inquiry.id}/product-categories`, canEditCategories: true, suggestions: suggestProductCategoryCodes({ productInterest: inquiry.productInterest, subject: inquiry.subject, requirementText: inquiry.requirementText }) }) %>
 
         <details class="content-section inquiry-raw-details">
           <summary><%= t('sourceDetails') %></summary>

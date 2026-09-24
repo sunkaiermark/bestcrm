@@ -352,7 +352,7 @@ test('release candidate completes lead-to-inquiry-to-engineering-to-QP-V2-email-
     const inquiry = await submitSalesLead(core, sales, {
       submissionToken: '123e4567-e89b-12d3-a456-426614174000', assignedUserId: salesManager.id,
       sourceChannel: 'exhibition', companyName: 'Global Process Ltd', contactName: 'Jane Buyer',
-      contactEmail: 'buyer@example.com', productInterest: 'Mixer', opportunityType: 'New plant',
+      contactEmail: 'buyer@example.com', contactPhone: '+65 6123 4567', productInterest: 'Mixer', opportunityType: 'New plant',
       requirementText: 'Need a 50 t/h mixing line', priority: 'high'
     });
     assert.equal(inquiry.status, 'new');

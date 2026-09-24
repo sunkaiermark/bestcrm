@@ -1,0 +1,45 @@
+<%
+  const confirmed = Array.isArray(record?.confirmedProductCategoryCodes)
+    ? record.confirmedProductCategoryCodes : [];
+  const proposed = (typeof suggestions !== 'undefined' && Array.isArray(suggestions)
+    ? suggestions
+    : suggestProductCategoryCodes({
+        productInterest: record?.productInterest,
+        subject: record?.subject || record?.title,
+        requirementText: record?.requirementText || record?.requirement
+      })).filter((code) => !confirmed.includes(code));
+%>
+<section class="content-section product-category-review">
+  <h2><%= t('productCategories') %></h2>
+  <p class="muted"><%= record?.productCategoryReviewedAt
+    ? (confirmed.length ? t('categoryReviewStatusReviewed') : t('categoryReviewStatusUnassigned'))
+    : t('categoryReviewStatusPending') %></p>
+  <div class="product-category-confirmed">
+    <strong><%= t('confirmedCategories') %>:</strong>
+    <% if (confirmed.length) { %>
+      <% for (const code of confirmed) { %><span class="status"><%= productCategoryLabel(code) %></span><% } %>
+    <% } else { %><span class="muted">—</span><% } %>
+  </div>
+  <div class="product-category-suggestions">
+    <strong><%= t('suggestedCategories') %>:</strong>
+    <% if (proposed.length) { %>
+      <% for (const code of proposed) { %><span class="status"><%= productCategoryLabel(code) %></span><% } %>
+    <% } else { %><span class="muted"><%= t('noCategorySuggestions') %></span><% } %>
+  </div>
+  <% if (canEditCategories) { %>
+    <p class="muted"><%= t('productCategoryReviewHint') %></p>
+    <form method="post" action="<%= action %>">
+      <%- csrfField() %>
+      <input type="hidden" name="productCategoriesSubmitted" value="1">
+      <details class="product-category-choices">
+        <summary><%= t('chooseProductCategories') %></summary>
+        <div class="product-category-options">
+          <% for (const category of productCategories) { %>
+            <label><input type="checkbox" name="confirmedProductCategoryCodes" value="<%= category.code %>"<% if (confirmed.includes(category.code)) { %> checked<% } %>> <%= category.label %></label>
+          <% } %>
+        </div>
+      </details>
+      <button type="submit"><%= t('saveProductCategories') %></button>
+    </form>
+  <% } %>
+</section>

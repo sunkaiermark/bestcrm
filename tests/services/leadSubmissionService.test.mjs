@@ -102,15 +102,26 @@ test('creator can edit a pending lead without changing its status and the edit i
     sourceChannel: 'referral',
     assignedUserId: '2',
     companyName: 'Acme corrected',
+    companyWebsite: ' https://acme.example ',
     requirementText: 'Need a 6 t/h dryer'
   });
 
   assert.equal(updated.status, 'new');
   assert.equal(updated.companyName, 'Acme corrected');
+  assert.equal(updated.companyWebsite, 'https://acme.example');
   assert.equal(updated.requirementText, 'Need a 6 t/h dryer');
   assert.equal(events[0].eventType, 'creator_edited');
   assert.equal(events[0].fromStatus, 'new');
   assert.equal(events[0].toStatus, 'new');
+
+  await assert.rejects(
+    () => updatePendingSalesLead(dependencies, salesperson, 11, {
+      assignedUserId: '2',
+      contactPhone: '  '
+    }),
+    /Phone is required/
+  );
+  assert.equal(events.length, 1);
 
   await assert.rejects(
     () => updatePendingSalesLead(dependencies, { ...salesperson, id: 8 }, 11, {
@@ -155,7 +166,10 @@ test('salesperson submission becomes a manager-assigned inquiry with salesperson
     assignedUserId: '2',
     sourceChannel: 'exhibition',
     companyName: ' Acme ',
+    companyWebsite: ' https://acme.example ',
+    contactName: ' Alice ',
     contactEmail: 'BUYER@EXAMPLE.COM ',
+    contactPhone: ' +65 6123 4567 ',
     productInterest: ' Dryer ',
     opportunityType: ' New project ',
     requirementText: ' Need a drying line ',
@@ -171,11 +185,15 @@ test('salesperson submission becomes a manager-assigned inquiry with salesperson
     sourceReceivedAt: null,
     subject: '',
     companyName: 'Acme',
-    contactName: '',
+    companyWebsite: 'https://acme.example',
+    contactName: 'Alice',
     contactEmail: 'buyer@example.com',
-    contactPhone: '',
+    contactPhone: '+65 6123 4567',
     country: '',
     productInterest: 'Dryer',
+    productCategoryCode: '',
+    confirmedProductCategoryCodes: [],
+    productCategoryReviewedBy: 7,
     opportunityType: 'New project',
     requirementText: 'Need a drying line',
     rawPayload: { intakeKind: 'sales_lead', sourceChannel: 'exhibition' },
@@ -190,7 +208,7 @@ test('salesperson submission becomes a manager-assigned inquiry with salesperson
   }]);
 });
 
-test('lead submission rejects missing identity and non-manager assignment', async () => {
+test('lead submission requires company name, contact name, phone, and email independently', async () => {
   const dependencies = {
     inquiryRepository: { async createInquiry() { assert.fail('must not create'); } },
     userRepository: { async listUsersWithRoles() { return [manager]; } }
@@ -198,12 +216,25 @@ test('lead submission rejects missing identity and non-manager assignment', asyn
   const base = {
     submissionToken: '123e4567-e89b-12d3-a456-426614174000',
     assignedUserId: '2',
+    companyName: 'Acme',
+    contactName: 'Alice',
+    contactPhone: '+65 6123 4567',
+    contactEmail: 'alice@example.com',
     requirementText: 'Need quote'
   };
-  await assert.rejects(() => submitSalesLead(dependencies, salesperson, base), /Company or contact is required/);
+  for (const [field, message] of [
+    ['companyName', 'Company name is required'],
+    ['contactName', 'Contact name is required'],
+    ['contactPhone', 'Phone is required'],
+    ['contactEmail', 'Email is required']
+  ]) {
+    await assert.rejects(
+      () => submitSalesLead(dependencies, salesperson, { ...base, [field]: '  ' }),
+      (error) => error.message === message
+    );
+  }
   await assert.rejects(() => submitSalesLead(dependencies, salesperson, {
     ...base,
-    companyName: 'Acme',
     assignedUserId: '99'
   }), /Sales manager is required/);
 });
@@ -218,7 +249,7 @@ function workflowLead(overrides = {}) {
     companyName: 'Acme',
     contactName: 'Alice',
     contactEmail: 'alice@example.com',
-    contactPhone: '',
+    contactPhone: '+65 6123 4567',
     country: 'Singapore',
     productInterest: 'Dryer',
     opportunityType: 'New project',
@@ -258,6 +289,16 @@ test('assigned manager return and creator resubmission create immutable workflow
   await returnSalesLead(dependencies, manager, 11, 'Please add capacity');
   assert.equal(lead.status, 'returned');
   assert.equal(events[0].eventType, 'returned');
+
+  await assert.rejects(
+    () => resubmitSalesLead(dependencies, salesperson, 11, {
+      assignedUserId: '2',
+      contactEmail: '  '
+    }),
+    /Email is required/
+  );
+  assert.equal(lead.status, 'returned');
+  assert.equal(events.length, 1);
 
   await resubmitSalesLead(dependencies, salesperson, 11, {
     sourceChannel: 'referral',

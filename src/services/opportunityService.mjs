@@ -1,4 +1,5 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
+import { confirmedProductCategoriesFromInput, resolveProductCategoryCode } from '../domain/productCategories.mjs';
 import { ARCHIVED_STATUSES, STATUSES } from '../domain/statuses.mjs';
 import { canMaintainCustomer } from './customerService.mjs';
 
@@ -112,6 +113,9 @@ export function normalizeOpportunityInput(input, actor, options = {}) {
     requirement: text(input.requirement),
     estimatedAmount: numberOrNull(input.estimatedAmount),
     productInterest: text(input.productInterest),
+    productCategoryCode: resolveProductCategoryCode(input),
+    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input),
+    productCategoryReviewedBy: Number(actor.id),
     projectType: text(input.projectType),
     deliveryCycle: text(input.deliveryCycle),
     expectedBidDate: isoDateOrNull(input.expectedBidDate),
@@ -146,6 +150,8 @@ export function normalizeOpportunityUpdateInput(input, currentOpportunity = {}) 
     requirement: textOrCurrent(input.requirement, currentOpportunity.requirement),
     estimatedAmount: numberOrCurrent(input.estimatedAmount, currentOpportunity.estimatedAmount),
     productInterest: textOrCurrent(input.productInterest, currentOpportunity.productInterest),
+    productCategoryCode: resolveProductCategoryCode(input, currentOpportunity.productCategoryCode),
+    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input, currentOpportunity.confirmedProductCategoryCodes),
     projectType: textOrCurrent(input.projectType, currentOpportunity.projectType),
     deliveryCycle: textOrCurrent(input.deliveryCycle, currentOpportunity.deliveryCycle),
     expectedBidDate: dateOrCurrent(input.expectedBidDate, currentOpportunity.expectedBidDate)
@@ -235,6 +241,7 @@ export async function updateOpportunity(repositories, actor, opportunity, input)
     forbidden();
   }
   const normalized = normalizeOpportunityUpdateInput(input, opportunity);
+  normalized.productCategoryReviewedBy = Number(actor.id);
   await validateOpportunityReferences(repositories, actor, normalized);
 
   return repositories.opportunityRepository.updateOpportunity(opportunity.id, normalized);

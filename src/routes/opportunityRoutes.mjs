@@ -830,6 +830,8 @@ export function opportunityRoutes({
             requirement: emailContext.draft.requirement,
             customerId: matchedCustomer?.id || null,
             primaryContactId: matchedCustomer ? emailContext.draft.primaryContactId : null,
+            productInterest: emailContext.draft.productInterest,
+            productCategoryCode: emailContext.draft.productCategoryCode,
             salespersonId: matchedCustomer?.ownerUserId || emailContext.draft.salespersonId || salespeople[0]?.id || null
           }
         : { salespersonId: salespeople[0]?.id || null };
@@ -894,7 +896,7 @@ export function opportunityRoutes({
         res.status(error.statusCode || 400).send(error.message);
         return;
       }
-      if (['Forbidden', 'Customer not found', 'Contact not found', 'Contact does not belong to customer', 'Opportunity title is required', 'Requirement is required'].includes(error.message)) {
+      if (['Forbidden', 'Customer not found', 'Contact not found', 'Contact does not belong to customer', 'Opportunity title is required', 'Requirement is required', 'Invalid product category'].includes(error.message)) {
         res.status(error.message === 'Forbidden' ? 403 : 400).send(error.message);
         return;
       }
@@ -964,6 +966,10 @@ export function opportunityRoutes({
     } catch (error) {
       if (error.message === 'Forbidden') {
         res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Invalid product category') {
+        res.status(400).send(error.message);
         return;
       }
       next(error);
@@ -1182,6 +1188,12 @@ export function opportunityRoutes({
         requirementSaveState: req.query.requirement === 'duplicate' ? 'duplicate' : '',
         canUploadAttachments: uploadPermissionsFor(req.currentUser, opportunity),
         canEditOpportunity: canEditOpportunity(req.currentUser, opportunity),
+        canReviewProductCategories: (
+          hasRole(req.currentUser, ROLES.ADMINISTRATOR)
+          || hasRole(req.currentUser, ROLES.SALES_MANAGER)
+          || (!opportunity.archivedAt
+            && Number(opportunity.salespersonId) === Number(req.currentUser.id))
+        ),
         canArchiveOpportunity: canArchiveOpportunity(req.currentUser, opportunity),
         canDeleteOpportunity: canDeleteOpportunity(req.currentUser),
         canReopenOpportunity: canReopenOpportunity(req.currentUser, opportunity)

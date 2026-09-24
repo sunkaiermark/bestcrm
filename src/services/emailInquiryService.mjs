@@ -1,5 +1,6 @@
 import { simpleParser } from 'mailparser';
 import { isInquiryPriority } from '../domain/inquiries.mjs';
+import { suggestProductCategoryCode } from '../domain/productCategories.mjs';
 import { applyEmailInquiryFilter } from './emailInquiryFilterService.mjs';
 
 const MAX_INQUIRY_BODY_CHARS = 20000;
@@ -151,6 +152,7 @@ export function normalizeEmailInquiryPayload(parsed = {}, meta = {}) {
     contactPhone: fieldFromBody(body, ['Phone', 'Tel', 'Telephone', 'Mobile', 'WhatsApp', '电话', '手机']),
     country: fieldFromBody(body, ['Country', '国家']),
     productInterest: fieldFromBody(body, ['Product', 'Product Interest', 'Equipment', '产品', '设备']),
+    productCategoryCode: suggestProductCategoryCode({ subject, requirementText: body }),
     opportunityType: fieldFromBody(body, ['Opportunity Type', 'Project Type', '商机类型', '项目类型']),
     requirementText: body || subject,
     rawPayload: {
