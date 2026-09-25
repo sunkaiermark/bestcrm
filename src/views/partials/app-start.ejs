@@ -3500,6 +3500,13 @@
         width: fit-content;
       }
 
+      .email-center-toolbar.is-sticky {
+        background: var(--bg);
+        position: sticky;
+        top: 0;
+        z-index: 20;
+      }
+
       .email-mailbox-picker {
         align-items: center;
         background: #ffffff;
@@ -3533,6 +3540,46 @@
         gap: 12px;
         grid-template-columns: 88px minmax(260px, 560px) max-content max-content;
         margin: -6px 0 16px;
+      }
+
+      .email-search-filter.has-inbox-search {
+        display: flex;
+        flex-wrap: wrap;
+      }
+
+      .email-search-primary {
+        align-items: center;
+        display: flex;
+        flex: 1 1 auto;
+        gap: 12px;
+        min-width: 0;
+      }
+
+      .email-search-filter.has-inbox-search .email-search-primary {
+        display: grid;
+        grid-template-columns: 88px minmax(260px, 560px) max-content;
+      }
+
+      .email-search-category {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        margin-left: auto;
+      }
+
+      .email-search-total {
+        color: var(--muted);
+        font-weight: 700;
+        margin-right: 12px;
+        white-space: nowrap;
+      }
+
+      .email-search-total strong {
+        color: var(--ink);
+      }
+
+      .email-search-category select {
+        min-width: 280px;
       }
 
       .email-search-filter label {
@@ -4484,10 +4531,28 @@
 
         .email-search-filter {
           align-items: stretch;
+          display: grid;
           grid-template-columns: 1fr;
         }
 
-        .email-search-filter button,
+        .email-center-toolbar.is-sticky {
+          position: static;
+        }
+
+        .email-search-filter.has-inbox-search .email-search-primary {
+          grid-template-columns: max-content minmax(0, 1fr) max-content;
+        }
+
+        .email-search-category {
+          margin-left: 0;
+        }
+
+        .email-search-category select {
+          min-width: 0;
+          width: 100%;
+        }
+
+        .email-search-filter:not(.has-inbox-search) button,
         .email-search-filter .secondary-action {
           text-align: center;
           width: 100%;

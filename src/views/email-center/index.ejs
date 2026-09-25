@@ -1,4 +1,5 @@
 <%- include('../partials/app-start', { title: `${t('emailCenter')} - BESTCRM`, activeNav: 'email-center' }) %>
+        <div class="email-center-toolbar<%= folder === 'inbox' ? ' is-sticky' : '' %>">
         <header class="page-header">
           <div>
             <p class="breadcrumb"><%= t('emailCenter') %></p>
@@ -23,19 +24,31 @@
             <% } %>
           </nav>
 
-          <form class="email-search-filter" method="get" action="/email-center">
+          <form class="email-search-filter<%= folder === 'inbox' ? ' has-inbox-search' : '' %>" method="get" action="/email-center">
               <input type="hidden" name="mailbox" value="<%= mailbox.key %>">
               <input type="hidden" name="folder" value="<%= folder %>">
               <% if (folder === 'inbox') { %>
-                <label for="email-search"><%= t('emailSearchLabel') %></label>
-                <input id="email-search" name="q" type="search" value="<%= searchTerm %>" maxlength="200" placeholder="<%= t('emailSearchPlaceholder') %>">
+                <div class="email-search-primary">
+                  <label for="email-search"><%= t('emailSearchLabel') %></label>
+                  <input id="email-search" name="q" type="search" value="<%= searchTerm %>" maxlength="200" placeholder="<%= t('emailSearchPlaceholder') %>">
+                  <button type="submit"><%= t('search') %></button>
+                </div>
+                <div class="email-search-category">
+                  <span class="email-search-total"><%= t('emailListTotal') %> <strong><%= threads.length %></strong></span>
+                  <label for="email-product-category"><%= t('productCategory') %></label>
+                  <select id="email-product-category" name="productCategory"><option value=""><%= t('selectProductCategory') %></option><% for (const category of productCategories) { %><option value="<%= category.code %>"<% if (categoryFilter === category.code) { %> selected<% } %>><%= category.label %></option><% } %></select>
+                </div>
+              <% } else { %>
+                <label for="email-product-category"><%= t('productCategory') %></label>
+                <select id="email-product-category" name="productCategory"><option value=""><%= t('selectProductCategory') %></option><% for (const category of productCategories) { %><option value="<%= category.code %>"<% if (categoryFilter === category.code) { %> selected<% } %>><%= category.label %></option><% } %></select>
+                <button type="submit"><%= t('search') %></button>
               <% } %>
-              <label for="email-product-category"><%= t('productCategory') %></label>
-              <select id="email-product-category" name="productCategory"><option value=""><%= t('selectProductCategory') %></option><% for (const category of productCategories) { %><option value="<%= category.code %>"<% if (categoryFilter === category.code) { %> selected<% } %>><%= category.label %></option><% } %></select>
-              <button type="submit"><%= t('search') %></button>
               <% if (searchTerm || categoryFilter) { %><a class="secondary-action" href="/email-center?mailbox=<%= encodeURIComponent(mailbox.key) %>&folder=<%= folder %>"><%= t('clearFilters') %></a><% } %>
             </form>
+        <% } %>
+        </div>
 
+        <% if (mailboxes.length) { %>
           <% if (folder === 'pending') { %><p class="email-pending-definition"><%= t('emailPendingDefinition') %></p><% } %>
 
           <% if (cleanup) { const isSpamCleanup = folder === 'spam'; %>
