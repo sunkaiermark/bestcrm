@@ -244,7 +244,7 @@ test('technical manager sees only the login-language template content and revisi
   const response = await agent.get('/technical-templates/4');
 
   assert.equal(response.status, 200);
-  assert.match(response.text, /技术资料中心/);
+  assert.match(response.text, /class="nav-parent">技术文档<\/div>/);
   assert.doesNotMatch(response.text, /标书中心|\/bid-center\//);
   assert.match(response.text, /产品技术资料模板/);
   assert.match(response.text, /TPL-R1/);

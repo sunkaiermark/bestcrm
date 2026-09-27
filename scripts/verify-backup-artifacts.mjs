@@ -68,7 +68,8 @@ function parseEmailEvidenceInventory(value, { legacyRawOnly = false } = {}) {
 const attachmentEvidenceLifecycle = new Map([
   ['opportunity_attachment', new Set(['active', 'retired'])],
   ['inquiry_attachment', new Set(['retained'])],
-  ['inquiry_attachment_purge_job', new Set(['pending', 'processing', 'failed'])]
+  ['inquiry_attachment_purge_job', new Set(['pending', 'processing', 'failed'])],
+  ['development_material_file', new Set(['active'])]
 ]);
 
 export function parseAttachmentEvidenceInventory(value) {
@@ -118,6 +119,11 @@ export function parseAttachmentEvidenceInventory(value) {
     }
     if (typeof entry.verified !== 'boolean') {
       throw new Error(`Invalid attachment evidence verification state: ${entry.storedPath}`);
+    }
+    if (model === 'development_material_file'
+        && (!/^development\/[1-9]\d*\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(entry.storedPath)
+          || entry.size < 1 || entry.size > 104857600 || entry.verified !== true)) {
+      throw new Error(`Invalid research evidence identity: ${entry.storedPath}`);
     }
     return [{
       model,
@@ -249,6 +255,10 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
   const entries = stdout.split(/\r?\n/).filter(Boolean);
   assertSafeTarEntries(entries);
   const uploadDirectoryName = path.posix.basename(String(manifest.upload_dir || 'uploads').replaceAll('\\', '/'));
+  if (entries.some((entry) => entry.startsWith(`${uploadDirectoryName}/development/.incoming/`)
+      || entry.startsWith(`${uploadDirectoryName}/development/.staging/`))) {
+    throw new Error('Research temporary files must not enter backups');
+  }
   const archivedEntries = new Set(entries);
   const archivedEmailEvidence = entries.filter((entry) => (
     (entry.startsWith(`${uploadDirectoryName}/email-raw/`)

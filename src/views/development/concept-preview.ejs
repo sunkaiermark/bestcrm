@@ -1,0 +1,97 @@
+<%- include('../partials/app-start', { title: `${concept.topicNo} - Concept Review - BESTCRM`, activeNav: 'workbench' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    title: '概念方案预览', current: '当前修订', historical: '历史修订，只读',
+    internal: '内部探索资料；概念批准不等于图纸、产品或对客方案批准',
+    problem: '问题', application: '应用场景', scope: '适用范围',
+    options: '候选方向与取舍', benefits: '优势', tradeoffs: '取舍／限制',
+    preferred: '拟选方向', assumptions: '关键假设', risks: '已知风险',
+    evidence: '探索证据', effort: '下一步预计投入', relation: '客户／商机关联背景',
+    noRelation: '未注明（课题不要求已有商机）', revision: '修订',
+    draft: '尚未送审', submitted: '已送审，待技术经理决定',
+    approved: '已批准概念', revise_required: '需修改后重审',
+    paused: '已暂停', stopped: '已终止', decision: '评审结论',
+    selfReview: '技术经理自审', reason: '理由', digest: '快照 SHA-256'
+  } : {
+    title: 'Concept review preview', current: 'Current revision',
+    historical: 'Historical revision · read-only',
+    internal: 'Internal exploration material; concept approval is not drawing, product or customer approval',
+    problem: 'Problem', application: 'Application', scope: 'Scope',
+    options: 'Candidate directions and trade-offs', benefits: 'Benefits',
+    tradeoffs: 'Trade-offs / limitations', preferred: 'Preferred direction',
+    assumptions: 'Key assumptions', risks: 'Known risks',
+    evidence: 'Exploration evidence', effort: 'Estimated next-step effort',
+    relation: 'Customer / opportunity context',
+    noRelation: 'Not stated (an opportunity is not required)', revision: 'Revision',
+    draft: 'Not submitted', submitted: 'Submitted for technical-manager decision',
+    approved: 'Concept approved', revise_required: 'Revision required',
+    paused: 'Paused', stopped: 'Stopped', decision: 'Review decision',
+    selfReview: 'Technical-manager self-review', reason: 'Reason', digest: 'Snapshot SHA-256'
+  };
+  const pack = concept.snapshot || {};
+  const state = concept.decisionCode ? labels[concept.decisionCode]
+    : concept.submittedAt ? labels.submitted : labels.draft;
+%>
+<style>
+  .development-concept { max-width: 1120px; margin: 0 auto; }
+  .development-concept .concept-banner { border-left: 5px solid var(--accent); padding: 12px 16px; background: var(--accent-soft); margin-bottom: 18px; }
+  .development-concept .concept-meta { display: flex; flex-wrap: wrap; gap: 10px 28px; color: var(--muted); margin: 12px 0 20px; }
+  .development-concept .concept-sheet { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 22px; }
+  .development-concept .concept-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 22px; }
+  .development-concept .concept-block { break-inside: avoid; min-width: 0; }
+  .development-concept .concept-block.full { grid-column: 1 / -1; }
+  .development-concept h2 { font-size: 1rem; margin: 0 0 6px; color: var(--muted); }
+  .development-concept p { margin: 0 0 8px; white-space: pre-wrap; overflow-wrap: anywhere; }
+  .development-concept ul { margin: 0 0 8px 22px; padding: 0; }
+  .development-concept li { overflow-wrap: anywhere; }
+  .development-concept .concept-option { border: 1px solid var(--line); border-radius: 6px; padding: 10px 12px; margin: 8px 0; }
+  .development-concept .concept-option strong { display: block; margin-bottom: 5px; }
+  .development-concept .concept-digest { font: 0.8rem/1.3 monospace; overflow-wrap: anywhere; }
+  @media (max-width: 760px) { .development-concept .concept-grid { grid-template-columns: 1fr; } }
+  @media print { .development-concept { max-width: none; } .development-concept .concept-sheet { border: 0; padding: 0; } }
+</style>
+<section class="development-concept">
+  <header class="page-header">
+    <div>
+      <h1><%= labels.title %> · <%= concept.topicNo %></h1>
+      <div><%= concept.topicTitle %></div>
+    </div>
+  </header>
+  <div class="concept-banner"><%= labels.internal %></div>
+  <div class="concept-meta">
+    <strong><%= labels.revision %> <%= concept.revisionNo %> · <%= concept.isCurrent ? labels.current : labels.historical %></strong>
+    <span><%= state %></span>
+    <span><%= concept.authoredAt ? new Date(concept.authoredAt).toLocaleString(zh ? 'zh-CN' : 'en-SG') : '' %></span>
+  </div>
+  <div class="concept-sheet">
+    <div class="concept-grid">
+      <div class="concept-block"><h2><%= labels.problem %></h2><p><%= pack.problem || '—' %></p></div>
+      <div class="concept-block"><h2><%= labels.application %></h2><p><%= pack.application || '—' %></p></div>
+      <div class="concept-block full"><h2><%= labels.scope %></h2><p><%= pack.scope || '—' %></p></div>
+      <div class="concept-block full">
+        <h2><%= labels.options %></h2>
+        <% for (const option of pack.options || []) { %>
+          <div class="concept-option">
+            <strong><%= option.name %><%= option.name === pack.preferredOption ? ` · ${labels.preferred}` : '' %></strong>
+            <p><%= labels.benefits %>: <%= option.benefits %></p>
+            <p><%= labels.tradeoffs %>: <%= option.tradeoffs %></p>
+          </div>
+        <% } %>
+        <% if (!(pack.options || []).length) { %><p>—</p><% } %>
+      </div>
+      <div class="concept-block"><h2><%= labels.assumptions %></h2><ul><% for (const item of pack.assumptions || []) { %><li><%= item %></li><% } %></ul></div>
+      <div class="concept-block"><h2><%= labels.risks %></h2><ul><% for (const item of pack.risks || []) { %><li><%= item %></li><% } %></ul></div>
+      <div class="concept-block full"><h2><%= labels.evidence %></h2><ul><% for (const item of pack.evidence || []) { %><li><%= item %></li><% } %></ul></div>
+      <div class="concept-block"><h2><%= labels.effort %></h2><p><%= pack.nextStepEffort || '—' %></p></div>
+      <div class="concept-block"><h2><%= labels.relation %></h2><p><%= pack.customerOpportunityRelation || labels.noRelation %></p></div>
+      <% if (concept.decisionCode) { %>
+        <div class="concept-block full"><h2><%= labels.decision %></h2><p><%= state %> · <%= labels.reason %>: <%= concept.decisionReason %></p>
+          <% if (concept.isSelfReview) { %><p><%= labels.selfReview %>: <%= concept.selfReviewReason %></p><% } %>
+        </div>
+      <% } %>
+      <div class="concept-block full concept-digest"><%= labels.digest %>: <%= concept.snapshotSha256 %></div>
+    </div>
+  </div>
+</section>
+<%- include('../partials/app-end') %>

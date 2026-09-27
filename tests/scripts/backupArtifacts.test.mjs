@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile } from 'node:child_process';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -75,6 +75,19 @@ test('backup verifier checks database and upload hashes before isolated extracti
     assert.equal(restoreOnly.backup.emailEvidenceFilesVerified, 2);
     assert.equal(restoreOnly.databaseAudit, null);
     assert.equal(restoreOnly.attachmentIntegrityAudit, null);
+
+    for (const temporaryName of ['.incoming', '.staging']) {
+      const temporaryDirectory = path.join(sourceDir, 'uploads', 'development', temporaryName);
+      await mkdir(temporaryDirectory, { recursive: true });
+      await writeFile(path.join(temporaryDirectory, 'private.tmp'), 'uncommitted research');
+      await execFileAsync('tar', ['-czf', uploadsPath, '-C', sourceDir, 'uploads'], { windowsHide: true });
+      await writeManifest(sha256(await readFile(uploadsPath)));
+      await assert.rejects(
+        () => verifyBackupArtifacts({ backupDir }),
+        /Research temporary files must not enter backups/
+      );
+      await rm(temporaryDirectory, { recursive: true, force: true });
+    }
 
     await rm(path.join(sourceDir, 'uploads', ...outboundMimeStoredPath.split('/')), { force: true });
     await execFileAsync('tar', ['-czf', uploadsPath, '-C', sourceDir, 'uploads'], { windowsHide: true });
@@ -227,6 +240,58 @@ test('backup verifier validates the new attachment evidence inventory after isol
   }
 });
 
+test('backup verifier restores and checks activated research evidence by exact SHA-256', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'bestcrm-research-backup-test-'));
+  const backupDir = path.join(root, 'backup');
+  const sourceDir = path.join(root, 'source');
+  const restoreDir = path.join(root, 'restore');
+  const storedPath = `development/17/${randomUUID()}`;
+  const content = Buffer.from('%PDF-1.7\nverified research\n');
+  const uploadsPath = path.join(backupDir, 'uploads.tar.gz');
+  try {
+    const sourceFile = path.join(sourceDir, 'uploads', ...storedPath.split('/'));
+    await mkdir(path.dirname(sourceFile), { recursive: true });
+    await mkdir(backupDir, { recursive: true });
+    await writeFile(sourceFile, content);
+    const database = Buffer.from('-- PostgreSQL database dump\nCREATE TABLE development_material_file_activations(id bigint);\n');
+    await writeFile(path.join(backupDir, 'database.sql'), database);
+    await writeFile(path.join(backupDir, 'email-raw-files.sha256'), '');
+    const inventory = `${JSON.stringify({
+      model: 'development_material_file', recordId: 3,
+      storedPath, size: content.length, sha256: sha256(content),
+      lifecycleState: 'active', verified: true
+    })}\n`;
+    await writeFile(path.join(backupDir, 'attachment-evidence-files.jsonl'), inventory);
+    async function archiveAndManifest() {
+      await execFileAsync('tar', ['-czf', uploadsPath, '-C', sourceDir, 'uploads'],
+        { windowsHide: true });
+      await writeFile(path.join(backupDir, 'manifest.txt'), [
+        'upload_dir=/var/bestcrm/uploads',
+        `database_sha256=${sha256(database)}`,
+        `uploads_sha256=${sha256(await readFile(uploadsPath))}`,
+        `raw_email_inventory_sha256=${sha256('')}`,
+        'raw_email_file_count=0', 'raw_email_size_bytes=0',
+        `attachment_evidence_inventory_sha256=${sha256(inventory)}`,
+        'attachment_evidence_file_count=1',
+        `attachment_evidence_size_bytes=${content.length}`,
+        'attachment_evidence_unverified_count=0', ''
+      ].join('\n'));
+    }
+    await archiveAndManifest();
+    const result = await verifyBackupArtifacts({ backupDir, restoreDir });
+    assert.equal(result.attachmentEvidenceFilesVerified, 1);
+    assert.deepEqual(await readFile(path.join(restoreDir, 'uploads', ...storedPath.split('/'))), content);
+    await writeFile(sourceFile, Buffer.from('%PDF-1.7\nchanged research\n'));
+    await archiveAndManifest();
+    await assert.rejects(
+      () => verifyBackupArtifacts({ backupDir, restoreDir: path.join(root, 'tampered-restore') }),
+      /Restored attachment evidence (size|checksum) mismatch/
+    );
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('production backup and rollback scripts record and enforce artifact checksums', async () => {
   const root = path.resolve(import.meta.dirname, '..', '..');
   const backupScript = await readFile(path.join(root, 'scripts', 'backup-production.sh'), 'utf8');
@@ -254,6 +319,8 @@ test('production backup and rollback scripts record and enforce artifact checksu
   assert.match(backupScript, /attachment_evidence_inventory_sha256=\$ATTACHMENT_EVIDENCE_INVENTORY_SHA256/);
   assert.match(backupScript, /email-outbound/);
   assert.match(backupScript, /lead-submissions\/\.staging/);
+  assert.match(backupScript, /development\/\.incoming/);
+  assert.match(backupScript, /development\/\.staging/);
   assert.match(backupScript, /systemctl is-active --quiet bestcrm-email-backfill\.service/);
   assert.match(backupScript, /Email intake is active; stop it before creating a consistent database\/file backup/);
   assert.match(backupScript, /BESTCRM_ALLOW_APP_DURING_BACKUP/);

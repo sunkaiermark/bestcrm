@@ -310,16 +310,16 @@ test('left sidebar uses selected Chinese language after login', async () => {
   const response = await agent.get('/workbench');
 
   assert.equal(response.status, 200);
-  assert.match(response.text, /href="\/workbench">\s*<span>工作台<\/span>/);
+  assert.match(response.text, /href="\/workbench">\s*<span>我的工作<\/span>/);
   assert.doesNotMatch(response.text, /href="\/sales-work\/plans">工作<\/a>/);
   assert.doesNotMatch(response.text, /href="\/notifications">通知<\/a>/);
-  assert.match(response.text, /href="\/opportunities">商机<\/a>/);
-  assert.match(response.text, /href="\/customers">客户<\/a>/);
-  assert.match(response.text, /href="\/contacts">联系人<\/a>/);
-  assert.match(response.text, /class="nav-parent">系统<\/div>/);
-  assert.match(response.text, /href="\/system\/users">用户<\/a>/);
-  assert.match(response.text, /href="\/system\/roles">角色<\/a>/);
-  assert.match(response.text, /href="\/system\/approval-settings">审批人<\/a>/);
+  assert.match(response.text, /href="\/opportunities">销售商机<\/a>/);
+  assert.match(response.text, /href="\/customers">客户档案<\/a>/);
+  assert.match(response.text, /href="\/contacts">联系名录<\/a>/);
+  assert.match(response.text, /class="nav-parent">系统设置<\/div>/);
+  assert.match(response.text, /href="\/system\/users">用户管理<\/a>/);
+  assert.match(response.text, /href="\/system\/roles">角色管理<\/a>/);
+  assert.match(response.text, /href="\/system\/approval-settings">审批设置<\/a>/);
   assert.match(response.text, />退出登录<\/button>/);
 });
 
@@ -334,7 +334,7 @@ test('salesperson sidebar uses concise Chinese lead and work labels', async () =
   const response = await agent.get('/workbench');
 
   assert.equal(response.status, 200);
-  assert.match(response.text, /href="\/lead-submissions">线索<\/a>/);
+  assert.match(response.text, /href="\/lead-submissions">销售线索<\/a>/);
   assert.doesNotMatch(response.text, /href="\/sales-work\/plans">工作<\/a>/);
   assert.match(response.text, /href="\/sales-work\/plans">管理工作计划<\/a>/);
   assert.doesNotMatch(response.text, /href="\/lead-submissions">我提交的线索<\/a>/);

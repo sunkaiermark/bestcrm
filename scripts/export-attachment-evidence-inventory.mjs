@@ -4,13 +4,15 @@ import path from 'node:path';
 import { loadConfig } from '../src/config.mjs';
 import { createPool } from '../src/db/pool.mjs';
 import { inspectStoredAttachmentFile } from '../src/services/attachmentFileService.mjs';
+import { openVerifiedDevelopmentPrivateFile } from '../src/services/developmentPrivateFileStore.mjs';
 import { isMainModule } from '../src/utils/moduleEntry.mjs';
 
 const shaPattern = /^[a-f0-9]{64}$/;
 const allowedModels = new Set([
   'opportunity_attachment',
   'inquiry_attachment',
-  'inquiry_attachment_purge_job'
+  'inquiry_attachment_purge_job',
+  'development_material_file'
 ]);
 
 function positiveInteger(value, label) {
@@ -60,7 +62,8 @@ async function listAttachmentEvidenceRows(queryTarget) {
       attachment.stored_path,
       attachment.file_size,
       attachment.sha256,
-      CASE WHEN attachment.retired_at IS NULL THEN 'active' ELSE 'retired' END AS lifecycle_state
+      CASE WHEN attachment.retired_at IS NULL THEN 'active' ELSE 'retired' END AS lifecycle_state,
+      NULL::bigint AS topic_id
     FROM attachments attachment
     UNION ALL
     SELECT
@@ -69,7 +72,8 @@ async function listAttachmentEvidenceRows(queryTarget) {
       attachment.stored_path,
       attachment.file_size,
       attachment.sha256,
-      'retained'::text AS lifecycle_state
+      'retained'::text AS lifecycle_state,
+      NULL::bigint AS topic_id
     FROM inquiry_attachments attachment
     UNION ALL
     SELECT
@@ -78,8 +82,22 @@ async function listAttachmentEvidenceRows(queryTarget) {
       job.stored_path,
       job.expected_size AS file_size,
       job.expected_sha256 AS sha256,
-      job.status AS lifecycle_state
+      job.status AS lifecycle_state,
+      NULL::bigint AS topic_id
     FROM inquiry_attachment_purge_file_jobs job
+    UNION ALL
+    SELECT
+      'development_material_file'::text AS model,
+      activation.id AS record_id,
+      version.stored_path,
+      version.file_size,
+      version.sha256,
+      'active'::text AS lifecycle_state,
+      material.topic_id
+    FROM development_material_file_activations activation
+    JOIN development_material_versions version
+      ON version.id = activation.material_version_id
+    JOIN development_materials material ON material.id = version.material_id
     ORDER BY model, record_id, stored_path
   `);
   return result.rows;
@@ -120,7 +138,21 @@ export async function exportAttachmentEvidenceInventory({
       throw new Error(`Invalid attachment evidence checksum: ${storedPath}`);
     }
 
-    const inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath });
+    let inspected;
+    if (model === 'development_material_file') {
+      if (!databaseSha256) {
+        throw new Error(`Research file checksum is required: ${storedPath}`);
+      }
+      const topicId = positiveInteger(row.topic_id, 'topic id');
+      const handle = await openVerifiedDevelopmentPrivateFile({
+        uploadDir, storedPath, topicId,
+        expectedSize, expectedSha256: databaseSha256
+      });
+      await handle.close();
+      inspected = { fileSize: expectedSize, sha256: databaseSha256 };
+    } else {
+      inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath });
+    }
     if (inspected.fileSize !== expectedSize) {
       throw new Error(`Attachment evidence size mismatch: ${storedPath}`);
     }

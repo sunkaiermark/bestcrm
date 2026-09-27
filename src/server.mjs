@@ -25,6 +25,10 @@ import { createCommercialQuoteRepository } from './repositories/commercialQuoteR
 import { createContractApprovalRepository } from './repositories/contractApprovalRepository.mjs';
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
+import { createDevelopmentConceptRepository } from './repositories/developmentConceptRepository.mjs';
+import { createDevelopmentMaterialFileRepository } from './repositories/developmentMaterialFileRepository.mjs';
+import { createDevelopmentPolicyRepository } from './repositories/developmentPolicyRepository.mjs';
+import { createDevelopmentRepository } from './repositories/developmentRepository.mjs';
 import { createEmailArchiveRepository } from './repositories/emailArchiveRepository.mjs';
 import { createFormSubmissionRepository } from './repositories/formSubmissionRepository.mjs';
 import { createInquiryAttachmentRepository } from './repositories/inquiryAttachmentRepository.mjs';
@@ -55,6 +59,11 @@ import { analyticsRoutes } from './routes/analyticsRoutes.mjs';
 import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
+import { developmentConceptRoutes } from './routes/developmentConceptRoutes.mjs';
+import { developmentMaterialRoutes } from './routes/developmentMaterialRoutes.mjs';
+import { developmentPolicyRoutes } from './routes/developmentPolicyRoutes.mjs';
+import { developmentTopicRoutes } from './routes/developmentTopicRoutes.mjs';
+import { createClamAvScanner } from './services/emailMalwareScannerService.mjs';
 import { emailCenterRoutes } from './routes/emailCenterRoutes.mjs';
 import { inquiryIntakeRoutes } from './routes/inquiryIntakeRoutes.mjs';
 import { inquiryRoutes } from './routes/inquiryRoutes.mjs';
@@ -702,6 +711,14 @@ export function createApp(options = {}) {
   const contractApprovalRepository = options.contractApprovalRepository || (pool ? createContractApprovalRepository(pool) : emptyContractApprovalRepository);
   const opportunityRepository = options.opportunityRepository || (pool ? createOpportunityRepository(pool) : emptyOpportunityRepository);
   const productCategoryRepository = options.productCategoryRepository || (pool ? createProductCategoryRepository(pool) : null);
+  const developmentConceptRepository = options.developmentConceptRepository
+    || (pool ? createDevelopmentConceptRepository(pool) : null);
+  const developmentMaterialFileRepository = options.developmentMaterialFileRepository
+    || (pool ? createDevelopmentMaterialFileRepository(pool) : null);
+  const developmentPolicyRepository = options.developmentPolicyRepository
+    || (pool ? createDevelopmentPolicyRepository(pool) : null);
+  const developmentRepository = options.developmentRepository
+    || (pool ? createDevelopmentRepository(pool) : null);
   const projectExecutionRepository = options.projectExecutionRepository
     || (pool ? createProjectExecutionRepository(pool) : emptyProjectExecutionRepository);
   const opportunityResponsibilityRepository = options.opportunityResponsibilityRepository
@@ -820,6 +837,8 @@ export function createApp(options = {}) {
     res.locals.todoTitleLabel = createTodoTitleLabeler(language);
     res.locals.webPushPublicKey = configuredWebPushPublicKey;
     res.locals.emailCenterEnabled = Boolean(config.emailCenter?.enabled);
+    res.locals.developmentWorkspaceEnabled = Boolean(config.developmentWorkspace?.enabled);
+    res.locals.developmentFilesEnabled = Boolean(config.developmentFiles?.enabled);
     res.locals.customerEmailSendingEnabled = Boolean(config.customerEmail?.enabled);
     next();
   });
@@ -879,6 +898,26 @@ export function createApp(options = {}) {
   }));
   app.use(technicalTemplateRoutes({ technicalTemplateRepository }));
   app.use(customerRoutes({ customerRepository }));
+  if (config.developmentWorkspace?.enabled && developmentRepository) {
+    app.use(developmentTopicRoutes({ repository: developmentRepository }));
+  }
+  if (developmentConceptRepository) {
+    app.use(developmentConceptRoutes({ developmentConceptRepository }));
+  }
+  if (developmentPolicyRepository) {
+    app.use(developmentPolicyRoutes({ developmentPolicyRepository }));
+  }
+  if (config.developmentFiles?.enabled && developmentMaterialFileRepository) {
+    app.use(developmentMaterialRoutes({
+      repository: developmentMaterialFileRepository,
+      uploadDir: config.uploadDir,
+      scanner: options.developmentFileScanner || createClamAvScanner({
+        command: config.developmentFiles.scannerCommand,
+        timeoutMs: config.developmentFiles.scannerTimeoutMs,
+        daemonSocketPath: config.developmentFiles.scannerSocketPath
+      })
+    }));
+  }
   app.use(contactRoutes({ customerRepository, contactRepository }));
   app.use(leadSubmissionRoutes({
     inquiryRepository,

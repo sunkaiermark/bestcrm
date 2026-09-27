@@ -3,6 +3,7 @@ node_modules/
 var/
 coverage/
 playwright-report/
+.playwright-cli/
 test-results/
 output/
 .worktrees/

@@ -179,6 +179,9 @@ export function loadConfig(env = process.env) {
     emailCenter: {
       enabled: emailCenterEnabled
     },
+    developmentWorkspace: {
+      enabled: booleanEnv(env.DEVELOPMENT_WORKSPACE_ENABLED, false)
+    },
     googleMail: {
       enabled: googleMailEnabled,
       inboundEnabled: googleMailInboundEnabled,
@@ -235,6 +238,14 @@ export function loadConfig(env = process.env) {
         command: String(env.EMAIL_RAW_SCANNER_COMMAND || 'clamdscan').trim() || 'clamdscan',
         timeoutMs: positiveIntegerEnv(env.EMAIL_RAW_SCAN_TIMEOUT_MS, 120000)
       }
+    },
+    developmentFiles: {
+      enabled: booleanEnv(env.DEVELOPMENT_FILES_ENABLED, false),
+      scannerCommand: String(env.DEVELOPMENT_FILE_SCANNER_COMMAND || 'clamdscan').trim()
+        || 'clamdscan',
+      scannerTimeoutMs: positiveIntegerEnv(env.DEVELOPMENT_FILE_SCAN_TIMEOUT_MS, 120000),
+      scannerSocketPath: String(env.DEVELOPMENT_FILE_CLAMD_SOCKET_PATH
+        || '/var/run/clamav/clamd.ctl').trim() || '/var/run/clamav/clamd.ctl'
     },
     notificationDelivery: {
       enabled: booleanEnv(env.NOTIFICATION_DELIVERY_ENABLED, false),

@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -102,6 +102,45 @@ test('attachment evidence exporter rejects duplicate, unsafe, wrong-size, and wr
         outputPath: path.join(root, `inventory-${Math.random()}.jsonl`)
       }), pattern);
     }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('attachment evidence exporter includes only verified development file activations', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'bestcrm-development-inventory-'));
+  const uploadDir = path.join(root, 'uploads');
+  const storedPath = `development/17/${randomUUID()}`;
+  const absolutePath = path.join(uploadDir, ...storedPath.split('/'));
+  const content = Buffer.from('%PDF-1.7\nresearch evidence\n');
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, content);
+  const record = {
+    model: 'development_material_file', record_id: '41',
+    stored_path: storedPath, file_size: String(content.length),
+    sha256: sha256(content), lifecycle_state: 'active', topic_id: '17'
+  };
+  try {
+    const outputPath = path.join(root, 'inventory.jsonl');
+    const summary = await exportAttachmentEvidenceInventory({
+      queryTarget: queryTarget([record]), uploadDir, outputPath, strict: true
+    });
+    assert.equal(summary.fileCount, 1);
+    assert.equal(summary.totalBytes, content.length);
+    assert.equal(summary.unverifiedCount, 0);
+    const entry = JSON.parse((await readFile(outputPath, 'utf8')).trim());
+    assert.equal(entry.model, 'development_material_file');
+    assert.equal(entry.sha256, sha256(content));
+    assert.equal(entry.verified, true);
+    await assert.rejects(exportAttachmentEvidenceInventory({
+      queryTarget: queryTarget([{ ...record, topic_id: '18' }]), uploadDir,
+      outputPath: path.join(root, 'wrong-topic.jsonl')
+    }), /Invalid research file path/);
+    await writeFile(absolutePath, Buffer.from('tampered research'));
+    await assert.rejects(exportAttachmentEvidenceInventory({
+      queryTarget: queryTarget([record]), uploadDir,
+      outputPath: path.join(root, 'tampered.jsonl')
+    }), /integrity check failed|size or identity differs/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

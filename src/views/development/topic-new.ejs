@@ -1,0 +1,67 @@
+<%- include('../partials/app-start', { title: 'New Development Topic - BESTCRM', activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    title: '新建研发课题', back: '返回课题总览', name: '课题名称',
+    source: '课题来源', problem: '问题与目标', directions: '产业方向（可多选）',
+    submit: '建立课题', independent: '创建课题不要求先有商机。创建者自动成为课题负责人。',
+    choose: '请选择来源'
+  } : {
+    title: 'New development topic', back: 'Back to topic overview', name: 'Topic title',
+    source: 'Source', problem: 'Problem and objective', directions: 'Industrial directions (select any)',
+    submit: 'Create topic', independent: 'A topic does not require an opportunity. Its creator becomes the owner.',
+    choose: 'Choose a source'
+  };
+  const sources = [
+    ['customer_idea', zh ? '客户创意' : 'Customer idea'],
+    ['opportunity_requirement', zh ? '商机需求' : 'Opportunity requirement'],
+    ['product_upgrade', zh ? '既有产品升级' : 'Existing product upgrade'],
+    ['internal_research', zh ? '内部研发' : 'Internal research'],
+    ['implementation_feedback', zh ? '实施反馈' : 'Implementation feedback']
+  ];
+  const directions = [
+    ['process_technology', zh ? '工艺技术' : 'Process technology'],
+    ['key_equipment', zh ? '关键设备' : 'Key equipment'],
+    ['implementation_support', zh ? '实施支持' : 'Implementation support']
+  ];
+  const selectedDirections = Array.isArray(form?.directions) ? form.directions : [];
+%>
+<style>
+  .development-new { width: 100%; margin: 0; }
+  .development-new .topic-form { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px; display: grid; gap: 16px; }
+  .development-new .topic-form label { display: grid; gap: 6px; margin: 0; }
+  .development-new .direction-options { display: flex; flex-wrap: wrap; gap: 16px; }
+  .development-new .direction-options label { display: inline-flex; align-items: center; gap: 7px; }
+  .development-new .direction-options input { width: auto; min-height: auto; }
+  .development-new .topic-error { color: #a61b1b; font-weight: 700; }
+  .development-new .topic-form button { justify-self: start; width: auto; }
+</style>
+<section class="development-new">
+  <p class="breadcrumb"><a href="/development/topics"><%= labels.back %></a></p>
+  <header class="page-header"><h1><%= labels.title %></h1></header>
+  <p class="muted"><%= labels.independent %></p>
+  <% if (error) { %><p class="topic-error" role="alert"><%= error %></p><% } %>
+  <form class="topic-form" method="post" action="/development/topics">
+    <%- csrfField() %>
+    <label><%= labels.name %><input name="title" maxlength="200" value="<%= form?.title || '' %>" required></label>
+    <label><%= labels.source %>
+      <select name="sourceType" required>
+        <option value=""><%= labels.choose %></option>
+        <% for (const [value, label] of sources) { %>
+          <option value="<%= value %>" <%= form?.sourceType === value ? 'selected' : '' %>><%= label %></option>
+        <% } %>
+      </select>
+    </label>
+    <label><%= labels.problem %><textarea name="problemStatement" rows="6" maxlength="20000"><%= form?.problemStatement || '' %></textarea></label>
+    <fieldset>
+      <legend><%= labels.directions %></legend>
+      <div class="direction-options">
+        <% for (const [value, label] of directions) { %>
+          <label><input type="checkbox" name="directions" value="<%= value %>" <%= selectedDirections.includes(value) ? 'checked' : '' %>><%= label %></label>
+        <% } %>
+      </div>
+    </fieldset>
+    <button type="submit"><%= labels.submit %></button>
+  </form>
+</section>
+<%- include('../partials/app-end') %>

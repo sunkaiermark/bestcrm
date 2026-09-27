@@ -1,0 +1,168 @@
+<%- include('../partials/app-start', { title: `${topic.topicNo} - BESTCRM`, activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    back: '返回课题总览', source: '来源', phase: '阶段', result: '结果', owner: '负责人',
+    directions: '产业方向', problem: '问题与目标', noProblem: '尚未填写问题摘要',
+    members: '未终止的成员资格', memberNote: '只有课题负责人可邀请或结束成员资格。停用账号目前无读取权；结束资格后即使账号重新启用也不会自动恢复访问，历史审计不会删除。',
+    addMember: '邀请成员', chooseMember: '选择在职员工', invite: '加入课题',
+    noCandidates: '暂无可邀请的在职员工', remove: '结束成员资格',
+    ownerRole: '课题负责人', memberRole: '成员', inactive: '账号已停用',
+    pending: '未定', next: '后续区域',
+    nextNote: '开发验证、正式决策、结论版本及关联业务将在后续步骤接入；内部讨论不等于概念批准或对客引用。',
+    research: '研究资料', noDirections: '尚未选择',
+    discussion: '协作讨论', discussionNote: '仅当前有效课题成员可阅读和发表。意见作为内部历史保留，不可编辑或删除；讨论不构成技术审批。',
+    discussionBody: '记录意见或探索发现', discussionPlaceholder: '说明建议、依据、疑点或需要验证的假设…',
+    postDiscussion: '发表讨论', noDiscussion: '尚无讨论记录', olderDiscussion: '查看更早的讨论'
+  } : {
+    back: 'Back to topic overview', source: 'Source', phase: 'Phase', result: 'Result', owner: 'Owner',
+    directions: 'Industrial directions', problem: 'Problem and objective', noProblem: 'No problem summary yet',
+    members: 'Open memberships', memberNote: 'Only the topic owner may invite or end memberships. An inactive account cannot read files; ending its membership also prevents access after reactivation. Audit history is retained.',
+    addMember: 'Invite a member', chooseMember: 'Choose an active employee', invite: 'Add to topic',
+    noCandidates: 'No active employees are available to invite', remove: 'End membership',
+    ownerRole: 'Topic owner', memberRole: 'Member', inactive: 'Account inactive',
+    pending: 'Undetermined', next: 'Upcoming areas',
+    nextNote: 'Development and verification, formal decisions, outcomes and versions, and business links will follow. Internal discussion is not concept approval or a customer-facing reference.',
+    research: 'Research materials', noDirections: 'Not selected',
+    discussion: 'Team discussion', discussionNote: 'Only current topic members can read and post. Internal comments are retained without editing or deletion; discussion is not a technical approval.',
+    discussionBody: 'Record an idea or exploration finding', discussionPlaceholder: 'Describe a proposal, evidence, question, or assumption to test…',
+    postDiscussion: 'Post comment', noDiscussion: 'No discussion yet', olderDiscussion: 'View older comments'
+  };
+  const sourceLabels = zh ? {
+    customer_idea: '客户创意', opportunity_requirement: '商机需求', product_upgrade: '产品升级',
+    internal_research: '内部研发', implementation_feedback: '实施反馈'
+  } : {
+    customer_idea: 'Customer idea', opportunity_requirement: 'Opportunity requirement',
+    product_upgrade: 'Product upgrade', internal_research: 'Internal research',
+    implementation_feedback: 'Implementation feedback'
+  };
+  const phaseLabels = zh ? {
+    idea: '创意', exploration: '探索', concept_review: '概念待审', detailed_design: '详细设计',
+    verification: '验证', concluded: '已结论', paused: '暂停', stopped: '终止'
+  } : {
+    idea: 'Idea', exploration: 'Exploration', concept_review: 'Concept review',
+    detailed_design: 'Detailed design', verification: 'Verification', concluded: 'Concluded',
+    paused: 'Paused', stopped: 'Stopped'
+  };
+  const resultLabels = zh ? {
+    success: '成功', partial_success: '部分成功', failure: '失败', undetermined: '未定'
+  } : {
+    success: 'Success', partial_success: 'Partial success', failure: 'Failure', undetermined: 'Undetermined'
+  };
+  const directionLabels = zh ? {
+    process_technology: '工艺技术', key_equipment: '关键设备', implementation_support: '实施支持'
+  } : {
+    process_technology: 'Process technology', key_equipment: 'Key equipment',
+    implementation_support: 'Implementation support'
+  };
+%>
+<style>
+  .development-topic { max-width: 1200px; margin: 0 auto; }
+  .development-topic .topic-panels { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); gap: 16px; }
+  .development-topic .topic-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; margin-bottom: 16px; }
+  .development-topic .topic-card h2 { margin-top: 0; }
+  .development-topic .topic-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
+  .development-topic .topic-facts dt { color: var(--muted); font-size: 14px; }
+  .development-topic .topic-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
+  .development-topic .topic-problem { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .development-topic .topic-member { display: flex; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--line); padding: 10px 0; }
+  .development-topic .topic-member form { margin: 0; }
+  .development-topic .topic-member button { width: auto; }
+  .development-topic .invite-form { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: end; gap: 10px; }
+  .development-topic .invite-form label { margin: 0; }
+  .development-topic .invite-form button { width: auto; }
+  .development-topic .discussion-entry { border-top: 1px solid var(--line); padding: 12px 0; }
+  .development-topic .discussion-entry p { white-space: pre-wrap; overflow-wrap: anywhere; margin-bottom: 0; }
+  .development-topic .discussion-entry time { color: var(--muted); font-size: 13px; }
+  .development-topic .discussion-form textarea { width: 100%; min-height: 100px; }
+  .development-topic .discussion-form button { width: auto; }
+  .development-topic .discussion-error { color: #a61b1b; }
+  @media (max-width: 850px) {
+    .development-topic .topic-panels, .development-topic .topic-facts, .development-topic .invite-form { grid-template-columns: 1fr; }
+  }
+</style>
+<section class="development-topic">
+  <p class="breadcrumb"><a href="/development/topics"><%= labels.back %></a></p>
+  <header class="page-header">
+    <div><h1><%= topic.topicNo %> · <%= topic.title %></h1></div>
+  </header>
+  <div class="topic-panels">
+    <div>
+      <section class="topic-card">
+        <h2><%= zh ? '课题概况' : 'Topic overview' %></h2>
+        <dl class="topic-facts">
+          <div><dt><%= labels.source %></dt><dd><%= sourceLabels[topic.sourceType] || topic.sourceType %></dd></div>
+          <div><dt><%= labels.phase %></dt><dd><%= phaseLabels[topic.phase] || topic.phase %></dd></div>
+          <div><dt><%= labels.result %></dt><dd><%= topic.result ? resultLabels[topic.result] || topic.result : labels.pending %></dd></div>
+          <div><dt><%= labels.owner %></dt><dd><%= topic.ownerName %></dd></div>
+          <div><dt><%= labels.directions %></dt><dd><%= topic.directions.length ? topic.directions.map((code) => directionLabels[code] || code).join(' · ') : labels.noDirections %></dd></div>
+        </dl>
+        <h3><%= labels.problem %></h3>
+        <p class="topic-problem"><%= topic.problemStatement || labels.noProblem %></p>
+      </section>
+      <section class="topic-card" id="discussion">
+        <h2><%= labels.discussion %></h2>
+        <p class="muted"><%= labels.discussionNote %></p>
+        <form class="discussion-form" method="post" action="/development/topics/<%= topic.id %>/discussion">
+          <%- csrfField() %>
+          <label for="discussion-body"><%= labels.discussionBody %></label>
+          <textarea id="discussion-body" name="body" maxlength="4000" required placeholder="<%= labels.discussionPlaceholder %>"><%= discussionDraft %></textarea>
+          <% if (discussionError) { %><p class="discussion-error" role="alert"><%= discussionError %></p><% } %>
+          <button type="submit"><%= labels.postDiscussion %></button>
+        </form>
+        <% if (!discussion.comments.length) { %><p class="muted"><%= labels.noDiscussion %></p><% } %>
+        <% for (const comment of discussion.comments) { %>
+          <article class="discussion-entry">
+            <strong><%= comment.authorName %></strong>
+            <time datetime="<%= new Date(comment.createdAt).toISOString() %>"><%= new Date(comment.createdAt).toLocaleString(zh ? 'zh-CN' : 'en-SG') %></time>
+            <p><%= comment.body %></p>
+          </article>
+        <% } %>
+        <% if (discussion.hasMore && discussion.comments.length) { %>
+          <a href="/development/topics/<%= topic.id %>?beforeCommentId=<%= discussion.comments[discussion.comments.length - 1].id %>#discussion"><%= labels.olderDiscussion %></a>
+        <% } %>
+      </section>
+      <section class="topic-card">
+        <h2><%= labels.next %></h2>
+        <p class="muted"><%= labels.nextNote %></p>
+        <% if (typeof developmentFilesEnabled !== 'undefined' && developmentFilesEnabled) { %>
+          <a class="secondary-action" href="/development/topics/<%= topic.id %>/materials"><%= labels.research %></a>
+        <% } %>
+      </section>
+    </div>
+    <div>
+      <section class="topic-card">
+        <h2><%= labels.members %></h2>
+        <% if (canManageMembers) { %><p class="muted"><%= labels.memberNote %></p><% } %>
+        <% for (const member of members) { %>
+          <div class="topic-member">
+            <div><strong><%= member.displayName %></strong><br><small class="muted"><%= member.username %> · <%= member.userId === topic.ownerUserId ? labels.ownerRole : labels.memberRole %><%= member.isActive === false ? ` · ${labels.inactive}` : '' %></small></div>
+            <% if (canManageMembers && member.userId !== topic.ownerUserId) { %>
+              <form method="post" action="/development/topics/<%= topic.id %>/members/<%= member.userId %>/end">
+                <%- csrfField() %>
+                <button class="secondary-action" type="submit"><%= labels.remove %></button>
+              </form>
+            <% } %>
+          </div>
+        <% } %>
+        <% if (canManageMembers) { %>
+          <% if (inviteCandidates.length) { %>
+            <form class="invite-form" method="post" action="/development/topics/<%= topic.id %>/members">
+              <%- csrfField() %>
+              <label><%= labels.addMember %>
+                <select name="userId" required>
+                  <option value=""><%= labels.chooseMember %></option>
+                  <% for (const candidate of inviteCandidates) { %>
+                    <option value="<%= candidate.userId %>"><%= candidate.displayName %> (<%= candidate.username %>)</option>
+                  <% } %>
+                </select>
+              </label>
+              <button type="submit"><%= labels.invite %></button>
+            </form>
+          <% } else { %><p class="muted"><%= labels.noCandidates %></p><% } %>
+        <% } %>
+      </section>
+    </div>
+  </div>
+</section>
+<%- include('../partials/app-end') %>

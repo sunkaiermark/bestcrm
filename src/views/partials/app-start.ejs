@@ -436,6 +436,10 @@
         padding: 0 6px;
       }
 
+      .notification-badge[hidden] {
+        display: none;
+      }
+
       h2 {
         margin: 18px 0 10px;
         font-size: 20px;
@@ -4986,6 +4990,16 @@
   </head>
   <body>
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>
+    <% const zhSidebarLabels = language === 'zh' ? {
+      workbench: '我的工作', emailCenter: '邮件中心', websiteForms: '官网表单',
+      leads: '销售线索', opportunities: '销售商机', development: '新品开发',
+      customers: '客户档案', contacts: '联系名录', analytics: '数据分析',
+      technicalCenter: '技术文档', technicalTemplates: '资料模板',
+      standardClauses: '标准条款', system: '系统设置', users: '用户管理',
+      roles: '角色管理', approvals: '审批设置', security: '账户安全',
+      password: '修改密码', logout: '退出登录'
+    } : {}; %>
+    <% const sidebarLabel = (key, fallback) => zhSidebarLabels[key] || fallback; %>
     <% const canSeeSystemNav = Array.isArray(currentUser?.roles) && currentUser.roles.includes('administrator'); %>
     <% const canSeeWebsiteFormsNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'sales_manager'].includes(role)); %>
     <% const canSeeLeadNav = Boolean(currentUser && currentUser.isActive !== false); %>
@@ -5003,44 +5017,47 @@
         <% } %>
         <nav class="nav-group">
           <a class="<%= navClass('workbench') %> notification-nav-link" href="/workbench">
-            <span><%= t('workbench') %></span>
+            <span><%= sidebarLabel('workbench', t('workbench')) %></span>
             <span class="notification-badge" data-notification-badge hidden>0</span>
           </a>
           <% if (canSeeEmailCenterNav) { %>
-            <a class="<%= navClass('email-center') %>" href="/email-center"><%= t('emailCenter') %></a>
+            <a class="<%= navClass('email-center') %>" href="/email-center"><%= sidebarLabel('emailCenter', t('emailCenter')) %></a>
           <% } %>
           <% if (canSeeWebsiteFormsNav) { %>
-            <a class="<%= navClass('inquiries') %>" href="/inquiries"><%= t('websiteForms') %></a>
+            <a class="<%= navClass('inquiries') %>" href="/inquiries"><%= sidebarLabel('websiteForms', t('websiteForms')) %></a>
           <% } %>
           <% if (canSeeLeadNav) { %>
-            <a class="<%= navClass('lead-submissions') %>" href="/lead-submissions"><%= t('navLeadSubmissions') %></a>
+            <a class="<%= navClass('lead-submissions') %>" href="/lead-submissions"><%= sidebarLabel('leads', t('navLeadSubmissions')) %></a>
           <% } %>
-          <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= t('opportunities') %></a>
-          <a class="<%= navClass('customers') %>" href="/customers"><%= t('customers') %></a>
-          <a class="<%= navClass('contacts') %>" href="/contacts"><%= t('contacts') %></a>
-          <a class="<%= navClass('analytics') %>" href="/analytics"><%= t('analytics') %></a>
+          <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= sidebarLabel('opportunities', t('opportunities')) %></a>
+          <% if (typeof developmentWorkspaceEnabled !== 'undefined' && developmentWorkspaceEnabled) { %>
+            <a class="<%= navClass('development') %>" href="/development/topics"><%= sidebarLabel('development', 'New Product Development') %></a>
+          <% } %>
+          <a class="<%= navClass('customers') %>" href="/customers"><%= sidebarLabel('customers', t('customers')) %></a>
+          <a class="<%= navClass('contacts') %>" href="/contacts"><%= sidebarLabel('contacts', t('contacts')) %></a>
+          <a class="<%= navClass('analytics') %>" href="/analytics"><%= sidebarLabel('analytics', t('analytics')) %></a>
           <% if (canSeeTechnicalStandardsNav) { %>
-            <div class="nav-parent"><%= t('technicalDocumentsCenter') %></div>
+            <div class="nav-parent"><%= sidebarLabel('technicalCenter', t('technicalDocumentsCenter')) %></div>
             <div class="nav-subgroup">
-              <a class="<%= navClass('technical-templates') %>" href="/technical-templates"><%= t('technicalTemplateLibrary') %></a>
-              <a class="<%= navClass('technical-clauses') %>" href="/technical-clauses"><%= t('standardClauseLibrary') %></a>
+              <a class="<%= navClass('technical-templates') %>" href="/technical-templates"><%= sidebarLabel('technicalTemplates', t('technicalTemplateLibrary')) %></a>
+              <a class="<%= navClass('technical-clauses') %>" href="/technical-clauses"><%= sidebarLabel('standardClauses', t('standardClauseLibrary')) %></a>
             </div>
           <% } %>
           <% if (canSeeSystemNav) { %>
-            <div class="nav-parent"><%= t('system') %></div>
+            <div class="nav-parent"><%= sidebarLabel('system', t('system')) %></div>
             <div class="nav-subgroup">
-              <a class="<%= navClass('system-users') %>" href="/system/users"><%= t('users') %></a>
-              <a class="<%= navClass('system-roles') %>" href="/system/roles"><%= t('roles') %></a>
-              <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings"><%= t('navApprovalSettings') %></a>
+              <a class="<%= navClass('system-users') %>" href="/system/users"><%= sidebarLabel('users', t('users')) %></a>
+              <a class="<%= navClass('system-roles') %>" href="/system/roles"><%= sidebarLabel('roles', t('roles')) %></a>
+              <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings"><%= sidebarLabel('approvals', t('navApprovalSettings')) %></a>
             </div>
           <% } %>
         </nav>
         <div class="nav-footer">
-          <a class="<%= navClass('account-security') %>" href="/account/security"><%= t('accountSecurity') %></a>
-          <a class="<%= navClass('account-password') %>" href="/account/password"><%= t('changePassword') %></a>
+          <a class="<%= navClass('account-security') %>" href="/account/security"><%= sidebarLabel('security', t('accountSecurity')) %></a>
+          <a class="<%= navClass('account-password') %>" href="/account/password"><%= sidebarLabel('password', t('changePassword')) %></a>
           <form class="logout-form" method="post" action="/logout">
             <%- csrfField() %>
-            <button class="logout-button" type="submit"><%= t('logout') %></button>
+            <button class="logout-button" type="submit"><%= sidebarLabel('logout', t('logout')) %></button>
           </form>
         </div>
       </aside>

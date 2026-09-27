@@ -1,0 +1,85 @@
+<%- include('../partials/app-start', { title: 'New Product Development - BESTCRM', activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    title: '新产品开发', topics: '课题总览', newTopic: '新建课题',
+    note: '仅显示你当前参与的研发课题。研发课题独立于商机，研究原件不会因商机关联而共享。',
+    number: '课题编号', name: '课题名称', source: '来源', phase: '阶段',
+    owner: '负责人', updated: '最近更新', noTopics: '尚无你可查看的课题。',
+    count: '课题总数', previous: '上一页', next: '下一页'
+  } : {
+    title: 'New Product Development', topics: 'Topic overview', newTopic: 'New topic',
+    note: 'Only topics where you are a current member appear here. Research originals are not shared by linking an opportunity.',
+    number: 'Topic No.', name: 'Title', source: 'Source', phase: 'Phase',
+    owner: 'Owner', updated: 'Updated', noTopics: 'No topics are visible to you yet.',
+    count: 'Topics', previous: 'Previous', next: 'Next'
+  };
+  const sourceLabels = zh ? {
+    customer_idea: '客户创意', opportunity_requirement: '商机需求', product_upgrade: '产品升级',
+    internal_research: '内部研发', implementation_feedback: '实施反馈'
+  } : {
+    customer_idea: 'Customer idea', opportunity_requirement: 'Opportunity requirement',
+    product_upgrade: 'Product upgrade', internal_research: 'Internal research',
+    implementation_feedback: 'Implementation feedback'
+  };
+  const phaseLabels = zh ? {
+    idea: '创意', exploration: '探索', concept_review: '概念待审', detailed_design: '详细设计',
+    verification: '验证', concluded: '已结论', paused: '暂停', stopped: '终止'
+  } : {
+    idea: 'Idea', exploration: 'Exploration', concept_review: 'Concept review',
+    detailed_design: 'Detailed design', verification: 'Verification', concluded: 'Concluded',
+    paused: 'Paused', stopped: 'Stopped'
+  };
+%>
+<style>
+  .development-overview { max-width: 1320px; margin: 0 auto; }
+  .development-overview .development-note { background: var(--accent-soft); border-left: 5px solid var(--accent); padding: 12px 16px; margin: 14px 0; }
+  .development-overview .overview-table { width: 100%; border-collapse: collapse; }
+  .development-overview .overview-table th, .development-overview .overview-table td { border-bottom: 1px solid var(--line); padding: 12px; text-align: left; vertical-align: top; }
+  .development-overview .overview-table th { color: var(--muted); white-space: nowrap; }
+  .development-overview .overview-table td:nth-child(2) { overflow-wrap: anywhere; }
+  .development-overview .overview-pagination { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 16px; }
+  @media (max-width: 820px) {
+    .development-overview .overview-table thead { display: none; }
+    .development-overview .overview-table tbody { display: grid; gap: 12px; }
+    .development-overview .overview-table tr { display: grid; border: 1px solid var(--line); border-radius: 8px; padding: 8px; }
+    .development-overview .overview-table td { display: grid; grid-template-columns: 100px minmax(0, 1fr); gap: 8px; padding: 7px; }
+    .development-overview .overview-table td::before { content: attr(data-label); color: var(--muted); }
+  }
+</style>
+<section class="development-overview">
+  <header class="page-header">
+    <div><h1><%= labels.title %></h1><div class="muted"><%= labels.topics %></div></div>
+    <% if (canCreate) { %><a class="quick-action" href="/development/topics/new"><%= labels.newTopic %></a><% } %>
+  </header>
+  <p class="development-note"><%= labels.note %></p>
+  <section class="list-section">
+    <div class="list-heading"><h2><%= labels.topics %> · <%= labels.count %>: <%= total %></h2></div>
+    <div class="list-body">
+      <table class="overview-table">
+        <thead><tr>
+          <th><%= labels.number %></th><th><%= labels.name %></th><th><%= labels.source %></th>
+          <th><%= labels.phase %></th><th><%= labels.owner %></th><th><%= labels.updated %></th>
+        </tr></thead>
+        <tbody>
+          <% for (const topic of topics) { %>
+            <tr>
+              <td data-label="<%= labels.number %>"><a href="/development/topics/<%= topic.id %>"><%= topic.topicNo %></a></td>
+              <td data-label="<%= labels.name %>"><strong><%= topic.title %></strong></td>
+              <td data-label="<%= labels.source %>"><%= sourceLabels[topic.sourceType] || topic.sourceType %></td>
+              <td data-label="<%= labels.phase %>"><%= phaseLabels[topic.phase] || topic.phase %></td>
+              <td data-label="<%= labels.owner %>"><%= topic.ownerName %></td>
+              <td data-label="<%= labels.updated %>"><%= new Date(topic.updatedAt).toLocaleString(zh ? 'zh-CN' : 'en-SG') %></td>
+            </tr>
+          <% } %>
+          <% if (!topics.length) { %><tr><td colspan="6" class="empty"><%= labels.noTopics %></td></tr><% } %>
+        </tbody>
+      </table>
+    </div>
+  </section>
+  <nav class="overview-pagination" aria-label="Pagination">
+    <span><% if (page > 1) { %><a href="/development/topics?page=<%= page - 1 %>"><%= labels.previous %></a><% } %></span>
+    <span><% if (page * 30 < total) { %><a href="/development/topics?page=<%= page + 1 %>"><%= labels.next %></a><% } %></span>
+  </nav>
+</section>
+<%- include('../partials/app-end') %>

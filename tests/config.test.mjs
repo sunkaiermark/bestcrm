@@ -224,6 +224,24 @@ test('raw email archive and historical raw backfill are fail-closed and disabled
   assert.equal(configured.emailRawArchive.scanner.timeoutMs, 60000);
 });
 
+test('research files stay disabled and use an independently configurable ClamAV socket', () => {
+  const defaults = loadConfig({ NODE_ENV: 'development' });
+  assert.equal(defaults.developmentFiles.enabled, false);
+  assert.equal(defaults.developmentFiles.scannerSocketPath, '/var/run/clamav/clamd.ctl');
+  const configured = loadConfig({
+    NODE_ENV: 'development',
+    DEVELOPMENT_FILE_CLAMD_SOCKET_PATH: '/run/clamav/other.sock'
+  });
+  assert.equal(configured.developmentFiles.enabled, false);
+  assert.equal(configured.developmentFiles.scannerSocketPath, '/run/clamav/other.sock');
+});
+
+test('development workspace remains hidden until explicitly enabled', () => {
+  assert.equal(loadConfig({ NODE_ENV: 'development' }).developmentWorkspace.enabled, false);
+  assert.equal(loadConfig({ NODE_ENV: 'development', DEVELOPMENT_WORKSPACE_ENABLED: 'true' })
+    .developmentWorkspace.enabled, true);
+});
+
 test('Google mail stays fully disabled with the frozen single mailbox defaults', () => {
   const config = loadConfig({ NODE_ENV: 'development' });
 

@@ -92,6 +92,8 @@ if [ -d "$UPLOAD_DIR" ]; then
     --exclude="$UPLOAD_BASENAME/email-raw/.staging" \
     --exclude="$UPLOAD_BASENAME/email-outbound/.staging" \
     --exclude="$UPLOAD_BASENAME/lead-submissions/.staging" \
+    --exclude="$UPLOAD_BASENAME/development/.incoming" \
+    --exclude="$UPLOAD_BASENAME/development/.staging" \
     -czf "$BACKUP_PATH/uploads.tar.gz" "$UPLOAD_BASENAME"
 else
   echo "Upload directory not found, creating empty upload archive: $UPLOAD_DIR" >&2
