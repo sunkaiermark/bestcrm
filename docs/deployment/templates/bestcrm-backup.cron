@@ -1,0 +1,5 @@
+BESTCRM_BACKUP_KEEP_DAYS=7
+SHELL=/bin/bash
+PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+
+30 2 * * * root bash /opt/bestcrm/scripts/backup-production-scheduled.sh >> /var/log/bestcrm-backup.log 2>&1

@@ -16,14 +16,15 @@ OUTBOUND_MIME_DIR="$UPLOAD_DIR/email-outbound"
 EMAIL_EVIDENCE_INVENTORY="$BACKUP_PATH/email-evidence-files.sha256"
 ATTACHMENT_EVIDENCE_INVENTORY="$BACKUP_PATH/attachment-evidence-files.jsonl"
 ATTACHMENT_EVIDENCE_EXPORTER="${BESTCRM_ATTACHMENT_EVIDENCE_EXPORTER:-$APP_DIR/scripts/export-attachment-evidence-inventory.mjs}"
+BACKUP_VERIFIER="${BESTCRM_BACKUP_VERIFIER:-$APP_DIR/scripts/verify-backup-artifacts.mjs}"
 ALLOW_APP_DURING_BACKUP="${BESTCRM_ALLOW_APP_DURING_BACKUP:-false}"
 MAINTENANCE_FLAG="${BESTCRM_WRITE_MAINTENANCE_FLAG:-/run/bestcrm/write-maintenance}"
 BACKUP_STARTED=false
 BACKUP_COMPLETE=false
 
 cleanup_incomplete_backup() {
-  if [ "$BACKUP_STARTED" = "true" ] && [ "$BACKUP_COMPLETE" != "true" ] && [ -d "$BACKUP_PATH" ] && [ ! -f "$BACKUP_PATH/manifest.txt" ]; then
-    echo "Removing incomplete backup: $BACKUP_PATH" >&2
+  if [ "$BACKUP_STARTED" = "true" ] && [ "$BACKUP_COMPLETE" != "true" ] && [ -d "$BACKUP_PATH" ]; then
+    echo "Removing incomplete or unverified backup: $BACKUP_PATH" >&2
     rm -rf -- "$BACKUP_PATH"
   fi
 }
@@ -42,6 +43,11 @@ fi
 
 if [ ! -f "$ATTACHMENT_EVIDENCE_EXPORTER" ]; then
   echo "Missing attachment evidence exporter: $ATTACHMENT_EVIDENCE_EXPORTER" >&2
+  exit 1
+fi
+
+if [ ! -f "$BACKUP_VERIFIER" ]; then
+  echo "Missing backup verifier: $BACKUP_VERIFIER" >&2
   exit 1
 fi
 
@@ -188,6 +194,8 @@ attachment_evidence_unverified_count=$ATTACHMENT_EVIDENCE_UNVERIFIED_COUNT
 env_sha256=$ENV_SHA256
 MANIFEST
 
+node "$BACKUP_VERIFIER" --backup-dir "$BACKUP_PATH" > /dev/null
+echo "BESTCRM backup verified: $BACKUP_PATH"
 BACKUP_COMPLETE=true
 node "$SCRIPT_DIR/prune-production-backups.mjs" "$BACKUP_DIR" "$KEEP_DAYS"
 
