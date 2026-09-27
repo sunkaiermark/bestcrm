@@ -5,7 +5,7 @@ import { createApp } from '../../src/server.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { DevelopmentTopicError } from '../../src/domain/developmentTopics.mjs';
 
-async function makeAgent(repository, { enabled = true } = {}) {
+async function makeAgent(repository, { enabled = true, conceptRepository = null } = {}) {
   const user = {
     id: 901, username: 'npd_p4_user', displayName: 'NPD User',
     passwordHash: await hashPassword('ChangeMe123!'), isActive: true, roles: ['salesperson']
@@ -13,6 +13,7 @@ async function makeAgent(repository, { enabled = true } = {}) {
   const app = createApp({
     databaseUrl: '', sessionSecret: 'npd-p4-test', csrfProtection: false,
     developmentWorkspace: { enabled }, developmentRepository: repository,
+    developmentConceptRepository: conceptRepository,
     userRepository: {
       async findByIdWithRoles(id) { return Number(id) === user.id ? user : null; },
       async findByUsernameWithRoles(username) {
@@ -118,11 +119,58 @@ test('P4 list and detail render only repository-scoped records and escape topic 
   assert.match(detail.text, /Open memberships/);
   assert.match(detail.text, /End membership/);
   assert.match(detail.text, /Team discussion/);
+  for (const zone of ['Foundation research', 'Development and validation',
+    'Collaboration and decisions', 'Outcomes and versions', 'Business links']) {
+    assert.match(detail.text, new RegExp(zone));
+  }
+  assert.match(detail.text, /href="#foundation"/);
+  assert.match(detail.text, /href="#business"/);
   assert.match(detail.text, /&lt;script&gt;alert\(2\)&lt;\/script&gt;/);
   assert.doesNotMatch(detail.text, /<script>alert\(2\)<\/script>/);
   assert.doesNotMatch(detail.text, /href="\/development\/topics\/12\/materials"/);
   assert.equal(calls[1].actorUserId, 901);
   assert.equal((await agent.get('/development/topics/999')).status, 404);
+});
+
+test('P4 topic detail shows only the scoped current concept gate and escapes its decision', async () => {
+  const conceptCalls = [];
+  const topic = {
+    id: 12, topicNo: 'NPD-12', title: 'Concept review',
+    sourceType: 'customer_idea', problemStatement: 'Test direction', phase: 'concept_review',
+    result: null, ownerUserId: 901, ownerName: 'NPD User', rowVersion: 3,
+    directions: ['key_equipment'], updatedAt: new Date()
+  };
+  const repository = {
+    async findVisibleTopicById({ topicId }) { return topicId === 12 ? topic : null; },
+    async listVisibleCurrentMembers() { return [{
+      userId: 901, displayName: 'NPD User', username: 'npd_p4_user'
+    }]; },
+    async listInviteCandidates() { return []; },
+    async listVisibleDiscussion() { return { comments: [], hasMore: false }; }
+  };
+  const conceptRepository = {
+    async getConceptGate(input) {
+      conceptCalls.push(input);
+      return {
+        currentRevisionId: 27, currentRevisionNo: 2,
+        decisionCode: 'approved', decisionReason: '<script>private</script>',
+        eligibleForFormalDesign: true, handoffId: null
+      };
+    }
+  };
+  const { agent } = await makeAgent(repository, { conceptRepository });
+  const detail = await agent.get('/development/topics/12');
+  assert.equal(detail.status, 200);
+  assert.deepEqual(conceptCalls, [{ topicId: 12, actorUserId: 901 }]);
+  assert.match(detail.text, /Concept approved/);
+  assert.match(detail.text, /Current revision 2/);
+  assert.match(detail.text, /href="\/development\/topics\/12\/concepts\/27\/preview"/);
+  assert.match(detail.text, /&lt;script&gt;private&lt;\/script&gt;/);
+  assert.doesNotMatch(detail.text, /<script>private<\/script>/);
+  assert.match(detail.text, /handoff can be requested/);
+
+  assert.equal((await agent.get('/development/topics/999')).status, 404);
+  assert.equal(conceptCalls.length, 1);
 });
 
 test('P4 discussion validates input and passes current member identity to scoped storage', async () => {

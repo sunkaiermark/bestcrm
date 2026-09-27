@@ -4,12 +4,25 @@
   const labels = zh ? {
     back: '返回课题总览', source: '来源', phase: '阶段', result: '结果', owner: '负责人',
     directions: '产业方向', problem: '问题与目标', noProblem: '尚未填写问题摘要',
+    overview: '课题概况', foundation: '基础研究', development: '开发与验证',
+    collaboration: '协作与决策', outcomes: '结论与版本', business: '关联业务',
+    internalOnly: '内部研发工作区；概念批准不等于对客方案或工程图纸批准。',
+    researchNote: '调研、竞品、专利和试验原件保留在课题权限内，不因商机关联而开放。',
+    conceptGate: '概念方案门槛', conceptUnavailable: '概念门槛信息尚未加载。',
+    noConcept: '尚无概念修订。探索阶段可以先讨论方向、记录证据。',
+    conceptDraft: '概念修订草稿，尚未送审', conceptSubmitted: '已送审，等待技术经理决定',
+    conceptApproved: '概念已批准', conceptRevise: '需修改后重新送审',
+    conceptRevision: '当前修订', conceptPreview: '查看不可变概念快照',
+    conceptDecision: '技术经理决定', handoffReady: '可申请正式设计交接；尚未记录交接。',
+    handoffRecorded: 'CRM 已记录正式设计交接；权威工程资料仍由产品工程管理。',
+    noHandoff: '未取得正式设计交接资格；探索性验证不能标作正式设计。',
+    noOutcome: '尚无经独立审核发布的结论。此处不会把探索资料标为成熟技术资产。',
+    noBusiness: '商机关联和对客引用尚未开放；研究原件不会自动复制给商机。',
     members: '未终止的成员资格', memberNote: '只有课题负责人可邀请或结束成员资格。停用账号目前无读取权；结束资格后即使账号重新启用也不会自动恢复访问，历史审计不会删除。',
     addMember: '邀请成员', chooseMember: '选择在职员工', invite: '加入课题',
     noCandidates: '暂无可邀请的在职员工', remove: '结束成员资格',
     ownerRole: '课题负责人', memberRole: '成员', inactive: '账号已停用',
-    pending: '未定', next: '后续区域',
-    nextNote: '开发验证、正式决策、结论版本及关联业务将在后续步骤接入；内部讨论不等于概念批准或对客引用。',
+    pending: '未定',
     research: '研究资料', noDirections: '尚未选择',
     discussion: '协作讨论', discussionNote: '仅当前有效课题成员可阅读和发表。意见作为内部历史保留，不可编辑或删除；讨论不构成技术审批。',
     discussionBody: '记录意见或探索发现', discussionPlaceholder: '说明建议、依据、疑点或需要验证的假设…',
@@ -17,12 +30,25 @@
   } : {
     back: 'Back to topic overview', source: 'Source', phase: 'Phase', result: 'Result', owner: 'Owner',
     directions: 'Industrial directions', problem: 'Problem and objective', noProblem: 'No problem summary yet',
+    overview: 'Topic overview', foundation: 'Foundation research', development: 'Development and validation',
+    collaboration: 'Collaboration and decisions', outcomes: 'Outcomes and versions', business: 'Business links',
+    internalOnly: 'Internal development workspace; concept approval is not customer or engineering-drawing approval.',
+    researchNote: 'Research, competitor and patent analysis, and raw experiments stay within topic access; a business link does not disclose them.',
+    conceptGate: 'Concept gate', conceptUnavailable: 'Concept gate information is not loaded.',
+    noConcept: 'No concept revision yet. Explore options and record evidence first.',
+    conceptDraft: 'Concept revision draft, not submitted', conceptSubmitted: 'Submitted for technical-manager decision',
+    conceptApproved: 'Concept approved', conceptRevise: 'Revision required before resubmission',
+    conceptRevision: 'Current revision', conceptPreview: 'View immutable concept snapshot',
+    conceptDecision: 'Technical-manager decision', handoffReady: 'Formal design handoff can be requested; none is recorded yet.',
+    handoffRecorded: 'Formal design handoff is recorded in CRM; product engineering owns the authoritative design.',
+    noHandoff: 'Not qualified for formal design handoff; exploration is not formal design.',
+    noOutcome: 'No independently reviewed outcome has been published. Exploration is not a mature technical asset.',
+    noBusiness: 'Opportunity links and customer-facing reuse are not enabled; research originals are never copied automatically.',
     members: 'Open memberships', memberNote: 'Only the topic owner may invite or end memberships. An inactive account cannot read files; ending its membership also prevents access after reactivation. Audit history is retained.',
     addMember: 'Invite a member', chooseMember: 'Choose an active employee', invite: 'Add to topic',
     noCandidates: 'No active employees are available to invite', remove: 'End membership',
     ownerRole: 'Topic owner', memberRole: 'Member', inactive: 'Account inactive',
-    pending: 'Undetermined', next: 'Upcoming areas',
-    nextNote: 'Development and verification, formal decisions, outcomes and versions, and business links will follow. Internal discussion is not concept approval or a customer-facing reference.',
+    pending: 'Undetermined',
     research: 'Research materials', noDirections: 'Not selected',
     discussion: 'Team discussion', discussionNote: 'Only current topic members can read and post. Internal comments are retained without editing or deletion; discussion is not a technical approval.',
     discussionBody: 'Record an idea or exploration finding', discussionPlaceholder: 'Describe a proposal, evidence, question, or assumption to test…',
@@ -57,10 +83,15 @@
   };
 %>
 <style>
-  .development-topic { max-width: 1200px; margin: 0 auto; }
+  .development-topic { width: 100%; margin: 0; }
+  .development-topic .topic-boundary { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 10px 14px; margin: 0 0 16px; }
+  .development-topic .topic-sections { display: flex; flex-wrap: wrap; gap: 8px; margin: 0 0 16px; }
+  .development-topic .topic-sections a { display: inline-block; padding: 8px 12px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel); text-decoration: none; }
   .development-topic .topic-panels { display: grid; grid-template-columns: minmax(0, 2fr) minmax(300px, 1fr); gap: 16px; }
   .development-topic .topic-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; margin-bottom: 16px; }
   .development-topic .topic-card h2 { margin-top: 0; }
+  .development-topic .topic-card .topic-note { color: var(--muted); margin-bottom: 12px; }
+  .development-topic .topic-status { font-weight: 700; color: var(--accent); }
   .development-topic .topic-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
   .development-topic .topic-facts dt { color: var(--muted); font-size: 14px; }
   .development-topic .topic-facts dd { margin: 2px 0 0; overflow-wrap: anywhere; }
@@ -86,22 +117,57 @@
   <header class="page-header">
     <div><h1><%= topic.topicNo %> · <%= topic.title %></h1></div>
   </header>
-  <div class="topic-panels">
-    <div>
-      <section class="topic-card">
-        <h2><%= zh ? '课题概况' : 'Topic overview' %></h2>
-        <dl class="topic-facts">
-          <div><dt><%= labels.source %></dt><dd><%= sourceLabels[topic.sourceType] || topic.sourceType %></dd></div>
-          <div><dt><%= labels.phase %></dt><dd><%= phaseLabels[topic.phase] || topic.phase %></dd></div>
-          <div><dt><%= labels.result %></dt><dd><%= topic.result ? resultLabels[topic.result] || topic.result : labels.pending %></dd></div>
-          <div><dt><%= labels.owner %></dt><dd><%= topic.ownerName %></dd></div>
-          <div><dt><%= labels.directions %></dt><dd><%= topic.directions.length ? topic.directions.map((code) => directionLabels[code] || code).join(' · ') : labels.noDirections %></dd></div>
-        </dl>
-        <h3><%= labels.problem %></h3>
-        <p class="topic-problem"><%= topic.problemStatement || labels.noProblem %></p>
-      </section>
+  <p class="topic-boundary"><%= labels.internalOnly %></p>
+  <section class="topic-card" aria-labelledby="topic-overview-heading">
+    <h2 id="topic-overview-heading"><%= labels.overview %></h2>
+    <dl class="topic-facts">
+      <div><dt><%= labels.source %></dt><dd><%= sourceLabels[topic.sourceType] || topic.sourceType %></dd></div>
+      <div><dt><%= labels.phase %></dt><dd><%= phaseLabels[topic.phase] || topic.phase %></dd></div>
+      <div><dt><%= labels.result %></dt><dd><%= topic.result ? resultLabels[topic.result] || topic.result : labels.pending %></dd></div>
+      <div><dt><%= labels.owner %></dt><dd><%= topic.ownerName %></dd></div>
+    </dl>
+  </section>
+  <nav class="topic-sections" aria-label="<%= zh ? '课题工作区' : 'Topic workspace' %>">
+    <a href="#foundation"><%= labels.foundation %></a>
+    <a href="#development"><%= labels.development %></a>
+    <a href="#collaboration"><%= labels.collaboration %></a>
+    <a href="#outcomes"><%= labels.outcomes %></a>
+    <a href="#business"><%= labels.business %></a>
+  </nav>
+  <section class="topic-card" id="foundation">
+    <h2><%= labels.foundation %></h2>
+    <dl class="topic-facts">
+      <div><dt><%= labels.directions %></dt><dd><%= topic.directions.length ? topic.directions.map((code) => directionLabels[code] || code).join(' · ') : labels.noDirections %></dd></div>
+    </dl>
+    <h3><%= labels.problem %></h3>
+    <p class="topic-problem"><%= topic.problemStatement || labels.noProblem %></p>
+    <p class="topic-note"><%= labels.researchNote %></p>
+    <% if (typeof developmentFilesEnabled !== 'undefined' && developmentFilesEnabled) { %>
+      <a class="secondary-action" href="/development/topics/<%= topic.id %>/materials"><%= labels.research %></a>
+    <% } %>
+  </section>
+  <section class="topic-card" id="development">
+    <h2><%= labels.development %></h2>
+    <h3><%= labels.conceptGate %></h3>
+    <% if (!conceptGate) { %>
+      <p class="topic-note"><%= labels.conceptUnavailable %></p>
+    <% } else if (!conceptGate.currentRevisionId) { %>
+      <p class="topic-note"><%= labels.noConcept %></p>
+    <% } else { %>
+      <p><strong><%= labels.conceptRevision %> <%= conceptGate.currentRevisionNo %></strong> ·
+        <span class="topic-status"><%= conceptGate.decisionCode === 'approved' ? labels.conceptApproved : conceptGate.decisionCode === 'revise_required' ? labels.conceptRevise : conceptGate.submittedAt ? labels.conceptSubmitted : labels.conceptDraft %></span></p>
+      <p><a href="/development/topics/<%= topic.id %>/concepts/<%= conceptGate.currentRevisionId %>/preview"><%= labels.conceptPreview %></a></p>
+      <% if (conceptGate.decisionCode) { %>
+        <p><strong><%= labels.conceptDecision %>:</strong> <%= conceptGate.decisionReason %></p>
+      <% } %>
+    <% } %>
+    <p class="topic-note"><%= conceptGate?.handoffId ? labels.handoffRecorded : conceptGate?.eligibleForFormalDesign ? labels.handoffReady : labels.noHandoff %></p>
+  </section>
+  <section id="collaboration" aria-labelledby="topic-collaboration-heading">
+    <h2 id="topic-collaboration-heading"><%= labels.collaboration %></h2>
+    <div class="topic-panels">
       <section class="topic-card" id="discussion">
-        <h2><%= labels.discussion %></h2>
+        <h3><%= labels.discussion %></h3>
         <p class="muted"><%= labels.discussionNote %></p>
         <form class="discussion-form" method="post" action="/development/topics/<%= topic.id %>/discussion">
           <%- csrfField() %>
@@ -123,16 +189,7 @@
         <% } %>
       </section>
       <section class="topic-card">
-        <h2><%= labels.next %></h2>
-        <p class="muted"><%= labels.nextNote %></p>
-        <% if (typeof developmentFilesEnabled !== 'undefined' && developmentFilesEnabled) { %>
-          <a class="secondary-action" href="/development/topics/<%= topic.id %>/materials"><%= labels.research %></a>
-        <% } %>
-      </section>
-    </div>
-    <div>
-      <section class="topic-card">
-        <h2><%= labels.members %></h2>
+        <h3><%= labels.members %></h3>
         <% if (canManageMembers) { %><p class="muted"><%= labels.memberNote %></p><% } %>
         <% for (const member of members) { %>
           <div class="topic-member">
@@ -163,6 +220,14 @@
         <% } %>
       </section>
     </div>
-  </div>
+  </section>
+  <section class="topic-card" id="outcomes">
+    <h2><%= labels.outcomes %></h2>
+    <p class="topic-note"><%= labels.noOutcome %></p>
+  </section>
+  <section class="topic-card" id="business">
+    <h2><%= labels.business %></h2>
+    <p class="topic-note"><%= labels.noBusiness %></p>
+  </section>
 </section>
 <%- include('../partials/app-end') %>

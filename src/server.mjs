@@ -899,7 +899,9 @@ export function createApp(options = {}) {
   app.use(technicalTemplateRoutes({ technicalTemplateRepository }));
   app.use(customerRoutes({ customerRepository }));
   if (config.developmentWorkspace?.enabled && developmentRepository) {
-    app.use(developmentTopicRoutes({ repository: developmentRepository }));
+    app.use(developmentTopicRoutes({
+      repository: developmentRepository, conceptRepository: developmentConceptRepository
+    }));
   }
   if (developmentConceptRepository) {
     app.use(developmentConceptRoutes({ developmentConceptRepository }));

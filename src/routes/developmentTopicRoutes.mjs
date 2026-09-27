@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { getConceptGate } from '../services/developmentConceptService.mjs';
 import {
   appendDevelopmentDiscussion,
   canCreateDevelopmentTopic,
@@ -30,8 +31,16 @@ function directionsFromRequest(req) {
   return value === undefined ? [] : Array.isArray(value) ? value : [value];
 }
 
-export function developmentTopicRoutes({ repository }) {
+export function developmentTopicRoutes({ repository, conceptRepository = null }) {
   const router = Router();
+  async function loadDetail(actor, topicId, beforeCommentId) {
+    const workspace = await getDevelopmentTopicWorkspace(repository, actor, topicId);
+    const discussion = await listDevelopmentDiscussion(repository, actor, topicId,
+      { beforeId: beforeCommentId });
+    const conceptGate = conceptRepository
+      ? await getConceptGate(conceptRepository, actor, topicId) : null;
+    return { ...workspace, discussion, conceptGate };
+  }
   router.use('/development', (req, res, next) => {
     res.set('Cache-Control', 'no-store');
     if (!req.currentUser) {
@@ -79,12 +88,10 @@ export function developmentTopicRoutes({ repository }) {
 
   router.get('/development/topics/:id', async (req, res, next) => {
     try {
-      const workspace = await getDevelopmentTopicWorkspace(repository, req.currentUser, req.params.id);
-      const discussion = await listDevelopmentDiscussion(repository, req.currentUser,
-        req.params.id, { beforeId: req.query.beforeCommentId });
-      if (wantsJson(req)) res.json({ ...workspace, discussion });
+      const detail = await loadDetail(req.currentUser, req.params.id, req.query.beforeCommentId);
+      if (wantsJson(req)) res.json(detail);
       else res.render('development/topic-detail', {
-        ...workspace, discussion, discussionError: null, discussionDraft: ''
+        ...detail, discussionError: null, discussionDraft: ''
       });
     } catch (error) { sendError(error, req, res, next); }
   });
@@ -98,12 +105,9 @@ export function developmentTopicRoutes({ repository }) {
     } catch (error) {
       if (!wantsJson(req) && error?.statusCode === 422) {
         try {
-          const workspace = await getDevelopmentTopicWorkspace(repository, req.currentUser,
-            req.params.id);
-          const discussion = await listDevelopmentDiscussion(repository, req.currentUser,
-            req.params.id);
+          const detail = await loadDetail(req.currentUser, req.params.id);
           res.status(422).render('development/topic-detail', {
-            ...workspace, discussion, discussionError: error.message,
+            ...detail, discussionError: error.message,
             discussionDraft: typeof req.body?.body === 'string' ? req.body.body : ''
           });
         } catch (accessError) { sendError(accessError, req, res, next); }
