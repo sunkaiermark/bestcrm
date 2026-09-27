@@ -4,12 +4,12 @@
   const labels = zh ? {
     title: '新建研发课题', back: '返回课题总览', name: '课题名称',
     source: '课题来源', problem: '问题与目标', directions: '产业方向（可多选）',
-    submit: '建立课题', independent: '创建课题不要求先有商机。创建者自动成为课题负责人。',
+    submit: '建立课题',
     choose: '请选择来源'
   } : {
     title: 'New development topic', back: 'Back to topic overview', name: 'Topic title',
     source: 'Source', problem: 'Problem and objective', directions: 'Industrial directions (select any)',
-    submit: 'Create topic', independent: 'A topic does not require an opportunity. Its creator becomes the owner.',
+    submit: 'Create topic',
     choose: 'Choose a source'
   };
   const sources = [
@@ -39,7 +39,6 @@
 <section class="development-new">
   <p class="breadcrumb"><a href="/development/topics"><%= labels.back %></a></p>
   <header class="page-header"><h1><%= labels.title %></h1></header>
-  <p class="muted"><%= labels.independent %></p>
   <% if (error) { %><p class="topic-error" role="alert"><%= error %></p><% } %>
   <form class="topic-form" method="post" action="/development/topics">
     <%- csrfField() %>

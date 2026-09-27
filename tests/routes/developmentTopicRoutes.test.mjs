@@ -52,6 +52,7 @@ test('P4 topic entry requires login and validates creation without an opportunit
   const form = await agent.get('/development/topics/new');
   assert.equal(form.status, 200);
   assert.match(form.text, /New development topic/);
+  assert.doesNotMatch(form.text, /A topic does not require an opportunity/);
   assert.match(form.text, /name="directions"/);
   assert.match(form.text, /href="\/development\/topics"/);
 
