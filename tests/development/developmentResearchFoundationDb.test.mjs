@@ -8,7 +8,7 @@ import { createDevelopmentTopicDraft } from '../../src/services/developmentTopic
 
 const databaseUrl = process.env.DEVELOPMENT_P3A_TEST_DATABASE_URL;
 
-test('P3a research drafts are versioned, blocked and immutable without publishing', {
+test('research metadata and outcome revisions stay immutable without implicit publication', {
   skip: !databaseUrl ? 'Set DEVELOPMENT_P3A_TEST_DATABASE_URL to an isolated local test database' : false
 }, async () => {
   const parsed = new URL(databaseUrl);
@@ -67,7 +67,7 @@ test('P3a research drafts are versioned, blocked and immutable without publishin
         file_size, sha256, recorded_by_user_id
       ) VALUES ($1, 1, 'bench.csv', $2, 'text/csv', 3, $3, $4)
       RETURNING id, access_policy_state
-    `, [materialId, `development/test/${suffix}/bench-v1.csv`, 'a'.repeat(64), ownerId]);
+    `, [materialId, `development/${topic.id}/${randomUUID()}`, 'a'.repeat(64), ownerId]);
     assert.equal(firstVersion.rows[0].access_policy_state, 'blocked_pending_policy');
     await assert.rejects(pool.query(`
       UPDATE development_material_versions SET sha256 = $2 WHERE id = $1
@@ -80,7 +80,7 @@ test('P3a research drafts are versioned, blocked and immutable without publishin
         material_id, version_no, original_filename, stored_path, mime_type,
         file_size, sha256, access_policy_state, recorded_by_user_id
       ) VALUES ($1, 2, 'bench-v2.csv', $2, 'text/csv', 3, $3, 'public', $4)
-    `, [materialId, `development/test/${suffix}/bench-v2.csv`, 'b'.repeat(64), ownerId]),
+    `, [materialId, `development/${topic.id}/${randomUUID()}`, 'b'.repeat(64), ownerId]),
     /check constraint/);
     const secondVersion = await pool.query(`
       INSERT INTO development_material_versions (
@@ -88,7 +88,7 @@ test('P3a research drafts are versioned, blocked and immutable without publishin
         file_size, sha256, recorded_by_user_id
       ) VALUES ($1, 2, 'bench-v2.csv', $2, 'text/csv', 3, $3, $4)
       RETURNING id
-    `, [materialId, `development/test/${suffix}/bench-v2.csv`, 'b'.repeat(64), ownerId]);
+    `, [materialId, `development/${topic.id}/${randomUUID()}`, 'b'.repeat(64), ownerId]);
     assert.ok(Number(secondVersion.rows[0].id) > Number(firstVersion.rows[0].id));
 
     const outcome = await pool.query(`
@@ -99,7 +99,7 @@ test('P3a research drafts are versioned, blocked and immutable without publishin
         'Only at stated viscosity', 'Not validated at scale', '["Lab notebook 1"]'::jsonb, $2)
       RETURNING id, access_policy_state
     `, [topic.id, ownerId]);
-    assert.equal(outcome.rows[0].access_policy_state, 'blocked_pending_policy');
+    assert.equal(outcome.rows[0].access_policy_state, 'topic_internal');
     await assert.rejects(pool.query(`
       INSERT INTO development_outcome_revisions (
         topic_id, revision_no, outcome_kind, title, finding,
@@ -128,9 +128,9 @@ test('P3a research drafts are versioned, blocked and immutable without publishin
       DELETE FROM development_asset_candidates WHERE id = $1
     `, [candidate.rows[0].id]), /immutable/);
     const published = await pool.query(`
-      SELECT to_regclass('development_assets') AS table_name
+      SELECT count(*)::integer AS total FROM development_assets
     `);
-    assert.equal(published.rows[0].table_name, null);
+    assert.equal(published.rows[0].total, 0);
     const events = await pool.query(`
       SELECT event_type FROM development_events WHERE topic_id = $1
     `, [topic.id]);

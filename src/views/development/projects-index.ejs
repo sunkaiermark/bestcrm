@@ -1,0 +1,46 @@
+<%- include('../partials/app-start', { title: 'Development Projects - BESTCRM', activeNav: 'development' }) %>
+<% const zh = language === 'zh'; %>
+<style>
+  .development-projects { width: 100%; margin: 0; }
+  .development-projects .project-links { display: flex; gap: 10px; flex-wrap: wrap; margin: 14px 0; }
+  .development-projects table { width: 100%; border-collapse: collapse; }
+  .development-projects th, .development-projects td { padding: 12px; border-bottom: 1px solid var(--line); text-align: left; }
+  .development-projects th { color: var(--muted); }
+  .development-projects .pagination { display: flex; justify-content: space-between; margin-top: 15px; }
+  @media (max-width: 760px) {
+    .development-projects table thead { display: none; }
+    .development-projects table tbody { display: grid; gap: 10px; }
+    .development-projects table tr { display: grid; border: 1px solid var(--line); border-radius: 6px; }
+    .development-projects table td::before { content: attr(data-label) '：'; color: var(--muted); }
+  }
+</style>
+<section class="development-projects">
+  <header class="page-header">
+    <div><h1><%= zh ? '新产品开发' : 'New Product Development' %></h1><p class="muted"><%= zh ? '研发项目总览' : 'R&D project overview' %></p></div>
+    <% if (canCreate) { %><a class="quick-action" href="/development/projects/new"><%= zh ? '新建项目' : 'New project' %></a><% } %>
+  </header>
+  <nav class="project-links" aria-label="Development sections">
+    <a class="secondary-action" href="/development/topics"><%= zh ? '课题总览' : 'Topics' %></a>
+    <a class="secondary-action" href="/development/assets"><%= zh ? '技术资产库' : 'Technical assets' %></a>
+  </nav>
+  <section class="list-section">
+    <div class="list-heading"><h2><%= zh ? '项目总数' : 'Projects' %>：<%= total %></h2></div>
+    <div class="list-body"><table>
+      <thead><tr><th><%= zh ? '项目编号' : 'Project No.' %></th><th><%= zh ? '名称' : 'Title' %></th><th><%= zh ? '计划期间' : 'Planned dates' %></th><th><%= zh ? '负责人' : 'Owner' %></th></tr></thead>
+      <tbody>
+        <% for (const project of projects) { %><tr>
+          <td data-label="<%= zh ? '编号' : 'No.' %>"><a href="/development/projects/<%= project.id %>"><%= project.projectNo %></a></td>
+          <td data-label="<%= zh ? '名称' : 'Title' %>"><%= project.title %></td>
+          <td data-label="<%= zh ? '期间' : 'Dates' %>"><%= project.plannedStartOn %> — <%= project.plannedEndOn %></td>
+          <td data-label="<%= zh ? '负责人' : 'Owner' %>"><%= project.ownerName %></td>
+        </tr><% } %>
+        <% if (!projects.length) { %><tr><td colspan="4"><%= zh ? '目前没有你可查看的研发项目。' : 'No R&D projects are visible to you.' %></td></tr><% } %>
+      </tbody>
+    </table></div>
+  </section>
+  <nav class="pagination" aria-label="Pagination">
+    <span><% if (page > 1) { %><a href="/development/projects?page=<%= page - 1 %>"><%= zh ? '上一页' : 'Previous' %></a><% } %></span>
+    <span><% if (page * 30 < total) { %><a href="/development/projects?page=<%= page + 1 %>"><%= zh ? '下一页' : 'Next' %></a><% } %></span>
+  </nav>
+</section>
+<%- include('../partials/app-end') %>

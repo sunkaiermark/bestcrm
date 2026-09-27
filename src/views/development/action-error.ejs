@@ -1,0 +1,6 @@
+<%- include('../partials/app-start', { title: 'Development action - BESTCRM', activeNav: 'development' }) %>
+<section style="width:100%;margin:0">
+  <p class="breadcrumb"><a href="/development/topics/<%= topicId %>#development"><%= language === 'zh' ? '返回课题' : 'Back to topic' %></a></p>
+  <div class="card" role="alert"><h1><%= language === 'zh' ? '操作未完成' : 'Action not completed' %></h1><p><%= message %></p></div>
+</section>
+<%- include('../partials/app-end') %>

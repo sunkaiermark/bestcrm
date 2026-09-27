@@ -6,13 +6,13 @@
     note: '仅显示你当前参与的研发课题。研发课题独立于商机，研究原件不会因商机关联而共享。',
     number: '课题编号', name: '课题名称', source: '来源', phase: '阶段',
     owner: '负责人', updated: '最近更新', noTopics: '尚无你可查看的课题。',
-    count: '课题总数', previous: '上一页', next: '下一页'
+    count: '课题总数', previous: '上一页', next: '下一页', assets: '技术资产库', projects: '研发项目'
   } : {
     title: 'New Product Development', topics: 'Topic overview', newTopic: 'New topic',
     note: 'Only topics where you are a current member appear here. Research originals are not shared by linking an opportunity.',
     number: 'Topic No.', name: 'Title', source: 'Source', phase: 'Phase',
     owner: 'Owner', updated: 'Updated', noTopics: 'No topics are visible to you yet.',
-    count: 'Topics', previous: 'Previous', next: 'Next'
+    count: 'Topics', previous: 'Previous', next: 'Next', assets: 'Technical asset library', projects: 'R&D projects'
   };
   const sourceLabels = zh ? {
     customer_idea: '客户创意', opportunity_requirement: '商机需求', product_upgrade: '产品升级',
@@ -53,6 +53,10 @@
     <% if (canCreate) { %><a class="quick-action" href="/development/topics/new"><%= labels.newTopic %></a><% } %>
   </header>
   <p class="development-note"><%= labels.note %></p>
+  <% if (typeof developmentOutcomesEnabled !== 'undefined' && developmentOutcomesEnabled) { %>
+    <p><a class="secondary-action" href="/development/assets"><%= labels.assets %></a></p>
+  <% } %>
+  <p><a class="secondary-action" href="/development/projects"><%= labels.projects %></a></p>
   <section class="list-section">
     <div class="list-heading"><h2><%= labels.topics %> · <%= labels.count %>: <%= total %></h2></div>
     <div class="list-body">

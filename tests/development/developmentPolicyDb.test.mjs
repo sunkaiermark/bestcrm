@@ -13,7 +13,7 @@ import {
 } from '../../src/services/developmentConceptService.mjs';
 import {
   appointReviewerProxy, decideLifecycle, getLifecycle, requestLifecycle,
-  revokeReviewerProxy
+  listReviewerProxyCandidates, revokeReviewerProxy
 } from '../../src/services/developmentPolicyService.mjs';
 
 const databaseUrl = process.env.DEVELOPMENT_POLICY_TEST_DATABASE_URL;
@@ -71,6 +71,12 @@ test('P2 proxy and lifecycle policy requires scoped managers and administrator a
     });
     await topics.addMember({ topicId: topic.id, userId: absent.id,
       responsibilityCode: 'concept_reviewer', actorUserId: owner.id });
+    await assert.rejects(listReviewerProxyCandidates(policies, owner, topic.id),
+      (error) => error.statusCode === 403);
+    const candidates = await listReviewerProxyCandidates(policies, admin, topic.id);
+    assert(candidates.absentManagers.some((manager) => manager.userId === absent.id));
+    assert(!candidates.absentManagers.some((manager) => manager.userId === proxy.id));
+    assert(candidates.proxyManagers.some((manager) => manager.userId === proxy.id));
     await assert.rejects(getLifecycle(policies, other, topic.id),
       (error) => error.statusCode === 404);
     await assert.rejects(appointReviewerProxy(policies, owner, topic.id, {

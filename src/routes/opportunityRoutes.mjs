@@ -16,6 +16,7 @@ import {
   getEmailThreadIntakeContext
 } from '../services/emailArchiveService.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
+import { listOpportunityDevelopmentLinks } from '../services/developmentBusinessService.mjs';
 import {
   persistUploadedOpportunityAttachment,
   retireOpportunityAttachment
@@ -760,6 +761,7 @@ export function opportunityRoutes({
   opportunityResponsibilityRepository,
   approvalSettingRepository,
   opportunityRepository,
+  developmentBusinessRepository = null,
   userRepository,
   workflowEventRepository,
   todoRepository,
@@ -1094,7 +1096,8 @@ export function opportunityRoutes({
         quotationPackages,
         correspondenceThreads,
         technicalDrafts,
-        technicalReviewAttachments
+        technicalReviewAttachments,
+        developmentLinks
       ] = await Promise.all([
         loadUsersByRole(userRepository),
         loadOpportunityActivity({
@@ -1127,7 +1130,10 @@ export function opportunityRoutes({
         opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true
           && typeof opportunityTechnicalDraftRepository.listReviewAttachmentsByOpportunity === 'function'
           ? opportunityTechnicalDraftRepository.listReviewAttachmentsByOpportunity(opportunity.id)
-          : []
+          : [],
+        developmentBusinessRepository
+          ? listOpportunityDevelopmentLinks(developmentBusinessRepository,
+            req.currentUser, opportunity.id) : []
       ]);
       const opportunityWithTeam = { ...opportunity, teamMembers };
       const activeTechnicalDraft = technicalDrafts.find((draft) => ['draft', 'ready', 'pending'].includes(draft.status)) || null;
@@ -1158,6 +1164,7 @@ export function opportunityRoutes({
         technicalFileLimitMb: Math.min(maxUploadMb, 25),
         technicalDrafts,
         technicalReviewAttachments,
+        developmentLinks,
         activeTechnicalDraft,
         canCreateUploadedTechnicalDraft: isTechnicalPreparationStage
           && !activeTechnicalDraft

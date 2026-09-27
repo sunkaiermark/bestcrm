@@ -13,11 +13,17 @@
     conceptDraft: '概念修订草稿，尚未送审', conceptSubmitted: '已送审，等待技术经理决定',
     conceptApproved: '概念已批准', conceptRevise: '需修改后重新送审',
     conceptRevision: '当前修订', conceptPreview: '查看不可变概念快照',
+    conceptCreate: '编写概念修订', conceptSubmit: '提交技术经理审核',
+    conceptReview: '审核当前概念', handoffAction: '记录正式设计交接',
+    lifecycleManage: '暂停／终止／恢复',
+    delegationManage: '技术经理代理',
     conceptDecision: '技术经理决定', handoffReady: '可申请正式设计交接；尚未记录交接。',
     handoffRecorded: 'CRM 已记录正式设计交接；权威工程资料仍由产品工程管理。',
     noHandoff: '未取得正式设计交接资格；探索性验证不能标作正式设计。',
     noOutcome: '尚无经独立审核发布的结论。此处不会把探索资料标为成熟技术资产。',
-    noBusiness: '商机关联和对客引用尚未开放；研究原件不会自动复制给商机。',
+    outcomeWorkspace: '记录和审核结论修订',
+    noBusiness: '内部商机关联不授予研究原件权限；对客使用指定结论版本仍须技术经理另行批准。',
+    businessWorkspace: '管理商机关联与对客使用审批',
     members: '未终止的成员资格', memberNote: '只有课题负责人可邀请或结束成员资格。停用账号目前无读取权；结束资格后即使账号重新启用也不会自动恢复访问，历史审计不会删除。',
     addMember: '邀请成员', chooseMember: '选择在职员工', invite: '加入课题',
     noCandidates: '暂无可邀请的在职员工', remove: '结束成员资格',
@@ -39,11 +45,17 @@
     conceptDraft: 'Concept revision draft, not submitted', conceptSubmitted: 'Submitted for technical-manager decision',
     conceptApproved: 'Concept approved', conceptRevise: 'Revision required before resubmission',
     conceptRevision: 'Current revision', conceptPreview: 'View immutable concept snapshot',
+    conceptCreate: 'Draft concept revision', conceptSubmit: 'Submit for technical review',
+    conceptReview: 'Review current concept', handoffAction: 'Record formal design handoff',
+    lifecycleManage: 'Pause / stop / resume',
+    delegationManage: 'Technical-manager proxies',
     conceptDecision: 'Technical-manager decision', handoffReady: 'Formal design handoff can be requested; none is recorded yet.',
     handoffRecorded: 'Formal design handoff is recorded in CRM; product engineering owns the authoritative design.',
     noHandoff: 'Not qualified for formal design handoff; exploration is not formal design.',
     noOutcome: 'No independently reviewed outcome has been published. Exploration is not a mature technical asset.',
-    noBusiness: 'Opportunity links and customer-facing reuse are not enabled; research originals are never copied automatically.',
+    outcomeWorkspace: 'Record and review outcome revisions',
+    noBusiness: 'An internal opportunity link grants no research-file access; use of an exact result for customers requires separate technical-manager approval.',
+    businessWorkspace: 'Manage opportunity links and customer-use approvals',
     members: 'Open memberships', memberNote: 'Only the topic owner may invite or end memberships. An inactive account cannot read files; ending its membership also prevents access after reactivation. Audit history is retained.',
     addMember: 'Invite a member', chooseMember: 'Choose an active employee', invite: 'Add to topic',
     noCandidates: 'No active employees are available to invite', remove: 'End membership',
@@ -108,6 +120,9 @@
   .development-topic .discussion-form textarea { width: 100%; min-height: 100px; }
   .development-topic .discussion-form button { width: auto; }
   .development-topic .discussion-error { color: #a61b1b; }
+  .development-topic .concept-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin: 12px 0; }
+  .development-topic .concept-actions form { margin: 0; }
+  .development-topic .concept-actions button { width: auto; }
   @media (max-width: 850px) {
     .development-topic .topic-panels, .development-topic .topic-facts, .development-topic .invite-form { grid-template-columns: 1fr; }
   }
@@ -118,6 +133,12 @@
     <div><h1><%= topic.topicNo %> · <%= topic.title %></h1></div>
   </header>
   <p class="topic-boundary"><%= labels.internalOnly %></p>
+  <% if (Number(currentUser?.id) === Number(topic.ownerUserId) || currentUser?.roles?.includes('administrator')) { %>
+    <p><a class="secondary-action" href="/development/topics/<%= topic.id %>/lifecycle/manage"><%= labels.lifecycleManage %></a></p>
+  <% } %>
+  <% if (currentUser?.roles?.includes('administrator')) { %>
+    <p><a class="secondary-action" href="/development/topics/<%= topic.id %>/reviewer-delegations/manage"><%= labels.delegationManage %></a></p>
+  <% } %>
   <section class="topic-card" aria-labelledby="topic-overview-heading">
     <h2 id="topic-overview-heading"><%= labels.overview %></h2>
     <dl class="topic-facts">
@@ -160,6 +181,32 @@
       <% if (conceptGate.decisionCode) { %>
         <p><strong><%= labels.conceptDecision %>:</strong> <%= conceptGate.decisionReason %></p>
       <% } %>
+    <% } %>
+    <% if (conceptGate) {
+      const ownerCanAct = Number(currentUser?.id) === Number(topic.ownerUserId);
+      const pendingReview = Boolean(conceptGate.submittedAt && !conceptGate.decisionCode);
+      const canDraft = ownerCanAct && ['idea', 'exploration', 'concept_review', 'detailed_design'].includes(conceptGate.phase) && !pendingReview;
+      const canSubmit = ownerCanAct && Boolean(conceptGate.currentRevisionId) && !conceptGate.submittedAt && ['idea', 'exploration'].includes(conceptGate.phase);
+      const canReview = canReviewConcept && pendingReview && conceptGate.phase === 'concept_review';
+    %>
+      <div class="concept-actions">
+        <% if (canDraft) { %><a class="secondary-action" href="/development/topics/<%= topic.id %>/concepts/new"><%= labels.conceptCreate %></a><% } %>
+        <% if (canSubmit) { %>
+          <form method="post" action="/development/topics/<%= topic.id %>/concepts/<%= conceptGate.currentRevisionId %>/submit">
+            <%- csrfField() %><input type="hidden" name="expectedRowVersion" value="<%= conceptGate.rowVersion %>">
+            <button type="submit"><%= labels.conceptSubmit %></button>
+          </form>
+        <% } %>
+        <% if (canReview) { %><a class="secondary-action" href="/development/topics/<%= topic.id %>/concepts/<%= conceptGate.currentRevisionId %>/review"><%= labels.conceptReview %></a><% } %>
+        <% if (ownerCanAct && conceptGate.eligibleForFormalDesign) { %>
+          <form method="post" action="/development/topics/<%= topic.id %>/design-handoffs">
+            <%- csrfField() %><input type="hidden" name="revisionId" value="<%= conceptGate.currentRevisionId %>">
+            <input type="hidden" name="expectedRowVersion" value="<%= conceptGate.rowVersion %>">
+            <input type="hidden" name="idempotencyKey" value="<%= handoffIdempotencyKey %>">
+            <button type="submit"><%= labels.handoffAction %></button>
+          </form>
+        <% } %>
+      </div>
     <% } %>
     <p class="topic-note"><%= conceptGate?.handoffId ? labels.handoffRecorded : conceptGate?.eligibleForFormalDesign ? labels.handoffReady : labels.noHandoff %></p>
   </section>
@@ -224,10 +271,16 @@
   <section class="topic-card" id="outcomes">
     <h2><%= labels.outcomes %></h2>
     <p class="topic-note"><%= labels.noOutcome %></p>
+    <% if (typeof developmentOutcomesEnabled !== 'undefined' && developmentOutcomesEnabled) { %>
+      <a class="secondary-action" href="/development/topics/<%= topic.id %>/outcomes"><%= labels.outcomeWorkspace %></a>
+    <% } %>
   </section>
   <section class="topic-card" id="business">
     <h2><%= labels.business %></h2>
     <p class="topic-note"><%= labels.noBusiness %></p>
+    <% if (typeof developmentBusinessEnabled !== 'undefined' && developmentBusinessEnabled) { %>
+      <a class="secondary-action" href="/development/topics/<%= topic.id %>/business"><%= labels.businessWorkspace %></a>
+    <% } %>
   </section>
 </section>
 <%- include('../partials/app-end') %>

@@ -1,0 +1,79 @@
+<%- include('../partials/app-start', { title: `${concept.topicNo} - Concept Decision - BESTCRM`, activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    back: '返回课题', title: '概念方案审核', boundary: '仅决定是否进入详细设计准备；不批准图纸、产品或对客方案。',
+    revision: '修订', digest: '不可变快照 SHA-256', problem: '问题', application: '应用场景', scope: '范围',
+    options: '候选方向与取舍', preferred: '拟选方向', assumptions: '关键假设', risks: '风险',
+    evidence: '证据', effort: '下一步投入', relation: '客户／商机背景',
+    decision: '审核决定', approve: '批准概念', revise: '要求修改', reason: '审核理由',
+    selfReason: '自审理由（若您参与编写或提交，则必填）', submit: '记录审核决定'
+  } : {
+    back: 'Back to topic', title: 'Concept decision', boundary: 'This decision only gates detailed-design preparation; it does not approve drawings, products or customer proposals.',
+    revision: 'Revision', digest: 'Immutable snapshot SHA-256', problem: 'Problem', application: 'Application', scope: 'Scope',
+    options: 'Candidate directions and trade-offs', preferred: 'Preferred direction', assumptions: 'Key assumptions', risks: 'Risks',
+    evidence: 'Evidence', effort: 'Next-step effort', relation: 'Customer / opportunity context',
+    decision: 'Decision', approve: 'Approve concept', revise: 'Require revision', reason: 'Decision reason',
+    selfReason: 'Self-review reason (required if you authored or submitted this revision)', submit: 'Record decision'
+  };
+  const pack = concept.snapshot || {};
+%>
+<style>
+  .development-review { width: 100%; margin: 0; }
+  .development-review .review-boundary { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; }
+  .development-review .review-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px; margin: 14px 0; }
+  .development-review .review-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 20px; }
+  .development-review .review-grid h2 { color: var(--muted); font-size: 1rem; margin: 0 0 5px; }
+  .development-review .review-grid p { white-space: pre-wrap; overflow-wrap: anywhere; margin: 0; }
+  .development-review .review-full { grid-column: 1 / -1; }
+  .development-review .review-option { border-top: 1px solid var(--line); padding: 10px 0; }
+  .development-review .review-digest { overflow-wrap: anywhere; font: 0.8rem monospace; }
+  .development-review form { display: grid; gap: 12px; }
+  .development-review form label { display: grid; gap: 5px; }
+  .development-review form .decision-options { display: flex; flex-wrap: wrap; gap: 20px; }
+  .development-review form .decision-options label { display: inline-flex; align-items: center; gap: 7px; }
+  .development-review form input[type="radio"] { width: auto; min-height: auto; }
+  .development-review form button { justify-self: start; width: auto; }
+  .development-review .review-error { color: #a61b1b; font-weight: 700; }
+  @media (max-width: 760px) { .development-review .review-grid { grid-template-columns: 1fr; } }
+</style>
+<section class="development-review">
+  <p class="breadcrumb"><a href="/development/topics/<%= concept.topicId %>#development"><%= labels.back %></a></p>
+  <header class="page-header"><h1><%= labels.title %> · <%= concept.topicNo %></h1></header>
+  <p class="review-boundary"><%= labels.boundary %></p>
+  <% if (error) { %><p class="review-error" role="alert"><%= error %></p><% } %>
+  <section class="review-card" aria-label="<%= labels.title %>">
+    <p><strong><%= labels.revision %> <%= concept.revisionNo %></strong> · <%= concept.topicTitle %></p>
+    <div class="review-grid">
+      <div><h2><%= labels.problem %></h2><p><%= pack.problem || '—' %></p></div>
+      <div><h2><%= labels.application %></h2><p><%= pack.application || '—' %></p></div>
+      <div class="review-full"><h2><%= labels.scope %></h2><p><%= pack.scope || '—' %></p></div>
+      <div class="review-full"><h2><%= labels.options %></h2>
+        <% for (const option of pack.options || []) { %>
+          <div class="review-option"><strong><%= option.name %><%= option.name === pack.preferredOption ? ` · ${labels.preferred}` : '' %></strong>
+            <p><%= option.benefits %> / <%= option.tradeoffs %></p></div>
+        <% } %>
+      </div>
+      <div><h2><%= labels.assumptions %></h2><p><%= (pack.assumptions || []).join('\n') || '—' %></p></div>
+      <div><h2><%= labels.risks %></h2><p><%= (pack.risks || []).join('\n') || '—' %></p></div>
+      <div class="review-full"><h2><%= labels.evidence %></h2><p><%= (pack.evidence || []).join('\n') || '—' %></p></div>
+      <div><h2><%= labels.effort %></h2><p><%= pack.nextStepEffort || '—' %></p></div>
+      <div><h2><%= labels.relation %></h2><p><%= pack.customerOpportunityRelation || '—' %></p></div>
+      <div class="review-full review-digest"><%= labels.digest %>: <%= concept.snapshotSha256 %></div>
+    </div>
+  </section>
+  <form class="review-card" method="post" action="/development/topics/<%= concept.topicId %>/concepts/<%= concept.revisionId %>/decision">
+    <%- csrfField() %>
+    <input type="hidden" name="expectedRowVersion" value="<%= gate.rowVersion %>">
+    <input type="hidden" name="idempotencyKey" value="<%= idempotencyKey %>">
+    <strong><%= labels.decision %></strong>
+    <div class="decision-options">
+      <label><input type="radio" name="decisionCode" value="approved" <%= form.decisionCode === 'approved' ? 'checked' : '' %> required> <%= labels.approve %></label>
+      <label><input type="radio" name="decisionCode" value="revise_required" <%= form.decisionCode === 'revise_required' ? 'checked' : '' %>> <%= labels.revise %></label>
+    </div>
+    <label><%= labels.reason %><textarea name="reason" maxlength="4000" rows="4" required><%= form.reason || '' %></textarea></label>
+    <label><%= labels.selfReason %><textarea name="selfReviewReason" maxlength="4000" rows="3"><%= form.selfReviewReason || '' %></textarea></label>
+    <button type="submit"><%= labels.submit %></button>
+  </form>
+</section>
+<%- include('../partials/app-end') %>

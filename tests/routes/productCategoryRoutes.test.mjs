@@ -32,6 +32,7 @@ async function loggedInCategoryAgent(role, { opportunity = {}, thread = {} } = {
   const app = createApp({
     databaseUrl: '',
     sessionSecret: 'test-secret',
+    emailCenter: { enabled: true },
     userRepository: {
       async findByIdWithRoles(id) { return Number(id) === user.id ? user : null; },
       async findByUsernameWithRoles(username) { return username === user.username ? user : null; }

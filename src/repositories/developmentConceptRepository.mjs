@@ -316,6 +316,7 @@ export function createDevelopmentConceptRepository(pool) {
         `, [topic.id, latest.id]) : { rows: [] };
         return {
           topicId: Number(topic.id), topicNo: topic.topic_no,
+          ownerUserId: Number(topic.owner_user_id),
           phase: topic.phase, rowVersion: Number(topic.row_version),
           currentRevisionId: latest ? Number(latest.id) : null,
           currentRevisionNo: latest ? Number(latest.revision_no) : null,

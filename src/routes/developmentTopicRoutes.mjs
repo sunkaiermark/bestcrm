@@ -1,4 +1,6 @@
+import { randomUUID } from 'node:crypto';
 import { Router } from 'express';
+import { hasRole, ROLES } from '../domain/roles.mjs';
 import { getConceptGate } from '../services/developmentConceptService.mjs';
 import {
   appendDevelopmentDiscussion,
@@ -31,7 +33,8 @@ function directionsFromRequest(req) {
   return value === undefined ? [] : Array.isArray(value) ? value : [value];
 }
 
-export function developmentTopicRoutes({ repository, conceptRepository = null }) {
+export function developmentTopicRoutes({ repository, conceptRepository = null,
+  outcomesEnabled = false, businessEnabled = false }) {
   const router = Router();
   async function loadDetail(actor, topicId, beforeCommentId) {
     const workspace = await getDevelopmentTopicWorkspace(repository, actor, topicId);
@@ -60,7 +63,8 @@ export function developmentTopicRoutes({ repository, conceptRepository = null })
         return;
       }
       res.render('development/topics-index', {
-        ...result, page: Number(page), canCreate: canCreateDevelopmentTopic(req.currentUser)
+        ...result, page: Number(page), canCreate: canCreateDevelopmentTopic(req.currentUser),
+        developmentOutcomesEnabled: outcomesEnabled
       });
     } catch (error) { sendError(error, req, res, next); }
   });
@@ -91,7 +95,11 @@ export function developmentTopicRoutes({ repository, conceptRepository = null })
       const detail = await loadDetail(req.currentUser, req.params.id, req.query.beforeCommentId);
       if (wantsJson(req)) res.json(detail);
       else res.render('development/topic-detail', {
-        ...detail, discussionError: null, discussionDraft: ''
+        ...detail, discussionError: null, discussionDraft: '',
+        developmentOutcomesEnabled: outcomesEnabled,
+        developmentBusinessEnabled: businessEnabled,
+        handoffIdempotencyKey: randomUUID(),
+        canReviewConcept: hasRole(req.currentUser, ROLES.TECHNICAL_MANAGER)
       });
     } catch (error) { sendError(error, req, res, next); }
   });
@@ -108,7 +116,11 @@ export function developmentTopicRoutes({ repository, conceptRepository = null })
           const detail = await loadDetail(req.currentUser, req.params.id);
           res.status(422).render('development/topic-detail', {
             ...detail, discussionError: error.message,
-            discussionDraft: typeof req.body?.body === 'string' ? req.body.body : ''
+            developmentOutcomesEnabled: outcomesEnabled,
+            developmentBusinessEnabled: businessEnabled,
+            discussionDraft: typeof req.body?.body === 'string' ? req.body.body : '',
+            handoffIdempotencyKey: randomUUID(),
+            canReviewConcept: hasRole(req.currentUser, ROLES.TECHNICAL_MANAGER)
           });
         } catch (accessError) { sendError(accessError, req, res, next); }
       } else sendError(error, req, res, next);

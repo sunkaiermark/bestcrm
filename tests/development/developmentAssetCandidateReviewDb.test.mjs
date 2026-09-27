@@ -161,9 +161,9 @@ test('P3b reviews require another active technical manager who is an active topi
     assert.deepEqual(audit.rows.map((row) => row.decision_code),
       ['endorsed', 'revision_required']);
     const published = await pool.query(`
-      SELECT to_regclass('development_assets') AS asset_table
+      SELECT count(*)::integer AS total FROM development_assets
     `);
-    assert.equal(published.rows[0].asset_table, null);
+    assert.equal(published.rows[0].total, 0);
   } finally {
     await pool.end();
   }

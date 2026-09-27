@@ -111,7 +111,7 @@ test('P1 relational constraints and audit survive isolated PostgreSQL migration'
     await assert.rejects(repository.linkOpportunity({
       topicId: topicA.id, opportunityId: 999999999,
       actorUserId: salesId
-    }), /foreign key/);
+    }), /opportunity access|required|foreign key/i);
 
     const revision = await pool.query(`
       INSERT INTO development_concept_revisions (

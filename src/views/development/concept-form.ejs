@@ -1,0 +1,70 @@
+<%- include('../partials/app-start', { title: `${gate.topicNo} - Concept Revision - BESTCRM`, activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    back: '返回课题', title: '新建概念方案修订', note: '保存后形成不可变修订；确认内容完整后再单独送审。上一版只用于预填，不会被覆盖。',
+    problem: '问题与需求', application: '应用场景', scope: '适用范围与边界',
+    options: '候选方向', option: '方案', name: '方案名称', benefits: '优势', tradeoffs: '取舍／限制',
+    preferred: '拟选方向', assumptions: '关键假设（每行一项）', risks: '风险（每行一项）',
+    evidence: '探索证据（每行一项）', effort: '下一步预计投入',
+    relation: '客户／商机背景（可选；不构成对客授权）', save: '保存不可变修订'
+  } : {
+    back: 'Back to topic', title: 'New concept revision', note: 'Saving seals an immutable revision. Submit it separately after checking completeness. The prior revision is only a starting point and is never overwritten.',
+    problem: 'Problem and need', application: 'Application', scope: 'Scope and boundaries',
+    options: 'Candidate directions', option: 'Option', name: 'Option name', benefits: 'Benefits', tradeoffs: 'Trade-offs / limits',
+    preferred: 'Preferred direction', assumptions: 'Key assumptions (one per line)', risks: 'Risks (one per line)',
+    evidence: 'Exploration evidence (one per line)', effort: 'Estimated next-step effort',
+    relation: 'Customer / opportunity context (optional; not customer-use approval)', save: 'Save immutable revision'
+  };
+%>
+<style>
+  .development-concept-form { width: 100%; margin: 0; }
+  .development-concept-form form { display: grid; gap: 16px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 20px; }
+  .development-concept-form label { display: grid; gap: 5px; margin: 0; }
+  .development-concept-form textarea { width: 100%; min-height: 90px; }
+  .development-concept-form .option-grid { display: grid; grid-template-columns: minmax(160px, 1fr) minmax(0, 2fr) minmax(0, 2fr); gap: 12px; align-items: start; }
+  .development-concept-form .option-card { border: 1px solid var(--line); border-radius: 6px; padding: 14px; margin: 10px 0; }
+  .development-concept-form .option-card h3 { margin: 0 0 10px; }
+  .development-concept-form .preferred { display: inline-flex; align-items: center; gap: 6px; }
+  .development-concept-form .preferred input { width: auto; min-height: auto; }
+  .development-concept-form .list-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
+  .development-concept-form button { justify-self: start; width: auto; }
+  .development-concept-form .form-error { color: #a61b1b; font-weight: 700; }
+  @media (max-width: 850px) { .development-concept-form .option-grid, .development-concept-form .list-grid { grid-template-columns: 1fr; } }
+</style>
+<section class="development-concept-form">
+  <p class="breadcrumb"><a href="/development/topics/<%= gate.topicId %>#development"><%= labels.back %></a></p>
+  <header class="page-header"><h1><%= labels.title %> · <%= gate.topicNo %></h1></header>
+  <p class="muted"><%= labels.note %></p>
+  <% if (error) { %><p class="form-error" role="alert"><%= error %></p><% } %>
+  <form method="post" action="/development/topics/<%= gate.topicId %>/concepts">
+    <%- csrfField() %>
+    <input type="hidden" name="expectedRowVersion" value="<%= gate.rowVersion %>">
+    <label><%= labels.problem %><textarea name="problem" maxlength="2000"><%= form.problem %></textarea></label>
+    <label><%= labels.application %><textarea name="application" maxlength="2000"><%= form.application %></textarea></label>
+    <label><%= labels.scope %><textarea name="scope" maxlength="1500"><%= form.scope %></textarea></label>
+    <fieldset>
+      <legend><%= labels.options %></legend>
+      <% for (let index = 0; index < 8; index += 1) { const option = form.options[index]; %>
+        <div class="option-card">
+          <h3><%= labels.option %> <%= index + 1 %></h3>
+          <div class="option-grid">
+            <label><%= labels.name %><input name="option<%= index + 1 %>Name" maxlength="200" value="<%= option.name %>"></label>
+            <label><%= labels.benefits %><textarea name="option<%= index + 1 %>Benefits" maxlength="1000"><%= option.benefits %></textarea></label>
+            <label><%= labels.tradeoffs %><textarea name="option<%= index + 1 %>Tradeoffs" maxlength="1000"><%= option.tradeoffs %></textarea></label>
+          </div>
+          <label class="preferred"><input type="radio" name="preferredOptionIndex" value="<%= index + 1 %>" <%= form.preferredOptionIndex === String(index + 1) ? 'checked' : '' %>> <%= labels.preferred %></label>
+        </div>
+      <% } %>
+    </fieldset>
+    <div class="list-grid">
+      <label><%= labels.assumptions %><textarea name="assumptions"><%= form.assumptions %></textarea></label>
+      <label><%= labels.risks %><textarea name="risks"><%= form.risks %></textarea></label>
+      <label><%= labels.evidence %><textarea name="evidence"><%= form.evidence %></textarea></label>
+    </div>
+    <label><%= labels.effort %><textarea name="nextStepEffort" maxlength="1000"><%= form.nextStepEffort %></textarea></label>
+    <label><%= labels.relation %><textarea name="customerOpportunityRelation" maxlength="1000"><%= form.customerOpportunityRelation %></textarea></label>
+    <button type="submit"><%= labels.save %></button>
+  </form>
+</section>
+<%- include('../partials/app-end') %>

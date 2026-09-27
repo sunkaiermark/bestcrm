@@ -111,6 +111,17 @@ async function git(cwd, args) {
   return stdout.trim();
 }
 
+async function assertPortableShellScriptsInArchive(archivePath, paths) {
+  const archive = await JSZip.loadAsync(await readFile(archivePath));
+  for (const filePath of paths.filter((item) => item.endsWith('.sh'))) {
+    const entry = archive.file(filePath);
+    if (!entry) throw new Error(`Release archive is missing shell script: ${filePath}`);
+    if ((await entry.async('nodebuffer')).includes(13)) {
+      throw new Error(`Release shell script must use LF line endings: ${filePath}`);
+    }
+  }
+}
+
 async function writePortableTextArtifact(filePath, content) {
   if (process.platform !== 'win32') {
     await writeFile(filePath, content, 'utf8');
@@ -211,13 +222,7 @@ export async function buildReleaseCandidate({
     if (sha256 !== rehearsalSha256) {
       throw new Error('Repeated git archive output is not reproducible');
     }
-    const extractedArchive = path.join(rehearsalDir, 'extracted');
-    await mkdir(extractedArchive, { recursive: true });
-    await execFileAsync('tar', ['-xf', archivePath, '-C', extractedArchive], {
-      cwd,
-      windowsHide: true
-    });
-    await assertPortableShellScripts(extractedArchive, paths);
+    await assertPortableShellScriptsInArchive(archivePath, paths);
     const migrations = paths.filter((item) => item.startsWith('src/db/migrations/') && item.endsWith('.sql')).sort();
     const manifest = {
       schemaVersion: 1,

@@ -26,8 +26,11 @@ import { createContractApprovalRepository } from './repositories/contractApprova
 import { createContactRepository } from './repositories/contactRepository.mjs';
 import { createCustomerRepository } from './repositories/customerRepository.mjs';
 import { createDevelopmentConceptRepository } from './repositories/developmentConceptRepository.mjs';
+import { createDevelopmentBusinessRepository } from './repositories/developmentBusinessRepository.mjs';
 import { createDevelopmentMaterialFileRepository } from './repositories/developmentMaterialFileRepository.mjs';
+import { createDevelopmentOutcomeRepository } from './repositories/developmentOutcomeRepository.mjs';
 import { createDevelopmentPolicyRepository } from './repositories/developmentPolicyRepository.mjs';
+import { createDevelopmentProjectRepository } from './repositories/developmentProjectRepository.mjs';
 import { createDevelopmentRepository } from './repositories/developmentRepository.mjs';
 import { createEmailArchiveRepository } from './repositories/emailArchiveRepository.mjs';
 import { createFormSubmissionRepository } from './repositories/formSubmissionRepository.mjs';
@@ -60,8 +63,11 @@ import { authRoutes } from './routes/authRoutes.mjs';
 import { contactRoutes } from './routes/contactRoutes.mjs';
 import { customerRoutes } from './routes/customerRoutes.mjs';
 import { developmentConceptRoutes } from './routes/developmentConceptRoutes.mjs';
+import { developmentBusinessRoutes } from './routes/developmentBusinessRoutes.mjs';
+import { developmentOutcomeRoutes } from './routes/developmentOutcomeRoutes.mjs';
 import { developmentMaterialRoutes } from './routes/developmentMaterialRoutes.mjs';
 import { developmentPolicyRoutes } from './routes/developmentPolicyRoutes.mjs';
+import { developmentProjectRoutes } from './routes/developmentProjectRoutes.mjs';
 import { developmentTopicRoutes } from './routes/developmentTopicRoutes.mjs';
 import { createClamAvScanner } from './services/emailMalwareScannerService.mjs';
 import { emailCenterRoutes } from './routes/emailCenterRoutes.mjs';
@@ -713,12 +719,18 @@ export function createApp(options = {}) {
   const productCategoryRepository = options.productCategoryRepository || (pool ? createProductCategoryRepository(pool) : null);
   const developmentConceptRepository = options.developmentConceptRepository
     || (pool ? createDevelopmentConceptRepository(pool) : null);
+  const developmentBusinessRepository = options.developmentBusinessRepository
+    || (pool ? createDevelopmentBusinessRepository(pool) : null);
   const developmentMaterialFileRepository = options.developmentMaterialFileRepository
     || (pool ? createDevelopmentMaterialFileRepository(pool) : null);
+  const developmentOutcomeRepository = options.developmentOutcomeRepository
+    || (pool ? createDevelopmentOutcomeRepository(pool) : null);
   const developmentPolicyRepository = options.developmentPolicyRepository
     || (pool ? createDevelopmentPolicyRepository(pool) : null);
   const developmentRepository = options.developmentRepository
     || (pool ? createDevelopmentRepository(pool) : null);
+  const developmentProjectRepository = options.developmentProjectRepository
+    || (pool ? createDevelopmentProjectRepository(pool) : null);
   const projectExecutionRepository = options.projectExecutionRepository
     || (pool ? createProjectExecutionRepository(pool) : emptyProjectExecutionRepository);
   const opportunityResponsibilityRepository = options.opportunityResponsibilityRepository
@@ -900,8 +912,19 @@ export function createApp(options = {}) {
   app.use(customerRoutes({ customerRepository }));
   if (config.developmentWorkspace?.enabled && developmentRepository) {
     app.use(developmentTopicRoutes({
-      repository: developmentRepository, conceptRepository: developmentConceptRepository
+      repository: developmentRepository, conceptRepository: developmentConceptRepository,
+      outcomesEnabled: Boolean(developmentOutcomeRepository),
+      businessEnabled: Boolean(developmentBusinessRepository)
     }));
+  }
+  if (config.developmentWorkspace?.enabled && developmentProjectRepository) {
+    app.use(developmentProjectRoutes({ repository: developmentProjectRepository }));
+  }
+  if (config.developmentWorkspace?.enabled && developmentBusinessRepository) {
+    app.use(developmentBusinessRoutes({ repository: developmentBusinessRepository }));
+  }
+  if (config.developmentWorkspace?.enabled && developmentOutcomeRepository) {
+    app.use(developmentOutcomeRoutes({ repository: developmentOutcomeRepository }));
   }
   if (developmentConceptRepository) {
     app.use(developmentConceptRoutes({ developmentConceptRepository }));
@@ -1034,6 +1057,8 @@ export function createApp(options = {}) {
     opportunityResponsibilityRepository,
     approvalSettingRepository,
     opportunityRepository,
+    developmentBusinessRepository: config.developmentWorkspace?.enabled
+      ? developmentBusinessRepository : null,
     userRepository,
     workflowEventRepository,
     todoRepository,

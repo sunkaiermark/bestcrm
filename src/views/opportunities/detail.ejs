@@ -261,6 +261,38 @@
         <% if (opportunity.archivedAt) { %><p class="user-line"><%= t('archivedRecord') %><% if (opportunity.archiveReason) { %>: <%= opportunity.archiveReason %><% } %></p><% } %>
 
         <div class="section-stack">
+        <% if (typeof developmentLinks !== 'undefined' && developmentLinks.length) { %>
+          <section class="content-section" aria-labelledby="opportunity-development-heading">
+            <h2 id="opportunity-development-heading"><%= language === 'zh' ? '关联研发课题' : 'Linked development topics' %></h2>
+            <div class="section-body">
+              <p class="muted"><%= language === 'zh'
+                ? '仅显示您仍是成员的课题；内部关联不开放研究原件，对客引用须按商机及结论版本单独批准。'
+                : 'Only topics where you are an active member are shown. Links do not grant research access; customer use requires separate approval for this opportunity and exact result revision.' %></p>
+              <% for (const link of developmentLinks) { %>
+                <p><a href="/development/topics/<%= link.topicId %>/business"><%= link.topicNo %> · <%= link.topicTitle %></a>
+                  · <%= language === 'zh' ? '有效对客引用批准' : 'Effective customer-use approvals' %>: <%= link.approvedUses %>
+                  · <%= language === 'zh' ? '已记录的对客文件使用' : 'Recorded customer-file uses' %>: <%= link.fileUses?.length || 0 %></p>
+                <% for (const use of link.fileUses || []) { %>
+                  <p><strong><%= language === 'zh' ? '实际使用' : 'Actual use' %></strong>
+                    · <%= use.outcomeTitle %> v<%= use.revisionNo %>
+                    · <%= use.fileName %> (<%= use.versionLabel %>)
+                    · <a href="/email-center/threads/<%= use.emailThreadId %>"><%= language === 'zh' ? '归档邮件' : 'Archived email' %> #<%= use.emailMessageId %></a>
+                    · SHA-256 <code><%= use.sha256 %></code></p>
+                <% } %>
+                <% for (const citation of link.citations) { %>
+                  <article>
+                    <strong><%= citation.title %> · v<%= citation.revisionNo %> · #<%= citation.outcomeRevisionId %></strong>
+                    <p><%= language === 'zh' ? '批准用途' : 'Approved purpose' %>: <%= citation.purpose %></p>
+                    <p><%= language === 'zh' ? '结论' : 'Finding' %>: <%= citation.finding %></p>
+                    <p><%= language === 'zh' ? '适用条件' : 'Applicability' %>: <%= citation.applicability %></p>
+                    <p><%= language === 'zh' ? '限制' : 'Limitations' %>: <%= citation.limitations %></p>
+                  </article>
+                <% } %>
+              <% } %>
+            </div>
+          </section>
+        <% } %>
+
           <section class="content-section business-section business-section-basic">
             <h2><%= t('basicInfo') %></h2>
             <div class="section-body">

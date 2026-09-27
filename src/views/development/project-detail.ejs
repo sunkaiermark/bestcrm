@@ -1,0 +1,304 @@
+<%- include('../partials/app-start', { title: project.projectNo + ' - BESTCRM', activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const byId = new Map(items.map(item => [item.id, item]));
+  const predecessorsFor = item => dependencies.filter(dep => dep.successorItemId === item.id);
+  const topicsFor = item => topicLinks.filter(link => link.itemId === item.id);
+  const gateBlocks = item => predecessorsFor(item).some(dep => {
+    const before = byId.get(dep.predecessorItemId);
+    return before?.itemKind === 'concept_gate' && !before.gateApproved;
+  });
+  const linkedTopicIds = new Set(topicLinks.map(link => link.topicId).filter(Boolean));
+  const dateTicks = Array.from({ length: 5 }, (_, index) => {
+    const start = Date.parse(project.plannedStartOn + 'T00:00:00Z');
+    const end = Date.parse(project.plannedEndOn + 'T00:00:00Z');
+    return new Date(start + (end - start) * index / 4).toISOString().slice(5, 10).replace('-', '/');
+  });
+%>
+<style>
+  .development-project-detail { width: 100%; margin: 0; }
+  .development-project-detail .project-heading { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: start; gap: 12px; }
+  .development-project-detail .project-heading h1 { margin: 0; }
+  .development-project-detail .project-meta { color: var(--muted); margin: 8px 0 18px; }
+  .development-project-detail .project-tabs { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 15px; border-bottom: 1px solid var(--line); }
+  .development-project-detail .project-tabs a { padding: 9px 3px; }
+  .development-project-detail .project-tabs a.active { color: var(--accent); border-bottom: 3px solid var(--accent); }
+  .development-project-detail .project-panel { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 16px; margin-bottom: 14px; }
+  .development-project-detail .project-panel h2 { margin: 0 0 12px; }
+  .development-project-detail .plan-warning { border-left: 4px solid #b42318; padding: 10px 13px; background: #fff1f0; margin: 10px 0; }
+  .development-project-detail .plan-key { display: flex; flex-wrap: wrap; gap: 8px 18px; margin: 9px 0 12px; color: var(--muted); }
+  .development-project-detail .plan-key strong { color: var(--ink); }
+  .development-project-detail .gantt { border-top: 1px solid var(--line); }
+  .development-project-detail .gantt-head, .development-project-detail .gantt-row { display: grid; grid-template-columns: minmax(250px, 38%) minmax(0, 1fr); }
+  .development-project-detail .gantt-head { background: #f4f7f9; color: var(--muted); }
+  .development-project-detail .gantt-head > div { padding: 8px 9px; }
+  .development-project-detail .gantt-head .date-ticks { display: flex; justify-content: space-between; }
+  .development-project-detail .gantt-body { position: relative; }
+  .development-project-detail .gantt-row { min-height: 82px; border-top: 1px solid var(--line); }
+  .development-project-detail .gantt-work { padding: 9px; min-width: 0; }
+  .development-project-detail .gantt-work strong { display: block; }
+  .development-project-detail .gantt-work small { display: block; color: var(--muted); margin-top: 4px; }
+  .development-project-detail .conflict-text { color: #b42318; }
+  .development-project-detail .gantt-chart { position: relative; min-height: 82px; background: repeating-linear-gradient(to right, transparent 0, transparent calc(25% - 1px), var(--line) calc(25% - 1px), var(--line) 25%); }
+  .development-project-detail .gantt-bar { position: absolute; top: 29px; height: 23px; background: #4479a9; color: white; border-radius: 3px; padding: 2px 6px; white-space: nowrap; overflow: hidden; }
+  .development-project-detail .gantt-bar.blocked { background: #aab6c2; color: #172537; }
+  .development-project-detail .gantt-milestone { position: absolute; top: 32px; width: 16px; height: 16px; transform: translateX(-50%) rotate(45deg); background: #b77913; }
+  .development-project-detail .gantt-milestone.approved { background: var(--accent); }
+  .development-project-detail .gantt-caption { position: absolute; left: 8px; bottom: 5px; color: var(--muted); }
+  .development-project-detail .gantt-links { position: absolute; top: 0; right: 0; width: 62%; height: 100%; pointer-events: none; overflow: visible; color: #586b7d; }
+  .development-project-detail .gantt-links .gantt-link { fill: none; stroke: currentColor; stroke-width: 1.5; }
+  .development-project-detail .gantt-links .gantt-link.conflict { stroke: #b42318; }
+  .development-project-detail .gantt-links text { fill: #172537; font-size: 11px; }
+  .development-project-detail label { display: grid; gap: 5px; }
+  .development-project-detail .inline-fields { display: flex; flex-wrap: wrap; gap: 8px; align-items: end; }
+  .development-project-detail .inline-fields label { min-width: 145px; flex: 1; }
+  .development-project-detail .inline-fields button { width: auto; }
+  .development-project-detail .plan-period-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  .development-project-detail .plan-period-form label { flex: none; width: 160px; text-align: center; }
+  .development-project-detail .plan-period-form input[type="date"] { text-align: center; }
+  .development-project-detail .plan-period-form button { width: auto; }
+  .development-project-detail .plan-subproject-form { padding: 14px 0 18px; border-top: 1px solid var(--line); }
+  .development-project-detail .plan-subproject-form h3 { margin: 0 0 12px; }
+  .development-project-detail .plan-subproject-row { display: grid; grid-template-columns: minmax(200px, 1fr) repeat(4, minmax(0, 180px)) 82px; gap: 10px; align-items: end; padding-right: 8px; }
+  .development-project-detail .plan-subproject-row > * { min-width: 0; }
+  .development-project-detail .plan-subproject-row > label,
+  .development-project-detail .plan-dependency-cell { display: grid; grid-template-rows: auto 44px; gap: 5px; margin: 0; }
+  .development-project-detail .plan-subproject-row input,
+  .development-project-detail .plan-dependency-toggle,
+  .development-project-detail .plan-subproject-row > button[type="submit"] { height: 44px; }
+  .development-project-detail .plan-date-field { text-align: center; }
+  .development-project-detail .plan-date-field input[type="date"] { text-align: center; }
+  .development-project-detail .plan-dependency-cell { display: grid; gap: 5px; }
+  .development-project-detail .plan-dependency-cell > span { font-weight: 600; color: var(--muted); }
+  .development-project-detail .plan-dependency-toggle { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; background: #e8eef3; color: var(--ink); border: 1px solid var(--line); }
+  .development-project-detail .plan-dependency-toggle:disabled { opacity: .65; cursor: not-allowed; }
+  .development-project-detail .plan-subproject-row > button[type="submit"] { width: auto; }
+  .development-project-detail .plan-dependency-editor { background: #f4f7f9; border: 1px solid var(--line); border-radius: 6px; margin-top: 10px; padding: 12px; }
+  .development-project-detail .plan-dependency-editor[hidden] { display: none; }
+  .development-project-detail .plan-dependency-editor h4 { margin: 0 0 10px; }
+  .development-project-detail .plan-dependency-editor .inline-fields label { min-width: 135px; }
+  .development-project-detail .plan-other-tools { border-top: 1px solid var(--line); padding-top: 13px; }
+  .development-project-detail .plan-other-tools > h3 { margin: 0 0 8px; }
+  .development-project-detail .plan-other-tools details { border-top: 1px solid var(--line); padding: 7px 0; }
+  .development-project-detail .plan-other-tools details form { display: grid; gap: 9px; margin: 10px 0; }
+  .development-project-detail .plan-other-tools details form > button { justify-self: start; width: auto; }
+  .development-project-detail details { margin-top: 8px; }
+  .development-project-detail details summary { color: var(--accent); }
+  .development-project-detail .member-list, .development-project-detail .dependency-list { display: grid; gap: 8px; }
+  .development-project-detail .member-row, .development-project-detail .dependency-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--line); padding: 6px 0; }
+  .development-project-detail .member-row form, .development-project-detail .dependency-row form { margin: 0; }
+  .development-project-detail .member-row button, .development-project-detail .dependency-row button { width: auto; }
+  @media (max-width: 1350px) {
+    .development-project-detail .plan-subproject-row { grid-template-columns: repeat(2, minmax(0, 1fr)); padding-right: 0; }
+    .development-project-detail .plan-subproject-row > label:first-child { grid-column: 1 / -1; }
+    .development-project-detail .plan-subproject-row > button[type="submit"] { grid-column: 1 / -1; justify-self: start; }
+  }
+  @media (max-width: 760px) {
+    .development-project-detail .gantt-head, .development-project-detail .gantt-row { grid-template-columns: 1fr; }
+    .development-project-detail .gantt-head .date-ticks { display: none; }
+    .development-project-detail .gantt-chart { min-height: 62px; }
+    .development-project-detail .gantt-bar { top: 11px; }
+    .development-project-detail .gantt-milestone { top: 15px; }
+    .development-project-detail .gantt-links { display: none; }
+  }
+  @media (max-width: 450px) {
+    .development-project-detail .plan-subproject-row { grid-template-columns: 1fr; }
+    .development-project-detail .plan-subproject-row > label:first-child,
+    .development-project-detail .plan-subproject-row > button[type="submit"] { grid-column: auto; }
+  }
+</style>
+<section class="development-project-detail">
+  <p class="breadcrumb"><a href="/development/projects"><%= zh ? '返回项目总览' : 'Back to projects' %></a></p>
+  <header class="project-heading"><div><h1><%= project.projectNo %> · <%= project.title %></h1><p class="project-meta"><%= zh ? '负责人' : 'Owner' %>：<%= project.ownerName %>　<%= zh ? '计划' : 'Plan' %>：<%= project.plannedStartOn %> — <%= project.plannedEndOn %></p></div></header>
+  <% if (project.objective) { %><p><%= project.objective %></p><% } %>
+  <nav class="project-tabs" aria-label="Project sections"><a href="#plan" class="active"><%= zh ? '计划与甘特' : 'Plan and Gantt' %></a><a href="#members"><%= zh ? '项目成员' : 'Members' %></a><a href="#events"><%= zh ? '时间轴' : 'Timeline' %></a></nav>
+
+  <section class="project-panel" id="plan">
+    <h2><%= zh ? '子项目计划与依赖' : 'Subprojects and dependencies' %></h2>
+    <% if (hasDateConflicts) { %><p class="plan-warning" role="alert"><%= zh ? '有排期冲突：系统不会自动顺延日期，请项目负责人确认并修改。' : 'Schedule conflict: dates are not shifted automatically. The project owner must confirm the revision.' %></p><% } %>
+    <div class="gantt">
+      <div class="gantt-head"><div><%= zh ? '子项目 / 课题 / 前置条件' : 'Subproject / topic / predecessors' %></div><div class="date-ticks"><% for (const tick of dateTicks) { %><span><%= tick %></span><% } %></div></div>
+      <div class="gantt-body">
+        <% for (const dep of dependencies) { %><span hidden class="gantt-dependency-data" data-predecessor="<%= dep.predecessorItemId %>" data-successor="<%= dep.successorItemId %>" data-relation="<%= dep.relationCode %>" data-conflict="<%= dep.dateConflict %>"></span><% } %>
+        <% for (const item of items) { const predecessors = predecessorsFor(item); const blocked = gateBlocks(item); %>
+          <div class="gantt-row">
+            <div class="gantt-work">
+              <strong><%= item.code %> · <%= item.title %></strong>
+              <small><%= item.plannedStartOn %><% if (item.itemKind !== 'concept_gate') { %> — <%= item.plannedEndOn %><% } %> · <%= item.itemKind === 'concept_gate' ? (zh ? '技术审批里程碑' : 'Technical approval milestone') : (zh ? '子项目' : 'Subproject') %></small>
+              <% if (item.itemKind === 'concept_gate') { %><small><%= item.gateApproved ? (zh ? '已批准' : 'Approved') : (zh ? '待批准；不得由项目负责人代签' : 'Pending; owner cannot approve') %><% if (item.gateTopicNo) { %> · <%= item.gateTopicNo %><% } %></small><% } %>
+              <% for (const link of topicsFor(item)) { %><small><%= link.topicNo || (zh ? '受限课题' : 'Restricted topic') %> · <%= link.isPrimary ? (zh ? '主责' : 'Primary') : (zh ? '协作' : 'Collaborative') %></small><% } %>
+              <% if (predecessors.length) { %><small><%= zh ? '前置' : 'Predecessors' %>：<%= predecessors.map(dep => `${dep.predecessorCode} ${dep.relationCode}${dep.lagCalendarDays >= 0 ? '+' : ''}${dep.lagCalendarDays}d`).join('；') %></small><% } %>
+              <% if (predecessors.some(dep => dep.dateConflict)) { %><small class="conflict-text"><%= zh ? '日期违反前置关系' : 'Dates conflict with predecessor' %></small><% } %>
+              <% if (blocked) { %><small class="conflict-text"><%= zh ? '技术门槛未批准，不能启动' : 'Technical gate pending; cannot start' %></small><% } %>
+              <% if (canManage) { %><details><summary><%= zh ? '修改计划日期' : 'Edit planned dates' %></summary>
+                <form method="post" action="/development/projects/<%= project.id %>/items/<%= item.id %>/dates" class="inline-fields">
+                  <%- csrfField() %><input type="hidden" name="expectedRowVersion" value="<%= item.rowVersion %>">
+                  <label><%= zh ? '开始' : 'Start' %><input type="date" name="plannedStartOn" value="<%= item.plannedStartOn %>" required></label>
+                  <label><%= zh ? '结束' : 'Finish' %><input type="date" name="plannedEndOn" value="<%= item.plannedEndOn %>" required></label>
+                  <button type="submit"><%= zh ? '保存' : 'Save' %></button>
+                </form>
+              </details><% } %>
+            </div>
+            <div class="gantt-chart">
+              <% if (item.itemKind === 'concept_gate') { %>
+                <span class="gantt-milestone <%= item.gateApproved ? 'approved' : '' %>" data-mark="<%= item.id %>" style="left:<%= item.leftPercent %>%" aria-label="<%= item.gateApproved ? (zh ? '已批准里程碑' : 'Approved milestone') : (zh ? '待批准里程碑' : 'Pending milestone') %>"></span>
+              <% } else { %>
+                <span class="gantt-bar <%= blocked ? 'blocked' : '' %>" data-mark="<%= item.id %>" style="left:<%= item.leftPercent %>%;width:<%= item.widthPercent %>%"><%= item.code %></span>
+              <% } %>
+              <span class="gantt-caption"><%= item.itemKind === 'concept_gate' ? (item.gateApproved ? (zh ? '门槛已通过' : 'Gate approved') : (zh ? '门槛待审' : 'Gate pending')) : (blocked ? (zh ? '门槛阻塞' : 'Blocked by gate') : (zh ? '计划排期' : 'Planned')) %></span>
+            </div>
+          </div>
+        <% } %>
+        <svg class="gantt-links" aria-hidden="true"><defs><marker id="development-project-arrow" markerWidth="7" markerHeight="7" refX="6" refY="3.5" orient="auto"><path d="M0 0 L7 3.5 L0 7 Z" fill="currentColor"></path></marker></defs><g class="gantt-link-paths"></g></svg>
+        <% if (!items.length) { %><p class="muted"><%= zh ? '先建立子项目，再关联课题与前置关系。' : 'Add a subproject before linking topics and dependencies.' %></p><% } %>
+      </div>
+    </div>
+    <div class="plan-key"><span><strong>FS</strong> <%= zh ? '完成→开始（默认）' : 'Finish→start (default)' %></span><span><strong>SS</strong> <%= zh ? '开始→开始' : 'Start→start' %></span><span><strong>FF</strong> <%= zh ? '完成→完成' : 'Finish→finish' %></span><span><strong>SF</strong> <%= zh ? '开始→完成' : 'Start→finish' %></span><span><strong>±Nd</strong> <%= zh ? '提前/延迟 N 个自然日' : 'Lead/lag in calendar days' %></span><span><strong>◆</strong> <%= zh ? '技术批准里程碑' : 'Technical approval milestone' %></span></div>
+  </section>
+
+  <% if (canManage) { %>
+  <section class="project-panel"><h2><%= zh ? '维护计划' : 'Maintain plan' %></h2>
+    <form method="post" action="/development/projects/<%= project.id %>/dates" class="plan-period-form">
+      <%- csrfField() %><input type="hidden" name="expectedRowVersion" value="<%= project.rowVersion %>">
+      <label><%= zh ? '项目计划开始' : 'Project start' %><input type="date" name="plannedStartOn" value="<%= project.plannedStartOn %>" required></label>
+      <label><%= zh ? '项目计划结束' : 'Project finish' %><input type="date" name="plannedEndOn" value="<%= project.plannedEndOn %>" required></label>
+      <button type="submit"><%= zh ? '调整项目期间' : 'Update project dates' %></button>
+    </form>
+    <p class="muted"><%= zh ? '项目期间必须包含所有已有子项目和里程碑；系统不会自动更改它们的日期。' : 'Project dates must contain all existing items and milestones; their dates never shift automatically.' %></p>
+    <form method="post" action="/development/projects/<%= project.id %>/items" class="plan-subproject-form">
+      <%- csrfField() %><input type="hidden" name="itemKind" value="subproject">
+      <h3><%= zh ? '增加子项目' : 'Add subproject' %></h3>
+      <div class="plan-subproject-row">
+        <label><%= zh ? '子项目名称' : 'Subproject name' %><input name="title" maxlength="200" required></label>
+        <label class="plan-date-field"><%= zh ? '开始日期' : 'Start date' %><input type="date" name="plannedStartOn" min="<%= project.plannedStartOn %>" max="<%= project.plannedEndOn %>" required></label>
+        <label class="plan-date-field"><%= zh ? '结束日期' : 'Finish date' %><input type="date" name="plannedEndOn" min="<%= project.plannedStartOn %>" max="<%= project.plannedEndOn %>" required></label>
+        <div class="plan-dependency-cell"><span><%= zh ? '上游依赖' : 'Upstream dependency' %></span><button type="button" class="plan-dependency-toggle" data-side="upstream" data-none-label="<%= zh ? '不设置' : 'None' %>" aria-controls="plan-upstream-editor" aria-expanded="false" <%= items.length ? '' : 'disabled' %>><%= items.length ? (zh ? '不设置' : 'None') : (zh ? '暂无可选项' : 'No items') %></button></div>
+        <div class="plan-dependency-cell"><span><%= zh ? '下游依赖' : 'Downstream dependency' %></span><button type="button" class="plan-dependency-toggle" data-side="downstream" data-none-label="<%= zh ? '不设置' : 'None' %>" aria-controls="plan-downstream-editor" aria-expanded="false" <%= items.length ? '' : 'disabled' %>><%= items.length ? (zh ? '不设置' : 'None') : (zh ? '暂无可选项' : 'No items') %></button></div>
+        <button type="submit"><%= zh ? '增加' : 'Add' %></button>
+      </div>
+      <div class="plan-dependency-editor" id="plan-upstream-editor" hidden>
+        <h4><%= zh ? '上游：前置项 → 新子项目' : 'Upstream: predecessor → new subproject' %></h4>
+        <div class="inline-fields">
+          <label><%= zh ? '前置项' : 'Predecessor' %><select name="upstreamItemId"><option value=""><%= zh ? '不设置' : 'None' %></option><% for (const item of items) { %><option value="<%= item.id %>" data-code="<%= item.code %>"><%= item.code %> · <%= item.title %></option><% } %></select></label>
+          <label><%= zh ? '关系' : 'Type' %><select name="upstreamRelationCode"><option value="FS">FS</option><option value="SS">SS</option><option value="FF">FF</option><option value="SF">SF</option></select></label>
+          <label><%= zh ? '提前/延迟（自然日）' : 'Lead/lag (calendar days)' %><input type="number" name="upstreamLagCalendarDays" min="-365" max="365" value="0" required></label>
+        </div>
+      </div>
+      <div class="plan-dependency-editor" id="plan-downstream-editor" hidden>
+        <h4><%= zh ? '下游：新子项目 → 后续项' : 'Downstream: new subproject → successor' %></h4>
+        <div class="inline-fields">
+          <label><%= zh ? '后续项' : 'Successor' %><select name="downstreamItemId"><option value=""><%= zh ? '不设置' : 'None' %></option><% for (const item of items) { %><option value="<%= item.id %>" data-code="<%= item.code %>"><%= item.code %> · <%= item.title %></option><% } %></select></label>
+          <label><%= zh ? '关系' : 'Type' %><select name="downstreamRelationCode"><option value="FS">FS</option><option value="SS">SS</option><option value="FF">FF</option><option value="SF">SF</option></select></label>
+          <label><%= zh ? '提前/延迟（自然日）' : 'Lead/lag (calendar days)' %><input type="number" name="downstreamLagCalendarDays" min="-365" max="365" value="0" required></label>
+        </div>
+      </div>
+    </form>
+    <div class="plan-other-tools">
+      <h3><%= zh ? '其他计划操作' : 'Other plan actions' %></h3>
+      <details><summary><%= zh ? '增加技术批准里程碑' : 'Add technical gate milestone' %></summary>
+        <form method="post" action="/development/projects/<%= project.id %>/items">
+          <%- csrfField() %><input type="hidden" name="itemKind" value="concept_gate">
+          <label><%= zh ? '里程碑名称' : 'Milestone name' %><input name="title" maxlength="200" value="<%= zh ? '概念方案批准' : 'Concept approval' %>" required></label>
+          <label><%= zh ? '计划日期' : 'Planned date' %><input type="date" name="plannedStartOn" min="<%= project.plannedStartOn %>" max="<%= project.plannedEndOn %>" required></label>
+          <label><%= zh ? '对应课题（须已关联子项目）' : 'Linked topic (must be linked to a subproject)' %><select name="gateTopicId" required><option value=""><%= zh ? '请选择' : 'Choose' %></option><% for (const topic of linkableTopics.filter(value => linkedTopicIds.has(value.id))) { %><option value="<%= topic.id %>"><%= topic.no %> · <%= topic.title %></option><% } %></select></label>
+          <button type="submit"><%= zh ? '增加里程碑' : 'Add milestone' %></button>
+        </form>
+      </details>
+      <details><summary><%= zh ? '建立更多依赖' : 'Add more dependencies' %></summary>
+        <form method="post" action="/development/projects/<%= project.id %>/dependencies">
+          <div class="inline-fields"><label><%= zh ? '前置项' : 'Predecessor' %><select name="predecessorItemId" required><option value=""><%= zh ? '请选择' : 'Choose' %></option><% for (const item of items) { %><option value="<%= item.id %>"><%= item.code %> · <%= item.title %></option><% } %></select></label><label><%= zh ? '后续项' : 'Successor' %><select name="successorItemId" required><option value=""><%= zh ? '请选择' : 'Choose' %></option><% for (const item of items) { %><option value="<%= item.id %>"><%= item.code %> · <%= item.title %></option><% } %></select></label></div>
+          <div class="inline-fields"><label><%= zh ? '关系' : 'Type' %><select name="relationCode"><option value="FS">FS</option><option value="SS">SS</option><option value="FF">FF</option><option value="SF">SF</option></select></label><label><%= zh ? '提前/延迟（自然日）' : 'Lead/lag (calendar days)' %><input type="number" name="lagCalendarDays" min="-365" max="365" value="0" required></label></div>
+          <%- csrfField() %><button type="submit"><%= zh ? '建立依赖' : 'Add dependency' %></button>
+        </form>
+      </details>
+      <details><summary><%= zh ? '关联研发课题' : 'Link development topic' %></summary>
+        <form method="post" action="/development/projects/<%= project.id %>/topic-links">
+          <%- csrfField() %><label><%= zh ? '子项目' : 'Subproject' %><select name="itemId" required><option value=""><%= zh ? '请选择' : 'Choose' %></option><% for (const item of items.filter(value => value.itemKind === 'subproject')) { %><option value="<%= item.id %>"><%= item.code %> · <%= item.title %></option><% } %></select></label>
+          <label><%= zh ? '当前可访问课题' : 'Accessible topic' %><select name="topicId" required><option value=""><%= zh ? '请选择' : 'Choose' %></option><% for (const topic of linkableTopics) { %><option value="<%= topic.id %>"><%= topic.no %> · <%= topic.title %></option><% } %></select></label>
+          <p class="muted"><%= zh ? '同一课题在本项目的首个关联为主责，其余为协作；关联不扩大课题资料权限。' : 'The first link in this project is primary; later links are collaborative. Linking does not grant topic-file access.' %></p>
+          <button type="submit"><%= zh ? '关联课题' : 'Link topic' %></button>
+        </form>
+      </details>
+    </div>
+    <% if (dependencies.length) { %><div class="dependency-list"><h3><%= zh ? '已建立的依赖' : 'Dependencies' %></h3><% for (const dep of dependencies) { %><div class="dependency-row" data-predecessor="<%= dep.predecessorItemId %>" data-successor="<%= dep.successorItemId %>" data-relation="<%= dep.relationCode %>" data-conflict="<%= dep.dateConflict %>"><span><%= dep.predecessorCode %> <%= dep.relationCode %><%= dep.lagCalendarDays >= 0 ? '+' : '' %><%= dep.lagCalendarDays %>d → <%= dep.successorCode %><% if (dep.dateConflict) { %> · <span class="conflict-text"><%= zh ? '日期冲突' : 'Date conflict' %></span><% } %></span><form method="post" action="/development/projects/<%= project.id %>/dependencies/<%= dep.id %>/end"><%- csrfField() %><button type="submit" class="secondary-action"><%= zh ? '解除' : 'Remove' %></button></form></div><% } %></div><% } %>
+  </section>
+  <% } %>
+
+  <section class="project-panel" id="members"><h2><%= zh ? '项目成员' : 'Project members' %></h2>
+    <div class="member-list"><% for (const member of members) { %><div class="member-row"><span><%= member.displayName %><% if (member.userId === project.ownerUserId) { %> · <%= zh ? '负责人' : 'Owner' %><% } %><% if (!member.isActive) { %> · <%= zh ? '已离职' : 'Inactive' %><% } %></span><% if (canManage && member.userId !== project.ownerUserId) { %><form method="post" action="/development/projects/<%= project.id %>/members/<%= member.userId %>/end"><%- csrfField() %><button class="secondary-action" type="submit"><%= zh ? '结束成员资格' : 'End membership' %></button></form><% } %></div><% } %></div>
+    <% if (canManage && inviteCandidates.length) { %><form method="post" action="/development/projects/<%= project.id %>/members" class="inline-fields"><%- csrfField() %><label><%= zh ? '邀请在职员工' : 'Invite active employee' %><select name="userId" required><option value=""><%= zh ? '请选择' : 'Choose' %></option><% for (const candidate of inviteCandidates) { %><option value="<%= candidate.id %>"><%= candidate.name %></option><% } %></select></label><button type="submit"><%= zh ? '邀请' : 'Invite' %></button></form><% } %>
+  </section>
+  <section class="project-panel" id="events"><h2><%= zh ? '时间轴' : 'Timeline' %></h2><% for (const event of events.slice(0, 8)) { %><p><time><%= new Date(event.createdAt).toLocaleString(zh ? 'zh-CN' : 'en-SG') %></time> · <%= event.eventType %></p><% } %><% if (!events.length) { %><p class="muted"><%= zh ? '暂无记录' : 'No events yet' %></p><% } %></section>
+</section>
+<script>
+  (() => {
+    const root = document.querySelector('.development-project-detail');
+    const subprojectForm = root?.querySelector('.plan-subproject-form');
+    if (subprojectForm) {
+      const toggles = Array.from(subprojectForm.querySelectorAll('.plan-dependency-toggle'));
+      function updateDependencySummary(side) {
+        const toggle = subprojectForm.querySelector(`.plan-dependency-toggle[data-side="${side}"]`);
+        const item = subprojectForm.querySelector(`select[name="${side}ItemId"]`);
+        const relation = subprojectForm.querySelector(`select[name="${side}RelationCode"]`);
+        const lag = subprojectForm.querySelector(`input[name="${side}LagCalendarDays"]`);
+        const selected = item.selectedOptions[0];
+        const days = Number(lag.value || 0);
+        toggle.textContent = item.value
+          ? `${selected.dataset.code} · ${relation.value}${days >= 0 ? '+' : ''}${days}d`
+          : toggle.dataset.noneLabel;
+      }
+      for (const toggle of toggles) {
+        const side = toggle.dataset.side;
+        toggle.addEventListener('click', () => {
+          const editor = subprojectForm.querySelector(`#plan-${side}-editor`);
+          const opening = editor.hidden;
+          for (const other of toggles) {
+            other.setAttribute('aria-expanded', 'false');
+            subprojectForm.querySelector(`#plan-${other.dataset.side}-editor`).hidden = true;
+          }
+          editor.hidden = !opening;
+          toggle.setAttribute('aria-expanded', String(opening));
+        });
+        for (const control of subprojectForm.querySelectorAll(
+          `[name="${side}ItemId"], [name="${side}RelationCode"], [name="${side}LagCalendarDays"]`)) {
+          control.addEventListener('input', () => updateDependencySummary(side));
+        }
+      }
+    }
+    const svg = root?.querySelector('.gantt-links');
+    const group = svg?.querySelector('.gantt-link-paths');
+    const dependencies = Array.from(root?.querySelectorAll('.gantt-dependency-data') || []).map(row => row.dataset);
+    if (!svg || !group) return;
+    function drawLinks() {
+      const frame = svg.getBoundingClientRect();
+      if (!frame.width || !frame.height) return;
+      svg.setAttribute('viewBox', `0 0 ${frame.width} ${frame.height}`);
+      group.replaceChildren();
+      for (const dep of dependencies) {
+        const first = root.querySelector(`[data-mark="${dep.predecessor}"]`)?.getBoundingClientRect();
+        const next = root.querySelector(`[data-mark="${dep.successor}"]`)?.getBoundingClientRect();
+        if (!first || !next) continue;
+        const fromFinish = dep.relation === 'FS' || dep.relation === 'FF';
+        const toFinish = dep.relation === 'FF' || dep.relation === 'SF';
+        const x1 = (fromFinish ? first.right : first.left) - frame.left;
+        const x2 = (toFinish ? next.right : next.left) - frame.left;
+        const y1 = first.top + first.height / 2 - frame.top;
+        const y2 = next.top + next.height / 2 - frame.top;
+        const turn = x2 > x1 + 16 ? (x1 + x2) / 2 : x1 + 13;
+        const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
+        path.setAttribute('class', `gantt-link${dep.conflict === 'true' ? ' conflict' : ''}`);
+        path.setAttribute('d', `M ${x1} ${y1} H ${turn} V ${y2} H ${x2}`);
+        path.setAttribute('marker-end', 'url(#development-project-arrow)');
+        group.append(path);
+        const text = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+        text.setAttribute('x', String(turn + 3));
+        text.setAttribute('y', String((y1 + y2) / 2));
+        text.textContent = dep.relation;
+        group.append(text);
+      }
+    }
+    drawLinks();
+    if (window.ResizeObserver) new ResizeObserver(drawLinks).observe(root.querySelector('.gantt-body'));
+  })();
+</script>
+<%- include('../partials/app-end') %>

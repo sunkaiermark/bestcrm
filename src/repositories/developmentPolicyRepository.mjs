@@ -114,6 +114,7 @@ export function createDevelopmentPolicyRepository(pool) {
         `, [topic.id]);
         return {
           topicId: Number(topic.id), topicNo: topic.topic_no,
+          ownerUserId: Number(topic.owner_user_id),
           phase: topic.phase, rowVersion: Number(topic.row_version),
           requests: result.rows.map((row) => ({
             ...requestResult(row), decision: row.decision_id ? {
@@ -243,6 +244,34 @@ export function createDevelopmentPolicyRepository(pool) {
           WHERE delegation.topic_id = $1 ORDER BY delegation.id DESC
         `, [input.topicId]);
         return result.rows.map((row) => delegationResult(row));
+      });
+    },
+
+    async listReviewerProxyCandidates(input) {
+      return transaction(pool, async (client) => {
+        await topicForUpdate(client, input.topicId);
+        await requireAdmin(client, input.actorUserId);
+        const result = await client.query(`
+          SELECT actor.id, actor.display_name,
+            EXISTS (
+              SELECT 1 FROM development_memberships membership
+              WHERE membership.topic_id = $1 AND membership.user_id = actor.id
+                AND membership.ended_at IS NULL
+            ) AS assigned_to_topic
+          FROM users actor
+          WHERE actor.is_active = true
+            AND bestcrm_development_has_active_role(actor.id, 'technical_manager')
+          ORDER BY actor.display_name, actor.id
+        `, [input.topicId]);
+        const managers = result.rows.map((row) => ({
+          userId: Number(row.id), displayName: row.display_name
+        }));
+        return {
+          absentManagers: result.rows.filter((row) => row.assigned_to_topic).map((row) => ({
+            userId: Number(row.id), displayName: row.display_name
+          })),
+          proxyManagers: managers
+        };
       });
     },
 

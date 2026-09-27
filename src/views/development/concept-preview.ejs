@@ -1,4 +1,4 @@
-<%- include('../partials/app-start', { title: `${concept.topicNo} - Concept Review - BESTCRM`, activeNav: 'workbench' }) %>
+<%- include('../partials/app-start', { title: `${concept.topicNo} - Concept Review - BESTCRM`, activeNav: 'development' }) %>
 <%
   const zh = language === 'zh';
   const labels = zh ? {
@@ -12,7 +12,7 @@
     draft: '尚未送审', submitted: '已送审，待技术经理决定',
     approved: '已批准概念', revise_required: '需修改后重审',
     paused: '已暂停', stopped: '已终止', decision: '评审结论',
-    selfReview: '技术经理自审', reason: '理由', digest: '快照 SHA-256'
+    selfReview: '技术经理自审', reason: '理由', digest: '快照 SHA-256', back: '返回课题'
   } : {
     title: 'Concept review preview', current: 'Current revision',
     historical: 'Historical revision · read-only',
@@ -27,7 +27,7 @@
     draft: 'Not submitted', submitted: 'Submitted for technical-manager decision',
     approved: 'Concept approved', revise_required: 'Revision required',
     paused: 'Paused', stopped: 'Stopped', decision: 'Review decision',
-    selfReview: 'Technical-manager self-review', reason: 'Reason', digest: 'Snapshot SHA-256'
+    selfReview: 'Technical-manager self-review', reason: 'Reason', digest: 'Snapshot SHA-256', back: 'Back to topic'
   };
   const pack = concept.snapshot || {};
   const state = concept.decisionCode ? labels[concept.decisionCode]
@@ -52,6 +52,7 @@
   @media print { .development-concept { max-width: none; } .development-concept .concept-sheet { border: 0; padding: 0; } }
 </style>
 <section class="development-concept">
+  <p class="breadcrumb"><a href="/development/topics/<%= concept.topicId %>#development"><%= labels.back %></a></p>
   <header class="page-header">
     <div>
       <h1><%= labels.title %> · <%= concept.topicNo %></h1>

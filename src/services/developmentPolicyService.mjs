@@ -84,6 +84,11 @@ export async function listReviewerDelegations(repository, actor, topicId) {
     topicId: id(topicId, 'topicId') });
 }
 
+export async function listReviewerProxyCandidates(repository, actor, topicId) {
+  return repository.listReviewerProxyCandidates({ actorUserId: adminActor(actor),
+    topicId: id(topicId, 'topicId') });
+}
+
 export async function appointReviewerProxy(repository, actor, topicId, input) {
   const actorUserId = adminActor(actor);
   const validFrom = date(input?.validFrom, 'validFrom');

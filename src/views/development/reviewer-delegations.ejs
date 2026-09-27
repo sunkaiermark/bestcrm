@@ -1,0 +1,80 @@
+<%- include('../partials/app-start', { title: 'Development reviewer proxies - BESTCRM', activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    back: '返回课题', title: '技术经理代理任命', note: '仅管理员记录指定课题的缺席代理。被代理人与代理人都必须是另一位在职技术经理；被代理人须为课题有效成员。代理只用于概念门控，不用于结论／资产独立审核。',
+    absent: '缺席技术经理', proxy: '代理技术经理', choose: '请选择', from: '任期开始', until: '任期结束',
+    dateNote: '时间请填写含时区的 ISO 8601 格式，例如 2026-09-28T09:00:00+08:00。',
+    reason: '任命理由', appoint: '记录任命', history: '任命记录', none: '暂无任命',
+    active: '任期内', future: '未开始', expired: '已到期', revoked: '已撤销',
+    revokeReason: '撤销理由', revoke: '撤销代理', noCandidates: '暂无合格的技术经理候选人'
+  } : {
+    back: 'Back to topic', title: 'Technical-manager proxy appointments', note: 'Only administrators record a topic-specific absence proxy. Both people must be distinct active technical managers; the absent manager must be an active topic member. This proxy applies only to concept decisions, never independent outcome or asset review.',
+    absent: 'Absent technical manager', proxy: 'Proxy technical manager', choose: 'Choose', from: 'Valid from', until: 'Valid until',
+    dateNote: 'Use ISO 8601 with a timezone offset, for example 2026-09-28T09:00:00+08:00.',
+    reason: 'Appointment reason', appoint: 'Record appointment', history: 'Appointment history', none: 'No appointments yet',
+    active: 'Active term', future: 'Not yet started', expired: 'Expired', revoked: 'Revoked',
+    revokeReason: 'Revocation reason', revoke: 'Revoke proxy', noCandidates: 'No eligible technical managers'
+  };
+  const names = new Map(candidates.proxyManagers.map((manager) => [manager.userId, manager.displayName]));
+  const now = Date.now();
+%>
+<style>
+  .development-delegations { width: 100%; margin: 0; }
+  .development-delegations .delegation-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; margin: 14px 0; }
+  .development-delegations .delegation-form { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .development-delegations .delegation-form label { display: grid; gap: 5px; }
+  .development-delegations .delegation-form .full { grid-column: 1 / -1; }
+  .development-delegations button { width: auto; }
+  .development-delegations .delegation-row { border-top: 1px solid var(--line); padding: 14px 0; }
+  .development-delegations .delegation-row p { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .development-delegations .revoke-form { display: flex; flex-wrap: wrap; gap: 10px; align-items: end; }
+  .development-delegations .revoke-form label { flex: 1 1 300px; }
+  @media (max-width: 760px) { .development-delegations .delegation-form { grid-template-columns: 1fr; } .development-delegations .delegation-form .full { grid-column: auto; } }
+</style>
+<section class="development-delegations">
+  <p class="breadcrumb"><a href="/development/topics/<%= topicId %>"><%= labels.back %></a></p>
+  <header class="page-header"><h1><%= labels.title %></h1></header>
+  <p class="muted"><%= labels.note %></p>
+  <section class="delegation-card"><h2><%= labels.appoint %></h2>
+    <% if (candidates.absentManagers.length && candidates.proxyManagers.length > 1) { %>
+      <form class="delegation-form" method="post" action="/development/topics/<%= topicId %>/reviewer-delegations">
+        <%- csrfField() %><input type="hidden" name="idempotencyKey" value="<%= appointmentKey %>">
+        <label><%= labels.absent %><select name="absentManagerUserId" required>
+          <option value=""><%= labels.choose %></option>
+          <% for (const manager of candidates.absentManagers) { %><option value="<%= manager.userId %>"><%= manager.displayName %> (#<%= manager.userId %>)</option><% } %>
+        </select></label>
+        <label><%= labels.proxy %><select name="proxyManagerUserId" required>
+          <option value=""><%= labels.choose %></option>
+          <% for (const manager of candidates.proxyManagers) { %><option value="<%= manager.userId %>"><%= manager.displayName %> (#<%= manager.userId %>)</option><% } %>
+        </select></label>
+        <label><%= labels.from %><input name="validFrom" required placeholder="2026-09-28T09:00:00+08:00"></label>
+        <label><%= labels.until %><input name="validUntil" required placeholder="2026-10-05T09:00:00+08:00"></label>
+        <p class="muted full"><%= labels.dateNote %></p>
+        <label class="full"><%= labels.reason %><textarea name="reason" maxlength="4000" required></textarea></label>
+        <button type="submit"><%= labels.appoint %></button>
+      </form>
+    <% } else { %><p class="muted"><%= labels.noCandidates %></p><% } %>
+  </section>
+  <section class="delegation-card"><h2><%= labels.history %></h2>
+    <% if (!delegations.length) { %><p class="muted"><%= labels.none %></p><% } %>
+    <% for (const item of delegations) {
+      const state = item.revokedAt ? labels.revoked : new Date(item.validUntil).getTime() <= now ? labels.expired
+        : new Date(item.validFrom).getTime() > now ? labels.future : labels.active;
+    %>
+      <div class="delegation-row">
+        <strong>#<%= item.id %> · <%= names.get(item.absentManagerUserId) || `#${item.absentManagerUserId}` %> → <%= names.get(item.proxyManagerUserId) || `#${item.proxyManagerUserId}` %> · <%= state %></strong>
+        <p><%= new Date(item.validFrom).toLocaleString(zh ? 'zh-CN' : 'en-SG') %> — <%= new Date(item.validUntil).toLocaleString(zh ? 'zh-CN' : 'en-SG') %></p>
+        <p><%= item.reason %></p>
+        <% if (!item.revokedAt && new Date(item.validUntil).getTime() > now) { %>
+          <form class="revoke-form" method="post" action="/development/topics/<%= topicId %>/reviewer-delegations/<%= item.id %>/revoke">
+            <%- csrfField() %><input type="hidden" name="idempotencyKey" value="<%= revokeKeys[item.id] %>">
+            <label><%= labels.revokeReason %><input name="reason" maxlength="4000" required></label>
+            <button class="danger" type="submit"><%= labels.revoke %></button>
+          </form>
+        <% } %>
+      </div>
+    <% } %>
+  </section>
+</section>
+<%- include('../partials/app-end') %>
