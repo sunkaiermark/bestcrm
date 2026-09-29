@@ -11,7 +11,9 @@ import {
 import {
   addDevelopmentPlanItem,
   createDevelopmentProject,
-  getDevelopmentProjectPlan
+  getDevelopmentProjectPlan,
+  updateDevelopmentSubprojectResponsible,
+  updateDevelopmentSubprojectSummary
 } from '../../src/services/developmentProjectService.mjs';
 
 test('NPD project and item dates are validated before repository writes', () => {
@@ -27,10 +29,29 @@ test('NPD project and item dates are validated before repository writes', () => 
   assert.deepEqual(normalizeDevelopmentPlanItem({ itemKind: 'concept_gate',
     title: ' Approval ', plannedStartOn: '2026-10-21', gateTopicId: 2 }), {
     itemKind: 'concept_gate', title: 'Approval', plannedStartOn: '2026-10-21',
-    plannedEndOn: '2026-10-21', gateTopicId: 2
+    plannedEndOn: '2026-10-21', gateTopicId: 2,
+    responsibleUserId: null, summary: ''
   });
   assert.throws(() => normalizeDevelopmentPlanItem({ itemKind: 'concept_gate',
     title: 'Approval', plannedStartOn: '2026-10-21' }), /topic is required/);
+  assert.throws(() => normalizeDevelopmentPlanItem({ itemKind: 'subproject',
+    title: 'Explore', plannedStartOn: '2026-10-01', plannedEndOn: '2026-10-02' }),
+  /responsible member is required/);
+  assert.equal(normalizeDevelopmentPlanItem({ itemKind: 'subproject',
+    title: 'Explore', plannedStartOn: '2026-10-01', plannedEndOn: '2026-10-02',
+    responsibleUserId: '7' }).responsibleUserId, 7);
+  assert.equal(normalizeDevelopmentPlanItem({ itemKind: 'subproject',
+    title: 'Explore', summary: '  Seal options  ', plannedStartOn: '2026-10-01',
+    plannedEndOn: '2026-10-02', responsibleUserId: '7' }).summary, 'Seal options');
+  assert.throws(() => normalizeDevelopmentPlanItem({ itemKind: 'subproject',
+    title: 'Explore', summary: 'x'.repeat(2001), plannedStartOn: '2026-10-01',
+    plannedEndOn: '2026-10-02', responsibleUserId: 7 }), /summary is invalid/);
+  assert.throws(() => normalizeDevelopmentPlanItem({ itemKind: 'concept_gate',
+    title: 'Approval', plannedStartOn: '2026-10-21', gateTopicId: 2,
+    responsibleUserId: 7 }), /cannot have/);
+  assert.throws(() => normalizeDevelopmentPlanItem({ itemKind: 'concept_gate',
+    title: 'Approval', plannedStartOn: '2026-10-21', gateTopicId: 2,
+    summary: 'Wrong kind' }), /cannot have a subproject summary/);
 });
 
 test('FS, SS, FF and SF date checks use calendar days without moving dates', () => {
@@ -86,7 +107,7 @@ test('one-row subproject entry validates optional upstream and downstream links 
   };
   const actor = { id: 7, isActive: true };
   const item = { itemKind: 'subproject', title: 'Seal trial',
-    plannedStartOn: '2026-11-10', plannedEndOn: '2026-12-15' };
+    plannedStartOn: '2026-11-10', plannedEndOn: '2026-12-15', responsibleUserId: 7 };
   await assert.rejects(addDevelopmentPlanItem(repository, actor, 1, {
     ...item, upstreamItemId: 11, upstreamRelationCode: 'BAD'
   }), /Dependency type/);
@@ -104,6 +125,35 @@ test('one-row subproject entry validates optional upstream and downstream links 
   assert.deepEqual(calls[0].downstream, { itemId: 12, relationCode: 'FF', lagCalendarDays: 5 });
   await addDevelopmentPlanItem(repository, actor, 1, item);
   assert.equal(calls[1].item.title, 'Seal trial');
+  assert.equal(calls[1].item.responsibleUserId, 7);
+});
+
+test('assigning a subproject validates member and optimistic version before writing', async () => {
+  const calls = [];
+  const repository = { async updateItemResponsible(input) { calls.push(input); return input; } };
+  const actor = { id: 7, isActive: true };
+  await assert.rejects(updateDevelopmentSubprojectResponsible(repository, actor, 1, 2,
+    { responsibleUserId: '', expectedRowVersion: 1 }), /responsibleUserId is invalid/);
+  await assert.rejects(updateDevelopmentSubprojectResponsible(repository, actor, 1, 2,
+    { responsibleUserId: 9, expectedRowVersion: 0 }), /expectedRowVersion is invalid/);
+  assert.equal(calls.length, 0);
+  await updateDevelopmentSubprojectResponsible(repository, actor, 1, 2,
+    { responsibleUserId: '9', expectedRowVersion: '3' });
+  assert.deepEqual(calls[0], { projectId: 1, itemId: 2, responsibleUserId: 9,
+    expectedRowVersion: 3, actorUserId: 7 });
+});
+
+test('subproject summary update validates text and optimistic version before writing', async () => {
+  const calls = [];
+  const repository = { async updateItemSummary(input) { calls.push(input); return input; } };
+  const actor = { id: 7, isActive: true };
+  await assert.rejects(updateDevelopmentSubprojectSummary(repository, actor, 1, 2,
+    { summary: 'x'.repeat(2001), expectedRowVersion: 1 }), /summary is invalid/);
+  assert.equal(calls.length, 0);
+  await updateDevelopmentSubprojectSummary(repository, actor, 1, 2,
+    { summary: '  Trial setup  ', expectedRowVersion: '3' });
+  assert.deepEqual(calls[0], { projectId: 1, itemId: 2,
+    summary: 'Trial setup', expectedRowVersion: 3, actorUserId: 7 });
 });
 
 test('project creation requires an active employee and visibility is delegated to repository', async () => {

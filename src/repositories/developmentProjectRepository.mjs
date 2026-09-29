@@ -26,8 +26,13 @@ function mapItem(row) {
   return {
     id: Number(row.id), projectId: Number(row.project_id),
     itemKind: row.item_kind, code: itemCode(row), ordinal: Number(row.ordinal),
-    title: row.title, plannedStartOn: dateOnly(row.planned_start_on),
+    title: row.title, summary: row.summary || '',
+    plannedStartOn: dateOnly(row.planned_start_on),
     plannedEndOn: dateOnly(row.planned_end_on),
+    responsibleUserId: row.responsible_user_id == null ? null : Number(row.responsible_user_id),
+    responsibleName: row.responsible_name || null,
+    responsibleIsActive: row.responsible_is_active == null ? null
+      : row.responsible_is_active === true,
     gateTopicId: row.gate_topic_id ? Number(row.gate_topic_id) : null,
     gateApproved: row.gate_approved === true,
     gateTopicNo: row.visible_gate_topic_no || null,
@@ -113,6 +118,20 @@ async function requireTopicMember(client, topicId, actorUserId) {
   }
 }
 
+async function requireActiveProjectMember(client, projectId, userId) {
+  const result = await client.query(`
+    SELECT 1 FROM development_project_memberships membership
+    JOIN users employee ON employee.id = membership.user_id AND employee.is_active = true
+    WHERE membership.project_id = $1 AND membership.user_id = $2
+      AND membership.added_at <= now() AND membership.ended_at IS NULL
+    FOR SHARE OF membership, employee
+  `, [projectId, userId]);
+  if (!result.rowCount) {
+    throw new DevelopmentProjectError('Responsible person must be an active project member',
+      422, ['responsibleUserId']);
+  }
+}
+
 function requireInsideProject(item, project) {
   const projectStart = dateOnly(project.planned_start_on);
   const projectEnd = dateOnly(project.planned_end_on);
@@ -130,11 +149,13 @@ async function insertPlanItem(client, { projectId, actorUserId, item }) {
   `, [projectId, item.itemKind]);
   const created = await client.query(`
     INSERT INTO development_project_items (
-      project_id, item_kind, ordinal, title, planned_start_on, planned_end_on,
-      gate_topic_id, created_by_user_id, updated_by_user_id
-    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $8) RETURNING *
+      project_id, item_kind, ordinal, title, summary, planned_start_on,
+      planned_end_on, gate_topic_id, responsible_user_id,
+      created_by_user_id, updated_by_user_id
+    ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $10) RETURNING *
   `, [projectId, item.itemKind, next.rows[0].ordinal, item.title,
-    item.plannedStartOn, item.plannedEndOn, item.gateTopicId, actorUserId]);
+    item.summary ?? '', item.plannedStartOn, item.plannedEndOn, item.gateTopicId,
+    item.responsibleUserId, actorUserId]);
   return mapItem(created.rows[0]);
 }
 
@@ -238,6 +259,8 @@ export function createDevelopmentProjectRepository(pool) {
       const project = await visibleProject(client, { projectId, actorUserId });
       const itemResult = await client.query(`
           SELECT item.*,
+            responsible.display_name AS responsible_name,
+            responsible.is_active AS responsible_is_active,
             CASE WHEN item.item_kind = 'concept_gate'
               AND gate_topic.phase NOT IN ('paused', 'stopped')
               AND latest_decision.decision_code = 'approved'
@@ -245,6 +268,7 @@ export function createDevelopmentProjectRepository(pool) {
             CASE WHEN topic_member.user_id IS NOT NULL
               THEN gate_topic.topic_no ELSE NULL END AS visible_gate_topic_no
           FROM development_project_items item
+          LEFT JOIN users responsible ON responsible.id = item.responsible_user_id
           LEFT JOIN development_topics gate_topic ON gate_topic.id = item.gate_topic_id
           LEFT JOIN LATERAL (
             SELECT decision.decision_code
@@ -285,7 +309,8 @@ export function createDevelopmentProjectRepository(pool) {
           SELECT member.user_id, user_record.display_name, user_record.is_active
           FROM development_project_memberships member
           JOIN users user_record ON user_record.id = member.user_id
-          WHERE member.project_id = $1 AND member.ended_at IS NULL
+          WHERE member.project_id = $1 AND member.added_at <= now()
+            AND member.ended_at IS NULL
           ORDER BY user_record.display_name, member.id
         `, [projectId]);
       const eventResult = await client.query(`
@@ -382,6 +407,14 @@ export function createDevelopmentProjectRepository(pool) {
         if (userId === actorUserId) {
           throw new DevelopmentProjectError('Owner cannot remove own membership', 422);
         }
+        const assigned = await client.query(`
+          SELECT 1 FROM development_project_items
+          WHERE project_id = $1 AND item_kind = 'subproject'
+            AND responsible_user_id = $2 LIMIT 1
+        `, [projectId, userId]);
+        if (assigned.rowCount) {
+          throw new DevelopmentProjectError('Reassign subprojects before ending membership', 409);
+        }
         const result = await client.query(`
           UPDATE development_project_memberships
           SET ended_by_user_id = $3, ended_at = now()
@@ -406,6 +439,8 @@ export function createDevelopmentProjectRepository(pool) {
             throw new DevelopmentProjectError('Link the topic to a subproject before adding its gate',
               422, ['gateTopicId']);
           }
+        } else {
+          await requireActiveProjectMember(client, projectId, item.responsibleUserId);
         }
         return insertPlanItem(client, { projectId, actorUserId, item });
       });
@@ -417,6 +452,7 @@ export function createDevelopmentProjectRepository(pool) {
         return await transaction(pool, async (client) => {
           const project = await requireOwner(client, projectId, actorUserId);
           requireInsideProject(item, project);
+          await requireActiveProjectMember(client, projectId, item.responsibleUserId);
           const selectedIds = [...new Set([upstream?.itemId, downstream?.itemId]
             .filter((value) => value !== undefined && value !== null))];
           if (selectedIds.length) {
@@ -466,6 +502,45 @@ export function createDevelopmentProjectRepository(pool) {
           throw new DevelopmentProjectError('Plan item changed; reload before editing', 409);
         }
         return mapItem(result.rows[0]);
+      });
+    },
+
+    async updateItemResponsible({ projectId, itemId, actorUserId, expectedRowVersion,
+      responsibleUserId }) {
+      return transaction(pool, async (client) => {
+        await requireOwner(client, projectId, actorUserId);
+        await requireActiveProjectMember(client, projectId, responsibleUserId);
+        const updated = await client.query(`
+          UPDATE development_project_items
+          SET responsible_user_id = $3, updated_by_user_id = $4,
+            updated_at = now(), row_version = row_version + 1
+          WHERE project_id = $1 AND id = $2 AND item_kind = 'subproject'
+            AND row_version = $5
+          RETURNING *
+        `, [projectId, itemId, responsibleUserId, actorUserId, expectedRowVersion]);
+        if (!updated.rowCount) {
+          throw new DevelopmentProjectError('Subproject changed; reload before assigning', 409);
+        }
+        return mapItem(updated.rows[0]);
+      });
+    },
+
+    async updateItemSummary({ projectId, itemId, actorUserId, expectedRowVersion,
+      summary }) {
+      return transaction(pool, async (client) => {
+        await requireOwner(client, projectId, actorUserId);
+        const updated = await client.query(`
+          UPDATE development_project_items
+          SET summary = $3, updated_by_user_id = $4,
+            updated_at = now(), row_version = row_version + 1
+          WHERE project_id = $1 AND id = $2 AND item_kind = 'subproject'
+            AND row_version = $5
+          RETURNING *
+        `, [projectId, itemId, summary, actorUserId, expectedRowVersion]);
+        if (!updated.rowCount) {
+          throw new DevelopmentProjectError('Subproject changed; reload before editing', 409);
+        }
+        return mapItem(updated.rows[0]);
       });
     },
 

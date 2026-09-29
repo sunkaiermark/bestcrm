@@ -16,10 +16,10 @@
         --muted: #62717f;
         --accent: #0f766e;
         --accent-soft: #edf7f6;
-        --rail: #0B0F6E;
+        --rail: #0d1850;
         --rail-ink: #ffffff;
-        --rail-muted: #c7d2fe;
-        --rail-active: #1e40af;
+        --rail-muted: #c5d3ee;
+        --rail-active: #24489c;
         --page-inline-gutter: clamp(16px, 2vw, 40px);
       }
 
@@ -180,7 +180,7 @@
         position: sticky;
         top: 0;
         height: 100vh;
-        background: var(--rail);
+        background: linear-gradient(180deg, #101d58 0%, var(--rail) 54%, #0a143f 100%);
         color: var(--rail-ink);
         display: flex;
         flex-direction: column;
@@ -188,9 +188,17 @@
         padding: 18px 14px;
       }
 
+      .nav-symbols {
+        height: 0;
+        overflow: hidden;
+        position: absolute;
+        width: 0;
+      }
+
       .brand {
         display: block;
         margin: 0;
+        padding: 2px 8px 6px;
       }
 
       .brand-logo {
@@ -201,58 +209,135 @@
       }
 
       .nav-account {
-        border-bottom: 1px solid rgba(255, 255, 255, 0.18);
-        border-top: 1px solid rgba(255, 255, 255, 0.18);
-        margin-top: 16px;
-        padding: 10px 8px;
+        align-items: center;
+        background: rgba(255, 255, 255, 0.055);
+        border: 1px solid rgba(255, 255, 255, 0.11);
+        border-radius: 10px;
+        display: flex;
+        gap: 10px;
+        margin-top: 12px;
+        min-width: 0;
+        padding: 9px 10px;
+      }
+
+      .nav-avatar {
+        align-items: center;
+        background: linear-gradient(135deg, #168d95, #22b7a0);
+        border-radius: 9px;
+        color: #fff;
+        display: inline-flex;
+        flex: 0 0 32px;
+        font-size: 15px;
+        font-weight: 700;
+        height: 32px;
+        justify-content: center;
       }
 
       .nav-account-name {
         color: var(--rail-ink);
-        font-size: 20px;
-        font-weight: 400;
-        overflow-wrap: anywhere;
+        font-size: 15px;
+        font-weight: 600;
+        min-width: 0;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .nav-group {
         display: grid;
-        gap: 4px;
-        margin-top: 18px;
+        gap: 2px;
+        margin-top: 12px;
+      }
+
+      .nav-section-label,
+      .nav-parent {
+        align-items: center;
+        color: #91a8d6;
+        display: flex;
+        font-size: 11px;
+        font-weight: 700;
+        gap: 10px;
+        letter-spacing: 0.1em;
+        line-height: 1.2;
+        margin: 12px 10px 7px;
+        padding: 0;
+        text-transform: uppercase;
+        white-space: nowrap;
+      }
+
+      .nav-section-label::after,
+      .nav-parent::after {
+        background: rgba(255, 255, 255, 0.14);
+        content: '';
+        flex: 1;
+        height: 1px;
       }
 
       .nav-link {
-        display: block;
-        padding: 9px 10px;
-        border-radius: 6px;
+        align-items: center;
+        display: flex;
+        gap: 11px;
+        min-height: 40px;
+        padding: 8px 11px;
+        border: 1px solid transparent;
+        border-radius: 8px;
         color: var(--rail-muted);
+        font-size: 16px;
         font-weight: 400;
+        line-height: 1.2;
+        transition: background-color 0.15s ease, color 0.15s ease;
+        white-space: nowrap;
       }
 
-      .nav-parent {
-        margin: 14px 0 2px;
-        padding: 9px 10px;
-        border-radius: 6px;
-        color: var(--rail-ink);
-        font-weight: 400;
+      .nav-icon {
+        flex: 0 0 18px;
+        height: 18px;
+        opacity: 0.85;
+        width: 18px;
       }
 
       .nav-subgroup {
         display: grid;
         gap: 2px;
-        margin-left: 10px;
-        padding-left: 10px;
-        border-left: 1px solid rgba(255, 255, 255, 0.18);
+        margin-left: 17px;
+        padding-left: 7px;
+        border-left: 1px solid rgba(255, 255, 255, 0.16);
       }
 
       .nav-subgroup .nav-link {
-        padding: 7px 10px;
-        font-size: 20px;
+        min-height: 36px;
+        padding: 7px 9px;
+        font-size: 15px;
       }
 
-      .nav-link:hover,
+      .nav-subgroup .nav-icon {
+        flex-basis: 16px;
+        height: 16px;
+        width: 16px;
+      }
+
+      .nav-link:hover {
+        background: rgba(255, 255, 255, 0.09);
+        color: var(--rail-ink);
+      }
+
       .nav-link.active {
         background: var(--rail-active);
+        border-color: rgba(170, 202, 255, 0.14);
+        box-shadow: inset 3px 0 0 #55d5c7;
         color: var(--rail-ink);
+        font-weight: 600;
+      }
+
+      .nav-link.active .nav-icon {
+        color: #8ff0dc;
+        opacity: 1;
+      }
+
+      .nav-link:focus-visible,
+      .logout-button:focus-visible {
+        outline: 2px solid #8ff0dc;
+        outline-offset: 2px;
       }
 
       .nav-link[aria-disabled="true"] {
@@ -271,13 +356,14 @@
 
       .nav-footer {
         display: grid;
-        gap: 8px;
+        border-top: 1px solid rgba(255, 255, 255, 0.14);
+        gap: 2px;
         margin-top: auto;
-        padding-top: 18px;
+        padding-top: 12px;
       }
 
       .nav-footer .nav-link {
-        border: 1px solid rgba(255, 255, 255, 0.18);
+        border: 0;
       }
 
       .logout-form {
@@ -285,12 +371,25 @@
       }
 
       .logout-button {
+        align-items: center;
+        display: flex;
+        gap: 11px;
+        min-height: 40px;
         width: 100%;
-        border: 1px solid rgba(255, 255, 255, 0.18);
+        border: 0;
+        border-radius: 8px;
         background: transparent;
         color: var(--rail-muted);
+        font-size: 16px;
         font-weight: 400;
+        padding: 8px 12px;
         text-align: left;
+        transition: background-color 0.15s ease, color 0.15s ease;
+      }
+
+      .logout-button:hover {
+        background: rgba(255, 255, 255, 0.09);
+        color: var(--rail-ink);
       }
 
       .app-main {
@@ -419,7 +518,6 @@
         align-items: center;
         display: flex;
         gap: 8px;
-        justify-content: space-between;
       }
 
       .notification-badge {
@@ -432,6 +530,7 @@
         font-weight: 700;
         height: 24px;
         justify-content: center;
+        margin-left: auto;
         min-width: 24px;
         padding: 0 6px;
       }
@@ -3637,14 +3736,6 @@
         gap: 8px;
       }
 
-      .email-pending-definition {
-        background: #eef7f5;
-        border-left: 4px solid var(--accent);
-        color: var(--muted);
-        margin: 0 0 16px;
-        padding: 10px 12px;
-      }
-
       .email-triage-panel {
         background: #f8fafc;
         border: 1px solid var(--line);
@@ -4409,9 +4500,15 @@
 
         .nav-account {
           border: 0;
+          background: transparent;
           margin: 0;
           min-width: 0;
           padding: 4px 8px;
+        }
+
+        .nav-avatar,
+        .nav-section-label {
+          display: none;
         }
 
         .nav-account-name {
@@ -4445,6 +4542,7 @@
 
         .nav-footer {
           align-items: center;
+          border-top: 0;
           display: flex;
           gap: 6px;
           grid-column: 1 / -1;
@@ -4999,12 +5097,38 @@
       roles: '角色管理', approvals: '审批设置', security: '账户安全',
       password: '修改密码', logout: '退出登录'
     } : {}; %>
-    <% const sidebarLabel = (key, fallback) => zhSidebarLabels[key] || fallback; %>
+    <% const enSidebarLabels = language === 'en' ? {
+      websiteForms: 'Web Forms', development: 'R&D Products',
+      technicalCenter: 'Technical Docs', technicalTemplates: 'Templates',
+      standardClauses: 'Clauses', approvals: 'Approvals',
+      security: 'Security', password: 'Password', logout: 'Sign Out'
+    } : {}; %>
+    <% const sidebarLabel = (key, fallback) => zhSidebarLabels[key] || enSidebarLabels[key] || fallback; %>
+    <% const navIcon = (name) => `<svg class="nav-icon" aria-hidden="true" focusable="false" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><use href="#nav-icon-${name}"></use></svg>`; %>
     <% const canSeeSystemNav = Array.isArray(currentUser?.roles) && currentUser.roles.includes('administrator'); %>
     <% const canSeeWebsiteFormsNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'sales_manager'].includes(role)); %>
     <% const canSeeLeadNav = Boolean(currentUser && currentUser.isActive !== false); %>
     <% const canSeeTechnicalStandardsNav = Array.isArray(currentUser?.roles) && currentUser.roles.some((role) => ['administrator', 'technical_manager', 'quotation_engineer'].includes(role)); %>
     <% const canSeeEmailCenterNav = Boolean(typeof emailCenterEnabled !== 'undefined' && emailCenterEnabled); %>
+    <svg class="nav-symbols" aria-hidden="true" focusable="false" xmlns="http://www.w3.org/2000/svg">
+      <symbol id="nav-icon-grid" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></symbol>
+      <symbol id="nav-icon-mail" viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></symbol>
+      <symbol id="nav-icon-file" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M14 3v5h4M8 13h8M8 17h6"/></symbol>
+      <symbol id="nav-icon-user-plus" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3.5 20v-2a5.5 5.5 0 0 1 11 0v2M18 8v8m-4-4h8"/></symbol>
+      <symbol id="nav-icon-briefcase" viewBox="0 0 24 24"><rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2M3 13h18M10 12v3h4v-3"/></symbol>
+      <symbol id="nav-icon-bulb" viewBox="0 0 24 24"><path d="M9 18h6m-5 3h4M8 15a7 7 0 1 1 8 0l-1 3H9l-1-3Z"/></symbol>
+      <symbol id="nav-icon-building" viewBox="0 0 24 24"><path d="M4 21V6l8-3 8 3v15M2 21h20M9 21v-5h6v5M8 8h.01M12 8h.01M16 8h.01M8 12h.01M12 12h.01M16 12h.01"/></symbol>
+      <symbol id="nav-icon-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"/><path d="M3 20v-2a6 6 0 0 1 12 0v2H3ZM17 5a3 3 0 0 1 0 6M17 14a5 5 0 0 1 4 5v1h-3"/></symbol>
+      <symbol id="nav-icon-chart" viewBox="0 0 24 24"><path d="M3 20h18M6 17v-6m6 6V5m6 12v-9"/></symbol>
+      <symbol id="nav-icon-folder" viewBox="0 0 24 24"><path d="M3 6a2 2 0 0 1 2-2h5l2 3h7a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6Z"/></symbol>
+      <symbol id="nav-icon-bookmark" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4V3Z"/></symbol>
+      <symbol id="nav-icon-sliders" viewBox="0 0 24 24"><path d="M3 6h18M3 12h18M3 18h18"/><circle cx="8" cy="6" r="2"/><circle cx="16" cy="12" r="2"/><circle cx="10" cy="18" r="2"/></symbol>
+      <symbol id="nav-icon-shield" viewBox="0 0 24 24"><path d="m12 2 8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4Z"/><path d="m9 12 2 2 4-4"/></symbol>
+      <symbol id="nav-icon-check" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 2.5 2.5L16 9"/></symbol>
+      <symbol id="nav-icon-lock" viewBox="0 0 24 24"><rect x="5" y="10" width="14" height="11" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3M12 14v3"/></symbol>
+      <symbol id="nav-icon-key" viewBox="0 0 24 24"><circle cx="8" cy="9" r="4"/><path d="m11 12 9 9m-4-4 2-2m-5-1 2-2"/></symbol>
+      <symbol id="nav-icon-logout" viewBox="0 0 24 24"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M13 7l5 5-5 5m5-5H9"/></symbol>
+    </svg>
     <div class="app-shell">
       <aside class="left-nav" aria-label="<%= t('primaryNavigation') %>">
         <a class="brand" href="/workbench" aria-label="Sunkaier workbench">
@@ -5012,52 +5136,55 @@
         </a>
         <% if (currentUser) { %>
           <div class="nav-account" aria-label="<%= t('currentLoginAccount') %>">
-            <div class="nav-account-name"><%= currentUser.displayName %></div>
+            <span class="nav-avatar" aria-hidden="true"><%= [...String(currentUser.displayName || '?')][0] %></span>
+            <div class="nav-account-name" title="<%= currentUser.displayName %>"><%= currentUser.displayName %></div>
           </div>
         <% } %>
         <nav class="nav-group">
+          <div class="nav-section-label"><%= language === 'zh' ? '业务导航' : 'Workspace' %></div>
           <a class="<%= navClass('workbench') %> notification-nav-link" href="/workbench">
+            <%- navIcon('grid') %>
             <span><%= sidebarLabel('workbench', t('workbench')) %></span>
             <span class="notification-badge" data-notification-badge hidden>0</span>
           </a>
           <% if (canSeeEmailCenterNav) { %>
-            <a class="<%= navClass('email-center') %>" href="/email-center"><%= sidebarLabel('emailCenter', t('emailCenter')) %></a>
+            <a class="<%= navClass('email-center') %>" href="/email-center"><%- navIcon('mail') %><span><%= sidebarLabel('emailCenter', t('emailCenter')) %></span></a>
           <% } %>
           <% if (canSeeWebsiteFormsNav) { %>
-            <a class="<%= navClass('inquiries') %>" href="/inquiries"><%= sidebarLabel('websiteForms', t('websiteForms')) %></a>
+            <a class="<%= navClass('inquiries') %>" href="/inquiries"><%- navIcon('file') %><span><%= sidebarLabel('websiteForms', t('websiteForms')) %></span></a>
           <% } %>
           <% if (canSeeLeadNav) { %>
-            <a class="<%= navClass('lead-submissions') %>" href="/lead-submissions"><%= sidebarLabel('leads', t('navLeadSubmissions')) %></a>
+            <a class="<%= navClass('lead-submissions') %>" href="/lead-submissions"><%- navIcon('user-plus') %><span><%= sidebarLabel('leads', t('navLeadSubmissions')) %></span></a>
           <% } %>
-          <a class="<%= navClass('opportunities') %>" href="/opportunities"><%= sidebarLabel('opportunities', t('opportunities')) %></a>
+          <a class="<%= navClass('opportunities') %>" href="/opportunities"><%- navIcon('briefcase') %><span><%= sidebarLabel('opportunities', t('opportunities')) %></span></a>
           <% if (typeof developmentWorkspaceEnabled !== 'undefined' && developmentWorkspaceEnabled) { %>
-            <a class="<%= navClass('development') %>" href="/development/topics"><%= sidebarLabel('development', 'New Product Development') %></a>
+            <a class="<%= navClass('development') %>" href="/development/topics"><%- navIcon('bulb') %><span><%= sidebarLabel('development', 'New Product Development') %></span></a>
           <% } %>
-          <a class="<%= navClass('customers') %>" href="/customers"><%= sidebarLabel('customers', t('customers')) %></a>
-          <a class="<%= navClass('contacts') %>" href="/contacts"><%= sidebarLabel('contacts', t('contacts')) %></a>
-          <a class="<%= navClass('analytics') %>" href="/analytics"><%= sidebarLabel('analytics', t('analytics')) %></a>
+          <a class="<%= navClass('customers') %>" href="/customers"><%- navIcon('building') %><span><%= sidebarLabel('customers', t('customers')) %></span></a>
+          <a class="<%= navClass('contacts') %>" href="/contacts"><%- navIcon('users') %><span><%= sidebarLabel('contacts', t('contacts')) %></span></a>
+          <a class="<%= navClass('analytics') %>" href="/analytics"><%- navIcon('chart') %><span><%= sidebarLabel('analytics', t('analytics')) %></span></a>
           <% if (canSeeTechnicalStandardsNav) { %>
             <div class="nav-parent"><%= sidebarLabel('technicalCenter', t('technicalDocumentsCenter')) %></div>
             <div class="nav-subgroup">
-              <a class="<%= navClass('technical-templates') %>" href="/technical-templates"><%= sidebarLabel('technicalTemplates', t('technicalTemplateLibrary')) %></a>
-              <a class="<%= navClass('technical-clauses') %>" href="/technical-clauses"><%= sidebarLabel('standardClauses', t('standardClauseLibrary')) %></a>
+              <a class="<%= navClass('technical-templates') %>" href="/technical-templates"><%- navIcon('folder') %><span><%= sidebarLabel('technicalTemplates', t('technicalTemplateLibrary')) %></span></a>
+              <a class="<%= navClass('technical-clauses') %>" href="/technical-clauses"><%- navIcon('bookmark') %><span><%= sidebarLabel('standardClauses', t('standardClauseLibrary')) %></span></a>
             </div>
           <% } %>
           <% if (canSeeSystemNav) { %>
             <div class="nav-parent"><%= sidebarLabel('system', t('system')) %></div>
             <div class="nav-subgroup">
-              <a class="<%= navClass('system-users') %>" href="/system/users"><%= sidebarLabel('users', t('users')) %></a>
-              <a class="<%= navClass('system-roles') %>" href="/system/roles"><%= sidebarLabel('roles', t('roles')) %></a>
-              <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings"><%= sidebarLabel('approvals', t('navApprovalSettings')) %></a>
+              <a class="<%= navClass('system-users') %>" href="/system/users"><%- navIcon('users') %><span><%= sidebarLabel('users', t('users')) %></span></a>
+              <a class="<%= navClass('system-roles') %>" href="/system/roles"><%- navIcon('shield') %><span><%= sidebarLabel('roles', t('roles')) %></span></a>
+              <a class="<%= navClass('system-approval-settings') %>" href="/system/approval-settings"><%- navIcon('check') %><span><%= sidebarLabel('approvals', t('navApprovalSettings')) %></span></a>
             </div>
           <% } %>
         </nav>
         <div class="nav-footer">
-          <a class="<%= navClass('account-security') %>" href="/account/security"><%= sidebarLabel('security', t('accountSecurity')) %></a>
-          <a class="<%= navClass('account-password') %>" href="/account/password"><%= sidebarLabel('password', t('changePassword')) %></a>
+          <a class="<%= navClass('account-security') %>" href="/account/security"><%- navIcon('lock') %><span><%= sidebarLabel('security', t('accountSecurity')) %></span></a>
+          <a class="<%= navClass('account-password') %>" href="/account/password"><%- navIcon('key') %><span><%= sidebarLabel('password', t('changePassword')) %></span></a>
           <form class="logout-form" method="post" action="/logout">
             <%- csrfField() %>
-            <button class="logout-button" type="submit"><%= sidebarLabel('logout', t('logout')) %></button>
+            <button class="logout-button" type="submit"><%- navIcon('logout') %><span><%= sidebarLabel('logout', t('logout')) %></span></button>
           </form>
         </div>
       </aside>

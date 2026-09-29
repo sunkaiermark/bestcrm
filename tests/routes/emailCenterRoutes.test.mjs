@@ -239,10 +239,11 @@ test('sales manager sees shared mailbox pending threads without a rule-category 
   assert.equal(listFilter?.direction, 'inbound');
   assert.equal(listFilter?.triageStatus, 'pending');
   assert.equal(listFilter?.triageStatuses, undefined);
+  assert.match(list.text, /<div class="email-center-toolbar is-sticky">/);
   assert.match(list.text, /class="email-folder-tab is-active"[^>]*aria-current="page"[^>]*>待处理<\/a>/);
   assert.match(list.text, />收件箱<\/a>/);
   assert.match(list.text, />已发件箱<\/a>/);
-  assert.match(list.text, /“待处理”指仍需人工判断的正常业务收件/);
+  assert.doesNotMatch(list.text, /“待处理”指仍需人工判断的正常业务收件/);
   assert.match(list.text, /class="email-inbox-list"/);
   assert.match(list.text, /class="email-inbox-row" href="\/email-center\/threads\/1\?mailbox=sales%40sunkaier\.com&from=pending" title="打开会话"/);
   assert.match(list.text, /class="email-inbox-sender" title="buyer@example\.com">buyer@example\.com<\/span>/);
@@ -353,6 +354,9 @@ test('inbox provides server-side search and preserves the query on return', asyn
 test('pending and sent folder links remain available and preserve their source folder', async () => {
   const agent = await createAgent({ userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh' });
   for (const retainedFolder of ['pending', 'sent']) {
+    const list = await agent.get(`/email-center?mailbox=sales%40sunkaier.com&folder=${retainedFolder}`);
+    assert.equal(list.status, 200);
+    assert.match(list.text, /<div class="email-center-toolbar is-sticky">/);
     const detail = await agent.get(`/email-center/threads/1?mailbox=sales%40sunkaier.com&from=${retainedFolder}`);
     assert.equal(detail.status, 200);
     assert.match(

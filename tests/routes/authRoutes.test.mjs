@@ -304,7 +304,7 @@ test('login page renders username and password form', async () => {
   assert.doesNotMatch(response.text, /name="password"[^>]*value=/);
   assert.match(response.text, /name="rememberUsername"\s+type="checkbox"\s+value="1"/);
   assert.match(response.text, /Remember username on this computer/);
-  assert.match(response.text, /Only the username is saved\. The password must be entered every time\./);
+  assert.doesNotMatch(response.text, /Only the username is saved/);
   assert.match(response.text, /bestcrm\.rememberedUsername\.v1/);
   assert.doesNotMatch(response.text, /localStorage\.(?:setItem|getItem)\([^\n]*password/i);
   assert.match(response.text, /class="password-toggle"/);
@@ -466,7 +466,7 @@ test('login page can switch between English and Chinese', async () => {
   assert.match(chineseLogin.text, /用户名/);
   assert.match(chineseLogin.text, /密码/);
   assert.match(chineseLogin.text, /在此电脑记住用户名/);
-  assert.match(chineseLogin.text, /密码每次都必须重新输入/);
+  assert.doesNotMatch(chineseLogin.text, /密码每次都必须重新输入/);
   assert.match(chineseLogin.text, />登录</);
   assert.match(chineseLogin.text, /href="\/language\?lang=en&amp;returnTo=%2Flogin"/);
 

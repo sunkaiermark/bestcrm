@@ -50,7 +50,7 @@ test('logged in users can open Analytics from the left sidebar', async () => {
 
   assert.equal(response.status, 200);
   assert.match(response.text, /<h1>Analytics<\/h1>/);
-  assert.match(response.text, /class="nav-link active" href="\/analytics">Analytics<\/a>/);
+  assert.match(response.text, /class="nav-link active" href="\/analytics">[\s\S]*?<span>Analytics<\/span><\/a>/);
   assert.match(response.text, /No analytics reports have been configured yet\./);
 });
 

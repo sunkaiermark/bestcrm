@@ -25,6 +25,10 @@ function textField(value, field, max, required = true) {
   return text;
 }
 
+export function normalizeDevelopmentSubprojectSummary(value) {
+  return textField(value, 'summary', 2000, false);
+}
+
 function dateRange(start, end) {
   if (start > end) {
     throw new DevelopmentProjectError('Planned start must not be after planned end', 422,
@@ -57,12 +61,30 @@ export function normalizeDevelopmentPlanItem(input) {
       && (!Number.isSafeInteger(gateTopicId) || gateTopicId <= 0)) {
     throw new DevelopmentProjectError('Concept gate topic is required', 422, ['gateTopicId']);
   }
+  const responsibleUserId = itemKind === 'subproject' ? Number(input?.responsibleUserId) : null;
+  if (itemKind === 'subproject'
+      && (!Number.isSafeInteger(responsibleUserId) || responsibleUserId <= 0)) {
+    throw new DevelopmentProjectError('Subproject responsible member is required', 422,
+      ['responsibleUserId']);
+  }
+  if (itemKind === 'concept_gate' && input?.responsibleUserId != null
+      && String(input.responsibleUserId).trim() !== '') {
+    throw new DevelopmentProjectError('Concept gate cannot have a responsible member', 422,
+      ['responsibleUserId']);
+  }
+  if (itemKind === 'concept_gate' && String(input?.summary || '').trim()) {
+    throw new DevelopmentProjectError('Concept gate cannot have a subproject summary', 422,
+      ['summary']);
+  }
   return {
     itemKind,
     title: textField(input?.title, 'title', 200),
+    summary: itemKind === 'subproject'
+      ? normalizeDevelopmentSubprojectSummary(input?.summary) : '',
     plannedStartOn,
     plannedEndOn,
-    gateTopicId
+    gateTopicId,
+    responsibleUserId
   };
 }
 

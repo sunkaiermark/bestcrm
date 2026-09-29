@@ -56,6 +56,7 @@ import { createTechnicalTemplateRepository } from './repositories/technicalTempl
 import { createTodoRepository } from './repositories/todoRepository.mjs';
 import { createUserRepository } from './repositories/userRepository.mjs';
 import { createWorkbenchRepository } from './repositories/workbenchRepository.mjs';
+import { createTaskStatisticsRepository } from './repositories/taskStatisticsRepository.mjs';
 import { createWorkflowEventRepository } from './repositories/workflowEventRepository.mjs';
 import { accountRoutes } from './routes/accountRoutes.mjs';
 import { analyticsRoutes } from './routes/analyticsRoutes.mjs';
@@ -744,6 +745,8 @@ export function createApp(options = {}) {
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
+  const taskStatisticsRepository = options.taskStatisticsRepository
+    || (pool ? createTaskStatisticsRepository(pool) : null);
   const salesWorkRepository = options.salesWorkRepository || (pool ? createSalesWorkRepository(pool) : emptySalesWorkRepository);
   const technicalTemplateRepository = options.technicalTemplateRepository
     || (pool ? createTechnicalTemplateRepository(pool) : emptyTechnicalTemplateRepository);
@@ -895,7 +898,7 @@ export function createApp(options = {}) {
     salesWorkRepository,
     notificationRepository
   }));
-  app.use(analyticsRoutes({ productCategoryRepository }));
+  app.use(analyticsRoutes({ productCategoryRepository, taskStatisticsRepository }));
   app.use(notificationRoutes({
     notificationRepository,
     webPushPublicKey: configuredWebPushPublicKey

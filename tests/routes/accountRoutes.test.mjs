@@ -70,7 +70,7 @@ test('password settings require login and render the confirmed policy', async ()
   assert.match(page.text, /name="currentPassword"/);
   assert.match(page.text, /name="newPassword"[\s\S]*minlength="6"[\s\S]*maxlength="6"[\s\S]*pattern="\[0-9\]\{6\}"/);
   assert.match(page.text, /name="confirmPassword"/);
-  assert.match(page.text, /href="\/account\/password">Change password<\/a>/);
+  assert.match(page.text, /href="\/account\/password">[^\n]*<span>Password<\/span><\/a>/);
 });
 
 test('password settings reject invalid values without changing the password', async () => {

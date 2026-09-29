@@ -34,8 +34,9 @@ function visiblePlan(ownerUserId = 940) {
       rowVersion: 1 },
     items: [
       { id: 11, projectId: 7, itemKind: 'subproject', code: 'SP-01',
-        title: 'Explore', plannedStartOn: '2026-09-22',
-        plannedEndOn: '2026-10-05', rowVersion: 1 },
+        title: 'Explore', summary: 'Seal options', plannedStartOn: '2026-09-22',
+        plannedEndOn: '2026-10-05', responsibleUserId: 940,
+        responsibleName: 'Project user', responsibleIsActive: true, rowVersion: 1 },
       { id: 12, projectId: 7, itemKind: 'concept_gate', code: 'G-01',
         title: 'Concept approval', plannedStartOn: '2026-10-06',
         plannedEndOn: '2026-10-06', gateApproved: false,
@@ -70,6 +71,10 @@ test('member sees Gantt codes and milestone but cannot edit owner controls', asy
   assert.match(response.text, /SP-01 FS\+0d/);
   assert.match(response.text, /G-01/);
   assert.match(response.text, /data-predecessor="11"/);
+  assert.match(response.text, /Responsible：Project user/);
+  assert.match(response.text, /Seal options/);
+  assert.doesNotMatch(response.text, /name="responsibleUserId"/);
+  assert.doesNotMatch(response.text, /items\/11\/summary/);
   assert.match(response.text, /&lt;script&gt;R&amp;D&lt;\/script&gt;/);
   assert.doesNotMatch(response.text, /<script>R&D<\/script>/);
   assert.doesNotMatch(response.text, /建立前置依赖/);
@@ -135,19 +140,87 @@ test('owner sees horizontal subproject entry and submits both dependency directi
   assert.match(page.text, /name="upstreamItemId"/);
   assert.match(page.text, /name="downstreamItemId"/);
   assert.match(page.text, /plan-date-field/);
+  assert.match(page.text, /name="responsibleUserId"/);
+  assert.match(page.text, /items\/11\/responsible/);
+  assert.match(page.text, /name="summary"/);
+  assert.match(page.text, /items\/11\/summary/);
   const invalid = await agent.post('/development/projects/7/items')
     .set('Accept', 'application/json').send({ itemKind: 'subproject', title: 'Seal trial',
       plannedStartOn: '2026-10-10', plannedEndOn: '2026-10-15',
+      responsibleUserId: 940,
       upstreamItemId: 11, upstreamRelationCode: 'invalid' });
   assert.equal(invalid.status, 422);
   assert.equal(calls.length, 0);
   const created = await agent.post('/development/projects/7/items')
     .set('Accept', 'application/json').send({ itemKind: 'subproject', title: 'Seal trial',
+      summary: '  Validate seals under heat  ',
       plannedStartOn: '2026-10-10', plannedEndOn: '2026-10-15',
+      responsibleUserId: 940,
       upstreamItemId: 11, upstreamRelationCode: 'FS', upstreamLagCalendarDays: 0,
       downstreamItemId: 12, downstreamRelationCode: 'FF', downstreamLagCalendarDays: 5 });
   assert.equal(created.status, 201);
   assert.equal(calls.length, 1);
   assert.deepEqual(calls[0].upstream, { itemId: 11, relationCode: 'FS', lagCalendarDays: 0 });
   assert.deepEqual(calls[0].downstream, { itemId: 12, relationCode: 'FF', lagCalendarDays: 5 });
+  assert.equal(calls[0].item.responsibleUserId, 940);
+  assert.equal(calls[0].item.summary, 'Validate seals under heat');
+});
+
+test('subproject responsible change is validated and passed to owner-only storage', async () => {
+  const calls = [];
+  const repository = {
+    async updateItemResponsible(input) { calls.push(input); return { id: input.itemId }; }
+  };
+  const { agent } = await agentFor(repository);
+  const invalid = await agent.post('/development/projects/7/items/11/responsible')
+    .set('Accept', 'application/json').send({ responsibleUserId: '', expectedRowVersion: 1 });
+  assert.equal(invalid.status, 422);
+  assert.equal(calls.length, 0);
+  const changed = await agent.post('/development/projects/7/items/11/responsible')
+    .set('Accept', 'application/json').send({ responsibleUserId: 940,
+      expectedRowVersion: 1 });
+  assert.equal(changed.status, 201);
+  assert.deepEqual(calls[0], { projectId: 7, itemId: 11,
+    responsibleUserId: 940, expectedRowVersion: 1, actorUserId: 940 });
+});
+
+test('subproject summary edit validates input and passes actor to owner-only storage', async () => {
+  const calls = [];
+  const repository = {
+    async updateItemSummary(input) { calls.push(input); return { id: input.itemId }; }
+  };
+  const { agent } = await agentFor(repository);
+  const invalid = await agent.post('/development/projects/7/items/11/summary')
+    .set('Accept', 'application/json').send({ summary: 'x'.repeat(2001),
+      expectedRowVersion: 1 });
+  assert.equal(invalid.status, 422);
+  assert.equal(calls.length, 0);
+  const changed = await agent.post('/development/projects/7/items/11/summary')
+    .set('Accept', 'application/json').send({ summary: '  Trial setup  ',
+      expectedRowVersion: 1 });
+  assert.equal(changed.status, 201);
+  assert.deepEqual(calls[0], { projectId: 7, itemId: 11, summary: 'Trial setup',
+    expectedRowVersion: 1, actorUserId: 940 });
+});
+
+test('legacy unassigned subprojects remain visible and assigned members cannot be removed in the page', async () => {
+  const plan = visiblePlan();
+  plan.items[0].responsibleUserId = null;
+  plan.items[0].responsibleName = null;
+  const repository = {
+    async getVisiblePlan() { return plan; },
+    async listInviteCandidates() { return []; },
+    async listLinkableTopics() { return []; }
+  };
+  const { agent } = await agentFor(repository);
+  const unassigned = await agent.get('/development/projects/7');
+  assert.equal(unassigned.status, 200);
+  assert.match(unassigned.text, /Responsible：Unassigned/);
+  plan.items[0].responsibleUserId = 941;
+  plan.items[0].responsibleName = 'Other member';
+  plan.members.push({ userId: 941, displayName: 'Other member', isActive: true });
+  const assigned = await agent.get('/development/projects/7');
+  assert.equal(assigned.status, 200);
+  assert.match(assigned.text, /Reassign subprojects first/);
+  assert.match(assigned.text, /disabled>Reassign subprojects first/);
 });

@@ -215,7 +215,9 @@ test('quotation engineers only receive published templates and clauses', async (
   assert.equal(templates.status, 200);
   assert.match(templates.text, /Technical Document Templates/);
   assert.match(templates.text, /MX-100/);
-  assert.match(templates.text, /Technical Documents/);
+  assert.match(templates.text, /class="nav-parent">Technical Docs<\/div>/);
+  assert.match(templates.text, /href="\/technical-templates">[^\n]*<span>Templates<\/span><\/a>/);
+  assert.match(templates.text, /href="\/technical-clauses">[^\n]*<span>Clauses<\/span><\/a>/);
   assert.match(templates.text, /href="\/technical-templates"/);
   assert.match(templates.text, /href="\/technical-clauses"/);
   assert.doesNotMatch(templates.text, /\/bid-center\//);

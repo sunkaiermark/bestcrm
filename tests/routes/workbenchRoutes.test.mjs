@@ -290,12 +290,13 @@ test('administrator users see system navigation in the left sidebar', async () =
   assert.match(response.text, /href="\/system\/roles"/);
   assert.match(response.text, /Roles/);
   assert.match(response.text, /href="\/system\/approval-settings"/);
-  assert.match(response.text, /Approval Settings/);
+  assert.match(response.text, /href="\/system\/approval-settings">[^\n]*<span>Approvals<\/span><\/a>/);
   assert.match(response.text, /href="\/inquiries"/);
   const mainNavigation = response.text.match(/<nav class="nav-group">[\s\S]*?<\/nav>/)?.[0] || '';
   const navigationFooter = response.text.match(/<div class="nav-footer">[\s\S]*?<\/aside>/)?.[0] || '';
   assert.doesNotMatch(mainNavigation, /href="\/account\/password"/);
-  assert.match(navigationFooter, /href="\/account\/password">Change password<\/a>/);
+  assert.match(navigationFooter, /href="\/account\/password">[^\n]*<span>Password<\/span><\/a>/);
+  assert.match(navigationFooter, /<span>Sign Out<\/span><\/button>/);
   assert.match(navigationFooter, /action="\/logout"/);
 });
 
@@ -310,17 +311,17 @@ test('left sidebar uses selected Chinese language after login', async () => {
   const response = await agent.get('/workbench');
 
   assert.equal(response.status, 200);
-  assert.match(response.text, /href="\/workbench">\s*<span>我的工作<\/span>/);
+  assert.match(response.text, /href="\/workbench">[\s\S]*?<span>我的工作<\/span>/);
   assert.doesNotMatch(response.text, /href="\/sales-work\/plans">工作<\/a>/);
   assert.doesNotMatch(response.text, /href="\/notifications">通知<\/a>/);
-  assert.match(response.text, /href="\/opportunities">销售商机<\/a>/);
-  assert.match(response.text, /href="\/customers">客户档案<\/a>/);
-  assert.match(response.text, /href="\/contacts">联系名录<\/a>/);
+  assert.match(response.text, /href="\/opportunities">[^\n]*<span>销售商机<\/span><\/a>/);
+  assert.match(response.text, /href="\/customers">[^\n]*<span>客户档案<\/span><\/a>/);
+  assert.match(response.text, /href="\/contacts">[^\n]*<span>联系名录<\/span><\/a>/);
   assert.match(response.text, /class="nav-parent">系统设置<\/div>/);
-  assert.match(response.text, /href="\/system\/users">用户管理<\/a>/);
-  assert.match(response.text, /href="\/system\/roles">角色管理<\/a>/);
-  assert.match(response.text, /href="\/system\/approval-settings">审批设置<\/a>/);
-  assert.match(response.text, />退出登录<\/button>/);
+  assert.match(response.text, /href="\/system\/users">[^\n]*<span>用户管理<\/span><\/a>/);
+  assert.match(response.text, /href="\/system\/roles">[^\n]*<span>角色管理<\/span><\/a>/);
+  assert.match(response.text, /href="\/system\/approval-settings">[^\n]*<span>审批设置<\/span><\/a>/);
+  assert.match(response.text, /<span>退出登录<\/span><\/button>/);
 });
 
 test('salesperson sidebar uses concise Chinese lead and work labels', async () => {
@@ -334,7 +335,7 @@ test('salesperson sidebar uses concise Chinese lead and work labels', async () =
   const response = await agent.get('/workbench');
 
   assert.equal(response.status, 200);
-  assert.match(response.text, /href="\/lead-submissions">销售线索<\/a>/);
+  assert.match(response.text, /href="\/lead-submissions">[^\n]*<span>销售线索<\/span><\/a>/);
   assert.doesNotMatch(response.text, /href="\/sales-work\/plans">工作<\/a>/);
   assert.match(response.text, /href="\/sales-work\/plans">管理工作计划<\/a>/);
   assert.doesNotMatch(response.text, /href="\/lead-submissions">我提交的线索<\/a>/);

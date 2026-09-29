@@ -7,8 +7,9 @@
 </header>
 
 <section class="form-panel">
-  <% if (canViewProductReport) { %>
-    <a class="quick-action" href="/analytics/products"><%= t('productCategoryReport') %></a>
+  <% if (canViewProductReport || canViewTaskReport) { %>
+    <% if (canViewProductReport) { %><a class="quick-action" href="/analytics/products"><%= t('productCategoryReport') %></a><% } %>
+    <% if (canViewTaskReport) { %><a class="quick-action" href="/analytics/tasks"><%= language === 'zh' ? '全员任务统计' : 'Team Task Statistics' %></a><% } %>
   <% } else { %>
     <p class="muted"><%= t('noAnalyticsReports') %></p>
   <% } %>

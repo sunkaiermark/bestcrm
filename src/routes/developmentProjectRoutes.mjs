@@ -11,7 +11,9 @@ import {
   linkDevelopmentTopicToSubproject,
   listDevelopmentProjects,
   updateDevelopmentProjectDates,
-  updateDevelopmentPlanItemDates
+  updateDevelopmentPlanItemDates,
+  updateDevelopmentSubprojectResponsible,
+  updateDevelopmentSubprojectSummary
 } from '../services/developmentProjectService.mjs';
 
 function wantsJson(req) {
@@ -103,6 +105,12 @@ export function developmentProjectRoutes({ repository }) {
     () => updateDevelopmentProjectDates(repository, req.currentUser, req.params.id, req.body)));
   router.post('/development/projects/:id/items/:itemId/dates', (req, res, next) => change(req, res, next,
     () => updateDevelopmentPlanItemDates(repository, req.currentUser, req.params.id,
+      req.params.itemId, req.body)));
+  router.post('/development/projects/:id/items/:itemId/responsible', (req, res, next) => change(req, res, next,
+    () => updateDevelopmentSubprojectResponsible(repository, req.currentUser, req.params.id,
+      req.params.itemId, req.body)));
+  router.post('/development/projects/:id/items/:itemId/summary', (req, res, next) => change(req, res, next,
+    () => updateDevelopmentSubprojectSummary(repository, req.currentUser, req.params.id,
       req.params.itemId, req.body)));
   router.post('/development/projects/:id/topic-links', (req, res, next) => change(req, res, next,
     () => linkDevelopmentTopicToSubproject(repository, req.currentUser, req.params.id,

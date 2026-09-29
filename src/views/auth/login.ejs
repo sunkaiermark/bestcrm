@@ -152,12 +152,6 @@
         margin: 5px 0 0;
       }
 
-      .remember-username small {
-        display: block;
-        color: var(--muted);
-        font-size: 15px;
-      }
-
       .login-button {
         width: 100%;
         height: 44px;
@@ -244,7 +238,6 @@
             <input id="remember-username" name="rememberUsername" type="checkbox" value="1">
             <span>
               <%= t('rememberUsername') %>
-              <small><%= t('rememberUsernameDescription') %></small>
             </span>
           </label>
           <button class="login-button" type="submit"><%= t('login') %></button>

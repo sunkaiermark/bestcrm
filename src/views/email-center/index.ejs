@@ -1,5 +1,5 @@
 <%- include('../partials/app-start', { title: `${t('emailCenter')} - BESTCRM`, activeNav: 'email-center' }) %>
-        <div class="email-center-toolbar<%= folder === 'inbox' ? ' is-sticky' : '' %>">
+        <div class="email-center-toolbar is-sticky">
         <header class="page-header">
           <div>
             <p class="breadcrumb"><%= t('emailCenter') %></p>
@@ -49,8 +49,6 @@
         </div>
 
         <% if (mailboxes.length) { %>
-          <% if (folder === 'pending') { %><p class="email-pending-definition"><%= t('emailPendingDefinition') %></p><% } %>
-
           <% if (cleanup) { const isSpamCleanup = folder === 'spam'; %>
             <section class="form-panel email-spam-cleanup is-compact" aria-label="<%= t(isSpamCleanup ? 'emailSpamCleanup' : 'emailNonBusinessCleanup') %>">
               <form class="inline-form" method="post" action="/email-center/<%= folder %>/purge" onsubmit="return confirm('<%= t(isSpamCleanup ? 'emailSpamCleanupConfirm' : 'emailNonBusinessCleanupConfirm') %>')">

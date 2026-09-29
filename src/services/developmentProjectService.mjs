@@ -5,6 +5,7 @@ import {
   normalizeDevelopmentDependency,
   normalizeDevelopmentPlanItem,
   normalizeDevelopmentProject,
+  normalizeDevelopmentSubprojectSummary,
   projectDate
 } from '../domain/developmentProjects.mjs';
 
@@ -142,6 +143,26 @@ export async function updateDevelopmentPlanItemDates(repository, actor, projectI
     projectId: id(projectId, 'projectId'), itemId: id(itemId, 'itemId'),
     expectedRowVersion: id(input?.expectedRowVersion, 'expectedRowVersion'),
     actorUserId: activeId(actor), plannedStartOn, plannedEndOn
+  });
+}
+
+export async function updateDevelopmentSubprojectResponsible(repository, actor, projectId,
+  itemId, input) {
+  return repository.updateItemResponsible({
+    projectId: id(projectId, 'projectId'), itemId: id(itemId, 'itemId'),
+    responsibleUserId: id(input?.responsibleUserId, 'responsibleUserId'),
+    expectedRowVersion: id(input?.expectedRowVersion, 'expectedRowVersion'),
+    actorUserId: activeId(actor)
+  });
+}
+
+export async function updateDevelopmentSubprojectSummary(repository, actor, projectId,
+  itemId, input) {
+  return repository.updateItemSummary({
+    projectId: id(projectId, 'projectId'), itemId: id(itemId, 'itemId'),
+    summary: normalizeDevelopmentSubprojectSummary(input?.summary),
+    expectedRowVersion: id(input?.expectedRowVersion, 'expectedRowVersion'),
+    actorUserId: activeId(actor)
   });
 }
 

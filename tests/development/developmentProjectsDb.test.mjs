@@ -6,6 +6,7 @@ import { migrate } from '../../src/db/migrate.mjs';
 import { createDevelopmentRepository } from '../../src/repositories/developmentRepository.mjs';
 import { createDevelopmentTopicDraft } from '../../src/services/developmentTopicService.mjs';
 import { createDevelopmentProjectRepository } from '../../src/repositories/developmentProjectRepository.mjs';
+import { createTaskStatisticsRepository } from '../../src/repositories/taskStatisticsRepository.mjs';
 import { createDevelopmentProject } from '../../src/services/developmentProjectService.mjs';
 
 const databaseUrl = process.env.DEVELOPMENT_PROJECT_TEST_DATABASE_URL;
@@ -22,9 +23,11 @@ test('NPD projects, membership, topic links, gate and dependency graph stay isol
     await migrate(pool);
     const migration = await pool.query(`
       SELECT count(*)::integer AS n FROM schema_migrations
-      WHERE name = '094_development_projects.sql'
+      WHERE name IN ('094_development_projects.sql',
+        '096_development_subproject_responsible.sql',
+        '097_development_subproject_summary.sql')
     `);
-    assert.equal(migration.rows[0].n, 1);
+    assert.equal(migration.rows[0].n, 3);
 
     const suffix = randomUUID().replaceAll('-', '').slice(0, 10);
     async function addUser(label) {
@@ -57,17 +60,91 @@ test('NPD projects, membership, topic links, gate and dependency graph stay isol
       actorUserId: memberId })).id, project.id);
     await assert.rejects(projectRepository.addItem({ projectId: project.id,
       actorUserId: memberId, item: { itemKind: 'subproject', title: 'Unauthorized',
-        plannedStartOn: '2026-10-01', plannedEndOn: '2026-10-02', gateTopicId: null } }),
+        plannedStartOn: '2026-10-01', plannedEndOn: '2026-10-02', gateTopicId: null,
+        responsibleUserId: memberId } }),
     /not found/);
+
+    await assert.rejects(projectRepository.addItem({ projectId: project.id,
+      actorUserId: ownerId, item: { itemKind: 'subproject', title: 'Nonmember',
+        plannedStartOn: '2026-10-01', plannedEndOn: '2026-10-02', gateTopicId: null,
+        responsibleUserId: reviewerId } }), /active project member/);
 
     const first = await projectRepository.addItem({ projectId: project.id,
       actorUserId: ownerId, item: { itemKind: 'subproject', title: 'Explore',
-        plannedStartOn: '2026-10-01', plannedEndOn: '2026-10-05', gateTopicId: null } });
+        summary: 'Investigate the seal configuration',
+        plannedStartOn: '2026-10-01', plannedEndOn: '2026-10-05', gateTopicId: null,
+        responsibleUserId: memberId } });
     const second = await projectRepository.addItem({ projectId: project.id,
       actorUserId: ownerId, item: { itemKind: 'subproject', title: 'Test seal',
-        plannedStartOn: '2026-10-06', plannedEndOn: '2026-10-10', gateTopicId: null } });
+        plannedStartOn: '2026-10-06', plannedEndOn: '2026-10-10', gateTopicId: null,
+        responsibleUserId: ownerId } });
     assert.equal(first.code, 'SP-01');
     assert.equal(second.code, 'SP-02');
+    assert.equal(first.responsibleUserId, memberId);
+    const taskStatistics = createTaskStatisticsRepository(pool);
+    const workItem = await pool.query(`
+      INSERT INTO work_items (assignee_user_id, source_type, source_key, title,
+        description, planned_start_at, due_at, status, actual_completed_at)
+      VALUES ($1, 'manual_plan', $2, 'Prepare trial', 'Seal trial summary',
+        '2026-10-02 09:00:00+08', '2026-10-08 18:00:00+08',
+        'completed', '2026-10-07 16:30:00+08') RETURNING id
+    `, [ownerId, `npd_task_stats_${suffix}`]);
+    const cancelledItem = await pool.query(`
+      INSERT INTO work_items (assignee_user_id, source_type, source_key, title,
+        planned_start_at, status, actual_completed_at)
+      VALUES ($1, 'manual_plan', $2, 'Cancelled draft',
+        '2026-10-03 09:00:00+08', 'cancelled', '2026-10-03 09:30:00+08') RETURNING id
+    `, [ownerId, `npd_task_cancelled_${suffix}`]);
+    const ownerReport = await taskStatistics.getReport({ startDate: '2026-10-01',
+      endDate: '2026-11-01', userId: ownerId, page: 1, pageSize: 50 });
+    const completedRow = ownerReport.rows.find((row) => row.sourceType === 'work_item'
+      && row.sourceId === Number(workItem.rows[0].id));
+    assert.equal(completedRow.actualCompleted, '2026-10-07 16:30');
+    assert.equal(completedRow.taskSummary, 'Seal trial summary');
+    assert.equal(ownerReport.rows.find((row) => row.sourceId === Number(cancelledItem.rows[0].id)
+      && row.sourceType === 'work_item').actualCompleted, null);
+    assert.ok(ownerReport.rows.some((row) => row.sourceType === 'development_subproject'
+      && row.sourceId === second.id && row.projectNo === project.projectNo));
+    const allPeopleReport = await taskStatistics.getReport({ startDate: '2026-10-01',
+      endDate: '2026-11-01', userId: null, page: 1, pageSize: 50 });
+    assert.ok(allPeopleReport.rows.some((row) => row.sourceType === 'development_subproject'
+      && row.sourceId === first.id && row.userId === memberId
+      && row.taskSummary === 'Investigate the seal configuration'));
+    const editedSummary = await projectRepository.updateItemSummary({ projectId: project.id,
+      itemId: second.id, actorUserId: ownerId, expectedRowVersion: second.rowVersion,
+      summary: 'Run the thermal trial' });
+    assert.equal(editedSummary.summary, 'Run the thermal trial');
+    const revisedReport = await taskStatistics.getReport({ startDate: '2026-10-01',
+      endDate: '2026-11-01', userId: ownerId, page: 1, pageSize: 50 });
+    assert.ok(revisedReport.rows.some((row) => row.sourceType === 'development_subproject'
+      && row.sourceId === second.id && row.taskSummary === 'Run the thermal trial'));
+    await assert.rejects(projectRepository.updateItemSummary({ projectId: project.id,
+      itemId: second.id, actorUserId: reviewerId, expectedRowVersion: editedSummary.rowVersion,
+      summary: 'Forbidden edit' }), /not found/);
+    await assert.rejects(projectRepository.getVisiblePlan({ projectId: project.id,
+      actorUserId: reviewerId }), /not found/);
+    const memberReport = await taskStatistics.getReport({ startDate: '2026-10-01',
+      endDate: '2026-11-01', userId: memberId, page: 1, pageSize: 50 });
+    assert.ok(memberReport.rows.some((row) => row.sourceType === 'development_subproject'
+      && row.sourceId === first.id));
+    await assert.rejects(projectRepository.endMember({ projectId: project.id,
+      userId: memberId, actorUserId: ownerId }), /Reassign subprojects/);
+    await assert.rejects(pool.query(`
+      UPDATE development_project_memberships
+      SET ended_at = now(), ended_by_user_id = $3
+      WHERE project_id = $1 AND user_id = $2 AND ended_at IS NULL
+    `, [project.id, memberId, ownerId]), /Reassign subprojects/);
+    await assert.rejects(pool.query(`
+      UPDATE development_project_items
+      SET responsible_user_id = $2, updated_by_user_id = $3,
+        row_version = row_version + 1 WHERE id = $1
+    `, [first.id, reviewerId, ownerId]), /active project member/);
+    await assert.rejects(pool.query(`
+      INSERT INTO development_project_items (
+        project_id, item_kind, ordinal, title, planned_start_on, planned_end_on,
+        created_by_user_id, updated_by_user_id
+      ) VALUES ($1, 'subproject', 98, 'Missing owner', '2026-10-02', '2026-10-03', $2, $2)
+    `, [project.id, ownerId]), /responsible user is required/);
     await assert.rejects(projectRepository.updateProjectDates({ projectId: project.id,
       actorUserId: memberId, expectedRowVersion: 1,
       plannedStartOn: '2026-09-30', plannedEndOn: '2026-11-01' }), /not found/);
@@ -86,8 +163,8 @@ test('NPD projects, membership, topic links, gate and dependency graph stay isol
     await assert.rejects(pool.query(`
       INSERT INTO development_project_items (
         project_id, item_kind, ordinal, title, planned_start_on, planned_end_on,
-        created_by_user_id, updated_by_user_id
-      ) VALUES ($1, 'subproject', 99, 'Out of range', '2026-11-02', '2026-11-03', $2, $2)
+        responsible_user_id, created_by_user_id, updated_by_user_id
+      ) VALUES ($1, 'subproject', 99, 'Out of range', '2026-11-02', '2026-11-03', $2, $2, $2)
     `, [project.id, ownerId]), /must fit within project dates/);
     await assert.rejects(pool.query(`
       UPDATE development_projects SET planned_start_on = '2026-10-02',
@@ -123,9 +200,11 @@ test('NPD projects, membership, topic links, gate and dependency graph stay isol
     });
     const foreignItem = await projectRepository.addItem({ projectId: anotherProject.id,
       actorUserId: ownerId, item: { itemKind: 'subproject', title: 'Separate work',
-        plannedStartOn: '2026-10-02', plannedEndOn: '2026-10-03', gateTopicId: null } });
+        plannedStartOn: '2026-10-02', plannedEndOn: '2026-10-03', gateTopicId: null,
+        responsibleUserId: ownerId } });
     const inlineItem = { itemKind: 'subproject', title: 'Inline seal trial',
-      plannedStartOn: '2026-10-07', plannedEndOn: '2026-10-09', gateTopicId: null };
+      plannedStartOn: '2026-10-07', plannedEndOn: '2026-10-09', gateTopicId: null,
+      responsibleUserId: ownerId };
     const withLinks = await projectRepository.addSubprojectWithDependencies({
       projectId: project.id, actorUserId: ownerId, item: inlineItem,
       upstream: { itemId: first.id, relationCode: 'SS', lagCalendarDays: 1 },
@@ -196,10 +275,37 @@ test('NPD projects, membership, topic links, gate and dependency graph stay isol
     assert.equal(approved.items.find((item) => item.id === gate.id).gateApproved, true);
     assert.equal(approved.items.find((item) => item.id === gate.id).gateTopicNo, null);
 
+    const assigned = approved.items.find((item) => item.id === first.id);
+    assert.equal(assigned.responsibleUserId, memberId);
+    assert.equal(assigned.responsibleName, 'Project member');
+    const reassigned = await projectRepository.updateItemResponsible({ projectId: project.id,
+      itemId: first.id, actorUserId: ownerId, responsibleUserId: ownerId,
+      expectedRowVersion: first.rowVersion });
+    assert.equal(reassigned.rowVersion, first.rowVersion + 1);
+    assert.equal(reassigned.responsibleUserId, ownerId);
+    await assert.rejects(projectRepository.updateItemResponsible({ projectId: project.id,
+      itemId: first.id, actorUserId: ownerId, responsibleUserId: memberId,
+      expectedRowVersion: first.rowVersion }), /changed; reload/);
+    await assert.rejects(projectRepository.updateItemResponsible({ projectId: project.id,
+      itemId: gate.id, actorUserId: ownerId, responsibleUserId: ownerId,
+      expectedRowVersion: gate.rowVersion }), /changed; reload/);
+    await assert.rejects(projectRepository.updateItemResponsible({ projectId: project.id,
+      itemId: first.id, actorUserId: memberId, responsibleUserId: memberId,
+      expectedRowVersion: reassigned.rowVersion }), /not found/);
+    await projectRepository.endMember({ projectId: project.id,
+      userId: memberId, actorUserId: ownerId });
+    await assert.rejects(projectRepository.getVisiblePlan({ projectId: project.id,
+      actorUserId: memberId }), /not found/);
+
     const audit = await pool.query(`
-      SELECT event_type FROM development_project_events WHERE project_id = $1 ORDER BY id
+      SELECT event_type, actor_user_id, metadata FROM development_project_events
+      WHERE project_id = $1 ORDER BY id
     `, [project.id]);
     assert.ok(audit.rows.some((row) => row.event_type === 'dependency_added'));
+    const assignmentEvent = audit.rows.find((row) => row.event_type === 'subproject_responsible_changed');
+    assert.equal(Number(assignmentEvent.actor_user_id), ownerId);
+    assert.equal(Number(assignmentEvent.metadata.previousResponsibleUserId), memberId);
+    assert.equal(Number(assignmentEvent.metadata.responsibleUserId), ownerId);
     await assert.rejects(pool.query(`
       UPDATE development_project_events SET event_type = 'changed' WHERE project_id = $1
     `, [project.id]), /immutable/);

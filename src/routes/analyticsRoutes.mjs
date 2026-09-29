@@ -2,8 +2,10 @@ import { Router } from 'express';
 import { PRODUCT_CATEGORIES, suggestProductCategoryCodes } from '../domain/productCategories.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
+import { parseTaskStatisticsFilters } from '../domain/taskStatistics.mjs';
 
-export function analyticsRoutes({ productCategoryRepository = null } = {}) {
+export function analyticsRoutes({ productCategoryRepository = null,
+  taskStatisticsRepository = null } = {}) {
   const router = Router();
 
   router.use('/analytics', requireLogin);
@@ -11,9 +13,45 @@ export function analyticsRoutes({ productCategoryRepository = null } = {}) {
   router.get('/analytics', (req, res) => {
     res.render('analytics/index', {
       canViewProductReport: Boolean(productCategoryRepository)
+        && hasRole(req.currentUser, ROLES.ADMINISTRATOR),
+      canViewTaskReport: Boolean(taskStatisticsRepository)
         && hasRole(req.currentUser, ROLES.ADMINISTRATOR)
     });
   });
+
+  function requireTaskStatisticsAdmin(req, res, next) {
+    res.set('Cache-Control', 'private, no-store');
+    if (!hasRole(req.currentUser, ROLES.ADMINISTRATOR)) {
+      res.status(403).send('Forbidden');
+      return;
+    }
+    if (!taskStatisticsRepository) {
+      res.status(503).send('Task statistics unavailable');
+      return;
+    }
+    next();
+  }
+
+  async function taskStatistics(req, res, next, asJson) {
+    try {
+      const filters = parseTaskStatisticsFilters(req.query);
+      const [report, users] = await Promise.all([
+        taskStatisticsRepository.getReport(filters),
+        asJson ? [] : taskStatisticsRepository.listUsers()
+      ]);
+      if (asJson) res.json({ filters, ...report });
+      else res.render('analytics/tasks', { filters, ...report, users });
+    } catch (error) {
+      if (error?.statusCode === 400) {
+        res.status(400).send(error.message);
+      } else next(error);
+    }
+  }
+
+  router.get('/analytics/tasks', requireTaskStatisticsAdmin,
+    (req, res, next) => taskStatistics(req, res, next, false));
+  router.get('/analytics/tasks/data', requireTaskStatisticsAdmin,
+    (req, res, next) => taskStatistics(req, res, next, true));
 
   router.get('/analytics/products', async (req, res, next) => {
     if (!hasRole(req.currentUser, ROLES.ADMINISTRATOR)) {

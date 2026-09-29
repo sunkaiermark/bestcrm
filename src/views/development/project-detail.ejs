@@ -9,6 +9,8 @@
     return before?.itemKind === 'concept_gate' && !before.gateApproved;
   });
   const linkedTopicIds = new Set(topicLinks.map(link => link.topicId).filter(Boolean));
+  const activeMembers = members.filter(member => member.isActive);
+  const responsibilityCount = userId => items.filter(item => item.itemKind === 'subproject' && item.responsibleUserId === userId).length;
   const dateTicks = Array.from({ length: 5 }, (_, index) => {
     const start = Date.parse(project.plannedStartOn + 'T00:00:00Z');
     const end = Date.parse(project.plannedEndOn + 'T00:00:00Z');
@@ -59,11 +61,12 @@
   .development-project-detail .plan-period-form button { width: auto; }
   .development-project-detail .plan-subproject-form { padding: 14px 0 18px; border-top: 1px solid var(--line); }
   .development-project-detail .plan-subproject-form h3 { margin: 0 0 12px; }
-  .development-project-detail .plan-subproject-row { display: grid; grid-template-columns: minmax(200px, 1fr) repeat(4, minmax(0, 180px)) 82px; gap: 10px; align-items: end; padding-right: 8px; }
+  .development-project-detail .plan-subproject-row { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(140px, 180px) repeat(4, minmax(140px, 180px)) 82px; gap: 10px; align-items: end; padding-right: 8px; }
   .development-project-detail .plan-subproject-row > * { min-width: 0; }
   .development-project-detail .plan-subproject-row > label,
   .development-project-detail .plan-dependency-cell { display: grid; grid-template-rows: auto 44px; gap: 5px; margin: 0; }
   .development-project-detail .plan-subproject-row input,
+  .development-project-detail .plan-subproject-row select,
   .development-project-detail .plan-dependency-toggle,
   .development-project-detail .plan-subproject-row > button[type="submit"] { height: 44px; }
   .development-project-detail .plan-date-field { text-align: center; }
@@ -73,6 +76,9 @@
   .development-project-detail .plan-dependency-toggle { width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; text-align: left; background: #e8eef3; color: var(--ink); border: 1px solid var(--line); }
   .development-project-detail .plan-dependency-toggle:disabled { opacity: .65; cursor: not-allowed; }
   .development-project-detail .plan-subproject-row > button[type="submit"] { width: auto; }
+  .development-project-detail .plan-summary-entry textarea,
+  .development-project-detail .gantt-work textarea { width: 100%; }
+  .development-project-detail .plan-summary-entry { margin-top: 10px; }
   .development-project-detail .plan-dependency-editor { background: #f4f7f9; border: 1px solid var(--line); border-radius: 6px; margin-top: 10px; padding: 12px; }
   .development-project-detail .plan-dependency-editor[hidden] { display: none; }
   .development-project-detail .plan-dependency-editor h4 { margin: 0 0 10px; }
@@ -124,7 +130,9 @@
           <div class="gantt-row">
             <div class="gantt-work">
               <strong><%= item.code %> · <%= item.title %></strong>
+              <% if (item.itemKind === 'subproject' && item.summary) { %><small><%= item.summary %></small><% } %>
               <small><%= item.plannedStartOn %><% if (item.itemKind !== 'concept_gate') { %> — <%= item.plannedEndOn %><% } %> · <%= item.itemKind === 'concept_gate' ? (zh ? '技术审批里程碑' : 'Technical approval milestone') : (zh ? '子项目' : 'Subproject') %></small>
+              <% if (item.itemKind === 'subproject') { %><small><%= zh ? '责任人' : 'Responsible' %>：<%= item.responsibleName || (zh ? '待指定' : 'Unassigned') %><% if (item.responsibleUserId && item.responsibleIsActive === false) { %> · <%= zh ? '已离职，需改派' : 'Inactive; reassign' %><% } %></small><% } %>
               <% if (item.itemKind === 'concept_gate') { %><small><%= item.gateApproved ? (zh ? '已批准' : 'Approved') : (zh ? '待批准；不得由项目负责人代签' : 'Pending; owner cannot approve') %><% if (item.gateTopicNo) { %> · <%= item.gateTopicNo %><% } %></small><% } %>
               <% for (const link of topicsFor(item)) { %><small><%= link.topicNo || (zh ? '受限课题' : 'Restricted topic') %> · <%= link.isPrimary ? (zh ? '主责' : 'Primary') : (zh ? '协作' : 'Collaborative') %></small><% } %>
               <% if (predecessors.length) { %><small><%= zh ? '前置' : 'Predecessors' %>：<%= predecessors.map(dep => `${dep.predecessorCode} ${dep.relationCode}${dep.lagCalendarDays >= 0 ? '+' : ''}${dep.lagCalendarDays}d`).join('；') %></small><% } %>
@@ -135,6 +143,20 @@
                   <%- csrfField() %><input type="hidden" name="expectedRowVersion" value="<%= item.rowVersion %>">
                   <label><%= zh ? '开始' : 'Start' %><input type="date" name="plannedStartOn" value="<%= item.plannedStartOn %>" required></label>
                   <label><%= zh ? '结束' : 'Finish' %><input type="date" name="plannedEndOn" value="<%= item.plannedEndOn %>" required></label>
+                  <button type="submit"><%= zh ? '保存' : 'Save' %></button>
+                </form>
+              </details><% } %>
+              <% if (canManage && item.itemKind === 'subproject') { %><details><summary><%= zh ? '指定责任人' : 'Assign responsible' %></summary>
+                <form method="post" action="/development/projects/<%= project.id %>/items/<%= item.id %>/responsible" class="inline-fields">
+                  <%- csrfField() %><input type="hidden" name="expectedRowVersion" value="<%= item.rowVersion %>">
+                  <label><%= zh ? '在职项目成员' : 'Active project member' %><select name="responsibleUserId" required><option value=""><%= zh ? '请选择' : 'Choose' %></option><% for (const member of activeMembers) { %><option value="<%= member.userId %>" <%= item.responsibleUserId === member.userId ? 'selected' : '' %>><%= member.displayName %></option><% } %></select></label>
+                  <button type="submit"><%= zh ? '保存' : 'Save' %></button>
+                </form>
+              </details><% } %>
+              <% if (canManage && item.itemKind === 'subproject') { %><details><summary><%= zh ? '编辑内容摘要' : 'Edit summary' %></summary>
+                <form method="post" action="/development/projects/<%= project.id %>/items/<%= item.id %>/summary">
+                  <%- csrfField() %><input type="hidden" name="expectedRowVersion" value="<%= item.rowVersion %>">
+                  <label><%= zh ? '内容摘要' : 'Summary' %><textarea name="summary" maxlength="2000" rows="3"><%= item.summary || '' %></textarea></label>
                   <button type="submit"><%= zh ? '保存' : 'Save' %></button>
                 </form>
               </details><% } %>
@@ -170,12 +192,16 @@
       <h3><%= zh ? '增加子项目' : 'Add subproject' %></h3>
       <div class="plan-subproject-row">
         <label><%= zh ? '子项目名称' : 'Subproject name' %><input name="title" maxlength="200" required></label>
+        <label><%= zh ? '责任人' : 'Responsible' %><select name="responsibleUserId" required><option value=""><%= zh ? '请选择' : 'Choose' %></option><% for (const member of activeMembers) { %><option value="<%= member.userId %>"><%= member.displayName %></option><% } %></select></label>
         <label class="plan-date-field"><%= zh ? '开始日期' : 'Start date' %><input type="date" name="plannedStartOn" min="<%= project.plannedStartOn %>" max="<%= project.plannedEndOn %>" required></label>
         <label class="plan-date-field"><%= zh ? '结束日期' : 'Finish date' %><input type="date" name="plannedEndOn" min="<%= project.plannedStartOn %>" max="<%= project.plannedEndOn %>" required></label>
         <div class="plan-dependency-cell"><span><%= zh ? '上游依赖' : 'Upstream dependency' %></span><button type="button" class="plan-dependency-toggle" data-side="upstream" data-none-label="<%= zh ? '不设置' : 'None' %>" aria-controls="plan-upstream-editor" aria-expanded="false" <%= items.length ? '' : 'disabled' %>><%= items.length ? (zh ? '不设置' : 'None') : (zh ? '暂无可选项' : 'No items') %></button></div>
         <div class="plan-dependency-cell"><span><%= zh ? '下游依赖' : 'Downstream dependency' %></span><button type="button" class="plan-dependency-toggle" data-side="downstream" data-none-label="<%= zh ? '不设置' : 'None' %>" aria-controls="plan-downstream-editor" aria-expanded="false" <%= items.length ? '' : 'disabled' %>><%= items.length ? (zh ? '不设置' : 'None') : (zh ? '暂无可选项' : 'No items') %></button></div>
         <button type="submit"><%= zh ? '增加' : 'Add' %></button>
       </div>
+      <details class="plan-summary-entry"><summary><%= zh ? '内容摘要（可选）' : 'Summary (optional)' %></summary>
+        <label><%= zh ? '子项目内容摘要' : 'Subproject summary' %><textarea name="summary" maxlength="2000" rows="3"></textarea></label>
+      </details>
       <div class="plan-dependency-editor" id="plan-upstream-editor" hidden>
         <h4><%= zh ? '上游：前置项 → 新子项目' : 'Upstream: predecessor → new subproject' %></h4>
         <div class="inline-fields">
@@ -225,7 +251,7 @@
   <% } %>
 
   <section class="project-panel" id="members"><h2><%= zh ? '项目成员' : 'Project members' %></h2>
-    <div class="member-list"><% for (const member of members) { %><div class="member-row"><span><%= member.displayName %><% if (member.userId === project.ownerUserId) { %> · <%= zh ? '负责人' : 'Owner' %><% } %><% if (!member.isActive) { %> · <%= zh ? '已离职' : 'Inactive' %><% } %></span><% if (canManage && member.userId !== project.ownerUserId) { %><form method="post" action="/development/projects/<%= project.id %>/members/<%= member.userId %>/end"><%- csrfField() %><button class="secondary-action" type="submit"><%= zh ? '结束成员资格' : 'End membership' %></button></form><% } %></div><% } %></div>
+    <div class="member-list"><% for (const member of members) { const assigned = responsibilityCount(member.userId); %><div class="member-row"><span><%= member.displayName %><% if (member.userId === project.ownerUserId) { %> · <%= zh ? '负责人' : 'Owner' %><% } %><% if (!member.isActive) { %> · <%= zh ? '已离职' : 'Inactive' %><% } %><% if (assigned) { %> · <%= zh ? `负责 ${assigned} 个子项目` : `Responsible for ${assigned} subproject(s)` %><% } %></span><% if (canManage && member.userId !== project.ownerUserId) { %><form method="post" action="/development/projects/<%= project.id %>/members/<%= member.userId %>/end"><%- csrfField() %><button class="secondary-action" type="submit" <%= assigned ? 'disabled' : '' %>><%= assigned ? (zh ? '请先改派子项目' : 'Reassign subprojects first') : (zh ? '结束成员资格' : 'End membership') %></button></form><% } %></div><% } %></div>
     <% if (canManage && inviteCandidates.length) { %><form method="post" action="/development/projects/<%= project.id %>/members" class="inline-fields"><%- csrfField() %><label><%= zh ? '邀请在职员工' : 'Invite active employee' %><select name="userId" required><option value=""><%= zh ? '请选择' : 'Choose' %></option><% for (const candidate of inviteCandidates) { %><option value="<%= candidate.id %>"><%= candidate.name %></option><% } %></select></label><button type="submit"><%= zh ? '邀请' : 'Invite' %></button></form><% } %>
   </section>
   <section class="project-panel" id="events"><h2><%= zh ? '时间轴' : 'Timeline' %></h2><% for (const event of events.slice(0, 8)) { %><p><time><%= new Date(event.createdAt).toLocaleString(zh ? 'zh-CN' : 'en-SG') %></time> · <%= event.eventType %></p><% } %><% if (!events.length) { %><p class="muted"><%= zh ? '暂无记录' : 'No events yet' %></p><% } %></section>
