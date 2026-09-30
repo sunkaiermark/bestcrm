@@ -79,8 +79,8 @@ export function loadConfig(env = process.env) {
     throw new Error('TECHNICAL_ADMIN_SELF_APPROVAL_TEST_UNTIL must be a timezone-qualified ISO timestamp');
   }
   if (technicalAdminSelfApprovalTestEnabled
-      && Date.parse(technicalAdminSelfApprovalTestUntil) > Date.now() + 7 * 24 * 60 * 60 * 1000) {
-    throw new Error('TECHNICAL_ADMIN_SELF_APPROVAL_TEST_UNTIL must be within seven days');
+      && Date.parse(technicalAdminSelfApprovalTestUntil) > Date.now() + 92 * 24 * 60 * 60 * 1000) {
+    throw new Error('TECHNICAL_ADMIN_SELF_APPROVAL_TEST_UNTIL must be within the three-month test window');
   }
 
   if (nodeEnv === 'production' && authenticatorMfaEnabled) {

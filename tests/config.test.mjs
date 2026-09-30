@@ -23,6 +23,15 @@ test('administrator technical self-approval test stays off unless an explicit de
   });
   assert.equal(configured.technicalAdminSelfApprovalTest.enabled, true);
   assert.equal(configured.technicalAdminSelfApprovalTest.until, '2026-10-02T18:00:00+08:00');
+  const withinThreeMonths = new Date(Date.now() + 91 * 24 * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z');
+  assert.equal(loadConfig({
+    NODE_ENV: 'development', TECHNICAL_ADMIN_SELF_APPROVAL_TEST_ENABLED: 'true',
+    TECHNICAL_ADMIN_SELF_APPROVAL_TEST_UNTIL: withinThreeMonths
+  }).technicalAdminSelfApprovalTest.until, withinThreeMonths);
+  assert.throws(() => loadConfig({
+    NODE_ENV: 'development', TECHNICAL_ADMIN_SELF_APPROVAL_TEST_ENABLED: 'true',
+    TECHNICAL_ADMIN_SELF_APPROVAL_TEST_UNTIL: new Date(Date.now() + 93 * 24 * 60 * 60 * 1000).toISOString().replace(/\.\d{3}Z$/, 'Z')
+  }), /three-month test window/);
 });
 
 test('retired Bid Center cannot be restored by its obsolete environment flag', () => {
