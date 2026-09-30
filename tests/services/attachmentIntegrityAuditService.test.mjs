@@ -111,3 +111,38 @@ test('attachment audit returns a stable healthy result', async () => {
     await rm(uploadDir, { recursive: true, force: true });
   }
 });
+
+test('attachment audit treats a verified source-linked inquiry file reuse as healthy', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-shared-attachment-audit-'));
+  const storedPath = 'lead-submissions/2026/09/shared.docx';
+  const content = 'shared attachment';
+  const absolutePath = path.join(uploadDir, ...storedPath.split('/'));
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, content);
+  const inquiry = record({
+    model: 'inquiry_attachment', id: 9831, storedPath, fileSize: content.length,
+    sha256: sha256(content)
+  });
+  const opportunity = record({
+    id: 273, storedPath, fileSize: content.length, sha256: sha256(content),
+    sourceInquiryAttachmentId: 9831
+  });
+  const repository = {
+    async listAttachmentIntegrityRecords() { return [opportunity, inquiry]; },
+    async listKnownAttachmentStoredPaths() { return [storedPath]; }
+  };
+  try {
+    const result = await auditAttachmentIntegrity({ repository, uploadDir });
+    assert.equal(result.ok, true);
+    assert.deepEqual(result.issues, []);
+    assert.equal(result.totals.records, 2);
+
+    const invalid = { ...opportunity, sourceInquiryAttachmentId: 9832 };
+    repository.listAttachmentIntegrityRecords = async () => [invalid, inquiry];
+    const rejected = await auditAttachmentIntegrity({ repository, uploadDir });
+    assert.equal(rejected.ok, false);
+    assert.equal(rejected.issues.filter((issue) => issue.reason === 'duplicate_stored_path').length, 2);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});

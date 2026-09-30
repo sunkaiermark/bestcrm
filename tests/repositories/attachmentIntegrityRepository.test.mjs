@@ -155,7 +155,8 @@ test('integrity inventory maps opportunity lifecycle, inquiry protection, and al
       calls.push(statement);
       if (/FROM attachments attachment/i.test(statement)) return { rows: [{
         model: 'opportunity_attachment', id: '1', stored_path: '2026/09/a.pdf', file_size: '5',
-        sha256: 'a'.repeat(64), retired_at: null, retired_by: null, retirement_reason: '',
+        sha256: 'a'.repeat(64), source_inquiry_attachment_id: '88',
+        retired_at: null, retired_by: null, retirement_reason: '',
         replaced_by_attachment_id: null, replacement_valid: true,
         protected_business_history: true, purge_eligible: false
       }] };
@@ -173,7 +174,10 @@ test('integrity inventory maps opportunity lifecycle, inquiry protection, and al
   const records = await repository.listAttachmentIntegrityRecords();
   assert.equal(records.length, 2);
   assert.equal(records[0].replacementValid, true);
+  assert.equal(records[0].sourceInquiryAttachmentId, 88);
+  assert.equal(records[1].sourceInquiryAttachmentId, null);
   assert.equal(records[1].protectedBusinessHistory, true);
+  assert.ok(calls.some((sql) => /attachment\.source_inquiry_attachment_id/i.test(sql)));
   assert.ok(calls.some((sql) => /replacement\.opportunity_id = attachment\.opportunity_id/i.test(sql)));
   assert.ok(calls.some((sql) => /opportunity\.origin_inquiry_id = inquiry\.id/i.test(sql)));
   assert.deepEqual(await repository.listKnownAttachmentStoredPaths(), ['email-raw/a.eml']);

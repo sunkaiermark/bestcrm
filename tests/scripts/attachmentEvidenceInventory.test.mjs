@@ -107,6 +107,49 @@ test('attachment evidence exporter rejects duplicate, unsafe, wrong-size, and wr
   }
 });
 
+test('attachment evidence exporter accepts only a verified source-linked inquiry file reuse', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'bestcrm-shared-attachment-inventory-'));
+  const uploadDir = path.join(root, 'uploads');
+  const storedPath = 'lead-submissions/2026/09/shared.docx';
+  const content = Buffer.from('shared inquiry and opportunity attachment');
+  const absolutePath = path.join(uploadDir, ...storedPath.split('/'));
+  await mkdir(path.dirname(absolutePath), { recursive: true });
+  await writeFile(absolutePath, content);
+  const inquiry = {
+    model: 'inquiry_attachment', record_id: '9831', stored_path: storedPath,
+    file_size: String(content.length), sha256: sha256(content), lifecycle_state: 'retained'
+  };
+  const opportunity = {
+    model: 'opportunity_attachment', record_id: '273', stored_path: storedPath,
+    file_size: String(content.length), sha256: sha256(content), lifecycle_state: 'active',
+    source_inquiry_attachment_id: '9831'
+  };
+  try {
+    const outputPath = path.join(root, 'inventory.jsonl');
+    const summary = await exportAttachmentEvidenceInventory({
+      queryTarget: queryTarget([opportunity, inquiry]), uploadDir, outputPath, strict: true
+    });
+    assert.equal(summary.fileCount, 2);
+    assert.equal(summary.totalBytes, content.length * 2);
+    assert.equal(summary.unverifiedCount, 0);
+    const entries = (await readFile(outputPath, 'utf8')).trim().split('\n').map(JSON.parse);
+    assert.equal(entries[0].model, 'inquiry_attachment');
+    assert.equal(entries[1].sourceInquiryAttachmentId, 9831);
+    for (const invalid of [
+      { ...opportunity, source_inquiry_attachment_id: null },
+      { ...opportunity, source_inquiry_attachment_id: '9832' },
+      { ...opportunity, sha256: null }
+    ]) {
+      await assert.rejects(() => exportAttachmentEvidenceInventory({
+        queryTarget: queryTarget([inquiry, invalid]), uploadDir,
+        outputPath: path.join(root, `invalid-${Math.random()}.jsonl`)
+      }), /Duplicate attachment evidence path/);
+    }
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
 test('attachment evidence exporter includes only verified development file activations', async () => {
   const root = await mkdtemp(path.join(tmpdir(), 'bestcrm-development-inventory-'));
   const uploadDir = path.join(root, 'uploads');

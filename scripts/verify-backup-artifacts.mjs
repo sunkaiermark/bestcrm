@@ -5,6 +5,7 @@ import { access, mkdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
 import { isMainModule } from '../src/utils/moduleEntry.mjs';
+import { unexpectedSharedAttachmentPaths } from '../src/services/attachmentSharedPathPolicy.mjs';
 
 const execFileAsync = promisify(execFile);
 const shaPattern = /^[a-f0-9]{64}$/;
@@ -73,9 +74,8 @@ const attachmentEvidenceLifecycle = new Map([
 ]);
 
 export function parseAttachmentEvidenceInventory(value) {
-  const seenPaths = new Set();
   const seenRecords = new Set();
-  return String(value || '').split(/\r?\n/).flatMap((line, index) => {
+  const entries = String(value || '').split(/\r?\n/).flatMap((line, index) => {
     if (!line) return [];
     let entry;
     try {
@@ -99,10 +99,6 @@ export function parseAttachmentEvidenceInventory(value) {
     if (/[\0-\x1f\x7f]/.test(entry.storedPath)) {
       throw new Error(`Unsafe attachment evidence path: ${entry.storedPath}`);
     }
-    if (seenPaths.has(entry.storedPath)) {
-      throw new Error(`Duplicate attachment evidence path: ${entry.storedPath}`);
-    }
-    seenPaths.add(entry.storedPath);
     const recordKey = `${model}:${entry.recordId}`;
     if (seenRecords.has(recordKey)) {
       throw new Error(`Duplicate attachment evidence record: ${recordKey}`);
@@ -120,6 +116,13 @@ export function parseAttachmentEvidenceInventory(value) {
     if (typeof entry.verified !== 'boolean') {
       throw new Error(`Invalid attachment evidence verification state: ${entry.storedPath}`);
     }
+    const sourceInquiryAttachmentId = entry.sourceInquiryAttachmentId;
+    if (sourceInquiryAttachmentId !== undefined
+        && (model !== 'opportunity_attachment'
+          || !Number.isSafeInteger(sourceInquiryAttachmentId)
+          || sourceInquiryAttachmentId <= 0)) {
+      throw new Error(`Invalid attachment evidence source: ${entry.storedPath}`);
+    }
     if (model === 'development_material_file'
         && (!/^development\/[1-9]\d*\/[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/.test(entry.storedPath)
           || entry.size < 1 || entry.size > 104857600 || entry.verified !== true)) {
@@ -132,9 +135,15 @@ export function parseAttachmentEvidenceInventory(value) {
       size: entry.size,
       sha256: entry.sha256,
       lifecycleState: entry.lifecycleState,
-      verified: entry.verified
+      verified: entry.verified,
+      ...(sourceInquiryAttachmentId === undefined ? {} : { sourceInquiryAttachmentId })
     }];
   });
+  const unexpectedPaths = unexpectedSharedAttachmentPaths(entries);
+  if (unexpectedPaths.size) {
+    throw new Error(`Duplicate attachment evidence path: ${[...unexpectedPaths][0]}`);
+  }
+  return entries;
 }
 
 async function fileExists(filePath) {

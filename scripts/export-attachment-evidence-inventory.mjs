@@ -4,6 +4,7 @@ import path from 'node:path';
 import { loadConfig } from '../src/config.mjs';
 import { createPool } from '../src/db/pool.mjs';
 import { inspectStoredAttachmentFile } from '../src/services/attachmentFileService.mjs';
+import { unexpectedSharedAttachmentPaths } from '../src/services/attachmentSharedPathPolicy.mjs';
 import { openVerifiedDevelopmentPrivateFile } from '../src/services/developmentPrivateFileStore.mjs';
 import { isMainModule } from '../src/utils/moduleEntry.mjs';
 
@@ -62,6 +63,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       attachment.stored_path,
       attachment.file_size,
       attachment.sha256,
+      attachment.source_inquiry_attachment_id,
       CASE WHEN attachment.retired_at IS NULL THEN 'active' ELSE 'retired' END AS lifecycle_state,
       NULL::bigint AS topic_id
     FROM attachments attachment
@@ -72,6 +74,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       attachment.stored_path,
       attachment.file_size,
       attachment.sha256,
+      NULL::bigint AS source_inquiry_attachment_id,
       'retained'::text AS lifecycle_state,
       NULL::bigint AS topic_id
     FROM inquiry_attachments attachment
@@ -82,6 +85,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       job.stored_path,
       job.expected_size AS file_size,
       job.expected_sha256 AS sha256,
+      NULL::bigint AS source_inquiry_attachment_id,
       job.status AS lifecycle_state,
       NULL::bigint AS topic_id
     FROM inquiry_attachment_purge_file_jobs job
@@ -92,6 +96,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       version.stored_path,
       version.file_size,
       version.sha256,
+      NULL::bigint AS source_inquiry_attachment_id,
       'active'::text AS lifecycle_state,
       material.topic_id
     FROM development_material_file_activations activation
@@ -116,7 +121,6 @@ export async function exportAttachmentEvidenceInventory({
   if (!outputPath) throw new Error('outputPath is required');
 
   const rows = await listAttachmentEvidenceRows(queryTarget);
-  const seenPaths = new Set();
   const entries = [];
   let totalBytes = 0;
   let unverifiedCount = 0;
@@ -128,10 +132,11 @@ export async function exportAttachmentEvidenceInventory({
     }
     const recordId = positiveInteger(row.record_id, 'record id');
     const storedPath = canonicalStoredPath(row.stored_path);
-    if (seenPaths.has(storedPath)) {
-      throw new Error(`Duplicate attachment evidence path: ${storedPath}`);
+    const sourceInquiryAttachmentId = row.source_inquiry_attachment_id == null
+      ? null : positiveInteger(row.source_inquiry_attachment_id, 'source inquiry attachment id');
+    if (sourceInquiryAttachmentId !== null && model !== 'opportunity_attachment') {
+      throw new Error(`Invalid attachment evidence source: ${storedPath}`);
     }
-    seenPaths.add(storedPath);
     const expectedSize = nonnegativeInteger(row.file_size, 'file size');
     const databaseSha256 = String(row.sha256 ?? '').trim();
     if (databaseSha256 && !shaPattern.test(databaseSha256)) {
@@ -169,8 +174,14 @@ export async function exportAttachmentEvidenceInventory({
       size: inspected.fileSize,
       sha256: inspected.sha256,
       lifecycleState: lifecycleState(row),
-      verified
+      verified,
+      ...(sourceInquiryAttachmentId === null ? {} : { sourceInquiryAttachmentId })
     });
+  }
+
+  const unexpectedPaths = unexpectedSharedAttachmentPaths(entries);
+  if (unexpectedPaths.size) {
+    throw new Error(`Duplicate attachment evidence path: ${[...unexpectedPaths][0]}`);
   }
 
   if (strict && unverifiedCount > 0) {

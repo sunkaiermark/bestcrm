@@ -6,7 +6,7 @@ import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { promisify } from 'node:util';
-import { verifyBackupArtifacts } from '../../scripts/verify-backup-artifacts.mjs';
+import { parseAttachmentEvidenceInventory, verifyBackupArtifacts } from '../../scripts/verify-backup-artifacts.mjs';
 import { verifyEmailRawRestore } from '../../scripts/verify-email-raw-restore.mjs';
 
 const execFileAsync = promisify(execFile);
@@ -149,6 +149,78 @@ test('backup verifier remains compatible with legacy raw-email-only inventories'
     assert.equal(result.emailEvidenceFilesVerified, 1);
     assert.equal(result.rawEmailFilesVerified, 1);
     assert.equal(result.outboundMimeFilesVerified, 0);
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test('backup verifier restores one physical file referenced by a linked inquiry and opportunity', async () => {
+  const root = await mkdtemp(path.join(tmpdir(), 'bestcrm-shared-attachment-backup-'));
+  const backupDir = path.join(root, 'backup');
+  const sourceDir = path.join(root, 'source');
+  const storedPath = 'lead-submissions/2026/09/shared.docx';
+  const content = Buffer.from('one physical file, two linked records');
+  const inquiry = {
+    model: 'inquiry_attachment', recordId: 9831, storedPath, size: content.length,
+    sha256: sha256(content), lifecycleState: 'retained', verified: true
+  };
+  const opportunity = {
+    model: 'opportunity_attachment', recordId: 273, storedPath, size: content.length,
+    sha256: sha256(content), lifecycleState: 'active', verified: true,
+    sourceInquiryAttachmentId: 9831
+  };
+  const inventory = `${JSON.stringify(inquiry)}\n${JSON.stringify(opportunity)}\n`;
+  try {
+    const sourceFile = path.join(sourceDir, 'uploads', ...storedPath.split('/'));
+    await mkdir(path.dirname(sourceFile), { recursive: true });
+    await mkdir(backupDir, { recursive: true });
+    await writeFile(sourceFile, content);
+    const database = Buffer.from('-- PostgreSQL database dump\nCREATE TABLE attachments(id bigint);\n');
+    await writeFile(path.join(backupDir, 'database.sql'), database);
+    await writeFile(path.join(backupDir, 'email-raw-files.sha256'), '');
+    await writeFile(path.join(backupDir, 'attachment-evidence-files.jsonl'), inventory);
+    const uploadsPath = path.join(backupDir, 'uploads.tar.gz');
+    await execFileAsync('tar', ['-czf', uploadsPath, '-C', sourceDir, 'uploads'], { windowsHide: true });
+    await writeFile(path.join(backupDir, 'manifest.txt'), [
+      'upload_dir=/var/bestcrm/uploads',
+      `database_sha256=${sha256(database)}`,
+      `uploads_sha256=${sha256(await readFile(uploadsPath))}`,
+      `raw_email_inventory_sha256=${sha256('')}`,
+      'raw_email_file_count=0',
+      'raw_email_size_bytes=0',
+      `attachment_evidence_inventory_sha256=${sha256(inventory)}`,
+      'attachment_evidence_file_count=2',
+      `attachment_evidence_size_bytes=${content.length * 2}`,
+      'attachment_evidence_unverified_count=0',
+      ''
+    ].join('\n'));
+    const result = await verifyBackupArtifacts({
+      backupDir, restoreDir: path.join(root, 'restore')
+    });
+    assert.equal(result.attachmentEvidenceEntries.length, 2);
+    assert.equal(result.attachmentEvidenceFilesVerified, 2);
+    assert.equal(result.attachmentEvidenceBytesVerified, content.length * 2);
+    assert.equal(result.uploadEntries.filter((entry) => entry === `uploads/${storedPath}`).length, 1);
+
+    for (const invalid of [
+      { ...opportunity, sourceInquiryAttachmentId: 9832 },
+      { ...opportunity, sourceInquiryAttachmentId: undefined },
+      { ...opportunity, size: content.length + 1 },
+      { ...opportunity, sha256: 'a'.repeat(64) },
+      { ...opportunity, verified: false }
+    ]) {
+      assert.throws(
+        () => parseAttachmentEvidenceInventory(`${JSON.stringify(inquiry)}\n${JSON.stringify(invalid)}\n`),
+        /Duplicate attachment evidence path/
+      );
+    }
+    assert.throws(
+      () => parseAttachmentEvidenceInventory(`${JSON.stringify(inquiry)}\n${JSON.stringify({
+        ...opportunity, model: 'inquiry_attachment', recordId: 9832,
+        lifecycleState: 'retained', sourceInquiryAttachmentId: undefined
+      })}\n`),
+      /Duplicate attachment evidence path/
+    );
   } finally {
     await rm(root, { recursive: true, force: true });
   }

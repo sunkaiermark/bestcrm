@@ -1,6 +1,7 @@
 import { readdir, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { inspectStoredAttachmentFile } from './attachmentFileService.mjs';
+import { unexpectedSharedAttachmentPaths } from './attachmentSharedPathPolicy.mjs';
 
 function text(value) {
   return String(value || '').trim();
@@ -76,11 +77,15 @@ export async function auditAttachmentIntegrity({ repository, uploadDir }) {
     ? await repository.listKnownAttachmentStoredPaths()
     : records.map((record) => record.storedPath);
   const knownPathSet = new Set(knownPaths.map(text).filter(Boolean));
-  const pathCounts = new Map();
-  for (const record of records) {
-    const storedPath = text(record.storedPath);
-    if (storedPath) pathCounts.set(storedPath, Number(pathCounts.get(storedPath) || 0) + 1);
-  }
+  const unexpectedPaths = unexpectedSharedAttachmentPaths(records.map((record) => ({
+    model: record.model,
+    recordId: Number(record.id),
+    storedPath: text(record.storedPath),
+    size: Number(record.fileSize),
+    sha256: text(record.sha256),
+    verified: validSha256(record.sha256),
+    sourceInquiryAttachmentId: record.sourceInquiryAttachmentId
+  })));
 
   const totals = {
     records: records.length,
@@ -92,7 +97,7 @@ export async function auditAttachmentIntegrity({ repository, uploadDir }) {
   for (const record of records) {
     const storedPath = text(record.storedPath);
     if (!validSha256(record.sha256)) addIssue(issues, record, 'unverified');
-    if (Number(pathCounts.get(storedPath) || 0) > 1) addIssue(issues, record, 'duplicate_stored_path');
+    if (unexpectedPaths.has(storedPath)) addIssue(issues, record, 'duplicate_stored_path');
     if (opportunityLifecycleInvalid(record)) addIssue(issues, record, 'invalid_lifecycle');
     if (record.model === 'inquiry_attachment'
       && record.protectedBusinessHistory === true
