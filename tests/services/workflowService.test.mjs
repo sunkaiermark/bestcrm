@@ -1099,6 +1099,7 @@ test('technical approval creates immutable TS-V documents while rejection clones
   };
   approvedRepositories.opportunityTechnicalDraftRepository = {
     supportsVersionedTechnicalApproval: true,
+    async findLatestPendingByOpportunity() { return { id: 41, status: 'pending', submittedBy: 3 }; },
     async approveLatestPending(input) {
       approvedRepositories.calls.push(['approveTechnicalDraft', input]);
       return approvedDraft;
@@ -1130,6 +1131,7 @@ test('technical approval creates immutable TS-V documents while rejection clones
   const rejectedRepositories = createMaterialRepositories(approvedBefore);
   rejectedRepositories.opportunityTechnicalDraftRepository = {
     supportsVersionedTechnicalApproval: true,
+    async findLatestPendingByOpportunity() { return { id: 41, status: 'pending', submittedBy: 3 }; },
     async rejectLatestPending(input) {
       rejectedRepositories.calls.push(['rejectTechnicalDraft', input]);
       return { id: 41, submittedBy: 3, status: 'rejected' };
@@ -1151,6 +1153,57 @@ test('technical approval creates immutable TS-V documents while rejection clones
     rejectedRepositories.calls.find(([method]) => method === 'cloneRejectedDraft')[1],
     { sourceDraftId: 41, actorUserId: 3 }
   );
+});
+
+test('temporary technical self-approval is limited to administrators with confirmation and a reason', async () => {
+  const before = {
+    id: 10, status: STATUSES.TECHNICAL_SOLUTION_PENDING,
+    salespersonId: 1, quotationEngineerId: 3, technicalManagerId: 4
+  };
+  const pending = { id: 41, opportunityId: 10, status: 'pending', submittedBy: 3 };
+  const actor = { id: 3, roles: [ROLES.ADMINISTRATOR] };
+  const deadline = new Date(Date.now() + 60_000).toISOString();
+  function repositories(policy) {
+    const result = createMaterialRepositories(before);
+    result.technicalAdminSelfApprovalTest = policy;
+    result.opportunityTechnicalDraftRepository = {
+      supportsVersionedTechnicalApproval: true,
+      async findLatestPendingByOpportunity() { return pending; },
+      async approveLatestPending(input) {
+        result.calls.push(['approveTechnicalDraft', input]);
+        return { ...pending, status: 'approved', formalVersionNo: 1,
+          renderedContent: { sections: [], variables: [] } };
+      },
+      async getDraftDetail() { return { ...pending, status: 'approved', formalVersionNo: 1,
+        renderedContent: { sections: [], variables: [] } }; },
+      async saveApprovedDocuments() { return []; }
+    };
+    result.technicalDocumentService = { async generateApprovedDocuments() { return []; } };
+    return result;
+  }
+  async function approve(repos, reviewer = actor, payload = {}) {
+    return applyWorkflowAction({ actor: reviewer, opportunityId: 10,
+      action: ACTIONS.APPROVE_TECHNICAL_SOLUTION,
+      payload: { reviewDraftId: 41, comment: 'Testing the technical workflow',
+        testSelfApprovalConfirmed: 'on', ...payload }, repositories: repos });
+  }
+  for (const [policy, reviewer, payload] of [
+    [{ enabled: false, until: deadline }, actor, {}],
+    [{ enabled: true, until: new Date(Date.now() - 60_000).toISOString() }, actor, {}],
+    [{ enabled: true, until: deadline }, { id: 3, roles: [ROLES.QUOTATION_ENGINEER] }, {}],
+    [{ enabled: true, until: deadline }, actor, { testSelfApprovalConfirmed: '' }],
+    [{ enabled: true, until: deadline }, actor, { comment: '' }]
+  ]) {
+    const repos = repositories(policy);
+    await assert.rejects(approve(repos, reviewer, payload));
+    assert.equal(repos.calls.some(([method]) => method === 'updateOpportunity'), false);
+  }
+  const allowed = repositories({ enabled: true, until: deadline });
+  const result = await approve(allowed);
+  assert.equal(result.status, STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS);
+  const approved = allowed.calls.find(([method]) => method === 'approveTechnicalDraft')[1];
+  assert.equal(approved.allowSelfApprovalTest, true);
+  assert.equal(approved.selfApprovalTestUntil, deadline);
 });
 
 test('submit commercial quote stores attachment based quote version without line item details', async () => {

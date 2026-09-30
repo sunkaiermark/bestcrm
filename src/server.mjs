@@ -46,11 +46,13 @@ import { createProjectExecutionRepository } from './repositories/projectExecutio
 import { createProductCategoryRepository } from './repositories/productCategoryRepository.mjs';
 import { createOpportunityResponsibilityRepository } from './repositories/opportunityResponsibilityRepository.mjs';
 import { createOpportunityTechnicalDraftRepository } from './repositories/opportunityTechnicalDraftRepository.mjs';
+import { createTechnicalDocumentCustomerReleaseRepository } from './repositories/technicalDocumentCustomerReleaseRepository.mjs';
 import { createOpportunityTechnicalDocumentRepository } from './repositories/opportunityTechnicalDocumentRepository.mjs';
 import { createQuotationPackageRepository } from './repositories/quotationPackageRepository.mjs';
 import { createRequirementUpdateRepository } from './repositories/requirementUpdateRepository.mjs';
 import { createRoleRepository } from './repositories/roleRepository.mjs';
 import { createSalesWorkRepository } from './repositories/salesWorkRepository.mjs';
+import { createSalesCommercialQuotationDraftRepository } from './repositories/salesCommercialQuotationDraftRepository.mjs';
 import { createTechnicalSolutionRepository } from './repositories/technicalSolutionRepository.mjs';
 import { createTechnicalTemplateRepository } from './repositories/technicalTemplateRepository.mjs';
 import { createTodoRepository } from './repositories/todoRepository.mjs';
@@ -83,6 +85,7 @@ import { opportunityTechnicalDraftRoutes } from './routes/opportunityTechnicalDr
 import { opportunityTechnicalDocumentRoutes } from './routes/opportunityTechnicalDocumentRoutes.mjs';
 import { quotationPackageRoutes } from './routes/quotationPackageRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
+import { salesCommercialQuotationDraftRoutes } from './routes/salesCommercialQuotationDraftRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
 import { technicalTemplateRoutes } from './routes/technicalTemplateRoutes.mjs';
 import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
@@ -444,6 +447,13 @@ const emptyQuotationPackageRepository = {
   async acceptSent() { throw new Error('Quotation package repository is not configured'); }
 };
 
+const emptySalesCommercialQuotationDraftRepository = {
+  async listTechnicalSources() { return []; },
+  async getTechnicalSource() { return null; },
+  async getByOpportunity() { return null; },
+  async saveDraft() { throw new Error('Sales commercial quotation draft repository is not configured'); }
+};
+
 const emptyEmailArchiveRepository = {
   supportsEmailArchive: false,
   async listThreads() { return []; },
@@ -738,10 +748,14 @@ export function createApp(options = {}) {
     || (pool ? createOpportunityResponsibilityRepository(pool) : emptyOpportunityResponsibilityRepository);
   const opportunityTechnicalDraftRepository = options.opportunityTechnicalDraftRepository
     || (pool ? createOpportunityTechnicalDraftRepository(pool) : emptyOpportunityTechnicalDraftRepository);
+  const technicalDocumentCustomerReleaseRepository = options.technicalDocumentCustomerReleaseRepository
+    || (pool ? createTechnicalDocumentCustomerReleaseRepository(pool) : null);
   const opportunityTechnicalDocumentRepository = options.opportunityTechnicalDocumentRepository
     || (pool ? createOpportunityTechnicalDocumentRepository(pool) : emptyOpportunityTechnicalDocumentRepository);
   const quotationPackageRepository = options.quotationPackageRepository
     || (pool ? createQuotationPackageRepository(pool) : emptyQuotationPackageRepository);
+  const salesCommercialQuotationDraftRepository = options.salesCommercialQuotationDraftRepository
+    || (pool ? createSalesCommercialQuotationDraftRepository(pool) : emptySalesCommercialQuotationDraftRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
@@ -1020,6 +1034,7 @@ export function createApp(options = {}) {
     opportunityResponsibilityRepository,
     technicalTemplateRepository,
     opportunityTechnicalDraftRepository,
+    technicalDocumentCustomerReleaseRepository,
     approvalSettingRepository,
     attachmentRepository,
     commercialQuoteRepository,
@@ -1032,6 +1047,7 @@ export function createApp(options = {}) {
     workflowTransaction,
     uploadDir: config.uploadDir,
     maxUploadMb: config.maxUploadMb,
+    technicalAdminSelfApprovalTest: config.technicalAdminSelfApprovalTest,
     workflowAction: options.workflowAction
   }));
   app.use(quotationPackageRoutes({
@@ -1040,6 +1056,11 @@ export function createApp(options = {}) {
     quotationPackageRepository,
     workflowTransaction,
     quotationPackageFileReader: options.quotationPackageFileReader
+  }));
+  app.use(salesCommercialQuotationDraftRoutes({
+    opportunityRepository,
+    opportunityResponsibilityRepository,
+    salesCommercialQuotationDraftRepository
   }));
   app.use(opportunityRoutes({
     customerRepository,
@@ -1067,7 +1088,8 @@ export function createApp(options = {}) {
     todoRepository,
     workflowTransaction,
     uploadDir: config.uploadDir,
-    maxUploadMb: config.maxUploadMb
+    maxUploadMb: config.maxUploadMb,
+    technicalAdminSelfApprovalTest: config.technicalAdminSelfApprovalTest
   }));
 
   app.use(productCategoryRoutes({

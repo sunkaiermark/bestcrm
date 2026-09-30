@@ -1,6 +1,9 @@
 import { ACTIONS, transition } from '../domain/workflow.mjs';
 import { ROLES } from '../domain/roles.mjs';
-import { technicalDraftSubmissionSummary } from './opportunityTechnicalDraftService.mjs';
+import {
+  isTechnicalAdminSelfApprovalTest,
+  technicalDraftSubmissionSummary
+} from './opportunityTechnicalDraftService.mjs';
 
 export class WorkflowValidationError extends Error {
   constructor(message, statusCode = 400) {
@@ -617,7 +620,30 @@ async function persistSubmissionData({ action, actor, opportunityId, payload, re
   }
 }
 
-async function persistTechnicalSolutionReviewData({ action, actor, opportunity, opportunityId, payload, repositories }) {
+async function technicalReviewSelfApprovalContext({ action, actor, opportunityId, payload, repositories }) {
+  if (![ACTIONS.APPROVE_TECHNICAL_SOLUTION, ACTIONS.REJECT_TECHNICAL_SOLUTION].includes(action)) return null;
+  const draftRepository = repositories.opportunityTechnicalDraftRepository;
+  if (draftRepository?.supportsVersionedTechnicalApproval !== true) return null;
+  const pending = typeof draftRepository.findLatestPendingByOpportunity === 'function'
+    ? await draftRepository.findLatestPendingByOpportunity(Number(opportunityId))
+    : (await draftRepository.listByOpportunity?.(Number(opportunityId)) || []).find((draft) => draft.status === 'pending');
+  if (!pending) throw new WorkflowValidationError('No pending technical draft is available', 409);
+  if (payload.reviewDraftId && Number(payload.reviewDraftId) !== Number(pending.id)) {
+    throw new WorkflowValidationError('The technical draft awaiting review has changed', 409);
+  }
+  if (Number(pending.submittedBy) !== Number(actor.id)) return null;
+  if (action !== ACTIONS.APPROVE_TECHNICAL_SOLUTION
+      || !isTechnicalAdminSelfApprovalTest(actor, pending, repositories.technicalAdminSelfApprovalTest)) {
+    throw new Error('Action not allowed');
+  }
+  if (payload.testSelfApprovalConfirmed !== 'on' || !String(payload.comment || '').trim()) {
+    throw new WorkflowValidationError('Test self-approval requires confirmation and a recorded reason');
+  }
+  return { draftId: pending.id, submittedBy: pending.submittedBy,
+    until: repositories.technicalAdminSelfApprovalTest.until };
+}
+
+async function persistTechnicalSolutionReviewData({ action, actor, opportunity, opportunityId, payload, repositories, selfApprovalContext }) {
   const status = technicalSolutionReviewStatuses.get(action);
   if (!status) {
     return;
@@ -639,8 +665,12 @@ async function persistTechnicalSolutionReviewData({ action, actor, opportunity, 
     let approvedDraft = await draftRepository.approveLatestPending({
       opportunityId: Number(opportunityId),
       actorUserId: actor.id,
-      reviewComment: commentFromPayload(payload)
+      reviewComment: commentFromPayload(payload),
+      allowSelfApprovalTest: Boolean(selfApprovalContext),
+      selfApprovalTestUntil: selfApprovalContext?.until || null,
+      draftId: selfApprovalContext?.draftId || null
     });
+    if (!approvedDraft) throw new WorkflowValidationError('The pending technical draft could not be approved', 409);
     if (approvedDraft) {
       if (typeof repositories.technicalDocumentService?.generateApprovedDocuments !== 'function'
           || typeof draftRepository.saveApprovedDocuments !== 'function') {
@@ -884,6 +914,9 @@ export async function applyWorkflowAction({
     payload: technicalPayload,
     repositories
   });
+  const selfApprovalContext = await technicalReviewSelfApprovalContext({
+    action, actor, opportunityId, payload: effectivePayload, repositories
+  });
   if (action === ACTIONS.REJECT_TECHNICAL_SOLUTION
       && !String(effectivePayload.reason || effectivePayload.comment || '').trim()) {
     const reviewDraftId = Number(effectivePayload.reviewDraftId);
@@ -900,7 +933,9 @@ export async function applyWorkflowAction({
   const after = transition({
     userId: actor.id,
     roles: actor.roles,
-    opportunity: transitionOpportunity
+    opportunity: transitionOpportunity,
+    technicalAdminSelfApprovalTest: Boolean(selfApprovalContext),
+    technicalDraftSubmittedBy: selfApprovalContext?.submittedBy
   }, action, effectivePayload);
   await assertRequiredMaterials({ action, before, opportunityId, payload: effectivePayload, repositories });
   const changes = changedWorkflowFields(before, after);
@@ -913,7 +948,8 @@ export async function applyWorkflowAction({
     opportunity: transitionOpportunity,
     opportunityId,
     payload: effectivePayload,
-    repositories
+    repositories,
+    selfApprovalContext
   });
   await persistTechnicalSolutionWithdrawal({ action, actor, opportunityId, repositories });
   await persistCommercialQuoteReviewData({ action, actor, opportunityId, payload: effectivePayload, repositories });

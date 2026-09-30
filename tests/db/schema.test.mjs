@@ -81,6 +81,44 @@ const technicalDraftFileControlsMigrationPath = new URL('../../src/db/migrations
 const leadCustomerWebsiteMigrationPath = new URL('../../src/db/migrations/080_lead_customer_website.sql', import.meta.url);
 const productCategoryMigrationPath = new URL('../../src/db/migrations/081_lead_opportunity_product_category.sql', import.meta.url);
 const reviewedProductCategoriesMigrationPath = new URL('../../src/db/migrations/082_reviewed_product_categories.sql', import.meta.url);
+const temporaryAdminTechnicalSelfApprovalMigrationPath = new URL('../../src/db/migrations/098_temporary_admin_technical_self_approval.sql', import.meta.url);
+const technicalDocumentCustomerReleaseMigrationPath = new URL('../../src/db/migrations/099_technical_document_customer_release.sql', import.meta.url);
+const salesCommercialQuotationDraftMigrationPath = new URL('../../src/db/migrations/100_sales_commercial_quotation_drafts.sql', import.meta.url);
+
+test('early sales commercial quotation draft stays separate from formal approval and snapshots exact source file', async () => {
+  const sql = await readFile(salesCommercialQuotationDraftMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE sales_commercial_quotation_drafts/);
+  assert.match(sql, /source_attachment_id bigint NOT NULL REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /source_sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /opportunity_technical_draft_attachments link/);
+  assert.match(sql, /source_kind IS DISTINCT FROM 'uploaded_file'/);
+  assert.match(sql, /CREATE TABLE sales_commercial_quotation_draft_events/);
+  assert.match(sql, /audit events are immutable/);
+  assert.doesNotMatch(sql, /quotation_package_versions|commercial_quotes/);
+});
+
+test('technical-file customer release defaults old files to internal and guards exact-version external use', async () => {
+  const sql = await readFile(technicalDocumentCustomerReleaseMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE technical_document_customer_releases/);
+  assert.match(sql, /technical_document_id bigint NOT NULL UNIQUE/);
+  assert.match(sql, /file_sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /reviewed_by IS NULL OR reviewed_by <> requested_by/);
+  assert.match(sql, /source_record\.self_approval_test/);
+  assert.match(sql, /customer_id IS DISTINCT FROM NEW\.customer_id/);
+  assert.match(sql, /Invalid customer-file release transition/);
+  assert.match(sql, /Technical file lacks customer-release approval/);
+  assert.doesNotMatch(sql, /INSERT INTO technical_document_customer_releases[\s\S]*SELECT[\s\S]*FROM technical_solution_documents/);
+});
+
+test('temporary administrator technical self-approval remains explicit and auditable in PostgreSQL', async () => {
+  const sql = await readFile(temporaryAdminTechnicalSelfApprovalMigrationPath, 'utf8');
+  assert.match(sql, /self_approval_test boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /reviewed_by <> submitted_by/);
+  assert.match(sql, /status = 'approved' AND self_approval_test/);
+  assert.match(sql, /reviewed_at <= self_approval_test_until/);
+  assert.match(sql, /NOT self_approval_test/);
+});
 
 test('reviewed product classifications are fixed, multi-valued, auditable, and separate from email content', async () => {
   const sql = await readFile(reviewedProductCategoriesMigrationPath, 'utf8');

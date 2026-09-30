@@ -97,6 +97,23 @@ test('technical approval moves approved solution into commercial quote work', ()
   assert.equal(approved.status, STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS);
 });
 
+test('only a verified administrator self-approval context bypasses the assigned manager', () => {
+  const base = {
+    userId: 3,
+    opportunity: { status: STATUSES.TECHNICAL_SOLUTION_PENDING, technicalManagerId: 4 },
+    technicalAdminSelfApprovalTest: true,
+    technicalDraftSubmittedBy: 3
+  };
+  assert.equal(transition({ ...base, roles: [ROLES.ADMINISTRATOR] },
+    ACTIONS.APPROVE_TECHNICAL_SOLUTION).status, STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS);
+  assert.throws(() => transition({ ...base, roles: [ROLES.TECHNICAL_MANAGER] },
+    ACTIONS.APPROVE_TECHNICAL_SOLUTION), /Action not allowed/);
+  assert.throws(() => transition({ ...base, roles: [ROLES.ADMINISTRATOR], technicalDraftSubmittedBy: 8 },
+    ACTIONS.APPROVE_TECHNICAL_SOLUTION), /Action not allowed/);
+  assert.throws(() => transition({ ...base, roles: [ROLES.ADMINISTRATOR] },
+    ACTIONS.REJECT_TECHNICAL_SOLUTION), /Action not allowed/);
+});
+
 test('commercial approval moves quote into customer negotiation', () => {
   const submitted = transition({
     userId: 3,

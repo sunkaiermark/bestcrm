@@ -46,6 +46,15 @@ function roleAndAssigneeAllowed(context, rule) {
   const roleAllowed = hasRole(user, rule.role);
   const assigneeAllowed = opportunity[rule.assigneeField] === context.userId;
 
+  if (rule.action === ACTIONS.APPROVE_TECHNICAL_SOLUTION
+      && context.technicalAdminSelfApprovalTest === true
+      && hasRole(user, ROLES.ADMINISTRATOR)
+      && Number.isSafeInteger(Number(context.technicalDraftSubmittedBy))
+      && Number(context.technicalDraftSubmittedBy) > 0
+      && Number(context.technicalDraftSubmittedBy) === Number(context.userId)) {
+    return statusAllowed;
+  }
+
   return statusAllowed && roleAllowed && assigneeAllowed;
 }
 

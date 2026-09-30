@@ -183,29 +183,22 @@ test('anonymous users are redirected from sales work plans', async () => {
   assert.equal(response.headers.location, '/login');
 });
 
-test('salesperson can view the work plan management page reached from Workbench', async () => {
+test('salesperson can view the work plan overview reached from Workbench', async () => {
   const { agent, calls } = await createLoggedInAgent();
 
   const response = await agent.get('/sales-work/plans');
 
   assert.equal(response.status, 200);
   assertAppSidebar(response.text);
-  assert.match(response.text, /Sales Work/);
   assert.match(response.text, /Work Plans/);
   assert.match(response.text, /New Plan/);
-  assert.match(response.text, /<table class="list-table content-fit-table sales-work-plan-table">/);
-  assert.match(response.text, /<th>Plan date<\/th>/);
-  assert.match(response.text, /<th>Activity type<\/th>/);
-  assert.match(response.text, /<th>Next step<\/th>/);
-  assert.match(response.text, /\.sales-work-plan-table thead th\s*\{[^}]*border-right:\s*1px solid rgba\(255, 255, 255, 0\.28\);[^}]*font-weight:\s*400;[^}]*text-align:\s*center;[^}]*text-transform:\s*none;/);
-  assert.match(response.text, /\.sales-work-plan-table tbody td\s*\{[^}]*border-right:\s*1px solid #d7e0e7;/);
-  assert.match(response.text, /\.sales-work-plan-table th:last-child,[\s\S]*?\.sales-work-plan-table td:last-child\s*\{[^}]*border-right:\s*0;/);
+  assert.match(response.text, /class="work-plan-list"/);
+  assert.match(response.text, /class="work-plan-row"/);
+  assert.match(response.text, /href="\/sales-work\/plans\/11"/);
+  assert.doesNotMatch(response.text, /<table class="list-table/);
   assert.match(response.text, /Customer visit/);
   assert.match(response.text, /Acme Co/);
-  assert.match(response.text, /CT000020 · Alice/);
   assert.match(response.text, /WAO System/);
-  assert.match(response.text, /Complete/);
-  assert.match(response.text, /Cancel/);
   assert.deepEqual(calls.filter((call) => call[0] === 'listPlans'), [
     ['listPlans', { salespersonUserId: 7 }]
   ]);
@@ -217,11 +210,9 @@ test('sales work framework text uses selected Chinese language', async () => {
   const response = await agent.get('/sales-work/plans');
 
   assert.equal(response.status, 200);
-  assert.match(response.text, /工作管理/);
   assert.match(response.text, /工作计划/);
   assert.match(response.text, /新建计划/);
-  assert.match(response.text, /完成/);
-  assert.match(response.text, /取消/);
+  assert.match(response.text, /查看/);
 });
 
 test('other roles cannot view sales work plans', async () => {
@@ -237,6 +228,41 @@ test('other roles cannot view sales work plans', async () => {
   const response = await agent.get('/sales-work/plans');
 
   assert.equal(response.status, 403);
+  const detail = await agent.get('/sales-work/plans/11');
+  assert.equal(detail.status, 403);
+});
+
+test('plan overview opens a read-only detail with permitted actions', async () => {
+  const { agent } = await createLoggedInAgent();
+  const detail = await agent.get('/sales-work/plans/11');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Customer visit/);
+  assert.match(detail.text, /Confirm scope/);
+  assert.match(detail.text, /Visit plant/);
+  assert.match(detail.text, /href="\/sales-work\/plans\/11\/edit"/);
+  assert.match(detail.text, /action="\/sales-work\/plans\/11\/complete"/);
+  assert.match(detail.text, /action="\/sales-work\/plans\/11\/cancel"/);
+});
+
+test('sales manager can read another salesperson plan detail but cannot change it', async () => {
+  const { agent } = await createLoggedInAgent({
+    user: { id: 8, username: 'manager01', roles: [ROLES.SALES_MANAGER] }
+  });
+  const detail = await agent.get('/sales-work/plans/11');
+
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Customer visit/);
+  assert.doesNotMatch(detail.text, /href="\/sales-work\/plans\/11\/edit"/);
+  assert.doesNotMatch(detail.text, /action="\/sales-work\/plans\/11\/complete"/);
+});
+
+test('salesperson cannot open another salesperson plan detail', async () => {
+  const { agent } = await createLoggedInAgent({
+    user: { id: 8, username: 'sales02', roles: [ROLES.SALESPERSON] }
+  });
+  assert.equal((await agent.get('/sales-work/plans/11')).status, 403);
+  assert.equal((await agent.get('/sales-work/plans/not-a-number')).status, 404);
 });
 
 test('salesperson can open new and edit plan forms', async () => {

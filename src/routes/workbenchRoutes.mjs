@@ -1,8 +1,10 @@
 import { Router } from 'express';
 import { requireLogin } from '../middleware/auth.mjs';
+import { canAccessSalesWork } from '../services/salesWorkService.mjs';
 import {
   WORKLOAD_LEVELS,
   getWorkbenchSummary,
+  listWorkbenchActionItems,
   loadWorkItemEstimation,
   updateWorkItemEstimation
 } from '../services/workbenchService.mjs';
@@ -45,6 +47,34 @@ export function workbenchRoutes({ workbenchRepository, salesWorkRepository, noti
     }
   });
 
+  router.get('/workbench/actions', async (req, res, next) => {
+    try {
+      const actionItems = await listWorkbenchActionItems(workbenchRepository, req.currentUser, {
+        workLimit: 200,
+        supplementaryLimit: 200
+      });
+      res.render('workbench/actions', {
+        actionItems,
+        canAccessSalesPlans: canAccessSalesWork(req.currentUser)
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/workbench/work-items/:id', async (req, res, next) => {
+    try {
+      const workItem = await loadWorkItemEstimation(
+        workbenchRepository,
+        req.currentUser,
+        req.params.id
+      );
+      res.render('workbench/work-item', { workItem });
+    } catch (error) {
+      respondWorkItemError(error, res, next);
+    }
+  });
+
   router.get('/workbench/work-items/:id/estimate', async (req, res, next) => {
     try {
       const workItem = await loadWorkItemEstimation(
@@ -66,7 +96,7 @@ export function workbenchRoutes({ workbenchRepository, salesWorkRepository, noti
         req.params.id,
         req.body
       );
-      res.redirect('/workbench');
+      res.redirect(`/workbench/work-items/${req.params.id}`);
     } catch (error) {
       respondWorkItemError(error, res, next);
     }

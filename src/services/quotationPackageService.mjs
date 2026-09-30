@@ -112,9 +112,6 @@ async function loadApprovedContext(repository, opportunity, input) {
       || !context.commercialQuote.versionNo) {
     throw new QuotationPackageValidationError('Approved technical solution and commercial quote versions are required');
   }
-  if (!context.technicalDocuments.length) {
-    throw new QuotationPackageValidationError('The approved technical solution has no generated documents');
-  }
   if (!context.commercialAttachments.length) {
     throw new QuotationPackageValidationError('The approved commercial quote has no attachment');
   }
@@ -141,9 +138,25 @@ function normalizedSnapshotInput(input, context, actorUserId, extra = {}) {
   };
 }
 
-async function saveAttachmentSnapshots(dependencies, packageVersion, context) {
+function selectedTechnicalDocuments(context, value) {
+  const values = value == null ? [] : Array.isArray(value) ? value : [value];
+  if (values.length > 30) {
+    throw new QuotationPackageValidationError('Too many technical files were selected');
+  }
+  const ids = [...new Set(values.map(Number))];
+  if (ids.some((id) => !Number.isSafeInteger(id) || id <= 0)) {
+    throw new QuotationPackageValidationError('Technical file selection is invalid');
+  }
+  const available = new Map(context.technicalDocuments.map((document) => [document.id, document]));
+  if (ids.some((id) => !available.has(id))) {
+    throw new QuotationPackageValidationError('Selected technical file is not released for this customer', 409);
+  }
+  return ids.map((id) => available.get(id));
+}
+
+async function saveAttachmentSnapshots(dependencies, packageVersion, context, technicalDocuments) {
   let displayOrder = 1;
-  for (const document of context.technicalDocuments) {
+  for (const document of technicalDocuments) {
     await dependencies.quotationPackageRepository.addAttachmentSnapshot({
       quotationPackageId: packageVersion.id,
       sourceType: 'technical_solution_document',
@@ -231,6 +244,7 @@ export async function createQuotationPackageDraft(dependencies, user, opportunit
     throw new QuotationPackageValidationError('Finish the current quotation package before creating another revision', 409);
   }
   const context = await loadApprovedContext(repository, opportunity, input);
+  const technicalDocuments = selectedTechnicalDocuments(context, input.technicalDocumentIds);
   const sourcePackageId = input.sourcePackageId ? positiveId(input.sourcePackageId, 'Source package') : null;
   const source = await validateRevisionSource(repository, opportunity.id, sourcePackageId);
   const currentSent = typeof repository.findCurrentSentByOpportunity === 'function'
@@ -246,7 +260,7 @@ export async function createQuotationPackageDraft(dependencies, user, opportunit
   assertRevisionMetadata(sourcePackageId, normalized.revisionReason, normalized.changeSummary);
   const packageVersion = await repository.createDraft(normalized);
   if (!packageVersion) throw new QuotationPackageValidationError('An open quotation package draft already exists', 409);
-  await saveAttachmentSnapshots(dependencies, packageVersion, context);
+  await saveAttachmentSnapshots(dependencies, packageVersion, context, technicalDocuments);
   return repository.getPackageDetail(packageVersion.id);
 }
 
@@ -261,12 +275,13 @@ export async function updateQuotationPackageDraft(dependencies, user, opportunit
   }
   const repository = dependencies.quotationPackageRepository;
   const context = await loadApprovedContext(repository, opportunity, input);
+  const technicalDocuments = selectedTechnicalDocuments(context, input.technicalDocumentIds);
   const normalized = normalizedSnapshotInput(input, context, user.id, { packageId: packageVersion.id });
   assertRevisionMetadata(packageVersion.sourcePackageId, normalized.revisionReason, normalized.changeSummary);
   const updated = await repository.updateDraft(normalized);
   if (!updated) throw new QuotationPackageValidationError('Only draft quotation packages can be edited', 409);
   await repository.replaceAttachmentSnapshots(updated.id);
-  await saveAttachmentSnapshots(dependencies, updated, context);
+  await saveAttachmentSnapshots(dependencies, updated, context, technicalDocuments);
   return repository.getPackageDetail(updated.id);
 }
 

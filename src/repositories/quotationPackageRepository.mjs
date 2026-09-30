@@ -259,6 +259,53 @@ export function createQuotationPackageRepository(queryTarget) {
       }));
     },
 
+    async hasUnreleasedTechnicalAttachments(packageId) {
+      const result = await queryTarget.query(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM quotation_package_attachments snapshot
+          JOIN quotation_package_versions package
+            ON package.id = snapshot.quotation_package_id
+          JOIN opportunities opportunity ON opportunity.id = package.opportunity_id
+          LEFT JOIN technical_document_customer_releases rel
+            ON rel.technical_document_id = snapshot.technical_solution_document_id
+           AND rel.opportunity_id = package.opportunity_id
+           AND rel.customer_id = opportunity.customer_id
+           AND rel.file_sha256 = snapshot.sha256
+           AND rel.status = 'approved'
+          WHERE snapshot.quotation_package_id = $1
+            AND snapshot.source_type = 'technical_solution_document'
+            AND rel.id IS NULL
+        ) AS has_unreleased
+      `, [packageId]);
+      return result.rows[0]?.has_unreleased === true;
+    },
+
+    async hasUnreleasedArchivedTechnicalAttachments(messageId, opportunityId) {
+      const result = await queryTarget.query(`
+        SELECT EXISTS (
+          SELECT 1
+          FROM email_attachments attachment
+          JOIN technical_solution_documents document
+            ON document.id = attachment.source_technical_document_id
+          JOIN opportunity_technical_drafts draft
+            ON draft.id = document.technical_draft_id
+          JOIN opportunities opportunity ON opportunity.id = draft.opportunity_id
+          LEFT JOIN technical_document_customer_releases rel
+            ON rel.technical_document_id = document.id
+           AND rel.opportunity_id = $2
+           AND rel.customer_id = opportunity.customer_id
+           AND rel.file_sha256 = attachment.sha256
+           AND rel.status = 'approved'
+          WHERE attachment.message_id = $1
+            AND attachment.source_technical_document_id IS NOT NULL
+            AND (draft.opportunity_id <> $2 OR draft.status <> 'approved'
+              OR draft.self_approval_test OR rel.id IS NULL)
+        ) AS has_unreleased
+      `, [messageId, opportunityId]);
+      return result.rows[0]?.has_unreleased === true;
+    },
+
     async listApprovedEmailAttachmentChoices(opportunityId) {
       const result = await queryTarget.query(`
         SELECT *
@@ -277,8 +324,16 @@ export function createQuotationPackageRepository(queryTarget) {
           FROM technical_solution_documents document
           JOIN opportunity_technical_drafts draft
             ON draft.id = document.technical_draft_id
+          JOIN opportunities opportunity ON opportunity.id = draft.opportunity_id
+          JOIN technical_document_customer_releases rel
+            ON rel.technical_document_id = document.id
+           AND rel.opportunity_id = draft.opportunity_id
+           AND rel.customer_id = opportunity.customer_id
+           AND rel.file_sha256 = document.sha256
+           AND rel.status = 'approved'
           WHERE draft.opportunity_id = $1
             AND draft.status = 'approved'
+            AND NOT draft.self_approval_test
             AND draft.formal_version_no IS NOT NULL
 
           UNION ALL
@@ -343,8 +398,16 @@ export function createQuotationPackageRepository(queryTarget) {
           FROM technical_solution_documents document
           JOIN opportunity_technical_drafts draft
             ON draft.id = document.technical_draft_id
+          JOIN opportunities opportunity ON opportunity.id = draft.opportunity_id
+          JOIN technical_document_customer_releases rel
+            ON rel.technical_document_id = document.id
+           AND rel.opportunity_id = draft.opportunity_id
+           AND rel.customer_id = opportunity.customer_id
+           AND rel.file_sha256 = document.sha256
+           AND rel.status = 'approved'
           WHERE draft.opportunity_id = $1
             AND draft.status = 'approved'
+            AND NOT draft.self_approval_test
             AND draft.formal_version_no IS NOT NULL
             AND document.id = ANY($2::bigint[])
 
@@ -390,17 +453,34 @@ export function createQuotationPackageRepository(queryTarget) {
 
     async listApprovedTechnicalSolutions(opportunityId) {
       const result = await queryTarget.query(`
-        SELECT id, formal_version_no, language, reviewed_at
-        FROM opportunity_technical_drafts
-        WHERE opportunity_id = $1 AND status = 'approved'
-        ORDER BY formal_version_no DESC
+        SELECT draft.id, draft.formal_version_no, draft.language, draft.reviewed_at,
+          COALESCE(released.documents, '[]'::jsonb) AS released_documents
+        FROM opportunity_technical_drafts draft
+        LEFT JOIN LATERAL (
+          SELECT jsonb_agg(jsonb_build_object(
+            'id', document.id, 'originalName', document.original_name
+          ) ORDER BY document.id) AS documents
+          FROM technical_solution_documents document
+          JOIN technical_document_customer_releases rel
+            ON rel.technical_document_id = document.id
+           AND rel.opportunity_id = draft.opportunity_id
+           AND rel.file_sha256 = document.sha256
+           AND rel.status = 'approved'
+          JOIN opportunities opportunity ON opportunity.id = draft.opportunity_id
+           AND opportunity.customer_id = rel.customer_id
+          WHERE document.technical_draft_id = draft.id
+        ) released ON true
+        WHERE draft.opportunity_id = $1
+          AND draft.status = 'approved' AND NOT draft.self_approval_test
+        ORDER BY draft.formal_version_no DESC
       `, [opportunityId]);
       return result.rows.map((row) => ({
         id: Number(row.id),
         versionNo: Number(row.formal_version_no),
         label: `TS-V${Number(row.formal_version_no)}`,
         language: row.language,
-        reviewedAt: row.reviewed_at
+        reviewedAt: row.reviewed_at,
+        releasedDocuments: row.released_documents || []
       }));
     },
 
@@ -477,14 +557,23 @@ export function createQuotationPackageRepository(queryTarget) {
           FROM opportunity_technical_drafts ts
           JOIN commercial_quotes cq ON cq.opportunity_id = ts.opportunity_id
           WHERE ts.opportunity_id = $1 AND ts.id = $2 AND cq.id = $3
+            AND NOT ts.self_approval_test
           LIMIT 1
         `, [opportunityId, technicalSolutionVersionId, commercialQuoteId]),
         queryTarget.query(`
-          SELECT id, original_name, mime_type, byte_size, sha256
-          FROM technical_solution_documents
-          WHERE technical_draft_id = $1
-          ORDER BY format ASC, id ASC
-        `, [technicalSolutionVersionId]),
+          SELECT document.id, document.original_name, document.mime_type,
+            document.byte_size, document.sha256
+          FROM technical_solution_documents document
+          JOIN technical_document_customer_releases rel
+            ON rel.technical_document_id = document.id
+           AND rel.opportunity_id = $2
+           AND rel.file_sha256 = document.sha256
+           AND rel.status = 'approved'
+          JOIN opportunities opportunity ON opportunity.id = $2
+            AND opportunity.customer_id = rel.customer_id
+          WHERE document.technical_draft_id = $1
+          ORDER BY document.format ASC, document.id ASC
+        `, [technicalSolutionVersionId, opportunityId]),
         queryTarget.query(`
           SELECT a.id, a.original_name, a.stored_path, a.mime_type, a.file_size, a.sha256
           FROM attachments a

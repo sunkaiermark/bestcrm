@@ -38,7 +38,9 @@ async function createDraftAgent(options = {}) {
     salespersonId: 7,
     quotationEngineerId: 3,
     technicalManagerId: 6,
-    status: 'technical_solution_in_progress'
+    status: 'technical_solution_in_progress',
+    archivedAt: options.archivedAt || null,
+    archiveReason: options.archiveReason || null
   };
   const teamMembers = [{
     id: 11, opportunityId: 20, userId: 4, username: 'support01', userDisplayName: 'Support Engineer',
@@ -78,8 +80,10 @@ async function createDraftAgent(options = {}) {
     draftRevisionNo: 1,
     draftLabel: 'TS-D1',
     status: options.draftStatus || 'draft',
+    submittedBy: options.submittedBy || null,
     formalVersionNo: options.formalVersionNo || null,
     formalVersionLabel: options.formalVersionNo ? `TS-V${options.formalVersionNo}` : '',
+    selfApprovalTest: options.selfApprovalTest || false,
     language: options.language || 'en',
     templateCodeSnapshot: 'MX-100',
     templateNameSnapshot: 'Mixer Agreement',
@@ -179,6 +183,10 @@ async function createDraftAgent(options = {}) {
     ...(options.uploadDir ? { uploadDir: options.uploadDir } : {}),
     technicalTemplateRepository,
     opportunityTechnicalDraftRepository,
+    ...(options.technicalDocumentCustomerReleaseRepository
+      ? { technicalDocumentCustomerReleaseRepository: options.technicalDocumentCustomerReleaseRepository } : {}),
+    ...(options.technicalAdminSelfApprovalTest
+      ? { technicalAdminSelfApprovalTest: options.technicalAdminSelfApprovalTest } : {}),
     workflowAction: options.workflowAction
   });
   const agent = request.agent(app);
@@ -223,6 +231,31 @@ test('uploaded technical draft requires one of the three approved deliverable ty
     && input.sourceKind === 'uploaded_file'
     && input.deliverableType === 'datasheet'
     && input.templateRevisionId === null));
+});
+
+test('archived opportunity hides creation and denies stale technical draft submissions', async () => {
+  const { agent, calls } = await createDraftAgent({
+    archivedAt: '2026-09-29T00:00:00.000Z', archiveReason: 'Closed for testing'
+  });
+  const list = await agent.get('/opportunities/20/technical-drafts');
+  assert.equal(list.status, 200);
+  assert.match(list.text, /Archived record: Closed for testing/);
+  assert.doesNotMatch(list.text, /href="\/opportunities\/20\/technical-drafts\/new"/);
+  const staleSubmission = await agent.post('/opportunities/20/technical-drafts').type('form').send({
+    sourceKind: 'uploaded_file', deliverableType: 'datasheet'
+  });
+  assert.equal(staleSubmission.status, 409);
+  assert.match(staleSubmission.text, /This opportunity is archived and read-only/);
+  assert.equal(calls.some(([method]) => method === 'createDraft'), false);
+});
+
+test('archived technical draft submission explains the read-only state in Chinese', async () => {
+  const { agent } = await createDraftAgent({ archivedAt: '2026-09-29T00:00:00.000Z', language: 'zh' });
+  const response = await agent.post('/opportunities/20/technical-drafts').type('form').send({
+    sourceKind: 'uploaded_file', deliverableType: 'datasheet'
+  });
+  assert.equal(response.status, 409);
+  assert.match(response.text, /该商机已归档，为只读状态/);
 });
 
 test('uploaded technical file is shown for preview and submission while template editing is hidden', async () => {
@@ -623,6 +656,34 @@ test('assigned Technical Manager can approve or return a pending TS-D snapshot',
   assert.equal(workflowCalls[0].action, 'approve_technical_solution');
 });
 
+test('administrator self-review shows a test warning and requires confirmation plus reason', async () => {
+  const workflowCalls = [];
+  const { agent } = await createDraftAgent({
+    roles: [ROLES.ADMINISTRATOR, ROLES.QUOTATION_ENGINEER],
+    sourceKind: 'uploaded_file', draftStatus: 'pending', submittedBy: 3,
+    technicalAdminSelfApprovalTest: { enabled: true, until: new Date(Date.now() + 60_000).toISOString() },
+    workflowAction: async (input) => { workflowCalls.push(input); return {}; }
+  });
+  const detail = await agent.get('/opportunities/20/technical-drafts/41');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Temporary administrator self-approval for testing only/);
+  assert.match(detail.text, /name="testSelfApprovalConfirmed"/);
+  assert.doesNotMatch(detail.text, /name="decision" value="reject"/);
+  const unconfirmed = await agent.post('/opportunities/20/technical-drafts/41/review')
+    .field('decision', 'approve').field('comment', 'Testing only');
+  assert.equal(unconfirmed.status, 400);
+  const missingReason = await agent.post('/opportunities/20/technical-drafts/41/review')
+    .field('decision', 'approve').field('testSelfApprovalConfirmed', 'on');
+  assert.equal(missingReason.status, 400);
+  assert.equal(workflowCalls.length, 0);
+  const approved = await agent.post('/opportunities/20/technical-drafts/41/review')
+    .field('decision', 'approve').field('comment', 'Testing only')
+    .field('testSelfApprovalConfirmed', 'on');
+  assert.equal(approved.status, 302);
+  assert.equal(workflowCalls[0].payload.testSelfApprovalConfirmed, 'on');
+  assert.equal(workflowCalls[0].payload.comment, 'Testing only');
+});
+
 test('approved TS-V files download with exact size and checksum headers', async () => {
   const content = Buffer.from('%PDF-technical-solution');
   const { agent, calls } = await createDraftAgent({
@@ -648,4 +709,81 @@ test('approved TS-V files download with exact size and checksum headers', async 
   assert.equal(response.headers['x-content-sha256'], 'a'.repeat(64));
   assert.equal(response.headers['content-length'], String(content.length));
   assert.ok(calls.some(([method]) => method === 'findDocument'));
+});
+
+test('customer-file release is a separate per-document request, manager decision, and revocation', async () => {
+  const document = {
+    id: 90, technicalDraftId: 41, documentNo: 'TS-V1', format: 'pdf',
+    originalName: 'OPP-20_TS-V1.pdf', mimeType: 'application/pdf',
+    byteSize: 4, sha256: 'a'.repeat(64)
+  };
+  let release = null;
+  const releaseRepository = {
+    async listByDraft() { return release ? [release] : []; },
+    async request(input) {
+      release = { id: 1, technicalDocumentId: input.documentId, requestedBy: input.actorUserId,
+        status: 'pending', purpose: input.purpose };
+      return release;
+    },
+    async review(input) {
+      if (release?.status !== 'pending' || release.requestedBy === input.actorUserId) return null;
+      release = { ...release, status: input.decision, reviewComment: input.comment };
+      return release;
+    },
+    async revoke(input) {
+      if (release?.status !== 'approved') return null;
+      release = { ...release, status: 'revoked', revocationReason: input.reason };
+      return release;
+    }
+  };
+  const options = {
+    draftStatus: 'approved', formalVersionNo: 1, documents: [document],
+    technicalDocumentCustomerReleaseRepository: releaseRepository
+  };
+  const lead = await createDraftAgent(options);
+  const initial = await lead.agent.get('/opportunities/20/technical-drafts/41');
+  assert.match(initial.text, /Internal only/);
+  assert.match(initial.text, /Request release/);
+  const requested = await lead.agent.post('/opportunities/20/technical-drafts/41/documents/90/customer-release/request')
+    .type('form').send({ purpose: 'Customer technical offer' });
+  assert.equal(requested.status, 302);
+  assert.equal(release.status, 'pending');
+  const manager = await createDraftAgent({
+    ...options, userId: 6, username: 'release-manager',
+    roles: [ROLES.TECHNICAL_MANAGER]
+  });
+  const pending = await manager.agent.get('/opportunities/20/technical-drafts/41');
+  assert.match(pending.text, /Pending customer release/);
+  assert.match(pending.text, /Approve release/);
+  const approved = await manager.agent.post('/opportunities/20/technical-drafts/41/documents/90/customer-release/review')
+    .type('form').send({ decision: 'approved', comment: 'External scope checked' });
+  assert.equal(approved.status, 302);
+  assert.equal(release.status, 'approved');
+  const revoked = await manager.agent.post('/opportunities/20/technical-drafts/41/documents/90/customer-release/revoke')
+    .type('form').send({ reason: 'Superseded by revision' });
+  assert.equal(revoked.status, 302);
+  assert.equal(release.status, 'revoked');
+});
+
+test('sales and test-self-approved technical versions cannot request customer-file release', async () => {
+  const document = {
+    id: 90, technicalDraftId: 41, documentNo: 'TS-V1', format: 'pdf',
+    sha256: 'a'.repeat(64), originalName: 'internal.pdf', byteSize: 4
+  };
+  const repository = { async listByDraft() { return []; }, async request() { throw new Error('must not run'); } };
+  const sales = await createDraftAgent({
+    userId: 7, username: 'sales-release', roles: [ROLES.SALESPERSON],
+    draftStatus: 'approved', formalVersionNo: 1, documents: [document],
+    technicalDocumentCustomerReleaseRepository: repository
+  });
+  const salesResponse = await sales.agent.post('/opportunities/20/technical-drafts/41/documents/90/customer-release/request')
+    .type('form').send({ purpose: 'External' });
+  assert.equal(salesResponse.status, 403);
+  const testApproval = await createDraftAgent({
+    draftStatus: 'approved', formalVersionNo: 1, selfApprovalTest: true,
+    documents: [document], technicalDocumentCustomerReleaseRepository: repository
+  });
+  const testResponse = await testApproval.agent.post('/opportunities/20/technical-drafts/41/documents/90/customer-release/request')
+    .type('form').send({ purpose: 'External' });
+  assert.equal(testResponse.status, 403);
 });

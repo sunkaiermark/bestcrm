@@ -114,9 +114,12 @@ test('anonymous users are redirected from workbench', async () => {
 
   assert.equal(response.status, 302);
   assert.equal(response.headers.location, '/login');
+  const overview = await request(app).get('/workbench/actions');
+  assert.equal(overview.status, 302);
+  assert.equal(overview.headers.location, '/login');
 });
 
-test('logged in users see compact workbench list layout', async () => {
+test('workbench has sticky top links to action and plan overviews', async () => {
   const agent = await createWorkbenchAgent();
 
   const response = await agent.get('/workbench');
@@ -128,42 +131,20 @@ test('logged in users see compact workbench list layout', async () => {
   const topbarHtml = response.text.match(/<header class="topbar">[\s\S]*?<\/header>/)?.[0] || '';
   assert.doesNotMatch(topbarHtml, /New opportunity/);
   assert.doesNotMatch(topbarHtml, /href="\/opportunities\/new"/);
-  assert.match(response.text, /Needs My Action/);
-  assert.match(response.text, /class="workbench-list workbench-columns"/);
-  assert.match(response.text, /class="list-section workbench-column workbench-column--action"/);
-  assert.match(response.text, /class="list-section workbench-column workbench-column--plan"/);
-  assert.match(response.text, /\.workbench-list\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\);/);
-  assert.match(response.text, /\.workbench-column--action\s*\{[\s\S]*--workbench-accent:\s*#b42318;/);
-  assert.match(response.text, /\.workbench-column--action\s*\{[\s\S]*--workbench-heading-bg:\s*#fff1f0;/);
-  assert.match(response.text, /\.workbench-column--plan\s*\{[\s\S]*--workbench-accent:\s*#245b8a;/);
-  assert.match(response.text, /\.workbench-column--plan\s*\{[\s\S]*--workbench-heading-bg:\s*#eef6ff;/);
+  assert.match(response.text, /<nav class="workbench-shortcuts" aria-label="Workbench">/);
+  assert.match(response.text, /Pending Work Items/);
+  assert.match(response.text, /class="workbench-shortcut workbench-shortcut--action" href="\/workbench\/actions"/);
+  assert.match(response.text, /class="workbench-shortcut workbench-shortcut--plan" href="\/sales-work\/plans"/);
+  assert.match(response.text, /\.workbench-shortcuts\s*\{[^}]*position:\s*sticky;/);
+  assert.match(response.text, /\.workbench-shortcuts\s*\{[^}]*top:\s*0;/);
   assert.match(response.text, /\.state-item\s*\{[\s\S]*white-space:\s*nowrap;/);
   assert.match(response.text, /\.state-item:nth-child\(5n \+ 3\)\s*\{[\s\S]*background:\s*#f5f3ff;/);
-  assert.match(response.text, /\.workbench-table th\s*\{[\s\S]*background:\s*#eaf2f8;/);
-  assert.match(response.text, /class="workbench-table workbench-table--tasks"/);
-  assert.match(response.text, /@media \(max-width: 760px\)[\s\S]*\.workbench-table td\[data-label\]::before/);
-  assert.match(response.text, /\.workbench-table td\[data-label\]::before\s*\{[\s\S]*background:\s*#eef4f8;[\s\S]*border-left:\s*3px solid var\(--workbench-accent\);/);
+  assert.doesNotMatch(response.text, /class="workbench-table workbench-table--tasks"/);
   assert.doesNotMatch(response.text, /Opportunities I created/);
   assert.doesNotMatch(response.text, /Opportunities assigned to me/);
-  assert.doesNotMatch(response.text, /<th>Opportunity Name<\/th>/);
-  assert.doesNotMatch(response.text, /<th>Title<\/th>/);
   assert.match(response.text, /Work Plan/);
   assert.doesNotMatch(response.text, /Recent Status Messages/);
   assert.match(response.text, /Counts by workflow state/);
-  assert.match(response.text, /Approve opportunity initiation/);
-  assert.match(response.text, /Submit opportunity initiation/);
-  assert.match(response.text, /<th scope="col">Related Opportunity<\/th>/);
-  assert.match(response.text, /<th scope="col">Specific Work<\/th>/);
-  assert.match(response.text, /<th scope="col">Planned Start<\/th>/);
-  assert.match(response.text, /<th scope="col">Deadline<\/th>/);
-  assert.match(response.text, /<th scope="col">Estimated Hours \/ Workload<\/th>/);
-  assert.match(response.text, /6\.5 h · High/);
-  assert.match(response.text, /href="\/workbench\/work-items\/1\/estimate"/);
-  assert.match(response.text, /<th scope="col">KPI \/ Completion Standard<\/th>/);
-  assert.match(response.text, /Approve or give a clear rejection decision by the deadline/);
-  assert.match(response.text, /href="\/opportunities\/32"[^>]*>[\s\S]*800003[\s\S]*Draft package/);
-  assert.match(response.text, /Factory upgrade/);
-  assert.match(response.text, /Draft/);
   assert.match(response.text, /left-nav/);
   assert.doesNotMatch(response.text, /href="\/inquiries"/);
   assert.doesNotMatch(response.text, /class="nav-parent">System/);
@@ -171,9 +152,27 @@ test('logged in users see compact workbench list layout', async () => {
   assert.doesNotMatch(response.text, /href="\/system\/roles"/);
   assert.doesNotMatch(response.text, /href="\/system\/approval-settings"/);
   assert.match(response.text, /class="state-strip"/);
-  assert.match(response.text, /class="workbench-list workbench-columns"/);
-  assert.doesNotMatch(response.text, /class="workbench-card-list"/);
-  assert.doesNotMatch(response.text, /class="panel-grid"/);
+});
+
+test('action overview links to permitted work item detail and business detail', async () => {
+  const agent = await createWorkbenchAgent();
+  const overview = await agent.get('/workbench/actions');
+
+  assert.equal(overview.status, 200);
+  assert.match(overview.text, /Approve opportunity initiation/);
+  assert.match(overview.text, /Submit opportunity initiation/);
+  assert.match(overview.text, /href="\/workbench\/work-items\/1"/);
+  assert.match(overview.text, /href="\/opportunities\/32"/);
+  assert.match(overview.text, /Factory upgrade/);
+  assert.match(overview.text, /Planned Start/);
+  assert.match(overview.text, /Deadline/);
+
+  const detail = await agent.get('/workbench/work-items/1');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /Approve opportunity initiation/);
+  assert.match(detail.text, /href="\/workbench\/actions"/);
+  assert.match(detail.text, /href="\/workbench\/work-items\/1\/estimate"/);
+  assert.match(detail.text, /href="\/opportunities\/30"/);
 });
 
 test('assigned users can view and update their work estimate', async () => {
@@ -192,7 +191,7 @@ test('assigned users can view and update their work estimate', async () => {
     .send({ estimatedHours: '8.25', workloadLevel: 'medium' });
 
   assert.equal(updateResponse.status, 302);
-  assert.equal(updateResponse.headers.location, '/workbench');
+  assert.equal(updateResponse.headers.location, '/workbench/work-items/1');
   assert.deepEqual(agent.estimationUpdates, [{
     id: 1,
     input: {
@@ -207,6 +206,8 @@ test('work estimate route rejects unauthorized and invalid changes', async () =>
   const unauthorizedAgent = await createWorkbenchAgent({ workItemAssigneeId: 99 });
   const forbiddenResponse = await unauthorizedAgent.get('/workbench/work-items/1/estimate');
   assert.equal(forbiddenResponse.status, 403);
+  const forbiddenDetail = await unauthorizedAgent.get('/workbench/work-items/1');
+  assert.equal(forbiddenDetail.status, 403);
 
   const assignedAgent = await createWorkbenchAgent();
   const invalidResponse = await assignedAgent
@@ -242,6 +243,7 @@ test('non-sales users do not see inquiry navigation', async () => {
 
   assert.equal(response.status, 200);
   assert.doesNotMatch(response.text, /href="\/inquiries"/);
+  assert.doesNotMatch(response.text, /class="workbench-shortcut workbench-shortcut--plan"/);
 });
 
 test('workbench framework text uses selected Chinese language', async () => {
@@ -252,21 +254,16 @@ test('workbench framework text uses selected Chinese language', async () => {
   assert.equal(response.status, 200);
   assert.match(response.text, /<h1>\u5de5\u4f5c\u53f0<\/h1>/);
   assert.match(response.text, /\u6d41\u7a0b\u7edf\u8ba1/);
-  assert.match(response.text, /\u9700\u8981\u6211\u5904\u7406/);
+  assert.match(response.text, /\u5f85\u5b8c\u6210\u5de5\u5355/);
   assert.match(response.text, /\u5de5\u4f5c\u8ba1\u5212/);
+  assert.match(response.text, /href="\/workbench\/actions"/);
   assert.doesNotMatch(response.text, /\u6700\u8fd1\u72b6\u6001\u6d88\u606f/);
-  assert.match(response.text, /<th scope="col">\u5173\u8054\u5546\u673a<\/th>/);
-  assert.match(response.text, /<th scope="col">\u5de5\u4f5c\u5185\u5bb9<\/th>/);
-  assert.match(response.text, /<th scope="col">\u5f00\u59cb\u65f6\u95f4<\/th>/);
-  assert.match(response.text, /<th scope="col">\u622a\u6b62\u65f6\u95f4<\/th>/);
-  assert.match(response.text, /\u5de5\u65f6\uff0f\u5de5\u4f5c\u91cf/);
-  assert.match(response.text, /6\.5 \u5c0f\u65f6 · \u9ad8/);
-  assert.match(response.text, /\u5b8c\u6210\u6807\u51c6/);
-  assert.match(response.text, /\u6309\u65f6\u5ba1\u6279\u6216\u660e\u786e\u9a73\u56de/);
-  assert.match(response.text, /\u5ba1\u6279\u5546\u673a\u7acb\u9879/);
-  assert.match(response.text, /\u63d0\u4ea4\u5546\u673a\u7acb\u9879/);
-  assert.doesNotMatch(response.text, /Approve opportunity initiation/);
-  assert.doesNotMatch(response.text, /Submit opportunity initiation/);
+  const overview = await agent.get('/workbench/actions');
+  assert.equal(overview.status, 200);
+  assert.match(overview.text, /\u5ba1\u6279\u5546\u673a\u7acb\u9879/);
+  assert.match(overview.text, /\u63d0\u4ea4\u5546\u673a\u7acb\u9879/);
+  assert.match(overview.text, /\u5f00\u59cb\u65f6\u95f4/);
+  assert.match(overview.text, /\u622a\u6b62\u65f6\u95f4/);
   const stateStripHtml = response.text.match(/<div class="state-strip">[\s\S]*?<\/div>\s*<\/section>/)?.[0] || '';
   assert.match(stateStripHtml, /\u8349\u7a3f/);
   assert.match(stateStripHtml, /\u7acb\u9879\u5ba1\u6279\u4e2d/);
@@ -337,7 +334,7 @@ test('salesperson sidebar uses concise Chinese lead and work labels', async () =
   assert.equal(response.status, 200);
   assert.match(response.text, /href="\/lead-submissions">[^\n]*<span>销售线索<\/span><\/a>/);
   assert.doesNotMatch(response.text, /href="\/sales-work\/plans">工作<\/a>/);
-  assert.match(response.text, /href="\/sales-work\/plans">管理工作计划<\/a>/);
+  assert.match(response.text, /class="workbench-shortcut workbench-shortcut--plan" href="\/sales-work\/plans">/);
   assert.doesNotMatch(response.text, /href="\/lead-submissions">我提交的线索<\/a>/);
   assert.doesNotMatch(response.text, /href="\/sales-work\/plans">工作管理<\/a>/);
 });

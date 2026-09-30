@@ -3,6 +3,10 @@
   const value = (field, fallback = '') => editing ? (packageVersion[field] ?? fallback) : (sourcePackage?.[field] ?? fallback);
   const selectedTechnical = value('technicalSolutionVersionId', technicalSolutions[0]?.id || '');
   const selectedQuote = value('commercialQuoteId', commercialQuotes[0]?.id || '');
+  const selectedTechnicalDocumentIds = new Set(editing
+    ? (packageVersion.attachments || []).filter((item) => item.sourceType === 'technical_solution_document')
+      .map((item) => Number(item.technicalSolutionDocumentId))
+    : []);
 %>
 <%- include('../partials/app-start', { title: `${editing ? t('editQuotationPackageDraft') : t('createQuotationPackageDraft')} - BESTCRM`, activeNav: 'opportunities' }) %>
         <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>/quotation-packages"><%= t('quotationPackages') %></a></p>
@@ -28,6 +32,18 @@
               <label><%= t('currency') %><input name="currency" maxlength="3" value="<%= value('currency', 'USD') %>" required></label>
               <label><%= t('deliveryPeriod') %><input name="deliveryPeriod" value="<%= value('deliveryPeriod') %>" required></label>
             </div>
+            <fieldset>
+              <legend><%= language === 'zh' ? '对客技术附件（可选）' : 'Customer-released technical attachments (optional)' %></legend>
+              <p class="muted"><%= language === 'zh' ? '仅勾选上方所选技术版本中已获对客放行的文件。未勾选的技术文件不会加入报价包。' : 'Select only released files from the technical version above. Unselected technical files will not be included in the package.' %></p>
+              <% for (const item of technicalSolutions) { %>
+                <% if ((item.releasedDocuments || []).length) { %>
+                  <p><strong><%= item.label %></strong></p>
+                  <% for (const document of item.releasedDocuments) { %>
+                    <label class="checkbox-row"><input type="checkbox" name="technicalDocumentIds" value="<%= document.id %>" <%= selectedTechnicalDocumentIds.has(Number(document.id)) ? 'checked' : '' %>><span><%= document.originalName %></span></label>
+                  <% } %>
+                <% } %>
+              <% } %>
+            </fieldset>
             <label><%= t('inclusions') %><textarea name="inclusions"><%= value('inclusions') %></textarea></label>
             <label><%= t('exclusions') %><textarea name="exclusions"><%= value('exclusions') %></textarea></label>
             <label><%= t('technicalAssumptions') %><textarea name="technicalAssumptions"><%= value('technicalAssumptions') %></textarea></label>

@@ -90,18 +90,31 @@ export function canViewOpportunityTechnicalDraft(actor, opportunity) {
 }
 
 export function canCreateOpportunityTechnicalDraft(actor, opportunity) {
-  return isProjectLeadEngineer(actor, opportunity);
+  return !opportunity?.archivedAt && isProjectLeadEngineer(actor, opportunity);
 }
 
-export function canReviewOpportunityTechnicalDraft(actor, opportunity, draft) {
-  return draft?.status === 'pending'
-    && hasRole(actor, ROLES.TECHNICAL_MANAGER)
+export function isTechnicalAdminSelfApprovalTest(actor, draft, policy = {}, now = Date.now()) {
+  const deadline = Date.parse(policy.until || '');
+  return policy.enabled === true
+    && Number.isFinite(deadline)
+    && now < deadline
+    && draft?.status === 'pending'
+    && Number.isSafeInteger(Number(draft.submittedBy))
+    && Number(draft.submittedBy) > 0
+    && Number(draft.submittedBy) === Number(actor?.id)
+    && hasRole(actor, ROLES.ADMINISTRATOR);
+}
+
+export function canReviewOpportunityTechnicalDraft(actor, opportunity, draft, selfApprovalPolicy = {}) {
+  if (opportunity?.archivedAt || draft?.status !== 'pending') return false;
+  if (isTechnicalAdminSelfApprovalTest(actor, draft, selfApprovalPolicy)) return true;
+  return hasRole(actor, ROLES.TECHNICAL_MANAGER)
     && Number(opportunity.technicalManagerId) === Number(actor.id)
     && Number(draft.submittedBy) !== Number(actor.id);
 }
 
 export function canEditOpportunityTechnicalDraftSection(actor, opportunity, draft, sectionKey) {
-  if (!['draft', 'ready'].includes(draft?.status)) return false;
+  if (opportunity?.archivedAt || !['draft', 'ready'].includes(draft?.status)) return false;
   if (isProjectLeadEngineer(actor, opportunity)) return true;
   return isSupportingEngineer(actor, opportunity) && actorSectionKeys(actor, draft).has(sectionKey);
 }
@@ -111,6 +124,7 @@ function ensureViewer(actor, opportunity) {
 }
 
 function ensureLead(actor, opportunity) {
+  if (opportunity?.archivedAt) conflict('Archived opportunities are read-only');
   if (!canCreateOpportunityTechnicalDraft(actor, opportunity)) forbidden();
 }
 
@@ -461,7 +475,7 @@ function ensureTemplateDraft(draft) {
 
 export async function createUploadedOpportunityTechnicalDraft(repository, actor, opportunity, deliverableType, language = 'en') {
   ensureLead(actor, opportunity);
-  if (opportunity.archivedAt || !['technical_solution_in_progress', 'technical_solution_rejected'].includes(opportunity.status)) {
+  if (!['technical_solution_in_progress', 'technical_solution_rejected'].includes(opportunity.status)) {
     conflict('Technical files can only be prepared during the technical proposal stage');
   }
   const normalizedType = text(deliverableType);
@@ -508,6 +522,7 @@ export async function getOpportunityTechnicalDraft(repository, actor, opportunit
 
 export async function updateOpportunityTechnicalDraftVariables(repository, actor, opportunity, draft, submittedValues) {
   ensureViewer(actor, opportunity);
+  if (opportunity?.archivedAt) conflict('Archived opportunities are read-only');
   ensureEditableDraft(draft);
   ensureTemplateDraft(draft);
   const lead = isProjectLeadEngineer(actor, opportunity);
@@ -538,6 +553,7 @@ export async function updateOpportunityTechnicalDraftVariables(repository, actor
 
 export async function updateOpportunityTechnicalDraftSection(repository, actor, opportunity, draft, sectionKey, input) {
   ensureViewer(actor, opportunity);
+  if (opportunity?.archivedAt) conflict('Archived opportunities are read-only');
   ensureEditableDraft(draft);
   ensureTemplateDraft(draft);
   if (!sectionKeyPattern.test(text(sectionKey))) invalid('Technical section is invalid');

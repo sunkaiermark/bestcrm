@@ -1,0 +1,37 @@
+<%- include('../partials/app-start', { title: `${t('needsMyAction')} - BESTCRM`, activeNav: 'workbench' }) %>
+        <% const formatWorkTime = (value) => {
+          if (!value) return '—';
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) return String(value);
+          return date.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+          });
+        }; %>
+        <% const kpiKey = `workKpi.${workItem.kpiCode || 'complete_assigned_work'}`; %>
+        <% const kpiLabel = language === 'zh' && t(kpiKey) !== kpiKey
+          ? t(kpiKey)
+          : workItem.kpiTarget || (t(kpiKey) === kpiKey ? t('workKpi.complete_assigned_work') : t(kpiKey)); %>
+        <p class="breadcrumb"><a href="/workbench"><%= t('workbench') %></a> / <a href="/workbench/actions"><%= t('needsMyAction') %></a></p>
+        <header class="page-header">
+          <div>
+            <h1><%= todoTitleLabel(workItem.title) %></h1>
+            <% if (workItem.description) { %><p class="muted"><%= workItem.description %></p><% } %>
+          </div>
+          <div class="inline-actions">
+            <% if (workItem.actionUrl && workItem.actionUrl !== '/workbench') { %><a class="quick-action" href="<%= workItem.actionUrl %>"><%= t('open') %></a><% } %>
+            <% if (['pending', 'in_progress', 'waiting', 'review_pending'].includes(workItem.status)) { %><a class="secondary-action" href="/workbench/work-items/<%= workItem.id %>/estimate"><%= t('editWorkEstimate') %></a><% } %>
+          </div>
+        </header>
+
+        <section class="detail-grid">
+          <div><span><%= t('relatedOpportunity') %></span><strong>
+            <% if (workItem.opportunityId) { %><a href="/opportunities/<%= workItem.opportunityId %>"><%= workItem.opportunityNo %> - <%= workItem.opportunityTitle %></a><% } else { %>—<% } %>
+          </strong></div>
+          <div><span><%= t('status') %></span><strong><%= t(`workItemStatus.${workItem.status}`) %></strong></div>
+          <div><span><%= t('plannedStart') %></span><strong><%= formatWorkTime(workItem.plannedStartAt) %></strong></div>
+          <div><span><%= t('deadline') %></span><strong><%= formatWorkTime(workItem.dueAt) %></strong></div>
+          <div><span><%= t('estimatedHoursWorkload') %></span><strong><%= workItem.estimatedHours ?? t('notEstimated') %><% if (workItem.estimatedHours !== null && workItem.estimatedHours !== undefined) { %> <%= t('hourUnit') %><% } %><% if (workItem.workloadLevel) { %> · <%= t(`workloadLevel.${workItem.workloadLevel}`) %><% } %></strong></div>
+          <div><span><%= t('kpiCompletionStandard') %></span><strong><%= kpiLabel %></strong></div>
+        </section>
+<%- include('../partials/app-end') %>

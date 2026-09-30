@@ -6,6 +6,7 @@ import {
   canCreateOpportunityTechnicalDraft,
   canEditOpportunityTechnicalDraftSection,
   canReviewOpportunityTechnicalDraft,
+  createUploadedOpportunityTechnicalDraft,
   generateOpportunityTechnicalDraft,
   markOpportunityTechnicalDraftReady,
   prefillTechnicalDraftVariables,
@@ -142,6 +143,43 @@ test('only the assigned Technical Manager can review a pending technical draft',
   assert.equal(canReviewOpportunityTechnicalDraft(technicalManager, assignedOpportunity, pending), true);
   assert.equal(canReviewOpportunityTechnicalDraft(otherManager, assignedOpportunity, pending), false);
   assert.equal(canReviewOpportunityTechnicalDraft(technicalManager, assignedOpportunity, draft()), false);
+});
+
+test('temporary administrator self-review is limited to the submitter and expires', () => {
+  const pending = draft({ status: 'pending', submittedBy: 3 });
+  const ownAdmin = { id: 3, roles: [ROLES.ADMINISTRATOR, ROLES.QUOTATION_ENGINEER] };
+  const ordinaryEngineer = { id: 3, roles: [ROLES.QUOTATION_ENGINEER] };
+  const otherAdmin = { id: 4, roles: [ROLES.ADMINISTRATOR] };
+  const policy = { enabled: true, until: new Date(Date.now() + 60_000).toISOString() };
+  assert.equal(canReviewOpportunityTechnicalDraft(ownAdmin, opportunity(), pending, policy), true);
+  assert.equal(canReviewOpportunityTechnicalDraft(ordinaryEngineer, opportunity(), pending, policy), false);
+  assert.equal(canReviewOpportunityTechnicalDraft(otherAdmin, opportunity(), pending, policy), false);
+  assert.equal(canReviewOpportunityTechnicalDraft(ownAdmin, opportunity(), pending, { enabled: false, until: policy.until }), false);
+  assert.equal(canReviewOpportunityTechnicalDraft(ownAdmin, opportunity(), pending,
+    { enabled: true, until: new Date(Date.now() - 60_000).toISOString() }), false);
+});
+
+test('archived opportunities keep technical drafts readable but block preparation and review', async () => {
+  const archived = { ...opportunity(), status: 'technical_solution_in_progress', archivedAt: new Date() };
+  const pending = draft({ status: 'pending', submittedBy: 3 });
+  const ownAdmin = { id: 3, roles: [ROLES.ADMINISTRATOR, ROLES.QUOTATION_ENGINEER] };
+  const policy = { enabled: true, until: new Date(Date.now() + 60_000).toISOString() };
+  assert.equal(canCreateOpportunityTechnicalDraft(lead, archived), false);
+  assert.equal(canEditOpportunityTechnicalDraftSection(lead, archived, draft(), 'design_parameters'), false);
+  assert.equal(canReviewOpportunityTechnicalDraft(ownAdmin, archived, pending, policy), false);
+  const repository = { async createDraft() { throw new Error('archived draft must not persist'); } };
+  await assert.rejects(
+    createUploadedOpportunityTechnicalDraft(repository, lead, archived, 'datasheet'),
+    (error) => error.statusCode === 409 && error.message === 'Archived opportunities are read-only'
+  );
+  await assert.rejects(
+    generateOpportunityTechnicalDraft({ technicalTemplateRepository: repository }, lead, archived, 1),
+    (error) => error.statusCode === 409 && error.message === 'Archived opportunities are read-only'
+  );
+  await assert.rejects(
+    updateOpportunityTechnicalDraftVariables(repository, lead, archived, draft(), {}),
+    (error) => error.statusCode === 409 && error.message === 'Archived opportunities are read-only'
+  );
 });
 
 test('generation freezes the current published template and prefills known project data', async () => {

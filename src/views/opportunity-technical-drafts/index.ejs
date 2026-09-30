@@ -8,6 +8,8 @@
           <% if (canCreateDraft) { %><a class="quick-action" href="/opportunities/<%= opportunity.id %>/technical-drafts/new"><%= t('generateTechnicalDraft') %></a><% } %>
         </header>
 
+        <% if (opportunity.archivedAt) { %><p class="status"><%= t('archivedRecord') %><% if (opportunity.archiveReason) { %>: <%= opportunity.archiveReason %><% } %></p><% } %>
+
         <% if (drafts.some((draft) => draft.sourceKind !== 'uploaded_file')) { %><section class="form-panel"><strong><%= t('technicalDraftSnapshotNotice') %></strong></section><% } %>
         <section class="list-section">
           <div class="list-body">
@@ -18,7 +20,7 @@
                   <tr>
                 <td><strong><%= draft.formalVersionLabel || draft.draftLabel %></strong><% if (draft.formalVersionLabel) { %><br><span class="muted"><%= draft.draftLabel %></span><% } %></td>
                     <td><%= draft.sourceKind === 'uploaded_file' ? draft.templateNameSnapshot : `${draft.templateCodeSnapshot} · TPL-R${draft.templateRevisionNoSnapshot}` %></td>
-                    <td><span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span></td>
+                    <td><span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %></span></td>
                     <td><%= draft.updatedByDisplayName || draft.updatedBy %></td>
                     <td><%= draft.updatedAt || '' %></td>
                     <td><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>"><%= t('openTechnicalDraft') %></a></td>

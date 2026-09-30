@@ -1,5 +1,5 @@
 <%- include('../partials/app-start', { title: `${t('workItemEstimate')} - BESTCRM`, activeNav: 'workbench' }) %>
-        <p class="breadcrumb"><a href="/workbench"><%= t('workbench') %></a> / <%= t('workItemEstimate') %></p>
+        <p class="breadcrumb"><a href="/workbench"><%= t('workbench') %></a> / <a href="/workbench/actions"><%= t('needsMyAction') %></a> / <%= t('workItemEstimate') %></p>
         <header class="page-header">
           <div>
             <h1><%= t('workItemEstimate') %></h1>
@@ -46,7 +46,7 @@
           <p class="muted"><%= t('workloadEstimateNotice') %></p>
           <div class="inline-actions">
             <button type="submit"><%= t('saveWorkEstimate') %></button>
-            <a class="secondary-action" href="/workbench"><%= t('cancel') %></a>
+            <a class="secondary-action" href="/workbench/work-items/<%= workItem.id %>"><%= t('cancel') %></a>
           </div>
         </form>
 <%- include('../partials/app-end') %>

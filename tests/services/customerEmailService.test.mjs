@@ -170,6 +170,8 @@ function createDependencies(uploadDir, options = {}) {
   const quotationPackageRepository = {
     async getPackageDetail(id) { return Number(id) === packageVersion.id ? packageVersion : null; },
     async listByOpportunity() { return [packageVersion]; },
+    async hasUnreleasedTechnicalAttachments() { return options.packageReleaseRevoked === true; },
+    async hasUnreleasedArchivedTechnicalAttachments() { return options.directReleaseRevoked === true; },
     async getEmailAttachmentSources() {
       return [{
         sourceType: 'technical_solution_document',
@@ -348,6 +350,49 @@ test('tampered or no-longer-approved opportunity file selections are rejected be
       body: 'Please find the datasheet attached.',
       action: 'draft'
     }), /no longer approved for this opportunity/);
+    assert.equal(dependencies.state.messages.filter((item) => item.direction === 'outbound').length, 0);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('a revoked technical-file release blocks an already archived email draft at send time', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-release-'));
+  const policy = { directReleaseRevoked: false };
+  const content = Buffer.from('released technical file');
+  try {
+    policy.approvedFileSources = [{
+      token: 'technical_document:61', sourceKind: 'technical_document', sourceId: 61,
+      originalName: 'TS-V2.pdf', mimeType: 'application/pdf', byteSize: content.length,
+      sha256: createHash('sha256').update(content).digest('hex'), content, storedPath: ''
+    }];
+    const dependencies = createDependencies(uploadDir, policy);
+    const draft = await createCustomerEmailDraft(dependencies, actor(), {
+      threadId: 1, approvedOpportunityFileTokens: 'technical_document:61',
+      to: 'buyer@example.com', subject: 'Technical file', body: 'Please see attached.', action: 'draft'
+    });
+    policy.directReleaseRevoked = true;
+    await assert.rejects(
+      () => sendCustomerEmail(dependencies, actor(), draft.id),
+      /customer-release approval has changed/
+    );
+    assert.equal(dependencies.state.attempts.length, 0);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('a quotation package with revoked technical files cannot be prepared for customer email', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-package-release-'));
+  try {
+    const dependencies = createDependencies(uploadDir, { packageReleaseRevoked: true });
+    await assert.rejects(
+      () => createCustomerEmailDraft(dependencies, actor(), {
+        threadId: 1, quotationPackageVersionId: 71,
+        to: 'buyer@example.com', subject: 'Quotation', body: 'Please see attached.', action: 'draft'
+      }),
+      /without current customer-release approval/
+    );
     assert.equal(dependencies.state.messages.filter((item) => item.direction === 'outbound').length, 0);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });

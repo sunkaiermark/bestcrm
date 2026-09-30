@@ -227,6 +227,10 @@ async function replyHeaders(repository, thread, replyToMessageId) {
 
 async function quotationAttachments(dependencies, packageVersion) {
   if (!packageVersion) return [];
+  if (typeof dependencies.quotationPackageRepository.hasUnreleasedTechnicalAttachments !== 'function'
+      || await dependencies.quotationPackageRepository.hasUnreleasedTechnicalAttachments(packageVersion.id)) {
+    throw new CustomerEmailError('Quotation package contains a technical file without current customer-release approval', 409);
+  }
   const sources = await dependencies.quotationPackageRepository.getEmailAttachmentSources(packageVersion.id);
   if (!sources.length) {
     throw new CustomerEmailError(`Quotation package ${packageVersion.label} has no frozen attachments`, 409);
@@ -580,6 +584,18 @@ export async function sendCustomerEmail(dependencies, actor, messageId) {
   if (!context.canSend) throw new CustomerEmailError('You may save a draft but cannot send customer email for this opportunity', 403);
   if (original.quotationPackageVersionId) {
     await approvedQuotationPackage(dependencies, context.opportunity, original.quotationPackageVersionId);
+    if (typeof dependencies.quotationPackageRepository.hasUnreleasedTechnicalAttachments !== 'function'
+        || await dependencies.quotationPackageRepository.hasUnreleasedTechnicalAttachments(original.quotationPackageVersionId)) {
+      throw new CustomerEmailError('Quotation package customer-release approval has changed; prepare a new email', 409);
+    }
+  }
+  if (context.opportunity && (
+    typeof dependencies.quotationPackageRepository.hasUnreleasedArchivedTechnicalAttachments !== 'function'
+    || await dependencies.quotationPackageRepository.hasUnreleasedArchivedTechnicalAttachments(
+      original.id, context.opportunity.id
+    )
+  )) {
+    throw new CustomerEmailError('Technical attachment customer-release approval has changed; prepare a new email', 409);
   }
   if (!dependencies.transport?.sendMail) throw new CustomerEmailError('Customer SMTP transport is not configured', 503);
   if (!['draft', 'failed'].includes(original.deliveryStatus)) {

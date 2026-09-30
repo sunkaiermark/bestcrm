@@ -517,7 +517,7 @@
                         <% for (const draft of uploadedTechnicalDrafts) { const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; const draftFiles = uploadedFilesForTechnicalDraft(draft); %>
                           <% for (const [fileIndex, uploadedFile] of draftFiles.entries()) { %>
                           <div class="technical-version-row technical-uploaded-file-row" data-technical-draft-id="<%= draft.id %>" data-technical-attachment-id="<%= uploadedFile.id %>">
-                            <span class="technical-version-summary"><%= draft.draftLabel %><% if (draft.formalVersionLabel) { %> · <%= draft.formalVersionLabel %><% } %> · <%= draft.templateNameSnapshot %>
+                            <span class="technical-version-summary"><%= draft.draftLabel %><% if (draft.formalVersionLabel) { %> · <%= draft.formalVersionLabel %><% } %> · <%= draft.templateNameSnapshot %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %>
                               <% if (draft.status === 'rejected' && draft.reviewComment) { %><span class="muted">· <%= draft.reviewComment %></span><% } %>
                               <% if (fileIndex === 0 && reviewFiles.length) { %><span class="technical-review-file-links"><%= t('reviewAttachments') %>:
                                 <% for (const file of reviewFiles) { %><span><%= file.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/download"><%= t('download') %></a></span><% } %>
@@ -572,7 +572,7 @@
                     <strong><%= t('technicalVersionHistory') %></strong>
                     <% for (const draft of inactiveTemplateTechnicalDrafts) { const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; %>
                       <div class="technical-version-row">
-                        <span class="technical-version-summary"><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %> · <%= t(`technicalDraftStatus.${draft.status}`) %>
+                        <span class="technical-version-summary"><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %> · <%= t(`technicalDraftStatus.${draft.status}`) %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %>
                           <% if (draft.status === 'rejected' && draft.reviewComment) { %><span class="muted">· <%= draft.reviewComment %></span><% } %>
                           <% if (reviewFiles.length) { %><span class="technical-review-file-links"><%= t('reviewAttachments') %>:
                             <% for (const file of reviewFiles) { %><span><%= file.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/download"><%= t('download') %></a></span><% } %>
@@ -625,6 +625,13 @@
               <h2>
                 <span><%= t('technicalProposal') %> <span class="section-heading-meta"><%= t('notStarted') %></span></span>
               </h2>
+            </section>
+          <% } %>
+
+          <% if (!opportunity.archivedAt && uploadedTechnicalDrafts.length && Number(signedInUserId) === Number(opportunity.salespersonId)) { %>
+            <section class="content-section business-section business-section-quote">
+              <h2><%= language === 'zh' ? '商务报价内部草稿' : 'Internal Commercial Quotation Draft' %></h2>
+              <div class="section-body"><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/commercial-quotation-draft"><%= language === 'zh' ? '进入报价草稿' : 'Open quotation draft' %></a></div>
             </section>
           <% } %>
 

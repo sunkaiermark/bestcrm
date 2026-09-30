@@ -11,6 +11,20 @@ test('development config can use the local session secret default', () => {
   assert.equal(config.maxUploadMb, 3072);
 });
 
+test('administrator technical self-approval test stays off unless an explicit deadline is configured', () => {
+  const defaults = loadConfig({ NODE_ENV: 'development' });
+  assert.deepEqual(defaults.technicalAdminSelfApprovalTest, { enabled: false, until: null });
+  assert.throws(() => loadConfig({
+    NODE_ENV: 'development', TECHNICAL_ADMIN_SELF_APPROVAL_TEST_ENABLED: 'true'
+  }), /TECHNICAL_ADMIN_SELF_APPROVAL_TEST_UNTIL/);
+  const configured = loadConfig({
+    NODE_ENV: 'development', TECHNICAL_ADMIN_SELF_APPROVAL_TEST_ENABLED: 'true',
+    TECHNICAL_ADMIN_SELF_APPROVAL_TEST_UNTIL: '2026-10-02T18:00:00+08:00'
+  });
+  assert.equal(configured.technicalAdminSelfApprovalTest.enabled, true);
+  assert.equal(configured.technicalAdminSelfApprovalTest.until, '2026-10-02T18:00:00+08:00');
+});
+
 test('retired Bid Center cannot be restored by its obsolete environment flag', () => {
   assert.equal(Object.hasOwn(loadConfig({ NODE_ENV: 'development' }), 'bidCenter'), false);
   assert.equal(Object.hasOwn(loadConfig({ NODE_ENV: 'development', BID_CENTER_ENABLED: 'true' }), 'bidCenter'), false);

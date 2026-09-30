@@ -71,6 +71,17 @@ export function loadConfig(env = process.env) {
   const emailRawArchiveEnabled = booleanEnv(env.EMAIL_RAW_ARCHIVE_ENABLED, false);
   const emailRawMalwareScanEnabled = booleanEnv(env.EMAIL_RAW_MALWARE_SCAN_ENABLED, false);
   const emailRawBackfillEnabled = booleanEnv(env.EMAIL_RAW_BACKFILL_ENABLED, false);
+  const technicalAdminSelfApprovalTestEnabled = booleanEnv(env.TECHNICAL_ADMIN_SELF_APPROVAL_TEST_ENABLED, false);
+  const technicalAdminSelfApprovalTestUntil = String(env.TECHNICAL_ADMIN_SELF_APPROVAL_TEST_UNTIL || '').trim();
+  if (technicalAdminSelfApprovalTestEnabled
+      && (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:Z|[+-]\d{2}:\d{2})$/.test(technicalAdminSelfApprovalTestUntil)
+        || !Number.isFinite(Date.parse(technicalAdminSelfApprovalTestUntil)))) {
+    throw new Error('TECHNICAL_ADMIN_SELF_APPROVAL_TEST_UNTIL must be a timezone-qualified ISO timestamp');
+  }
+  if (technicalAdminSelfApprovalTestEnabled
+      && Date.parse(technicalAdminSelfApprovalTestUntil) > Date.now() + 7 * 24 * 60 * 60 * 1000) {
+    throw new Error('TECHNICAL_ADMIN_SELF_APPROVAL_TEST_UNTIL must be within seven days');
+  }
 
   if (nodeEnv === 'production' && authenticatorMfaEnabled) {
     if (authenticatorMfaTrustDays !== 10) {
@@ -181,6 +192,10 @@ export function loadConfig(env = process.env) {
     },
     developmentWorkspace: {
       enabled: booleanEnv(env.DEVELOPMENT_WORKSPACE_ENABLED, false)
+    },
+    technicalAdminSelfApprovalTest: {
+      enabled: technicalAdminSelfApprovalTestEnabled,
+      until: technicalAdminSelfApprovalTestUntil || null
     },
     googleMail: {
       enabled: googleMailEnabled,

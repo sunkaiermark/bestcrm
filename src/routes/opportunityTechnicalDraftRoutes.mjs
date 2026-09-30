@@ -14,10 +14,18 @@ import { persistUploadedOpportunityAttachment } from '../services/attachmentInte
 import { attachmentContentDisposition } from '../utils/contentDisposition.mjs';
 import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
 import {
+  canRequestTechnicalDocumentCustomerRelease,
+  canReviewTechnicalDocumentCustomerRelease,
+  requestTechnicalDocumentCustomerRelease,
+  reviewTechnicalDocumentCustomerRelease,
+  revokeTechnicalDocumentCustomerRelease
+} from '../services/technicalDocumentCustomerReleaseService.mjs';
+import {
   assignOpportunityTechnicalDraftSection,
   canCreateOpportunityTechnicalDraft,
   canEditOpportunityTechnicalDraftSection,
   canReviewOpportunityTechnicalDraft,
+  isTechnicalAdminSelfApprovalTest,
   canViewOpportunityTechnicalDraft,
   createUploadedOpportunityTechnicalDraft,
   generateOpportunityTechnicalDraft,
@@ -31,6 +39,10 @@ import {
 } from '../services/opportunityTechnicalDraftService.mjs';
 
 function handleError(error, res, next) {
+  if (error?.message === 'Archived opportunities are read-only') {
+    res.status(409).send(res.locals.t('archivedOpportunityReadOnly'));
+    return;
+  }
   if (Number.isInteger(error?.statusCode)) {
     res.status(error.statusCode).send(error.message);
     return;
@@ -120,6 +132,7 @@ export function opportunityTechnicalDraftRoutes({
   opportunityResponsibilityRepository,
   technicalTemplateRepository,
   opportunityTechnicalDraftRepository,
+  technicalDocumentCustomerReleaseRepository,
   approvalSettingRepository,
   attachmentRepository,
   commercialQuoteRepository,
@@ -132,6 +145,7 @@ export function opportunityTechnicalDraftRoutes({
   workflowTransaction,
   uploadDir,
   maxUploadMb = 25,
+  technicalAdminSelfApprovalTest = {},
   workflowAction = applyWorkflowAction
 }) {
   const router = Router();
@@ -169,7 +183,8 @@ export function opportunityTechnicalDraftRoutes({
     technicalDocumentService,
     todoRepository,
     workflowEventRepository,
-    workflowTransaction
+    workflowTransaction,
+    technicalAdminSelfApprovalTest
   };
 
   const workflowRepositories = {
@@ -184,7 +199,8 @@ export function opportunityTechnicalDraftRoutes({
     technicalDocumentService,
     todoRepository,
     workflowEventRepository,
-    workflowTransaction
+    workflowTransaction,
+    technicalAdminSelfApprovalTest
   };
 
   router.use('/opportunities', requireLogin);
@@ -389,10 +405,20 @@ export function opportunityTechnicalDraftRoutes({
       const reviewAttachments = typeof opportunityTechnicalDraftRepository.listReviewAttachmentsByDraft === 'function'
         ? await opportunityTechnicalDraftRepository.listReviewAttachmentsByDraft(context.draft.id)
         : [];
+      const customerReleases = typeof technicalDocumentCustomerReleaseRepository?.listByDraft === 'function'
+        ? await technicalDocumentCustomerReleaseRepository.listByDraft(context.draft.id)
+        : [];
       res.render('opportunity-technical-drafts/detail', {
         ...context,
         clauses,
         reviewAttachments,
+        customerReleaseByDocumentId: new Map(customerReleases.map((release) => [release.technicalDocumentId, release])),
+        canRequestCustomerRelease: canRequestTechnicalDocumentCustomerRelease(
+          req.currentUser, context.opportunity, context.draft
+        ),
+        canReviewCustomerRelease: canReviewTechnicalDocumentCustomerRelease(
+          req.currentUser, context.opportunity, context.draft
+        ),
         canLead,
         canManageDraft: canLead && ['draft', 'ready'].includes(context.draft.status),
         canSubmitDraft: canLead
@@ -405,7 +431,11 @@ export function opportunityTechnicalDraftRoutes({
         canReviewDraft: canReviewOpportunityTechnicalDraft(
           req.currentUser,
           context.opportunity,
-          context.draft
+          context.draft,
+          technicalAdminSelfApprovalTest
+        ),
+        isTestSelfApproval: isTechnicalAdminSelfApprovalTest(
+          req.currentUser, context.draft, technicalAdminSelfApprovalTest
         ),
         editableSectionKeys,
         supportingEngineers: context.opportunity.teamMembers.filter((member) => (
@@ -592,7 +622,7 @@ export function opportunityTechnicalDraftRoutes({
     try {
       const context = await loadDraftContext(dependencies, req, res);
       if (!context) return;
-      if (!canReviewOpportunityTechnicalDraft(req.currentUser, context.opportunity, context.draft)) {
+      if (!canReviewOpportunityTechnicalDraft(req.currentUser, context.opportunity, context.draft, technicalAdminSelfApprovalTest)) {
         res.status(403).send('Forbidden');
         return;
       }
@@ -617,8 +647,15 @@ export function opportunityTechnicalDraftRoutes({
             res.status(400).send('Review files can only accompany a rejected uploaded technical proposal');
             return;
           }
-          const comment = action === ACTIONS.APPROVE_TECHNICAL_SOLUTION && context.draft.sourceKind === 'uploaded_file'
+          const isTestSelfApproval = action === ACTIONS.APPROVE_TECHNICAL_SOLUTION
+            && isTechnicalAdminSelfApprovalTest(req.currentUser, context.draft, technicalAdminSelfApprovalTest);
+          const comment = action === ACTIONS.APPROVE_TECHNICAL_SOLUTION
+            && context.draft.sourceKind === 'uploaded_file' && !isTestSelfApproval
             ? '' : String(req.body.comment || '').trim();
+          if (isTestSelfApproval && (req.body.testSelfApprovalConfirmed !== 'on' || !comment)) {
+            res.status(400).send('Test self-approval requires confirmation and a recorded reason');
+            return;
+          }
           if (action === ACTIONS.REJECT_TECHNICAL_SOLUTION && !comment && !files.length) {
             res.status(400).send('A text reason or review file is required');
             return;
@@ -655,7 +692,8 @@ export function opportunityTechnicalDraftRoutes({
               actor: req.currentUser,
               opportunityId: context.opportunity.id,
               action,
-              payload: { comment, reviewDraftId: context.draft.id },
+              payload: { comment, reviewDraftId: context.draft.id,
+                testSelfApprovalConfirmed: req.body.testSelfApprovalConfirmed },
               repositories
             });
           };
@@ -703,6 +741,57 @@ export function opportunityTechnicalDraftRoutes({
         res.status(error.statusCode).send(res.locals.messageLabel(error.message));
         return;
       }
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/opportunities/:opportunityId/technical-drafts/:draftId/documents/:documentId/customer-release/request', async (req, res, next) => {
+    try {
+      const context = await loadDraftContext(dependencies, req, res);
+      if (!context) return;
+      await requestTechnicalDocumentCustomerRelease(
+        technicalDocumentCustomerReleaseRepository,
+        req.currentUser,
+        context.opportunity,
+        context.draft,
+        { documentId: req.params.documentId, purpose: req.body.purpose }
+      );
+      res.redirect(`/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}#customer-file-release`);
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/opportunities/:opportunityId/technical-drafts/:draftId/documents/:documentId/customer-release/review', async (req, res, next) => {
+    try {
+      const context = await loadDraftContext(dependencies, req, res);
+      if (!context) return;
+      await reviewTechnicalDocumentCustomerRelease(
+        technicalDocumentCustomerReleaseRepository,
+        req.currentUser,
+        context.opportunity,
+        context.draft,
+        { documentId: req.params.documentId, decision: req.body.decision, comment: req.body.comment }
+      );
+      res.redirect(`/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}#customer-file-release`);
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/opportunities/:opportunityId/technical-drafts/:draftId/documents/:documentId/customer-release/revoke', async (req, res, next) => {
+    try {
+      const context = await loadDraftContext(dependencies, req, res);
+      if (!context) return;
+      await revokeTechnicalDocumentCustomerRelease(
+        technicalDocumentCustomerReleaseRepository,
+        req.currentUser,
+        context.opportunity,
+        context.draft,
+        { documentId: req.params.documentId, reason: req.body.reason }
+      );
+      res.redirect(`/opportunities/${context.opportunity.id}/technical-drafts/${context.draft.id}#customer-file-release`);
+    } catch (error) {
       handleError(error, res, next);
     }
   });

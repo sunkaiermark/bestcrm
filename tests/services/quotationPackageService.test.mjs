@@ -54,6 +54,7 @@ test('sales owner creates a package from approved components and freezes attachm
   }, sales, opportunity, {
     technicalSolutionVersionId: 41,
     commercialQuoteId: 31,
+    technicalDocumentIds: [61],
     currency: 'usd',
     deliveryPeriod: '16 weeks'
   });
@@ -61,6 +62,32 @@ test('sales owner creates a package from approved components and freezes attachm
   assert.equal(calls[0][1].totalPrice, 120000);
   assert.deepEqual(calls[0][1].commercialLineItems, approvedContext().commercialQuote.items);
   assert.equal(calls[2][1].sha256, '9f86d081884c7d659a2feaa0c55ad015a3bf4f1b2b0b822cd15d6c15b0f00a08');
+});
+
+test('technical files are optional and never silently added to a quotation package', async () => {
+  const snapshots = [];
+  const repository = {
+    async listByOpportunity() { return []; },
+    async getCreationContext() { return approvedContext(); },
+    async createDraft(input) { return draft(input); },
+    async addAttachmentSnapshot(input) { snapshots.push(input); },
+    async getPackageDetail() { return draft({ attachments: snapshots }); }
+  };
+  await createQuotationPackageDraft({
+    quotationPackageRepository: repository,
+    quotationPackageFileReader: async () => Buffer.from('test')
+  }, sales, opportunity, {
+    technicalSolutionVersionId: 41, commercialQuoteId: 31,
+    currency: 'USD', deliveryPeriod: '16 weeks'
+  });
+  assert.deepEqual(snapshots.map((item) => item.sourceType), ['commercial_quote_attachment']);
+  await assert.rejects(
+    () => createQuotationPackageDraft({ quotationPackageRepository: repository }, sales, opportunity, {
+      technicalSolutionVersionId: 41, commercialQuoteId: 31,
+      technicalDocumentIds: [999], currency: 'USD', deliveryPeriod: '16 weeks'
+    }),
+    (error) => error.statusCode === 409 && /not released/.test(error.message)
+  );
 });
 
 test('a package cannot be built from unapproved component versions', async () => {

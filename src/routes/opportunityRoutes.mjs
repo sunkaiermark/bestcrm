@@ -41,7 +41,8 @@ import {
 import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
 import {
   canCreateOpportunityTechnicalDraft,
-  canReviewOpportunityTechnicalDraft
+  canReviewOpportunityTechnicalDraft,
+  isTechnicalAdminSelfApprovalTest
 } from '../services/opportunityTechnicalDraftService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import {
@@ -767,7 +768,8 @@ export function opportunityRoutes({
   todoRepository,
   workflowTransaction,
   uploadDir = './var/uploads',
-  maxUploadMb = 3072
+  maxUploadMb = 3072,
+  technicalAdminSelfApprovalTest = {}
 }) {
   const router = Router();
   const upload = createUploadMiddleware(uploadDir, maxUploadMb);
@@ -1183,8 +1185,9 @@ export function opportunityRoutes({
           && opportunity.status === 'technical_solution_pending'
           && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
         canReviewTechnicalDraft: activeTechnicalDraft
-          ? canReviewOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam, activeTechnicalDraft)
+          ? canReviewOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam, activeTechnicalDraft, technicalAdminSelfApprovalTest)
           : false,
+        isTestSelfApproval: isTechnicalAdminSelfApprovalTest(req.currentUser, activeTechnicalDraft, technicalAdminSelfApprovalTest),
         versionedTechnicalDraftsEnabled: opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true,
         currentUserId: req.currentUser.id,
         currentUserIsSupportingEngineer: isSupportingEngineer(req.currentUser, {
@@ -1666,7 +1669,8 @@ export function opportunityRoutes({
           contractApprovalRepository,
           approvalSettingRepository,
           opportunityResponsibilityRepository,
-          workflowTransaction
+          workflowTransaction,
+          technicalAdminSelfApprovalTest
         }
       });
       res.redirect(`/opportunities/${req.params.id}`);

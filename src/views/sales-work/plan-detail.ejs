@@ -1,0 +1,39 @@
+<%- include('../partials/app-start', { title: `${plan.subject} - BESTCRM`, activeNav: 'sales-work' }) %>
+        <p class="breadcrumb"><a href="/workbench"><%= t('workbench') %></a> / <a href="/sales-work/plans"><%= t('workPlans') %></a></p>
+        <header class="page-header">
+          <div>
+            <h1><%= plan.subject %></h1>
+            <span class="status"><%= t(`salesPlanStatus.${plan.status}`) %></span>
+          </div>
+          <% if (canMaintain) { %><a class="secondary-action" href="/sales-work/plans/<%= plan.id %>/edit"><%= t('edit') %></a><% } %>
+        </header>
+
+        <section class="detail-grid">
+          <div><span><%= t('planDate') %></span><strong><%= plan.planDate || '—' %></strong></div>
+          <div><span><%= t('salesperson') %></span><strong><%= plan.salespersonDisplayName || '—' %></strong></div>
+          <div><span><%= t('customer') %></span><strong><%= plan.customerName || '—' %></strong></div>
+          <div><span><%= t('contacts') %></span><strong><%= plan.contactCode ? `${plan.contactCode} · ` : '' %><%= plan.contactName || '—' %></strong></div>
+          <div><span><%= t('opportunity') %></span><strong><% if (plan.opportunityId) { %><a href="/opportunities/<%= plan.opportunityId %>"><%= plan.opportunityNo %> - <%= plan.opportunityTitle %></a><% } else { %>—<% } %></strong></div>
+          <div><span><%= t('activityType') %></span><strong><%= t(`salesActivity.${plan.activityType}`) %></strong></div>
+          <div><span><%= t('objective') %></span><strong><%= plan.objective || '—' %></strong></div>
+          <div><span><%= t('plannedAction') %></span><strong><%= plan.plannedAction || '—' %></strong></div>
+          <div><span><%= t('nextStep') %></span><strong><%= plan.nextStep || '—' %></strong></div>
+          <% if (plan.resultSummary) { %><div><span><%= t('resultSummary') %></span><strong><%= plan.resultSummary %></strong></div><% } %>
+        </section>
+
+        <% if (canMaintain && plan.status === 'planned') { %>
+          <div class="work-plan-detail-actions">
+            <form class="form-panel" method="post" action="/sales-work/plans/<%= plan.id %>/complete">
+              <%- csrfField() %>
+              <label><%= t('resultSummary') %><textarea name="resultSummary"></textarea></label>
+              <label><%= t('nextStep') %><textarea name="nextStep"><%= plan.nextStep || '' %></textarea></label>
+              <button type="submit"><%= t('complete') %></button>
+            </form>
+            <form class="form-panel" method="post" action="/sales-work/plans/<%= plan.id %>/cancel">
+              <%- csrfField() %>
+              <label><%= t('reason') %><textarea name="resultSummary"></textarea></label>
+              <button class="danger-action" type="submit"><%= t('cancel') %></button>
+            </form>
+          </div>
+        <% } %>
+<%- include('../partials/app-end') %>

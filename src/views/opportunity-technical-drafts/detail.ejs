@@ -27,7 +27,7 @@
             <h1><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %></h1>
             <div class="muted"><%= draft.sourceKind === 'uploaded_file' ? draft.templateNameSnapshot : `${draft.templateCodeSnapshot} · TPL-R${draft.templateRevisionNoSnapshot}` %></div>
           </div>
-          <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span>
+          <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %></span>
         </header>
 
         <% if (draft.sourceKind === 'uploaded_file') { %>
@@ -126,6 +126,55 @@
             <p class="muted"><%= t('documentChecksumNotice') %></p>
             <div class="list-body"><table class="list-table content-fit-table"><thead><tr><th><%= t('document') %></th><th><%= t('format') %></th><th><%= t('checksumSha256') %></th><th><%= t('generatedAt') %></th><th><%= t('actions') %></th></tr></thead><tbody>
               <% for (const document of draft.documents) { %><tr><td><strong><%= document.documentNo %></strong><br><%= document.originalName %></td><td><%= document.format.toUpperCase() %></td><td><code><%= document.sha256 %></code></td><td><%= document.generatedAt || '' %></td><td><a href="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/download"><%= t('download') %></a></td></tr><% } %>
+            </tbody></table></div>
+          </section>
+          <section class="detail-section" id="customer-file-release">
+            <h2><%= language === 'zh' ? '技术文件对客放行' : 'Technical files for customer release' %></h2>
+            <p class="muted"><%= language === 'zh' ? '技术批准不等于对客放行。每个文件版本默认仅供内部使用；新版本须重新申请。' : 'Technical approval does not authorize customer delivery. Each file version is internal-only by default; a new version needs a new release.' %></p>
+            <div class="list-body"><table class="list-table content-fit-table"><thead><tr>
+              <th><%= language === 'zh' ? '文件版本' : 'File version' %></th>
+              <th><%= language === 'zh' ? '对客状态' : 'Customer-release status' %></th>
+              <th><%= t('actions') %></th>
+            </tr></thead><tbody>
+              <% for (const document of draft.documents) { const release = customerReleaseByDocumentId.get(document.id); %>
+                <tr>
+                  <td><strong><%= document.originalName %></strong><br><small><%= document.documentNo %> · SHA-256 <%= document.sha256 %></small></td>
+                  <td>
+                    <strong><%= release ? (language === 'zh' ? ({ pending: '待对客审批', approved: '已批准对客使用', rejected: '已驳回', revoked: '已撤销' }[release.status] || release.status) : ({ pending: 'Pending customer release', approved: 'Released for customer use', rejected: 'Rejected', revoked: 'Revoked' }[release.status] || release.status)) : (language === 'zh' ? '仅内部使用' : 'Internal only') %></strong>
+                    <% if (release?.purpose) { %><br><small><%= release.purpose %></small><% } %>
+                    <% if (release?.reviewComment) { %><br><small><%= release.reviewComment %></small><% } %>
+                    <% if (release?.revocationReason) { %><br><small><%= release.revocationReason %></small><% } %>
+                  </td>
+                  <td>
+                    <% if (!release && canRequestCustomerRelease) { %>
+                      <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/customer-release/request">
+                        <%- csrfField() %>
+                        <label><%= language === 'zh' ? '对客用途' : 'Customer-facing purpose' %><input name="purpose" maxlength="1000" required></label>
+                        <button type="submit"><%= language === 'zh' ? '申请对客放行' : 'Request release' %></button>
+                      </form>
+                    <% } %>
+                    <% if (release?.status === 'pending' && canReviewCustomerRelease && Number(release.requestedBy) !== Number(currentUser.id)) { %>
+                      <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/customer-release/review">
+                        <%- csrfField() %><input type="hidden" name="decision" value="approved">
+                        <label><%= language === 'zh' ? '审批备注（可选）' : 'Review note (optional)' %><input name="comment" maxlength="1000"></label>
+                        <button type="submit"><%= language === 'zh' ? '批准对客使用' : 'Approve release' %></button>
+                      </form>
+                      <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/customer-release/review">
+                        <%- csrfField() %><input type="hidden" name="decision" value="rejected">
+                        <label><%= language === 'zh' ? '驳回原因' : 'Rejection reason' %><input name="comment" maxlength="1000" required></label>
+                        <button class="secondary-action" type="submit"><%= language === 'zh' ? '驳回' : 'Reject' %></button>
+                      </form>
+                    <% } %>
+                    <% if (release?.status === 'approved' && canReviewCustomerRelease) { %>
+                      <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/customer-release/revoke">
+                        <%- csrfField() %>
+                        <label><%= language === 'zh' ? '撤销原因' : 'Revocation reason' %><input name="reason" maxlength="1000" required></label>
+                        <button class="secondary-action" type="submit"><%= language === 'zh' ? '撤销放行' : 'Revoke release' %></button>
+                      </form>
+                    <% } %>
+                  </td>
+                </tr>
+              <% } %>
             </tbody></table></div>
           </section>
         <% } %>

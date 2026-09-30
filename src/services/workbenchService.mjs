@@ -43,7 +43,7 @@ function mapSalesWorkPlan(plan) {
     kpiCode: 'complete_sales_work_plan',
     kpiTarget: '',
     createdAt: plan.createdAt,
-    actionUrl: `/sales-work/plans/${plan.id}/edit`
+    actionUrl: `/sales-work/plans/${plan.id}`
   };
 }
 
@@ -117,7 +117,20 @@ export async function updateWorkItemEstimation(workbenchRepository, user, workIt
   return { ...workItem, estimatedHours, workloadLevel };
 }
 
-export async function getWorkbenchSummary(input, user) {
+export async function listWorkbenchActionItems(workbenchRepository, user, { workLimit = 20, supplementaryLimit = 8 } = {}) {
+  const [workflowWorkItems, opportunityInitiationTodos, projectExecutionConfirmationItems] = await Promise.all([
+    workbenchRepository.listOpenWorkItems(user.id, workLimit),
+    workbenchRepository.listOpportunityInitiationTodos(user.id, supplementaryLimit),
+    workbenchRepository.listProjectExecutionConfirmationItems(user.id, supplementaryLimit)
+  ]);
+  return mergeCurrentWorkItems([
+    ...workflowWorkItems,
+    ...opportunityInitiationTodos,
+    ...projectExecutionConfirmationItems
+  ], workLimit);
+}
+
+export async function getWorkbenchSummary(input, user, { workLimit = 20, supplementaryLimit = 8 } = {}) {
   const {
     workbenchRepository,
     salesWorkRepository,
@@ -129,18 +142,13 @@ export async function getWorkbenchSummary(input, user) {
     ROLES.SALES_MANAGER,
     ROLES.SALESPERSON
   ].some((role) => hasRole(user, role));
-  const workLimit = 20;
   const [
-    workflowWorkItems,
-    opportunityInitiationTodos,
-    projectExecutionConfirmationItems,
+    actionItems,
     stateCounts,
     salesWorkPlans,
     unreadNotificationCount
   ] = await Promise.all([
-    workbenchRepository.listOpenWorkItems(user.id, workLimit),
-    workbenchRepository.listOpportunityInitiationTodos(user.id, 8),
-    workbenchRepository.listProjectExecutionConfirmationItems(user.id, 8),
+    listWorkbenchActionItems(workbenchRepository, user, { workLimit, supplementaryLimit }),
     workbenchRepository.countByWorkflowState(user.id, isAdministrator),
     canUseSalesPlans
       ? salesWorkRepository.listPlans({ salespersonUserId: user.id, status: 'planned' })
@@ -149,11 +157,7 @@ export async function getWorkbenchSummary(input, user) {
   ]);
 
   return {
-    actionItems: mergeCurrentWorkItems([
-      ...workflowWorkItems,
-      ...opportunityInitiationTodos,
-      ...projectExecutionConfirmationItems
-    ], workLimit),
+    actionItems,
     workPlans: mergeCurrentWorkItems(salesWorkPlans.map(mapSalesWorkPlan), 20),
     unreadNotificationCount,
     canAccessSalesPlans: canUseSalesPlans,

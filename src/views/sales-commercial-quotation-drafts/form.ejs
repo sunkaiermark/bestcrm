@@ -1,0 +1,72 @@
+<%- include('../partials/app-start', { title: (language === 'zh' ? '商务报价内部草稿' : 'Internal Commercial Quotation Draft') + ' - BESTCRM', activeNav: 'opportunities' }) %>
+<style>
+  .sales-quote-draft { max-width: 1240px; }
+  .sales-quote-draft .draft-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
+  .sales-quote-draft .draft-facts div { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
+  .sales-quote-draft .draft-facts dt { color: var(--muted); }
+  .sales-quote-draft .draft-facts dd { margin: 0; overflow-wrap: anywhere; }
+  .sales-quote-draft .draft-row { display: grid; grid-template-columns: 50px minmax(240px, 1fr) 110px 110px 150px 70px; gap: 10px; align-items: start; margin-bottom: 10px; }
+  .sales-quote-draft .draft-row > label { display: grid; gap: 5px; min-width: 0; }
+  .sales-quote-draft .draft-row input, .sales-quote-draft .draft-row textarea { width: 100%; }
+  .sales-quote-draft .draft-row textarea { min-height: 48px; resize: vertical; }
+  .sales-quote-draft .draft-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
+  @media (max-width: 850px) {
+    .sales-quote-draft .draft-facts { grid-template-columns: 1fr; }
+    .sales-quote-draft .draft-row { grid-template-columns: 40px minmax(0, 1fr) 100px 100px; }
+  }
+  @media (max-width: 560px) { .sales-quote-draft .draft-row { grid-template-columns: 40px minmax(0, 1fr); } }
+</style>
+<% const zh = language === 'zh'; const selectedSourceId = draft?.sourceAttachmentId || sources[0]?.attachmentId; const rows = draft?.lineItems?.length ? draft.lineItems : [{ description: '', quantity: '', unit: '', unitPrice: '' }]; %>
+<div class="sales-quote-draft">
+  <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %> · <%= opportunity.title %></a></p>
+  <header class="page-header"><div><h1><%= zh ? '商务报价内部草稿' : 'Internal Commercial Quotation Draft' %></h1></div></header>
+  <section class="form-panel">
+    <p><strong><%= zh ? '仅供内部编制' : 'Internal preparation only' %></strong> · <%= zh ? '保存不会提交审批、生成对客 PDF、电子签署或发送给客户。正式签发仍须技术批准。' : 'Saving does not submit for review, create a customer PDF, sign, or send. Technical approval remains required for formal issuance.' %></p>
+    <% if (saved) { %><p role="status"><%= zh ? '草稿已保存。' : 'Draft saved.' %></p><% } %>
+    <% if (sourceChanged) { %><p role="alert"><%= zh ? '技术依据文件已有更新或不可用；保存前请重新确认所选版本。' : 'The technical source has a newer revision or is unavailable; reconfirm the exact version before saving.' %></p><% } %>
+    <dl class="draft-facts">
+      <div><dt>Ref.</dt><dd><%= opportunity.opportunityNo %></dd></div>
+      <div><dt><%= zh ? '草稿版本' : 'Draft revision' %></dt><dd>D<%= draft?.draftRevisionNo || 1 %></dd></div>
+      <div><dt><%= zh ? '项目' : 'Project' %></dt><dd><%= opportunity.title %></dd></div>
+      <div><dt><%= zh ? '客户' : 'Customer' %></dt><dd><%= opportunity.customerName %></dd></div>
+      <div><dt><%= zh ? '联系人' : 'Contact' %></dt><dd><%= opportunity.primaryContactName || '—' %></dd></div>
+      <div><dt><%= zh ? '语言' : 'Language' %></dt><dd><%= draft ? (draft.language === 'zh' ? '中文' : 'English') : (zh ? '中文' : 'English') %></dd></div>
+    </dl>
+  </section>
+  <% if (!sources.length) { %>
+    <section class="form-panel"><p><%= zh ? '工程师尚未上传可用技术文件，暂不能建立商务报价草稿。' : 'No active uploaded technical file is available yet. A sales draft cannot be created.' %></p></section>
+  <% } else { %>
+    <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/commercial-quotation-draft">
+      <%- csrfField() %>
+      <input type="hidden" name="expectedRevisionNo" value="<%= draft?.draftRevisionNo || 0 %>">
+      <label><%= zh ? '工程师上传的技术报价依据文件（内部引用，不对客发送）' : 'Engineer-uploaded technical source (internal reference only)' %>
+        <select name="sourceAttachmentId" required <%= canEdit ? '' : 'disabled' %>>
+          <% for (const source of sources) { %>
+            <option value="<%= source.attachmentId %>" <%= source.attachmentId === selectedSourceId ? 'selected' : '' %>>D<%= source.technicalDraftRevisionNo %> · <%= source.originalName %> · <%= source.sha256.slice(0, 12) %></option>
+          <% } %>
+        </select>
+      </label>
+      <% if (canEdit) { %><label class="checkbox-row"><input type="checkbox" name="confirmSourceVersion" required><span><%= zh ? '我已核对并确认所选技术文件的精确版本' : 'I checked and confirm the exact selected technical file version' %></span></label><% } %>
+      <label><%= zh ? '币种代码（内部草稿）' : 'Currency code (internal draft)' %>
+        <input name="currency" maxlength="3" pattern="[A-Za-z]{3}" value="<%= draft?.currency || '' %>" placeholder="USD" <%= canEdit ? '' : 'readonly' %>>
+      </label>
+      <h2><%= zh ? '产品／服务明细' : 'Product / service lines' %></h2>
+      <div id="sales-quote-draft-rows">
+        <% for (const [index, row] of rows.entries()) { %>
+          <div class="draft-row">
+            <span><%= index + 1 %></span>
+            <label><%= zh ? '说明' : 'Description' %><textarea name="description" maxlength="2000" <%= canEdit ? '' : 'readonly' %>><%= row.description %></textarea></label>
+            <label><%= zh ? '数量' : 'Qty' %><input name="quantity" inputmode="decimal" value="<%= row.quantity %>" <%= canEdit ? '' : 'readonly' %>></label>
+            <label><%= zh ? '单位' : 'Unit' %><input name="unit" maxlength="40" value="<%= row.unit %>" <%= canEdit ? '' : 'readonly' %>></label>
+            <label><%= zh ? '单价' : 'Unit price' %><input name="unitPrice" inputmode="decimal" value="<%= row.unitPrice %>" <%= canEdit ? '' : 'readonly' %>></label>
+            <% if (canEdit) { %><button type="button" class="secondary-action" data-remove-quote-row><%= zh ? '移除' : 'Remove' %></button><% } %>
+          </div>
+        <% } %>
+      </div>
+      <% if (canEdit) { %><div class="draft-actions"><button type="button" class="secondary-action" data-add-quote-row><%= zh ? '添加行' : 'Add row' %></button><button type="submit"><%= zh ? '保存草稿' : 'Save draft' %></button></div><% } %>
+      <p class="muted"><%= zh ? '付款、交货等对客条款待公司预设批准后才能正式签发；此处仅保存内部产品明细。' : 'Customer-facing payment and delivery terms require approved company presets before formal issuance. This page saves internal line items only.' %></p>
+    </form>
+  <% } %>
+</div>
+<script src="/assets/sales-commercial-quotation-draft.js" defer></script>
+<%- include('../partials/app-end') %>

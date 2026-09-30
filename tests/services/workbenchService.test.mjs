@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
   getWorkbenchSummary,
+  listWorkbenchActionItems,
   loadWorkItemEstimation,
   updateWorkItemEstimation
 } from '../../src/services/workbenchService.mjs';
@@ -70,6 +71,36 @@ test('getWorkbenchSummary gathers workbench panels for a normal user', async () 
   ]);
 });
 
+test('action overview loads a larger personal queue without querying unrelated panels', async () => {
+  const calls = [];
+  const workbenchRepository = {
+    async listOpenWorkItems(userId, limit) {
+      calls.push(['workItems', userId, limit]);
+      return [{ id: 3, opportunityId: 10, sourceKey: 'review', title: 'Review quote' }];
+    },
+    async listOpportunityInitiationTodos(userId, limit) {
+      calls.push(['initiationTodos', userId, limit]);
+      return [];
+    },
+    async listProjectExecutionConfirmationItems(userId, limit) {
+      calls.push(['executionTodos', userId, limit]);
+      return [];
+    }
+  };
+
+  const items = await listWorkbenchActionItems(workbenchRepository, { id: 7 }, {
+    workLimit: 200,
+    supplementaryLimit: 200
+  });
+
+  assert.equal(items.length, 1);
+  assert.deepEqual(calls, [
+    ['workItems', 7, 200],
+    ['initiationTodos', 7, 200],
+    ['executionTodos', 7, 200]
+  ]);
+});
+
 test('getWorkbenchSummary merges own sales plans and keeps only the unread notification count', async () => {
   const repository = {
     async listOpenWorkItems() { return []; },
@@ -99,7 +130,7 @@ test('getWorkbenchSummary merges own sales plans and keeps only the unread notif
 
   assert.equal(summary.workPlans.length, 1);
   assert.equal(summary.workPlans[0].title, 'Call customer');
-  assert.equal(summary.workPlans[0].actionUrl, '/sales-work/plans/4/edit');
+  assert.equal(summary.workPlans[0].actionUrl, '/sales-work/plans/4');
   assert.equal(summary.unreadNotificationCount, 2);
   assert.equal(summary.canAccessSalesPlans, true);
 });

@@ -1,67 +1,26 @@
 <%- include('../partials/app-start', { title: `${t('workPlans')} - BESTCRM`, activeNav: 'sales-work' }) %>
-        <% const sentenceCase = (value) => {
-          const text = String(value || '');
-          return text ? `${text.charAt(0).toLocaleUpperCase()}${text.slice(1).toLocaleLowerCase()}` : text;
-        }; %>
+        <p class="breadcrumb"><a href="/workbench"><%= t('workbench') %></a> / <%= t('workPlans') %></p>
         <header class="page-header">
-          <div>
-            <p class="breadcrumb"><%= t('salesWork') %></p>
-            <h1><%= t('workPlans') %></h1>
-          </div>
+          <h1><%= t('workPlans') %></h1>
           <a class="quick-action" href="/sales-work/plans/new"><%= t('newPlan') %></a>
         </header>
+        <%- include('../workbench/_shortcut-nav', { canAccessSalesPlans: true, activeShortcut: 'plan' }) %>
 
-        <section class="list-section">
-          <div class="list-body">
-            <table class="list-table content-fit-table sales-work-plan-table">
-              <thead>
-                <tr>
-                  <th><%= sentenceCase(t('planDate')) %></th>
-                  <th><%= sentenceCase(t('salesperson')) %></th>
-                  <th><%= sentenceCase(t('customer')) %></th>
-                  <th><%= sentenceCase(t('contacts')) %></th>
-                  <th><%= sentenceCase(t('opportunity')) %></th>
-                  <th><%= sentenceCase(t('activityType')) %></th>
-                  <th><%= sentenceCase(t('subject')) %></th>
-                  <th><%= sentenceCase(t('status')) %></th>
-                  <th><%= sentenceCase(t('nextStep')) %></th>
-                  <th><%= sentenceCase(t('actions')) %></th>
-                </tr>
-              </thead>
-              <tbody>
-                <% for (const plan of plans) { %>
-                  <tr>
-                    <td><%= plan.planDate || '' %></td>
-                    <td><%= plan.salespersonDisplayName || '' %></td>
-                    <td><%= plan.customerName || '' %></td>
-                    <td><%= plan.contactCode ? `${plan.contactCode} · ` : '' %><%= plan.contactName || '' %></td>
-                    <td><%= plan.opportunityNo ? `${plan.opportunityNo} - ${plan.opportunityTitle || ''}` : '' %></td>
-                    <td><%= t(`salesActivity.${plan.activityType}`) %></td>
-                    <td><%= plan.subject %></td>
-                    <td><span class="status"><%= t(`salesPlanStatus.${plan.status}`) %></span></td>
-                    <td><%= plan.nextStep || '' %></td>
-                    <td class="actions-cell">
-                      <div class="inline-actions system-actions">
-                        <a class="secondary-action" href="/sales-work/plans/<%= plan.id %>/edit"><%= t('edit') %></a>
-                        <% if (plan.status === 'planned') { %>
-                          <form method="post" action="/sales-work/plans/<%= plan.id %>/complete">
-                            <%- csrfField() %>
-                            <button class="secondary-action" type="submit"><%= t('complete') %></button>
-                          </form>
-                          <form method="post" action="/sales-work/plans/<%= plan.id %>/cancel">
-                            <%- csrfField() %>
-                            <button class="danger-action" type="submit"><%= t('cancel') %></button>
-                          </form>
-                        <% } %>
-                      </div>
-                    </td>
-                  </tr>
-                <% } %>
-              </tbody>
-            </table>
-            <% if (!plans.length) { %>
-              <p class="empty"><%= t('noSalesWorkPlans') %></p>
-            <% } %>
-          </div>
+        <section class="work-plan-list" aria-label="<%= t('workPlans') %>">
+          <% if (!plans.length) { %><p class="list-section empty"><%= t('noSalesWorkPlans') %></p><% } %>
+          <% for (const plan of plans) { %>
+            <article class="work-plan-row">
+              <div class="work-plan-row-main">
+                <div class="work-plan-row-eyebrow">
+                  <time><%= plan.planDate || '—' %></time>
+                  <span class="status"><%= t(`salesPlanStatus.${plan.status}`) %></span>
+                </div>
+                <h2><a href="/sales-work/plans/<%= plan.id %>"><%= plan.subject %></a></h2>
+                <p class="muted"><%= t(`salesActivity.${plan.activityType}`) %><% if (plan.customerName) { %> · <%= plan.customerName %><% } %><% if (plan.opportunityNo) { %> · <%= plan.opportunityNo %> - <%= plan.opportunityTitle || '' %><% } %></p>
+                <% if (plan.objective) { %><p><%= plan.objective %></p><% } %>
+              </div>
+              <a class="secondary-action work-plan-row-open" href="/sales-work/plans/<%= plan.id %>"><%= t('view') %> <span aria-hidden="true">→</span></a>
+            </article>
+          <% } %>
         </section>
 <%- include('../partials/app-end') %>

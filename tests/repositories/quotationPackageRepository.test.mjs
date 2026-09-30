@@ -110,6 +110,10 @@ test('customer email lists only approved technical and commercial opportunity fi
   ]);
   assert.deepEqual(choices.map((item) => item.category), ['technical', 'commercial']);
   assert.match(target.queries[0].sql, /draft\.status = 'approved'/);
+  assert.match(target.queries[0].sql, /NOT draft\.self_approval_test/);
+  assert.match(target.queries[0].sql, /JOIN technical_document_customer_releases rel/);
+  assert.match(target.queries[0].sql, /rel\.status = 'approved'/);
+  assert.match(target.queries[0].sql, /rel\.customer_id = opportunity\.customer_id/);
   assert.match(target.queries[0].sql, /material_version\.status = 'approved'/);
   assert.match(target.queries[0].sql, /quote\.status = 'approved'/);
   assert.match(target.queries[0].sql, /attachment\.retired_at IS NULL/);
@@ -145,6 +149,9 @@ test('customer email reloads selected approved files inside the current opportun
   assert.match(target.queries[0].sql, /document\.id = ANY\(\$2::bigint\[\]\)/);
   assert.match(target.queries[0].sql, /attachment\.id = ANY\(\$3::bigint\[\]\)/);
   assert.match(target.queries[0].sql, /draft\.opportunity_id = \$1/);
+  assert.match(target.queries[0].sql, /NOT draft\.self_approval_test/);
+  assert.match(target.queries[0].sql, /rel\.file_sha256 = document\.sha256/);
+  assert.match(target.queries[0].sql, /rel\.status = 'approved'/);
   assert.match(target.queries[0].sql, /material_version\.opportunity_id = \$1/);
   assert.deepEqual(target.queries[0].params, [20, [61], [71]]);
 });
@@ -177,6 +184,20 @@ test('new package creation selects only active hash-bound commercial attachments
   assert.equal(context.commercialAttachments[0].sha256, 'b'.repeat(64));
   assert.match(target.queries[2].sql, /a\.sha256/);
   assert.match(target.queries[2].sql, /a\.retired_at IS NULL/);
+  assert.match(target.queries[0].sql, /NOT ts\.self_approval_test/);
+  assert.match(target.queries[1].sql, /JOIN technical_document_customer_releases rel/);
+  assert.match(target.queries[1].sql, /rel\.status = 'approved'/);
+});
+
+test('send-time package and archived-mail checks reject technical files lacking a current release', async () => {
+  const target = fakeTarget([{ rows: [{ has_unreleased: true }] }, { rows: [{ has_unreleased: false }] }]);
+  const repository = createQuotationPackageRepository(target);
+  assert.equal(await repository.hasUnreleasedTechnicalAttachments(51), true);
+  assert.equal(await repository.hasUnreleasedArchivedTechnicalAttachments(81, 20), false);
+  assert.match(target.queries[0].sql, /rel\.id IS NULL/);
+  assert.match(target.queries[0].sql, /rel\.customer_id = opportunity\.customer_id/);
+  assert.match(target.queries[1].sql, /attachment\.source_technical_document_id IS NOT NULL/);
+  assert.match(target.queries[1].sql, /rel\.file_sha256 = attachment\.sha256/);
 });
 
 test('historical package mapping retains frozen legacy workspace and commercial-version bindings', async () => {

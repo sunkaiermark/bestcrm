@@ -161,6 +161,9 @@ function createTechnicalRepositories(state) {
           ? state.technicalDraft : null;
       },
       async submitForApproval() { state.technicalDraft.status = 'pending'; state.technicalDraft.submittedBy = leadEngineer.id; return state.technicalDraft; },
+      async findLatestPendingByOpportunity() {
+        return state.technicalDraft.status === 'pending' ? state.technicalDraft : null;
+      },
       async approveLatestPending() {
         if (state.technicalDraft.status !== 'pending') return null;
         Object.assign(state.technicalDraft, { status: 'approved', formalVersionNo: 1, formalVersionLabel: 'TS-V1' });
@@ -292,7 +295,9 @@ function createQuotationRepository(state) {
         const content = item.sourceType === 'technical_solution_document' ? technicalContent : commercialContent;
         return { ...item, content };
       });
-    }
+    },
+    async hasUnreleasedTechnicalAttachments() { return false; },
+    async hasUnreleasedArchivedTechnicalAttachments() { return false; }
   };
 }
 
@@ -391,7 +396,8 @@ test('release candidate completes lead-to-inquiry-to-engineering-to-QP-V2-email-
     };
     const packageInput = {
       technicalSolutionVersionId: 71, commercialQuoteId: 81, currency: 'USD',
-      deliveryPeriod: '16 weeks', inclusions: 'Mixer and controls', exclusions: 'Civil works'
+      technicalDocumentIds: [72], deliveryPeriod: '16 weeks',
+      inclusions: 'Mixer and controls', exclusions: 'Civil works'
     };
     const q1Draft = await createQuotationPackageDraft(quotationDependencies, sales, state.opportunity, packageInput);
     const q1Pending = await submitQuotationPackage(quotationPackageRepository, sales, state.opportunity, q1Draft, 'Submit V1');

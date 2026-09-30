@@ -1,0 +1,12 @@
+<nav class="workbench-shortcuts" aria-label="<%= t('workbench') %>">
+  <a class="workbench-shortcut workbench-shortcut--action" href="/workbench/actions"<% if (activeShortcut === 'action') { %> aria-current="page"<% } %>>
+    <span class="workbench-shortcut-label"><%= t('needsMyAction') %></span>
+    <span class="workbench-shortcut-link"><%= t('view') %> <span aria-hidden="true">→</span></span>
+  </a>
+  <% if (canAccessSalesPlans) { %>
+    <a class="workbench-shortcut workbench-shortcut--plan" href="/sales-work/plans"<% if (activeShortcut === 'plan') { %> aria-current="page"<% } %>>
+      <span class="workbench-shortcut-label"><%= t('workPlan') %></span>
+      <span class="workbench-shortcut-link"><%= t('view') %> <span aria-hidden="true">→</span></span>
+    </a>
+  <% } %>
+</nav>

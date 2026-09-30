@@ -6,4 +6,5 @@ playwright-report/
 .playwright-cli/
 test-results/
 output/
+tmp/
 .worktrees/

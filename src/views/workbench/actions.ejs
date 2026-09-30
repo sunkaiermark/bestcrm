@@ -1,0 +1,44 @@
+<%- include('../partials/app-start', { title: `${t('needsMyAction')} - BESTCRM`, activeNav: 'workbench' }) %>
+        <% const formatWorkTime = (value) => {
+          if (!value) return '—';
+          const date = new Date(value);
+          if (Number.isNaN(date.getTime())) return String(value);
+          return date.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
+            year: 'numeric', month: '2-digit', day: '2-digit',
+            hour: '2-digit', minute: '2-digit', hour12: false
+          });
+        }; %>
+        <% const workStatusLabel = (status) => {
+          const key = `workItemStatus.${status || 'pending'}`;
+          const label = t(key);
+          return label === key ? status : label;
+        }; %>
+        <p class="breadcrumb"><a href="/workbench"><%= t('workbench') %></a> / <%= t('needsMyAction') %></p>
+        <header class="page-header"><h1><%= t('needsMyAction') %></h1></header>
+        <%- include('_shortcut-nav', { canAccessSalesPlans, activeShortcut: 'action' }) %>
+
+        <section class="workbench-task-list" aria-label="<%= t('needsMyAction') %>">
+          <% if (!actionItems.length) { %>
+            <p class="list-section empty"><%= t('noWorkItems') %></p>
+          <% } %>
+          <% for (const todo of actionItems) { %>
+            <% const isOverdue = todo.dueAt && new Date(todo.dueAt).getTime() < Date.now(); %>
+            <% const detailUrl = typeof todo.id === 'number' ? `/workbench/work-items/${todo.id}` : (todo.actionUrl || `/opportunities/${todo.opportunityId}`); %>
+            <article class="workbench-task-row">
+              <div class="workbench-task-main">
+                <span class="work-item-status<%= isOverdue ? ' overdue' : '' %>"><%= isOverdue ? t('overdue') : workStatusLabel(todo.status) %></span>
+                <h2><a href="<%= detailUrl %>"><%= todoTitleLabel(todo.title) %></a></h2>
+                <% if (todo.opportunityId) { %>
+                  <p class="muted"><span class="workbench-reference"><%= todo.opportunityNo %></span> · <bdi><%= todo.opportunityTitle %></bdi></p>
+                <% } %>
+                <% if (todo.description) { %><p><%= todo.description %></p><% } %>
+              </div>
+              <div class="workbench-task-dates">
+                <div><span><%= t('plannedStart') %></span><strong><%= formatWorkTime(todo.plannedStartAt) %></strong></div>
+                <div><span><%= t('deadline') %></span><strong><%= formatWorkTime(todo.dueAt) %></strong></div>
+              </div>
+              <a class="secondary-action workbench-task-open" href="<%= detailUrl %>"><%= t('view') %> <span aria-hidden="true">→</span></a>
+            </article>
+          <% } %>
+        </section>
+<%- include('../partials/app-end') %>

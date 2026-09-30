@@ -5,6 +5,7 @@ import { requireLogin } from '../middleware/auth.mjs';
 import {
   canAccessSalesWork,
   canMaintainSalesWorkRecord,
+  canViewSalesWorkRecord,
   createSalesWorkPlan,
   listSalesWorkPlans,
   updateSalesWorkPlan,
@@ -130,6 +131,30 @@ export function salesWorkRoutes({ salesWorkRepository, customerRepository, conta
       res.redirect('/sales-work/plans');
     } catch (error) {
       handleSalesWorkError(error, res, next);
+    }
+  });
+
+  router.get('/sales-work/plans/:id', async (req, res, next) => {
+    try {
+      if (!/^\d+$/.test(req.params.id)) {
+        res.status(404).send('Sales work plan not found');
+        return;
+      }
+      const plan = await salesWorkRepository.findPlanById(req.params.id);
+      if (!plan) {
+        res.status(404).send('Sales work plan not found');
+        return;
+      }
+      if (!canViewSalesWorkRecord(req.currentUser, plan)) {
+        forbidden(res);
+        return;
+      }
+      res.render('sales-work/plan-detail', {
+        plan,
+        canMaintain: canMaintainSalesWorkRecord(req.currentUser, plan)
+      });
+    } catch (error) {
+      next(error);
     }
   });
 

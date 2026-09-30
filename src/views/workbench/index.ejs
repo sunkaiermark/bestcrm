@@ -1,50 +1,14 @@
 <%- include('../partials/app-start', { title: `${t('workbench')} - BESTCRM`, activeNav: 'workbench' }) %>
-        <% const formatWorkTime = (value) => {
-          if (!value) return '\u2014';
-          const date = new Date(value);
-          if (Number.isNaN(date.getTime())) return String(value);
-          return date.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
-            year: 'numeric', month: '2-digit', day: '2-digit',
-            hour: '2-digit', minute: '2-digit', hour12: false
-          });
-        }; %>
-        <% const workKpiLabel = (item) => {
-          if (language === 'zh' && item.kpiCode) {
-            const localized = t(`workKpi.${item.kpiCode}`);
-            if (localized !== `workKpi.${item.kpiCode}`) return localized;
-          }
-          if (item.kpiTarget) return item.kpiTarget;
-          const key = `workKpi.${item.kpiCode || 'complete_assigned_work'}`;
-          const label = t(key);
-          return label === key ? t('workKpi.complete_assigned_work') : label;
-        }; %>
-        <% const workStatusLabel = (status) => {
-          const key = `workItemStatus.${status || 'pending'}`;
-          const label = t(key);
-          return label === key ? status : label;
-        }; %>
-        <% const workEstimateLabel = (item) => {
-          const parts = [];
-          if (item.estimatedHours !== null && item.estimatedHours !== undefined) {
-            const hours = Number(item.estimatedHours).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
-              maximumFractionDigits: 2
-            });
-            parts.push(`${hours} ${t('hourUnit')}`);
-          }
-          if (item.workloadLevel) {
-            parts.push(t(`workloadLevel.${item.workloadLevel}`));
-          }
-          return parts.length ? parts.join(' · ') : t('notEstimated');
-        }; %>
         <header class="topbar">
         <div>
           <h1><%= t('workbench') %></h1>
         </div>
         <div class="inline-actions">
-          <% if (summary.canAccessSalesPlans) { %><a class="secondary-action" href="/sales-work/plans"><%= t('manageWorkPlans') %></a><% } %>
           <a class="secondary-action" href="/notifications"><%= t('notificationSettings') %><% if (summary.unreadNotificationCount) { %> (<%= summary.unreadNotificationCount %>)<% } %></a>
         </div>
         </header>
+
+        <%- include('_shortcut-nav', { canAccessSalesPlans: summary.canAccessSalesPlans, activeShortcut: '' }) %>
 
         <section aria-labelledby="state-counts">
           <h2 id="state-counts" class="muted workbench-state-heading"><%= t('countsByWorkflowState') %></h2>
@@ -61,83 +25,4 @@
           </div>
         </section>
 
-        <section class="workbench-list workbench-columns">
-          <article class="list-section workbench-column workbench-column--action" aria-labelledby="workbench-action-heading">
-            <h2 class="workbench-column-heading" id="workbench-action-heading"><%= t('needsMyAction') %></h2>
-            <div class="workbench-table-wrap">
-              <table class="workbench-table workbench-table--tasks">
-                <colgroup><col style="width: 22%"><col style="width: 20%"><col style="width: 13%"><col style="width: 13%"><col style="width: 14%"><col style="width: 18%"></colgroup>
-                <thead><tr>
-                  <th scope="col"><%= t('relatedOpportunity') %></th>
-                  <th scope="col"><%= t('specificWork') %></th>
-                  <th scope="col"><%= t('plannedStart') %></th>
-                  <th scope="col"><%= t('deadline') %></th>
-                  <th scope="col"><%= t('estimatedHoursWorkload') %></th>
-                  <th scope="col"><%= t('kpiCompletionStandard') %></th>
-                </tr></thead>
-                <tbody>
-                  <% if (summary.actionItems.length === 0) { %>
-                    <tr><td class="empty" colspan="6"><%= t('noWorkItems') %></td></tr>
-                  <% } %>
-                  <% for (const todo of summary.actionItems) { %>
-                    <% const isOverdue = todo.dueAt && new Date(todo.dueAt).getTime() < Date.now(); %>
-                    <tr>
-                      <td data-label="<%= t('relatedOpportunity') %>">
-                        <% if (todo.opportunityId) { %>
-                          <a class="workbench-business-ref" href="/opportunities/<%= todo.opportunityId %>"><span class="workbench-reference"><%= todo.opportunityNo %></span><span aria-hidden="true"> - </span><bdi class="workbench-business-title"><%= todo.opportunityTitle %></bdi></a>
-                        <% } else { %><span class="muted">\u2014</span><% } %>
-                      </td>
-                      <td data-label="<%= t('specificWork') %>">
-                        <span class="work-item-status<%= isOverdue ? ' overdue' : '' %>"><%= isOverdue ? t('overdue') : workStatusLabel(todo.status) %></span>
-                        <strong><a href="<%= todo.actionUrl || `/opportunities/${todo.opportunityId}` %>"><%= todoTitleLabel(todo.title) %></a></strong>
-                        <% if (todo.description) { %><small class="work-item-description"><%= todo.description %></small><% } %>
-                      </td>
-                      <td class="workbench-time" data-label="<%= t('plannedStart') %>"><time datetime="<%= todo.plannedStartAt ? new Date(todo.plannedStartAt).toISOString() : '' %>"><%= formatWorkTime(todo.plannedStartAt) %></time></td>
-                      <td class="workbench-time" data-label="<%= t('deadline') %>"><time datetime="<%= todo.dueAt ? new Date(todo.dueAt).toISOString() : '' %>"><%= formatWorkTime(todo.dueAt) %></time></td>
-                      <td data-label="<%= t('estimatedHoursWorkload') %>"><%= workEstimateLabel(todo) %><% if (todo.estimateUrl) { %><small class="work-item-description"><a href="<%= todo.estimateUrl %>"><%= t('editWorkEstimate') %></a></small><% } %></td>
-                      <td data-label="<%= t('kpiCompletionStandard') %>"><%= workKpiLabel(todo) %></td>
-                    </tr>
-                  <% } %>
-                </tbody>
-              </table>
-            </div>
-          </article>
-
-          <article class="list-section workbench-column workbench-column--plan" aria-labelledby="workbench-plan-heading">
-            <h2 class="workbench-column-heading" id="workbench-plan-heading"><%= t('workPlan') %></h2>
-            <div class="workbench-table-wrap">
-              <table class="workbench-table workbench-table--tasks">
-                <colgroup><col style="width: 22%"><col style="width: 20%"><col style="width: 13%"><col style="width: 13%"><col style="width: 14%"><col style="width: 18%"></colgroup>
-                <thead><tr>
-                  <th scope="col"><%= t('relatedBusiness') %></th>
-                  <th scope="col"><%= t('specificWork') %></th>
-                  <th scope="col"><%= t('plannedStart') %></th>
-                  <th scope="col"><%= t('deadline') %></th>
-                  <th scope="col"><%= t('estimatedHoursWorkload') %></th>
-                  <th scope="col"><%= t('kpiCompletionStandard') %></th>
-                </tr></thead>
-                <tbody>
-                  <% if (summary.workPlans.length === 0) { %>
-                    <tr><td class="empty" colspan="6"><%= t('noWorkPlans') %></td></tr>
-                  <% } %>
-                  <% for (const item of summary.workPlans) { %>
-                    <tr>
-                      <td data-label="<%= t('relatedBusiness') %>">
-                        <% if (item.opportunityId) { %>
-                          <a class="workbench-business-ref" href="/opportunities/<%= item.opportunityId %>"><span class="workbench-reference"><%= item.opportunityNo %></span><span aria-hidden="true"> - </span><bdi class="workbench-business-title"><%= item.opportunityTitle %></bdi></a>
-                        <% } else if (item.customerName) { %><%= item.customerName %><% } else { %><span class="muted">—</span><% } %>
-                      </td>
-                      <td data-label="<%= t('specificWork') %>"><strong><a href="<%= item.actionUrl || '/workbench' %>"><%= todoTitleLabel(item.title) %></a></strong><% if (item.description) { %><small class="work-item-description"><%= item.description %></small><% } %></td>
-                      <td class="workbench-time" data-label="<%= t('plannedStart') %>"><%= formatWorkTime(item.plannedStartAt) %></td>
-                      <td class="workbench-time" data-label="<%= t('deadline') %>"><%= formatWorkTime(item.dueAt) %></td>
-                      <td data-label="<%= t('estimatedHoursWorkload') %>"><%= workEstimateLabel(item) %><% if (item.estimateUrl) { %><small class="work-item-description"><a href="<%= item.estimateUrl %>"><%= t('editWorkEstimate') %></a></small><% } %></td>
-                      <td data-label="<%= t('kpiCompletionStandard') %>"><%= workKpiLabel(item) %></td>
-                    </tr>
-                  <% } %>
-                </tbody>
-              </table>
-            </div>
-          </article>
-
-        </section>
 <%- include('../partials/app-end') %>
