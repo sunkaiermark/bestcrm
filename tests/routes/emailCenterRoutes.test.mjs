@@ -289,7 +289,8 @@ test('sales manager sees shared mailbox pending threads without a rule-category 
   assert.match(detail.text, /class="email-plain-body email-reading-body"/);
   assert.match(detail.text, /\.email-reading-body\s*\{[^}]*max-width:\s*none;/);
   assert.match(detail.text, /@media[\s\S]*\.email-conversation-body\s*\{[^}]*padding:\s*14px;/);
-  assert.match(detail.text, /class="email-attachment-chip" href="\/email-center\/attachments\/21\/download"/);
+  assert.match(detail.text, /class="email-attachment-chip"[\s\S]*?href="\/email-center\/attachments\/21\/preview"[^>]*>预览<\/a>/);
+  assert.match(detail.text, /class="email-attachment-chip"[\s\S]*?href="\/email-center\/attachments\/21\/download"[^>]*>下载<\/a>/);
   assert.match(detail.text, /class="email-attachment-integrity"/);
   assert.match(detail.text, /&lt;script&gt;alert\(2\)&lt;\/script&gt; Need quote/);
   assert.doesNotMatch(detail.text, /tracker\.example\/pixel/);
@@ -767,7 +768,7 @@ test('an opportunity stakeholder can open linked personal-mail history while unl
   assert.match(linkedDetail.text, /Mixer Project/);
 });
 
-test('email attachment download enforces the same thread permission', async () => {
+test('email attachment preview and download enforce the same thread permission', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-route-'));
   try {
     await mkdir(path.join(uploadDir, 'email-archive'));
@@ -779,6 +780,14 @@ test('email attachment download enforces the same thread permission', async () =
     assert.equal(downloaded.headers['cache-control'], 'private, no-store');
     assert.equal(downloaded.headers['x-archive-sha256'], 'a'.repeat(64));
 
+    const preview = await manager.get('/email-center/attachments/21/preview');
+    assert.equal(preview.status, 200);
+    assert.match(preview.headers['content-type'], /^application\/pdf/);
+    assert.match(preview.headers['content-disposition'], /^inline;.*spec\.pdf/);
+    assert.equal(preview.headers['cache-control'], 'private, no-store');
+    assert.equal(preview.headers['x-content-type-options'], 'nosniff');
+    assert.equal(preview.headers['x-archive-sha256'], 'a'.repeat(64));
+
     const inline = await manager.get('/email-center/attachments/21/inline');
     assert.equal(inline.status, 200);
     assert.match(inline.headers['content-disposition'], /^inline;.*spec\.pdf/);
@@ -787,7 +796,78 @@ test('email attachment download enforces the same thread permission', async () =
 
     const salesperson = await createAgent({ userId: 7, roles: [ROLES.SALESPERSON], uploadDir });
     assert.equal((await salesperson.get('/email-center/attachments/21/download')).status, 403);
+    assert.equal((await salesperson.get('/email-center/attachments/21/preview')).status, 403);
     assert.equal((await salesperson.get('/email-center/attachments/21/inline')).status, 403);
+
+    await rm(path.join(uploadDir, 'email-archive', 'spec.pdf'));
+    assert.equal((await manager.get('/email-center/attachments/21/preview')).status, 404);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('email attachment preview uses controlled renderers and a download fallback for unsupported formats', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-preview-'));
+  try {
+    await mkdir(path.join(uploadDir, 'email-archive'));
+    const originalMessage = thread().messages[0];
+    const originalAttachment = originalMessage.attachments[0];
+    const cases = [
+      {
+        originalName: 'drawing.dxf', mimeType: 'application/octet-stream',
+        content: '0\nSECTION\n2\nENTITIES\n0\nLINE\n8\n0\n10\n0\n20\n0\n11\n100\n21\n50\n0\nENDSEC\n0\nEOF',
+        expected: /class="cad-preview-frame"[\s\S]*<svg/
+      },
+      { originalName: 'proposal.docx', mimeType: 'application/octet-stream', content: 'invalid docx', expected: /Word Preview/ },
+      { originalName: 'prices.xlsx', mimeType: 'application/octet-stream', content: 'invalid xlsx', expected: /Spreadsheet preview/ },
+      { originalName: 'drawing.dwg', mimeType: 'application/octet-stream', content: 'dwg', expected: /DWG cannot be previewed directly/ },
+      { originalName: 'interactive.svg', mimeType: 'image/svg+xml', content: '<svg onload="alert(1)"/>', expected: /This file type cannot be previewed online/ },
+      { originalName: 'webpage.html', mimeType: 'text/html', content: '<script>alert(1)</script>', expected: /This file type cannot be previewed online/ }
+    ];
+    for (const item of cases) {
+      const storedPath = `email-archive/${item.originalName}`;
+      await writeFile(path.join(uploadDir, storedPath), item.content);
+      const agent = await createAgent({
+        userId: 2,
+        roles: [ROLES.SALES_MANAGER],
+        uploadDir,
+        unlinkedOverrides: {
+          messages: [{
+            ...originalMessage,
+            attachments: [{ ...originalAttachment, ...item, storedPath }]
+          }]
+        }
+      });
+      const response = await agent.get('/email-center/attachments/21/preview');
+      assert.equal(response.status, 200, item.originalName);
+      assert.equal(response.headers['cache-control'], 'private, no-store', item.originalName);
+      assert.equal(response.headers['x-content-type-options'], 'nosniff', item.originalName);
+      assert.match(response.text, item.expected, item.originalName);
+      assert.match(response.text, /href="\/email-center\/attachments\/21\/download"/, item.originalName);
+      assert.match(response.text, /href="\/email-center\/threads\/1"/, item.originalName);
+      assert.doesNotMatch(response.text, /<script>alert\(1\)<\/script>/, item.originalName);
+    }
+
+    await writeFile(path.join(uploadDir, 'email-archive', 'mislabeled.pdf'), '%PDF-1.4');
+    const agent = await createAgent({
+      userId: 2,
+      roles: [ROLES.SALES_MANAGER],
+      uploadDir,
+      unlinkedOverrides: {
+        messages: [{
+          ...originalMessage,
+          attachments: [{
+            ...originalAttachment,
+            originalName: 'mislabeled.pdf',
+            storedPath: 'email-archive/mislabeled.pdf',
+            mimeType: 'application/octet-stream'
+          }]
+        }]
+      }
+    });
+    const pdf = await agent.get('/email-center/attachments/21/preview');
+    assert.equal(pdf.status, 200);
+    assert.match(pdf.headers['content-type'], /^application\/pdf/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

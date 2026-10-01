@@ -1,72 +1,200 @@
-<%- include('../partials/app-start', { title: (language === 'zh' ? '商务报价内部草稿' : 'Internal Commercial Quotation Draft') + ' - BESTCRM', activeNav: 'opportunities' }) %>
+<%- include('../partials/app-start', { title: (language === 'zh' ? '报价草稿' : 'Quotation Draft') + ' - BESTCRM', activeNav: 'opportunities' }) %>
 <style>
-  .sales-quote-draft { max-width: 1240px; }
-  .sales-quote-draft .draft-facts { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px 24px; }
-  .sales-quote-draft .draft-facts div { display: grid; grid-template-columns: 170px minmax(0, 1fr); gap: 12px; padding: 9px 0; border-bottom: 1px solid var(--line); }
-  .sales-quote-draft .draft-facts dt { color: var(--muted); }
-  .sales-quote-draft .draft-facts dd { margin: 0; overflow-wrap: anywhere; }
-  .sales-quote-draft .draft-row { display: grid; grid-template-columns: 50px minmax(240px, 1fr) 110px 110px 150px 70px; gap: 10px; align-items: start; margin-bottom: 10px; }
-  .sales-quote-draft .draft-row > label { display: grid; gap: 5px; min-width: 0; }
-  .sales-quote-draft .draft-row input, .sales-quote-draft .draft-row textarea { width: 100%; }
-  .sales-quote-draft .draft-row textarea { min-height: 48px; resize: vertical; }
+  .sales-quote-draft { container-type: inline-size; width: 100%; min-width: 0; }
+  .sales-quote-draft .form-panel { box-sizing: border-box; max-width: none; width: 100%; }
+  .sales-quote-draft .draft-document-header { align-items: center; border-bottom: 3px solid #0f827d; display: flex; gap: 24px; justify-content: space-between; padding-bottom: 14px; }
+  .sales-quote-draft .draft-document-logo { display: block; height: auto; max-width: 250px; width: 32%; }
+  .sales-quote-draft .draft-document-title { color: #182e6f; text-align: right; }
+  .sales-quote-draft .draft-document-title strong { display: block; font-size: 1.5rem; }
+  .sales-quote-draft .draft-document-title span { color: var(--muted); font-size: .88rem; }
+  .sales-quote-draft .draft-identifiers { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); margin: 14px 0 22px; }
+  .sales-quote-draft .draft-identifiers div { border-right: 1px solid var(--line); display: grid; gap: 3px; padding: 0 14px; }
+  .sales-quote-draft .draft-identifiers div:first-child { padding-left: 0; }
+  .sales-quote-draft .draft-identifiers div:last-child { border-right: 0; }
+  .sales-quote-draft .draft-identifiers span { color: var(--muted); font-size: .85rem; }
+  .sales-quote-draft .draft-identifiers strong { overflow-wrap: anywhere; }
+  .sales-quote-draft .draft-parties { display: grid; gap: 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .sales-quote-draft .draft-section-title { color: #182e6f; font-size: 1rem; margin: 20px 0 9px; }
+  .sales-quote-draft .draft-parties .draft-section-title { margin-top: 0; }
+  .sales-quote-draft .draft-detail-table { border-collapse: collapse; table-layout: fixed; width: 100%; }
+  .sales-quote-draft .draft-detail-table th,
+  .sales-quote-draft .draft-detail-table td { border-bottom: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; overflow-wrap: anywhere; }
+  .sales-quote-draft .draft-detail-table th { background: #f2f6f8; color: var(--muted); font-weight: 600; width: 35%; }
+  .sales-quote-draft .draft-parties .draft-detail-table th,
+  .sales-quote-draft .draft-project-info .draft-detail-table th,
+  .sales-quote-draft .draft-project-row .draft-detail-table th { width: 190px; }
+  .sales-quote-draft .draft-commercial-terms th { white-space: nowrap; width: 320px; }
+  .sales-quote-draft .draft-commercial-terms select { margin: 0; width: 100%; }
+  .sales-quote-draft .draft-standard-term-body { color: var(--muted); margin: 8px 0 0; white-space: pre-wrap; }
+  .sales-quote-draft .draft-project-row { margin-top: 14px; }
+  .sales-quote-draft .draft-project-info label { margin: 0; }
+  .sales-quote-draft .draft-project-info select { margin: 0; width: 100%; }
+  .sales-quote-draft .draft-parties input[name="currency"] { margin: 0; max-width: 100%; width: 150px; }
+  .sales-quote-draft .draft-parties select[name="sellerEntityCode"] { margin: 0; max-width: 100%; width: 100%; }
+  .sales-quote-draft .draft-pending { color: var(--muted); }
+  .sales-quote-draft .draft-signature { border-top: 2px solid #182e6f; display: grid; gap: 20px; grid-template-columns: repeat(2, minmax(0, 1fr)); margin-top: 20px; padding-top: 12px; }
+  .sales-quote-draft .draft-signature .draft-section-title { margin-top: 0; }
+  .sales-quote-draft .draft-signature-box { border: 1px dashed #91acba; color: var(--muted); min-height: 72px; padding: 12px; }
+  .sales-quote-draft .draft-lines-scroll { overflow-x: auto; width: 100%; }
+  .sales-quote-draft .draft-lines-table { border-collapse: collapse; min-width: 1060px; table-layout: fixed; width: 100%; }
+  .sales-quote-draft .draft-lines-table .draft-number-column { width: 54px; }
+  .sales-quote-draft .draft-lines-table .draft-quantity-column,
+  .sales-quote-draft .draft-lines-table .draft-unit-column { width: 110px; }
+  .sales-quote-draft .draft-lines-table .draft-price-column { width: 150px; }
+  .sales-quote-draft .draft-lines-table .draft-amount-column { width: 150px; }
+  .sales-quote-draft .draft-lines-table .draft-inclusion-column { width: 136px; }
+  .sales-quote-draft .draft-lines-table .draft-remove-column { width: 86px; }
+  .sales-quote-draft .draft-lines-table th,
+  .sales-quote-draft .draft-lines-table td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: middle; }
+  .sales-quote-draft .draft-lines-table thead th { background: #e9f1f7; color: var(--muted); white-space: nowrap; }
+  .sales-quote-draft .draft-lines-table .draft-row { height: 64px; }
+  .sales-quote-draft .draft-lines-table tbody th { font-weight: 400; }
+  .sales-quote-draft .draft-lines-table label { display: block; margin: 0; }
+  .sales-quote-draft .draft-lines-table input,
+  .sales-quote-draft .draft-lines-table textarea,
+  .sales-quote-draft .draft-lines-table select { box-sizing: border-box; display: block; height: 46px; margin: 0; width: 100%; }
+  .sales-quote-draft .draft-lines-table textarea { min-height: 46px; max-height: 46px; overflow: auto; resize: none; scrollbar-width: none; white-space: pre; }
+  .sales-quote-draft .draft-lines-table textarea::-webkit-scrollbar { display: none; }
+  .sales-quote-draft .draft-lines-table button { height: 46px; white-space: nowrap; }
+  .sales-quote-draft .draft-lines-table .draft-amount { display: block; text-align: right; font-variant-numeric: tabular-nums; }
+  .sales-quote-draft .draft-subtotal { border-top: 2px solid #182e6f; display: flex; gap: 16px; justify-content: flex-end; padding: 12px 8px; }
+  .sales-quote-draft .draft-subtotal strong { min-width: 150px; text-align: right; font-variant-numeric: tabular-nums; }
   .sales-quote-draft .draft-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
-  @media (max-width: 850px) {
-    .sales-quote-draft .draft-facts { grid-template-columns: 1fr; }
-    .sales-quote-draft .draft-row { grid-template-columns: 40px minmax(0, 1fr) 100px 100px; }
+  @container (max-width: 950px) {
+    .sales-quote-draft .draft-identifiers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 0; }
+    .sales-quote-draft .draft-identifiers div:nth-child(2) { border-right: 0; }
+    .sales-quote-draft .draft-identifiers div:nth-child(3) { padding-left: 0; }
   }
-  @media (max-width: 560px) { .sales-quote-draft .draft-row { grid-template-columns: 40px minmax(0, 1fr); } }
+  @container (max-width: 720px) {
+    .sales-quote-draft .draft-parties, .sales-quote-draft .draft-signature { grid-template-columns: 1fr; }
+  }
+  @container (max-width: 470px) {
+    .sales-quote-draft .draft-document-header { align-items: flex-start; flex-direction: column; }
+    .sales-quote-draft .draft-document-logo { width: 200px; }
+    .sales-quote-draft .draft-document-title { text-align: left; }
+  }
+  @media (max-width: 820px) {
+    .sales-quote-draft .draft-parties, .sales-quote-draft .draft-signature { grid-template-columns: 1fr; }
+  }
 </style>
-<% const zh = language === 'zh'; const selectedSourceId = draft?.sourceAttachmentId || sources[0]?.attachmentId; const rows = draft?.lineItems?.length ? draft.lineItems : [{ description: '', quantity: '', unit: '', unitPrice: '' }]; %>
+<% const zh = language === 'zh'; const selectedSourceId = draft?.sourceAttachmentId || sources[0]?.attachmentId; const rows = draft?.lineItems?.length ? draft.lineItems : [{ description: '', quantity: '', unit: '', unitPrice: '' }]; const pending = zh ? '待配置' : 'Pending setup'; const notIssued = zh ? '未签发' : 'Not issued'; %>
 <div class="sales-quote-draft">
   <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %> · <%= opportunity.title %></a></p>
-  <header class="page-header"><div><h1><%= zh ? '商务报价内部草稿' : 'Internal Commercial Quotation Draft' %></h1></div></header>
+  <header class="page-header"><div><h1><%= zh ? '报价草稿' : 'Quotation Draft' %></h1></div></header>
   <section class="form-panel">
-    <p><strong><%= zh ? '仅供内部编制' : 'Internal preparation only' %></strong> · <%= zh ? '保存不会提交审批、生成对客 PDF、电子签署或发送给客户。正式签发仍须技术批准。' : 'Saving does not submit for review, create a customer PDF, sign, or send. Technical approval remains required for formal issuance.' %></p>
     <% if (saved) { %><p role="status"><%= zh ? '草稿已保存。' : 'Draft saved.' %></p><% } %>
     <% if (sourceChanged) { %><p role="alert"><%= zh ? '技术依据文件已有更新或不可用；保存前请重新确认所选版本。' : 'The technical source has a newer revision or is unavailable; reconfirm the exact version before saving.' %></p><% } %>
-    <dl class="draft-facts">
-      <div><dt>Ref.</dt><dd><%= opportunity.opportunityNo %></dd></div>
-      <div><dt><%= zh ? '草稿版本' : 'Draft revision' %></dt><dd>D<%= draft?.draftRevisionNo || 1 %></dd></div>
-      <div><dt><%= zh ? '项目' : 'Project' %></dt><dd><%= opportunity.title %></dd></div>
-      <div><dt><%= zh ? '客户' : 'Customer' %></dt><dd><%= opportunity.customerName %></dd></div>
-      <div><dt><%= zh ? '联系人' : 'Contact' %></dt><dd><%= opportunity.primaryContactName || '—' %></dd></div>
-      <div><dt><%= zh ? '语言' : 'Language' %></dt><dd><%= draft ? (draft.language === 'zh' ? '中文' : 'English') : (zh ? '中文' : 'English') %></dd></div>
-    </dl>
+    <div class="draft-document-header">
+      <img class="draft-document-logo" src="/assets/sunkaier-logo-login.png" alt="SUNKAIER">
+      <div class="draft-document-title"><strong><%= zh ? '报 价 单' : 'QUOTATION' %></strong><span><%= zh ? '草稿版式 · 非正式报价' : 'Draft layout · not an issued quotation' %></span></div>
+    </div>
+    <div class="draft-identifiers">
+      <div><span><%= zh ? '报价编号' : 'Quote No.' %></span><strong class="draft-pending"><%= notIssued %></strong></div>
+      <div><span>Ref.</span><strong><%= opportunity.opportunityNo %></strong></div>
+      <div><span><%= zh ? '报价版本' : 'Quote version' %></span><strong class="draft-pending"><%= notIssued %></strong></div>
+      <div><span><%= zh ? '草稿修订' : 'Draft revision' %></span><strong>D<%= draft?.draftRevisionNo || 1 %></strong></div>
+    </div>
+    <div class="draft-parties">
+      <div>
+        <h2 class="draft-section-title"><%= zh ? '客户' : 'CUSTOMER' %></h2>
+        <table class="draft-detail-table"><tbody>
+          <tr><th scope="row"><%= zh ? '公司' : 'Company' %></th><td><%= opportunity.customerName %></td></tr>
+          <tr><th scope="row"><%= zh ? '收件人' : 'Attention' %></th><td><%= opportunity.primaryContactName || '—' %></td></tr>
+          <tr><th scope="row"><%= zh ? '报价日期' : 'Quote date' %></th><td class="draft-pending"><%= notIssued %></td></tr>
+          <tr><th scope="row"><%= zh ? '有效期至' : 'Valid until' %></th><td class="draft-pending"><%= pending %></td></tr>
+          <tr><th scope="row"><%= zh ? '币种' : 'Currency' %></th><td><% if (sources.length) { %><label><span class="visually-hidden"><%= zh ? '币种代码（草稿）' : 'Currency code (draft)' %></span><input name="currency" form="sales-quote-draft-form" maxlength="3" pattern="[A-Za-z]{3}" value="<%= draft?.currency || '' %>" placeholder="USD" <%= canEdit ? '' : 'readonly' %>></label><% } else { %><%= draft?.currency || '—' %><% } %></td></tr>
+          <tr><th scope="row"><%= zh ? '语言' : 'Language' %></th><td><%= draft ? (draft.language === 'zh' ? '中文' : 'English') : (zh ? '中文' : 'English') %></td></tr>
+        </tbody></table>
+      </div>
+      <div>
+        <h2 class="draft-section-title"><%= zh ? '供应商' : 'SUPPLIER' %></h2>
+        <table class="draft-detail-table"><tbody>
+          <tr><th scope="row"><%= zh ? '公司' : 'Company' %></th><td><label><span class="visually-hidden"><%= zh ? '选择供应商主体' : 'Select seller entity' %></span><select name="sellerEntityCode" form="sales-quote-draft-form" <%= canEdit && sources.length ? '' : 'disabled' %>><option value=""><%= zh ? '请选择供应商' : 'Select seller entity' %></option><% for (const entity of sellerEntities) { %><option value="<%= entity.code %>" <%= draft?.sellerEntityCode === entity.code ? 'selected' : '' %>><%= entity.legalName %></option><% } %></select></label></td></tr>
+          <tr><th scope="row"><%= zh ? '联系人' : 'Contact' %></th><td class="<%= opportunity.salespersonDisplayName ? '' : 'draft-pending' %>"><%= opportunity.salespersonDisplayName || pending %></td></tr>
+          <tr><th scope="row"><%= zh ? '电话' : 'Telephone' %></th><td class="draft-pending"><%= pending %></td></tr>
+          <tr><th scope="row"><%= zh ? '邮箱' : 'Email' %></th><td><%= sellerEmail %></td></tr>
+          <tr><th scope="row"><%= zh ? '地址' : 'Address' %></th><td class="draft-pending"><%= pending %></td></tr>
+          <tr><th scope="row"><%= zh ? '网站' : 'Website' %></th><td class="draft-pending"><%= pending %></td></tr>
+        </tbody></table>
+      </div>
+    </div>
   </section>
   <% if (!sources.length) { %>
     <section class="form-panel"><p><%= zh ? '工程师尚未上传可用技术文件，暂不能建立商务报价草稿。' : 'No active uploaded technical file is available yet. A sales draft cannot be created.' %></p></section>
   <% } else { %>
-    <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/commercial-quotation-draft">
+    <form class="form-panel" id="sales-quote-draft-form" method="post" action="/opportunities/<%= opportunity.id %>/commercial-quotation-draft">
       <%- csrfField() %>
       <input type="hidden" name="expectedRevisionNo" value="<%= draft?.draftRevisionNo || 0 %>">
-      <label><%= zh ? '工程师上传的技术报价依据文件（内部引用，不对客发送）' : 'Engineer-uploaded technical source (internal reference only)' %>
-        <select name="sourceAttachmentId" required <%= canEdit ? '' : 'disabled' %>>
-          <% for (const source of sources) { %>
-            <option value="<%= source.attachmentId %>" <%= source.attachmentId === selectedSourceId ? 'selected' : '' %>>D<%= source.technicalDraftRevisionNo %> · <%= source.originalName %> · <%= source.sha256.slice(0, 12) %></option>
-          <% } %>
-        </select>
-      </label>
-      <% if (canEdit) { %><label class="checkbox-row"><input type="checkbox" name="confirmSourceVersion" required><span><%= zh ? '我已核对并确认所选技术文件的精确版本' : 'I checked and confirm the exact selected technical file version' %></span></label><% } %>
-      <label><%= zh ? '币种代码（内部草稿）' : 'Currency code (internal draft)' %>
-        <input name="currency" maxlength="3" pattern="[A-Za-z]{3}" value="<%= draft?.currency || '' %>" placeholder="USD" <%= canEdit ? '' : 'readonly' %>>
-      </label>
-      <h2><%= zh ? '产品／服务明细' : 'Product / service lines' %></h2>
-      <div id="sales-quote-draft-rows">
-        <% for (const [index, row] of rows.entries()) { %>
-          <div class="draft-row">
-            <span><%= index + 1 %></span>
-            <label><%= zh ? '说明' : 'Description' %><textarea name="description" maxlength="2000" <%= canEdit ? '' : 'readonly' %>><%= row.description %></textarea></label>
-            <label><%= zh ? '数量' : 'Qty' %><input name="quantity" inputmode="decimal" value="<%= row.quantity %>" <%= canEdit ? '' : 'readonly' %>></label>
-            <label><%= zh ? '单位' : 'Unit' %><input name="unit" maxlength="40" value="<%= row.unit %>" <%= canEdit ? '' : 'readonly' %>></label>
-            <label><%= zh ? '单价' : 'Unit price' %><input name="unitPrice" inputmode="decimal" value="<%= row.unitPrice %>" <%= canEdit ? '' : 'readonly' %>></label>
-            <% if (canEdit) { %><button type="button" class="secondary-action" data-remove-quote-row><%= zh ? '移除' : 'Remove' %></button><% } %>
-          </div>
-        <% } %>
+      <div class="draft-project-info">
+        <h2 class="draft-section-title"><%= zh ? '项目信息' : 'Project information' %></h2>
+        <table class="draft-detail-table"><tbody>
+          <tr><th scope="row"><%= zh ? '技术报价依据' : 'Technical quotation source' %></th><td><label><span class="visually-hidden"><%= zh ? '工程师上传的技术报价文件（不对客发送）' : 'Engineer-uploaded technical quotation (not sent to customer)' %></span><select name="sourceAttachmentId" required <%= canEdit ? '' : 'disabled' %>>
+            <% for (const source of sources) { %>
+              <option value="<%= source.attachmentId %>" <%= source.attachmentId === selectedSourceId ? 'selected' : '' %>>D<%= source.technicalDraftRevisionNo %> · <%= source.originalName %> · <%= source.sha256.slice(0, 12) %></option>
+            <% } %>
+          </select></label></td></tr>
+          <% if (canEdit) { %><tr><th scope="row"><%= zh ? '版本确认' : 'Version confirmation' %></th><td><label class="checkbox-row"><input type="checkbox" name="confirmSourceVersion" required><span><%= zh ? '我已核对并确认所选技术文件的精确版本' : 'I checked and confirm the exact selected technical file version' %></span></label></td></tr><% } %>
+        </tbody></table>
       </div>
+      <div class="draft-project-row">
+        <table class="draft-detail-table"><tbody>
+          <tr><th scope="row"><%= zh ? '项目' : 'Project' %></th><td><%= opportunity.title %></td></tr>
+        </tbody></table>
+      </div>
+      <h2 class="draft-section-title"><%= zh ? '报价明细' : 'Quoted items' %></h2>
+      <div class="draft-lines-scroll">
+        <table class="draft-lines-table">
+          <colgroup><col class="draft-number-column"><col><col class="draft-quantity-column"><col class="draft-unit-column"><col class="draft-price-column"><col class="draft-amount-column"><col class="draft-inclusion-column"><col class="draft-remove-column"></colgroup>
+          <thead><tr><th scope="col"><%= zh ? '序号' : 'No.' %></th><th scope="col"><%= zh ? '产品说明' : 'Description' %></th><th scope="col"><%= zh ? '数量' : 'Qty' %></th><th scope="col"><%= zh ? '单位' : 'Unit' %></th><th scope="col"><%= zh ? '单价' : 'Unit price' %></th><th scope="col"><%= zh ? '金额' : 'Amount' %></th><th scope="col"><%= zh ? '计入总价' : 'Include in total' %></th><th scope="col"><%= zh ? '操作' : 'Actions' %></th></tr></thead>
+          <tbody id="sales-quote-draft-rows">
+            <% for (const [index, row] of rows.entries()) { %>
+              <tr class="draft-row">
+                <th scope="row"><span class="draft-row-number"><%= index + 1 %></span></th>
+                <td><label><span class="visually-hidden"><%= zh ? '产品说明' : 'Description' %></span><textarea name="description" maxlength="2000" wrap="off" <%= canEdit ? '' : 'readonly' %>><%= row.description %></textarea></label></td>
+                <td><label><span class="visually-hidden"><%= zh ? '数量' : 'Qty' %></span><input name="quantity" inputmode="decimal" value="<%= row.quantity %>" <%= canEdit ? '' : 'readonly' %>></label></td>
+                <td><label><span class="visually-hidden"><%= zh ? '单位' : 'Unit' %></span><input name="unit" maxlength="40" value="<%= row.unit %>" <%= canEdit ? '' : 'readonly' %>></label></td>
+                <td><label><span class="visually-hidden"><%= zh ? '单价' : 'Unit price' %></span><input name="unitPrice" inputmode="decimal" value="<%= row.unitPrice %>" <%= canEdit ? '' : 'readonly' %>></label></td>
+                <td><span class="draft-amount" data-line-amount>—</span></td>
+                <td><label><span class="visually-hidden"><%= zh ? '计入总价' : 'Include in total' %></span><select name="includeInTotal" <%= canEdit ? '' : 'disabled' %>><option value="" <%= !row.includeInTotal ? 'selected' : '' %>><%= zh ? '请选择' : 'Select' %></option><option value="included" <%= row.includeInTotal === 'included' ? 'selected' : '' %>><%= zh ? '计入' : 'Include' %></option><option value="excluded" <%= row.includeInTotal === 'excluded' ? 'selected' : '' %>><%= zh ? '不计入' : 'Exclude' %></option></select></label></td>
+                <td><% if (canEdit) { %><button type="button" class="secondary-action" data-remove-quote-row><%= zh ? '移除' : 'Remove' %></button><% } %></td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+      <div class="draft-subtotal"><span><%= zh ? '计入项目小计（草稿测算）' : 'Included items subtotal (draft calculation)' %></span><strong data-draft-subtotal>—</strong></div>
       <% if (canEdit) { %><div class="draft-actions"><button type="button" class="secondary-action" data-add-quote-row><%= zh ? '添加行' : 'Add row' %></button><button type="submit"><%= zh ? '保存草稿' : 'Save draft' %></button></div><% } %>
-      <p class="muted"><%= zh ? '付款、交货等对客条款待公司预设批准后才能正式签发；此处仅保存内部产品明细。' : 'Customer-facing payment and delivery terms require approved company presets before formal issuance. This page saves internal line items only.' %></p>
     </form>
   <% } %>
+  <section class="form-panel">
+    <h2 class="draft-section-title"><%= zh ? '商务条件' : 'Commercial terms' %></h2>
+    <table class="draft-detail-table draft-commercial-terms"><tbody>
+      <% for (const section of termSections) { const options = standardTerms.filter((term) => term.key === section.key); const selected = draft?.termSelections?.[section.key]; const selectedAvailable = options.some((term) => term.id === selected?.id); %>
+        <tr><th scope="row"><%= zh ? section.zh : section.en %></th><td>
+          <label><span class="visually-hidden"><%= zh ? `选择${section.zh}标准文案` : `Select standard wording for ${section.en}` %></span>
+            <select name="term_<%= section.key %>" form="sales-quote-draft-form" data-standard-term-select <%= canEdit && sources.length && (options.length || selected) ? '' : 'disabled' %>>
+              <option value=""><%= options.length ? (zh ? '请选择已发布标准文案' : 'Select published standard wording') : (zh ? '暂无已发布标准文案' : 'No published standard wording') %></option>
+              <% if (selected && !selectedAvailable) { %><option value="<%= selected.id %>" selected><%= zh ? '先前选择已停用，请重新选择' : 'Previous selection retired; choose again' %></option><% } %>
+              <% for (const term of options) { %><option value="<%= term.id %>" data-body="<%= term.body %>" <%= term.id === selected?.id ? 'selected' : '' %>><%= term.title %> · R<%= term.revisionNo %></option><% } %>
+            </select>
+          </label>
+          <p class="draft-standard-term-body" data-standard-term-body <%= selected?.body ? '' : 'hidden' %>><%= selected?.body || '' %></p>
+        </td></tr>
+      <% } %>
+    </tbody></table>
+    <h2 class="draft-section-title"><%= zh ? '对客附件' : 'Customer attachments' %></h2>
+    <table class="draft-detail-table"><tbody>
+      <tr><th scope="row"><%= zh ? '已批准对客技术附件' : 'Approved customer technical attachment' %></th><td class="draft-pending"><%= zh ? '未选择' : 'Not selected' %></td></tr>
+    </tbody></table>
+    <div class="draft-signature">
+      <div><h2 class="draft-section-title"><%= zh ? '签署信息' : 'Signature' %></h2><table class="draft-detail-table"><tbody>
+        <tr><th scope="row"><%= zh ? '签署人' : 'Signatory' %></th><td class="draft-pending"><%= pending %></td></tr>
+        <tr><th scope="row"><%= zh ? '签署时间' : 'Signed at' %></th><td class="draft-pending"><%= zh ? '未签署' : 'Not signed' %></td></tr>
+      </tbody></table></div>
+      <div><h2 class="draft-section-title"><%= zh ? '电子签署' : 'Electronic signature' %></h2><div class="draft-signature-box"><%= zh ? '报价获批后，由已批准的电子签署服务完成。' : 'Applied by the approved signing service after quotation approval.' %></div></div>
+    </div>
+    <p class="muted"><%= zh ? '正式签发仍须技术批准、公司已批准条款及电子签署；内部技术依据不会自动成为对客附件。' : 'Formal issuance still requires technical approval, approved company terms and electronic signing. The internal technical source does not become a customer attachment.' %></p>
+  </section>
 </div>
 <script src="/assets/sales-commercial-quotation-draft.js" defer></script>
 <%- include('../partials/app-end') %>

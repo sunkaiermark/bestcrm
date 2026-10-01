@@ -449,6 +449,7 @@ const emptyQuotationPackageRepository = {
 
 const emptySalesCommercialQuotationDraftRepository = {
   async listTechnicalSources() { return []; },
+  async listPublishedStandardTerms() { return []; },
   async getTechnicalSource() { return null; },
   async getByOpportunity() { return null; },
   async saveDraft() { throw new Error('Sales commercial quotation draft repository is not configured'); }

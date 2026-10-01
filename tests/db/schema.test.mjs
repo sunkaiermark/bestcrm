@@ -84,6 +84,9 @@ const reviewedProductCategoriesMigrationPath = new URL('../../src/db/migrations/
 const temporaryAdminTechnicalSelfApprovalMigrationPath = new URL('../../src/db/migrations/098_temporary_admin_technical_self_approval.sql', import.meta.url);
 const technicalDocumentCustomerReleaseMigrationPath = new URL('../../src/db/migrations/099_technical_document_customer_release.sql', import.meta.url);
 const salesCommercialQuotationDraftMigrationPath = new URL('../../src/db/migrations/100_sales_commercial_quotation_drafts.sql', import.meta.url);
+const quotationSellerEntityMigrationPath = new URL('../../src/db/migrations/102_quotation_draft_seller_entity.sql', import.meta.url);
+const quotationStandardTermsMigrationPath = new URL('../../src/db/migrations/103_quotation_draft_standard_terms.sql', import.meta.url);
+const uploadedTechnicalFileWithdrawalEventMigrationPath = new URL('../../src/db/migrations/101_uploaded_technical_file_withdrawal_event.sql', import.meta.url);
 
 test('early sales commercial quotation draft stays separate from formal approval and snapshots exact source file', async () => {
   const sql = await readFile(salesCommercialQuotationDraftMigrationPath, 'utf8');
@@ -95,6 +98,20 @@ test('early sales commercial quotation draft stays separate from formal approval
   assert.match(sql, /CREATE TABLE sales_commercial_quotation_draft_events/);
   assert.match(sql, /audit events are immutable/);
   assert.doesNotMatch(sql, /quotation_package_versions|commercial_quotes/);
+});
+
+test('quotation draft records the selected seller identity and only approved standard wording snapshots', async () => {
+  const sellerSql = await readFile(quotationSellerEntityMigrationPath, 'utf8');
+  const termsSql = await readFile(quotationStandardTermsMigrationPath, 'utf8');
+  assert.match(sellerSql, /seller_entity_code text/);
+  assert.match(sellerSql, /seller_entity_name text/);
+  assert.match(sellerSql, /江苏胜开尔工业技术有限公司/);
+  assert.match(sellerSql, /SUNKAIER ASIA PACIFIC PTE\. LTD\./);
+  assert.match(termsSql, /CREATE TABLE sales_quotation_standard_terms/);
+  assert.match(termsSql, /approved_by bigint REFERENCES users\(id\)/);
+  assert.match(termsSql, /Published standard commercial term content is immutable/);
+  assert.match(termsSql, /ADD COLUMN term_selections jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.doesNotMatch(termsSql, /INSERT INTO sales_quotation_standard_terms/);
 });
 
 test('technical-file customer release defaults old files to internal and guards exact-version external use', async () => {
@@ -229,6 +246,20 @@ test('uploaded technical draft migration preserves file-backed versions and appr
   assert.match(sql, /CHECK \(format IN \('docx', 'pdf', 'uploaded'\)\)/);
   assert.match(sql, /Submitted technical solution content is immutable/);
   assert.match(sql, /A technical draft file cannot be retired while linked to the draft/);
+});
+
+test('uploaded technical file withdrawal audit event is accepted without dropping existing event types', async () => {
+  const sql = await readFile(uploadedTechnicalFileWithdrawalEventMigrationPath, 'utf8');
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS opportunity_technical_draft_events_event_type_check/);
+  assert.match(sql, /ADD CONSTRAINT opportunity_technical_draft_events_event_type_check/);
+  for (const eventType of [
+    'created', 'variables_updated', 'section_updated', 'clauses_updated',
+    'assignment_added', 'assignment_removed', 'readiness_checked',
+    'submitted', 'withdrawn', 'approved', 'rejected', 'revision_created',
+    'documents_generated', 'file_uploaded', 'file_replaced', 'file_withdrawn'
+  ]) {
+    assert.match(sql, new RegExp(`'${eventType}'`));
+  }
 });
 
 test('initial schema declares first-version tables', async () => {

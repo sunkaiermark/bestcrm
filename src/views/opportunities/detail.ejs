@@ -514,30 +514,38 @@
                 <% if (uploadedTechnicalDrafts.length) { %>
                       <div class="technical-uploaded-files">
                         <strong class="technical-uploaded-files-label"><%= t('uploadedTechnicalProposals') %></strong>
-                        <% for (const draft of uploadedTechnicalDrafts) { const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; const draftFiles = uploadedFilesForTechnicalDraft(draft); %>
-                          <% for (const [fileIndex, uploadedFile] of draftFiles.entries()) { %>
-                          <div class="technical-version-row technical-uploaded-file-row" data-technical-draft-id="<%= draft.id %>" data-technical-attachment-id="<%= uploadedFile.id %>">
-                            <span class="technical-version-summary"><%= draft.draftLabel %><% if (draft.formalVersionLabel) { %> · <%= draft.formalVersionLabel %><% } %> · <%= draft.templateNameSnapshot %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %>
-                              <% if (draft.status === 'rejected' && draft.reviewComment) { %><span class="muted">· <%= draft.reviewComment %></span><% } %>
-                              <% if (fileIndex === 0 && reviewFiles.length) { %><span class="technical-review-file-links"><%= t('reviewAttachments') %>:
-                                <% for (const file of reviewFiles) { %><span><%= file.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/download"><%= t('download') %></a></span><% } %>
-                              </span><% } %>
-                            </span>
-                            <span class="technical-uploaded-file-name" title="<%= uploadedFile.originalName %>"><%= uploadedFile.originalName %></span>
-                            <time class="technical-uploaded-file-time" datetime="<%= attachmentUploadedAtSortValue(uploadedFile.uploadedAt) %>"><%= formatShortDate(uploadedFile.uploadedAt) %></time>
-                            <span class="technical-version-actions technical-uploaded-file-actions">
-                              <a class="technical-file-action technical-file-preview-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/preview"><%= t('preview') %></a>
-                              <a class="technical-file-action technical-file-download-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/download"><%= t('download') %></a>
-                              <% if (canManageUploadedTechnicalDraft && Number(draft.id) === Number(activeTechnicalDraft?.id) && !uploadedFile.materialVersionId) { %>
-                                <form class="technical-file-withdraw-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/files/<%= uploadedFile.id %>/withdraw" onsubmit="return confirm('<%= t('withdrawUploadedTechnicalFileConfirm') %>')">
-                                  <%- csrfField() %><input type="hidden" name="returnTo" value="opportunity">
-                                  <button class="technical-file-action technical-file-withdraw-action" type="submit"><%= t('withdrawUploadedTechnicalFile') %></button>
-                                </form>
+                        <div class="technical-uploaded-files-scroll">
+                          <table class="technical-uploaded-files-table">
+                            <colgroup><col class="technical-file-version-column"><col><col class="technical-file-time-column"><col class="technical-file-actions-column"></colgroup>
+                            <thead><tr><th scope="col"><%= t('technicalFileVersion') %></th><th scope="col"><%= t('fileName') %></th><th scope="col"><%= t('technicalFileUploadedAt') %></th><th scope="col"><%= t('actions') %></th></tr></thead>
+                            <tbody>
+                              <% for (const draft of uploadedTechnicalDrafts) { const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; const draftFiles = uploadedFilesForTechnicalDraft(draft); %>
+                                <% for (const [fileIndex, uploadedFile] of draftFiles.entries()) { %>
+                                  <tr class="technical-uploaded-file-row" data-technical-draft-id="<%= draft.id %>" data-technical-attachment-id="<%= uploadedFile.id %>">
+                                    <td class="technical-version-summary"><%= draft.draftLabel %><% if (draft.formalVersionLabel) { %> · <%= draft.formalVersionLabel %><% } %><% if (draft.selfApprovalTest) { %><span class="muted"> · <%= t('technicalTestSelfApprovalBadge') %></span><% } %></td>
+                                    <td class="technical-uploaded-file-name"><span title="<%= uploadedFile.originalName %>"><%= uploadedFile.originalName %></span>
+                                      <% if (draft.status === 'rejected' && draft.reviewComment) { %><span class="muted"> · <%= draft.reviewComment %></span><% } %>
+                                      <% if (fileIndex === 0 && reviewFiles.length) { %><span class="technical-review-file-links"><%= t('reviewAttachments') %>:
+                                        <% for (const file of reviewFiles) { %><span><%= file.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/download"><%= t('download') %></a></span><% } %>
+                                      </span><% } %>
+                                    </td>
+                                    <td><time class="technical-uploaded-file-time" datetime="<%= attachmentUploadedAtSortValue(uploadedFile.uploadedAt) %>"><%= formatShortDate(uploadedFile.uploadedAt) %></time></td>
+                                    <td><div class="technical-version-actions technical-uploaded-file-actions">
+                                      <a class="technical-file-action technical-file-preview-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/preview"><%= t('preview') %></a>
+                                      <a class="technical-file-action technical-file-download-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/download"><%= t('download') %></a>
+                                      <% if (canManageUploadedTechnicalDraft && Number(draft.id) === Number(activeTechnicalDraft?.id) && !uploadedFile.materialVersionId) { %>
+                                        <form class="technical-file-withdraw-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/files/<%= uploadedFile.id %>/withdraw" onsubmit="return confirm('<%= t('withdrawUploadedTechnicalFileConfirm') %>')">
+                                          <%- csrfField() %><input type="hidden" name="returnTo" value="opportunity">
+                                          <button class="technical-file-action technical-file-withdraw-action" type="submit"><%= t('withdrawUploadedTechnicalFile') %></button>
+                                        </form>
+                                      <% } %>
+                                    </div></td>
+                                  </tr>
+                                <% } %>
                               <% } %>
-                            </span>
-                          </div>
-                          <% } %>
-                        <% } %>
+                            </tbody>
+                          </table>
+                        </div>
                       </div>
                 <% } %>
                 <% if (activeTechnicalDraft?.sourceKind === 'uploaded_file' && !canReviewTechnicalDraft) { const draft = activeTechnicalDraft; %>
@@ -630,7 +638,7 @@
 
           <% if (!opportunity.archivedAt && uploadedTechnicalDrafts.length && Number(signedInUserId) === Number(opportunity.salespersonId)) { %>
             <section class="content-section business-section business-section-quote">
-              <h2><%= language === 'zh' ? '商务报价内部草稿' : 'Internal Commercial Quotation Draft' %></h2>
+              <h2><%= language === 'zh' ? '报价草稿' : 'Quotation Draft' %></h2>
               <div class="section-body"><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/commercial-quotation-draft"><%= language === 'zh' ? '进入报价草稿' : 'Open quotation draft' %></a></div>
             </section>
           <% } %>

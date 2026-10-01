@@ -69,6 +69,46 @@ test('customer repository searches code name and website inside the owner scope'
   assert.match(sql, /c\.website ILIKE \$2/);
   assert.deepEqual(params, [7, '%C000\\_10\\%%']);
 });
+
+test('customer filters combine owner, exact customer, country, archive, and escaped keyword', async () => {
+  const queryTarget = createFakeQueryTarget([]);
+  const repository = createCustomerRepository(queryTarget);
+
+  await repository.listCustomers({
+    ownerUserId: 7, customerId: 10, country: 'China', archiveScope: 'all', searchTerm: 'Acme_%'
+  });
+
+  const { sql, params } = queryTarget.queries[0];
+  assert.match(sql, /c\.owner_user_id = \$1/);
+  assert.match(sql, /c\.id = \$2/);
+  assert.match(sql, /btrim\(c\.country\) = \$3/);
+  assert.match(sql, /c\.name ILIKE \$4/);
+  assert.deepEqual(params, [7, 10, 'China', '%Acme\\_\\%%']);
+});
+
+test('customer filter options come only from the permitted owner and archive scope', async () => {
+  const queryTarget = createFakeQueryTarget([
+    { id: '10', customer_code: 'C000010', name: 'Acme', country: 'China',
+      owner_user_id: '7', owner_display_name: 'Sales One', owner_username: 'sales01' },
+    { id: '11', customer_code: 'C000011', name: 'Beta', country: 'India',
+      owner_user_id: '7', owner_display_name: 'Sales One', owner_username: 'sales01' }
+  ]);
+  const repository = createCustomerRepository(queryTarget);
+
+  const options = await repository.listCustomerFilterOptions({ ownerUserId: 7, archiveScope: 'active' });
+
+  assert.deepEqual(options, {
+    customers: [
+      { id: 10, customerCode: 'C000010', name: 'Acme' },
+      { id: 11, customerCode: 'C000011', name: 'Beta' }
+    ],
+    salesOwners: [{ id: 7, displayName: 'Sales One' }],
+    countries: ['China', 'India']
+  });
+  assert.match(queryTarget.queries[0].sql, /c\.archived_at IS NULL/);
+  assert.match(queryTarget.queries[0].sql, /c\.owner_user_id = \$1/);
+  assert.deepEqual(queryTarget.queries[0].params, [7]);
+});
 test('customer repository supports archived and all record scopes', async () => {
   const queryTarget = createFakeQueryTarget([]);
   const repository = createCustomerRepository(queryTarget);
@@ -342,6 +382,22 @@ test('contact repository searches contact and customer identity fields inside th
   assert.match(sql, /ct\.phone ILIKE \$3/);
   assert.match(sql, /ct\.wechat ILIKE \$3/);
   assert.deepEqual(params, [7, 10, '%CT000\\_20\\%%']);
+});
+
+test('contact filters combine customer owner, customer, country, archive, and keyword', async () => {
+  const queryTarget = createFakeQueryTarget([]);
+  const repository = createContactRepository(queryTarget);
+
+  await repository.listContacts({
+    ownerUserId: 7, customerId: 10, country: 'China', archiveScope: 'all', searchTerm: 'Alice'
+  });
+
+  const { sql, params } = queryTarget.queries[0];
+  assert.match(sql, /c\.owner_user_id = \$1/);
+  assert.match(sql, /ct\.customer_id = \$2/);
+  assert.match(sql, /btrim\(c\.country\) = \$3/);
+  assert.match(sql, /ct\.name ILIKE \$4/);
+  assert.deepEqual(params, [7, 10, 'China', '%Alice%']);
 });
 
 test('contact repository only auto-matches one exact normalized email address', async () => {

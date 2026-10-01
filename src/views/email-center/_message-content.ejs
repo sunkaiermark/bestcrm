@@ -23,7 +23,14 @@
       <strong><%= t('attachments') %></strong>
       <div class="email-attachment-chips">
         <% for (const attachment of downloadableMessageAttachments) { %>
-          <a class="email-attachment-chip" href="/email-center/attachments/<%= attachment.id %>/download"><span aria-hidden="true">📎</span><span><%= attachment.originalName %></span><% if (attachment.fileSize !== undefined && attachment.fileSize !== null) { %><small><%= attachment.fileSize %> B</small><% } %></a>
+          <div class="email-attachment-chip">
+            <span aria-hidden="true">📎</span><span class="email-attachment-name" title="<%= attachment.originalName %>"><%= attachment.originalName %></span>
+            <% if (attachment.fileSize !== undefined && attachment.fileSize !== null) { %><small><%= attachment.fileSize %> B</small><% } %>
+            <span class="email-attachment-actions">
+              <a href="/email-center/attachments/<%= attachment.id %>/preview" aria-label="<%= t('preview') %>: <%= attachment.originalName %>"><%= t('preview') %></a>
+              <a href="/email-center/attachments/<%= attachment.id %>/download" aria-label="<%= t('download') %>: <%= attachment.originalName %>"><%= t('download') %></a>
+            </span>
+          </div>
         <% } %>
       </div>
       <% if (downloadableMessageAttachments.some((attachment) => attachment.sha256)) { %>

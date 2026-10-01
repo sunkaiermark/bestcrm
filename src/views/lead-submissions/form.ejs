@@ -133,6 +133,19 @@
             const submitButton = document.getElementById('lead-submit-button');
             const list = document.getElementById('lead-staged-attachment-list');
             const status = document.getElementById('lead-attachment-status');
+            const requirement = form?.classList.contains('lead-submission-form-new')
+              ? form.querySelector('textarea[name="requirementText"]')
+              : null;
+            if (requirement) {
+              const resizeRequirement = () => {
+                requirement.style.height = 'auto';
+                const borderHeight = requirement.offsetHeight - requirement.clientHeight;
+                requirement.style.height = `${Math.max(200, requirement.scrollHeight + borderHeight)}px`;
+              };
+              requirement.addEventListener('input', resizeRequirement);
+              window.addEventListener('resize', resizeRequirement);
+              resizeRequirement();
+            }
             if (!form || !draft || !fileInput || !uploadButton || !submitButton || !list || !status) return;
 
             const labels = {

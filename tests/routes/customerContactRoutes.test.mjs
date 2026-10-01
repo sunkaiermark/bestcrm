@@ -313,6 +313,94 @@ test('customer list search preserves owner scope and displays the retained query
   assert.match(response.text, /Search by customer code, name, or website/);
 });
 
+test('administrator can combine customer and contact list filters without widening option scope', async () => {
+  const customerFilters = [];
+  const contactFilters = [];
+  const optionFilters = [];
+  const filterOptions = {
+    salesOwners: [{ id: 9, displayName: 'Sales Two' }],
+    customers: [{ id: 11, customerCode: 'C000011', name: 'Beta Co' }],
+    countries: ['India']
+  };
+  const { agent } = await createLoggedInAgent({
+    user: { roles: [ROLES.ADMINISTRATOR] },
+    customerRepository: {
+      async listCustomers(filter) {
+        customerFilters.push(filter);
+        return [];
+      },
+      async listCustomerFilterOptions(filter) {
+        optionFilters.push(filter);
+        return filterOptions;
+      }
+    },
+    contactRepository: {
+      async listContacts(filter) {
+        contactFilters.push(filter);
+        return [];
+      }
+    }
+  });
+  const query = { salespersonId: '9', customerId: '11', country: 'India', q: '  Beta  ', archiveScope: 'archived' };
+
+  const customers = await agent.get('/customers').query(query);
+  const contacts = await agent.get('/contacts').query(query);
+
+  assert.equal(customers.status, 200);
+  assert.equal(contacts.status, 200);
+  assert.deepEqual(customerFilters, [{
+    ownerUserId: 9, customerId: 11, country: 'India', searchTerm: 'Beta', archiveScope: 'archived'
+  }]);
+  assert.deepEqual(contactFilters, [{
+    ownerUserId: 9, customerId: 11, country: 'India', searchTerm: 'Beta', archiveScope: 'archived'
+  }]);
+  assert.deepEqual(optionFilters, [{ archiveScope: 'archived' }, { archiveScope: 'all' }]);
+  for (const response of [customers, contacts]) {
+    assert.match(response.text, /<select name="salespersonId">[\s\S]*?<option value="9" selected>Sales Two<\/option>/);
+    assert.match(response.text, /<select name="customerId">[\s\S]*?<option value="11" selected>C000011 · Beta Co<\/option>/);
+    assert.match(response.text, /<select name="country">[\s\S]*?<option value="India" selected>India<\/option>/);
+    assert.match(response.text, /name="q"[^>]*value="Beta"/);
+  }
+});
+
+test('salesperson cannot expand customer or contact search with another owner id', async () => {
+  const customerFilters = [];
+  const contactFilters = [];
+  const optionFilters = [];
+  const { agent } = await createLoggedInAgent({
+    customerRepository: {
+      async listCustomers(filter) {
+        customerFilters.push(filter);
+        return [];
+      },
+      async listCustomerFilterOptions(filter) {
+        optionFilters.push(filter);
+        return { salesOwners: [], customers: [], countries: [] };
+      }
+    },
+    contactRepository: {
+      async listContacts(filter) {
+        contactFilters.push(filter);
+        return [];
+      }
+    }
+  });
+
+  const customers = await agent.get('/customers?salespersonId=9&country=China');
+  const contacts = await agent.get('/contacts?salespersonId=9&country=China');
+
+  assert.equal(customers.status, 200);
+  assert.equal(contacts.status, 200);
+  assert.deepEqual(customerFilters, [{ ownerUserId: 7, searchTerm: '', archiveScope: 'active', country: 'China' }]);
+  assert.deepEqual(contactFilters, [{ ownerUserId: 7, searchTerm: '', archiveScope: 'active', country: 'China' }]);
+  assert.deepEqual(optionFilters, [
+    { ownerUserId: 7, archiveScope: 'active' },
+    { ownerUserId: 7, archiveScope: 'all' }
+  ]);
+  assert.doesNotMatch(customers.text, /name="salespersonId"/);
+  assert.doesNotMatch(contacts.text, /name="salespersonId"/);
+});
+
 test('logged in salesperson can view contact list and detail', async () => {
   const { agent } = await createLoggedInAgent();
 
@@ -417,6 +505,7 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.match(customers.text, /<option value="active" selected>\u6b63\u5e38\u8bb0\u5f55<\/option>/);
   assert.match(customers.text, /<th scope="col">\u540d\u79f0<\/th>/);
   assert.match(customers.text, /<th scope="col">\u56fd\u5bb6<\/th>/);
+  assert.match(customers.text, /<option value="">\u5168\u90e8\u56fd\u5bb6<\/option>/);
   assert.match(customers.text, /<th scope="col">\u884c\u4e1a<\/th>/);
 
   const customerDetail = await agent.get('/customers/10');
@@ -441,6 +530,7 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.match(contacts.text, /<th scope="col">\u8054\u7cfb\u4eba\u4ee3\u7801<\/th>/);
   assert.match(contacts.text, /<th scope="col">\u5ba2\u6237\u4ee3\u7801<\/th>/);
   assert.match(contacts.text, /<th scope="col">\u5ba2\u6237\u540d\u79f0<\/th>/);
+  assert.match(contacts.text, /<option value="">\u5168\u90e8\u56fd\u5bb6<\/option>/);
   assert.match(contacts.text, /\u6309\u8054\u7cfb\u4eba\u4ee3\u7801\u3001\u59d3\u540d\u3001\u5ba2\u6237\u3001\u90ae\u7bb1\u3001\u7535\u8bdd\u6216\u5fae\u4fe1\u67e5\u8be2/);
   assert.match(contacts.text, /<th scope="col">\u804c\u52a1<\/th>/);
 

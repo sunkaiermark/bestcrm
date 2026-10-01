@@ -22,6 +22,9 @@ function mapDraft(row) {
     sourceFileName: row.source_file_name,
     language: row.language,
     currency: row.currency || '',
+    sellerEntityCode: row.seller_entity_code || '',
+    sellerEntityName: row.seller_entity_name || '',
+    termSelections: row.term_selections || {},
     lineItems: row.line_items || [],
     draftRevisionNo: Number(row.draft_revision_no),
     createdBy: Number(row.created_by),
@@ -51,6 +54,22 @@ const sourceSelect = `
 
 export function createSalesCommercialQuotationDraftRepository(queryTarget) {
   return {
+    async listPublishedStandardTerms(language) {
+      const result = await queryTarget.query(`
+        SELECT id, term_key, language, revision_no, title, body
+        FROM sales_quotation_standard_terms
+        WHERE language = $1
+          AND status = 'published'
+          AND published_at <= now()
+          AND retired_at IS NULL
+        ORDER BY term_key, revision_no DESC, id DESC
+      `, [language]);
+      return result.rows.map((row) => ({
+        id: Number(row.id), key: row.term_key, language: row.language,
+        revisionNo: Number(row.revision_no), title: row.title, body: row.body
+      }));
+    },
+
     async listTechnicalSources(opportunityId) {
       const result = await queryTarget.query(`
         ${sourceSelect}
@@ -80,24 +99,30 @@ export function createSalesCommercialQuotationDraftRepository(queryTarget) {
       const result = await queryTarget.query(`
         INSERT INTO sales_commercial_quotation_drafts (
           opportunity_id, source_technical_draft_id, source_attachment_id,
-          source_sha256, source_file_name, language, currency, line_items,
-          created_by, updated_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9, $9)
+          source_sha256, source_file_name, language, currency,
+          seller_entity_code, seller_entity_name, line_items,
+          term_selections, created_by, updated_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $12)
         ON CONFLICT (opportunity_id) DO UPDATE SET
           source_technical_draft_id = EXCLUDED.source_technical_draft_id,
           source_attachment_id = EXCLUDED.source_attachment_id,
           source_sha256 = EXCLUDED.source_sha256,
           source_file_name = EXCLUDED.source_file_name,
           currency = EXCLUDED.currency,
+          seller_entity_code = EXCLUDED.seller_entity_code,
+          seller_entity_name = EXCLUDED.seller_entity_name,
           line_items = EXCLUDED.line_items,
+          term_selections = EXCLUDED.term_selections,
           draft_revision_no = sales_commercial_quotation_drafts.draft_revision_no + 1,
           updated_by = EXCLUDED.updated_by
-        WHERE sales_commercial_quotation_drafts.draft_revision_no = $10
+        WHERE sales_commercial_quotation_drafts.draft_revision_no = $13
         RETURNING *
       `, [
         input.opportunityId, input.source.technicalDraftId, input.source.attachmentId,
         input.source.sha256, input.source.originalName, input.language,
-        input.currency || null, JSON.stringify(input.lineItems), input.actorUserId,
+        input.currency || null, input.sellerEntityCode || null,
+        input.sellerEntityName || null, JSON.stringify(input.lineItems),
+        JSON.stringify(input.termSelections || {}), input.actorUserId,
         input.expectedRevisionNo
       ]);
       return mapDraft(result.rows[0]);

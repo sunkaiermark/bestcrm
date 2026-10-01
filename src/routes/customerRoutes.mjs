@@ -5,6 +5,7 @@ import { CUSTOMER_REGIONS } from '../domain/customerRegions.mjs';
 import { ENTERPRISE_NATURES } from '../domain/enterpriseNatures.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
+import { normalizeCustomerContactListQuery } from '../utils/customerContactListQuery.mjs';
 import {
   archiveCustomer,
   canArchiveCustomer,
@@ -14,12 +15,6 @@ import {
   reopenCustomer,
   updateCustomer
 } from '../services/customerService.mjs';
-
-const archiveScopes = new Set(['active', 'archived', 'all']);
-
-function archiveScope(value) {
-  return archiveScopes.has(value) ? value : 'active';
-}
 
 function customerFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
@@ -44,14 +39,25 @@ export function customerRoutes({ customerRepository }) {
 
   router.get('/customers', async (req, res, next) => {
     try {
-      const searchTerm = String(req.query.q || '').trim();
-      const selectedArchiveScope = archiveScope(req.query.archiveScope);
-      const customers = await customerRepository.listCustomers({
-        ...customerFilter(req.currentUser),
-        searchTerm,
-        archiveScope: selectedArchiveScope
-      });
-      res.render('customers/index', { customers, filters: { searchTerm, archiveScope: selectedArchiveScope } });
+      const isAdministrator = hasRole(req.currentUser, ROLES.ADMINISTRATOR);
+      const filters = normalizeCustomerContactListQuery(req.query);
+      if (!isAdministrator) filters.salespersonId = null;
+      const visibleFilter = customerFilter(req.currentUser);
+      const listFilter = {
+        ...visibleFilter,
+        searchTerm: filters.searchTerm,
+        archiveScope: filters.archiveScope
+      };
+      if (filters.salespersonId) listFilter.ownerUserId = filters.salespersonId;
+      if (filters.customerId) listFilter.customerId = filters.customerId;
+      if (filters.country) listFilter.country = filters.country;
+      const [customers, filterOptions] = await Promise.all([
+        customerRepository.listCustomers(listFilter),
+        typeof customerRepository.listCustomerFilterOptions === 'function'
+          ? customerRepository.listCustomerFilterOptions({ ...visibleFilter, archiveScope: filters.archiveScope })
+          : { salesOwners: [], customers: [], countries: [] }
+      ]);
+      res.render('customers/index', { customers, filters, filterOptions, showSalesOwnerFilter: isAdministrator });
     } catch (error) {
       next(error);
     }

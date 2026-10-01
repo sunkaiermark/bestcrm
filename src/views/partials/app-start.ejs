@@ -1039,61 +1039,55 @@
       }
 
       .technical-uploaded-files {
-        display: grid;
-        gap: 0 16px;
-        grid-template-columns: var(--technical-proposal-file-columns);
         max-width: var(--technical-proposal-layout-width);
         width: 100%;
       }
 
       .technical-uploaded-files > .technical-uploaded-files-label {
-        align-self: center;
-        grid-column: 1;
-        margin: 0;
-        padding: 9px 0;
+        display: block;
+        margin-bottom: 10px;
       }
 
-      .technical-version-row.technical-uploaded-file-row {
-        border: 0;
-        display: contents;
-        padding: 0;
+      .technical-uploaded-files-scroll {
+        overflow-x: auto;
+        width: 100%;
       }
 
-      .technical-version-row.technical-uploaded-file-row .technical-version-summary {
-        grid-column: 2;
-        min-width: 0;
-        overflow-wrap: anywhere;
+      .technical-uploaded-files-table {
+        border-collapse: collapse;
+        min-width: 780px;
+        table-layout: fixed;
+        width: 100%;
       }
 
-      .technical-version-row.technical-uploaded-file-row > .technical-version-summary,
-      .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-name,
-      .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-time,
-      .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-actions {
-        align-self: stretch;
+      .technical-uploaded-files-table .technical-file-version-column { width: 160px; }
+      .technical-uploaded-files-table .technical-file-time-column { width: 165px; }
+      .technical-uploaded-files-table .technical-file-actions-column { width: 330px; }
+
+      .technical-uploaded-files-table th,
+      .technical-uploaded-files-table td {
         border-bottom: 1px solid var(--line);
-        padding: 9px 0;
+        padding: 10px 12px;
+        text-align: left;
+        vertical-align: middle;
+      }
+
+      .technical-uploaded-files-table th {
+        background: #e9f1f7;
+        color: var(--muted);
+        font-weight: 700;
       }
 
       .technical-uploaded-file-name {
-        align-items: center;
-        display: flex;
-        grid-column: 3;
-        min-width: 0;
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
+        overflow-wrap: anywhere;
       }
 
       .technical-uploaded-file-actions {
-        grid-column: 5;
         justify-content: flex-start;
       }
 
       .technical-uploaded-file-time {
-        align-items: center;
         color: var(--muted);
-        display: flex;
-        grid-column: 4;
         white-space: nowrap;
       }
 
@@ -1192,37 +1186,6 @@
         .technical-proposal-upload-form > button {
           grid-column: 1;
           width: 100%;
-        }
-
-        .technical-uploaded-files {
-          display: grid;
-          gap: 8px;
-          grid-template-columns: minmax(0, 1fr);
-        }
-
-        .technical-uploaded-files > .technical-uploaded-files-label,
-        .technical-version-row.technical-uploaded-file-row {
-          grid-column: 1;
-        }
-
-        .technical-version-row.technical-uploaded-file-row {
-          display: grid;
-          gap: 8px;
-          grid-template-columns: minmax(0, 1fr);
-        }
-
-        .technical-version-row.technical-uploaded-file-row .technical-version-summary,
-        .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-name,
-        .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-time,
-        .technical-version-row.technical-uploaded-file-row > .technical-uploaded-file-actions {
-          border-bottom: 0;
-          grid-column: 1;
-          padding: 0;
-        }
-
-        .technical-version-row.technical-uploaded-file-row {
-          border-bottom: 1px solid var(--line);
-          padding: 9px 0;
         }
 
         .technical-proposal-submit-form {
@@ -2326,6 +2289,11 @@
       .lead-submission-form-new > .lead-submission-subject input {
         font-size: 24px;
         font-weight: 700;
+      }
+
+      .lead-submission-form-new textarea[name="requirementText"] {
+        min-height: 200px;
+        overflow-y: hidden;
       }
 
       .lead-required-mark {
@@ -4046,12 +4014,15 @@
         border-radius: 8px;
         color: var(--ink);
         display: inline-flex;
+        flex-wrap: wrap;
         gap: 7px;
         max-width: 100%;
         padding: 9px 11px;
       }
 
-      .email-attachment-chip span:nth-child(2) {
+      .email-attachment-name {
+        max-width: min(55ch, 55vw);
+        min-width: 0;
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
@@ -4060,6 +4031,20 @@
       .email-attachment-chip small {
         color: var(--muted);
         white-space: nowrap;
+      }
+
+      .email-attachment-actions {
+        display: inline-flex;
+        gap: 10px;
+        margin-left: auto;
+        white-space: nowrap;
+      }
+
+      .email-attachment-actions a {
+        color: var(--accent);
+        font-weight: 700;
+        text-decoration: underline;
+        text-underline-offset: 2px;
       }
 
       .email-attachment-integrity {

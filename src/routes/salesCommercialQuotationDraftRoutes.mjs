@@ -1,5 +1,7 @@
 import { Router } from 'express';
 import { requireLogin } from '../middleware/auth.mjs';
+import { QUOTATION_SELLER_EMAIL, QUOTATION_SELLER_ENTITIES } from '../domain/quotationSellerEntities.mjs';
+import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
 import {
   SalesCommercialQuotationDraftError,
   canEditSalesCommercialQuotationDraft,
@@ -41,11 +43,14 @@ export function salesCommercialQuotationDraftRoutes({
       const opportunity = await loadOpportunity(req, res);
       if (!opportunity) return;
       const context = await loadSalesCommercialQuotationDraft(
-        salesCommercialQuotationDraftRepository, req.currentUser, opportunity
+        salesCommercialQuotationDraftRepository, req.currentUser, opportunity, req.language
       );
       res.render('sales-commercial-quotation-drafts/form', {
         opportunity,
         ...context,
+        sellerEntities: QUOTATION_SELLER_ENTITIES,
+        sellerEmail: QUOTATION_SELLER_EMAIL,
+        termSections: QUOTATION_COMMERCIAL_TERM_SECTIONS,
         canEdit: canEditSalesCommercialQuotationDraft(req.currentUser, opportunity),
         saved: req.query.saved === '1'
       });

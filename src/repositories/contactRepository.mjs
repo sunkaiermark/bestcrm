@@ -102,6 +102,10 @@ export function createContactRepository(queryTarget) {
         params.push(filter.customerId);
         where.push(`ct.customer_id = $${params.length}`);
       }
+      if (filter.country) {
+        params.push(String(filter.country).trim());
+        where.push(`btrim(c.country) = $${params.length}`);
+      }
       if (filter.searchTerm) {
         params.push(`%${String(filter.searchTerm).replace(/[\\%_]/g, '\\$&')}%`);
         const searchParam = `$${params.length}`;

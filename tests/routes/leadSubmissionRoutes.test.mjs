@@ -285,6 +285,9 @@ test('salesperson uploads and previews a supporting file before submitting the l
     assert.equal(suggestionScript.status, 200);
     assert.match(suggestionScript.text, /data-product-category-picker/);
     assert.match(form.text, /class="lead-submission-form-wide"/);
+    assert.match(form.text, /\.lead-submission-form-new textarea\[name="requirementText"\]\s*\{[^}]*min-height: 200px;[^}]*overflow-y: hidden;/s);
+    assert.match(form.text, /form\?\.classList\.contains\('lead-submission-form-new'\)[\s\S]*?requirement\.addEventListener\('input', resizeRequirement\);/);
+    assert.match(form.text, /window\.addEventListener\('resize', resizeRequirement\);/);
     assert.match(form.text, /\.form-panel\.lead-submission-form\s*\{[^}]*grid-template-columns: repeat\(2, minmax\(0, 1fr\)\);[^}]*margin-left: auto;[^}]*margin-right: auto;[^}]*max-width: 1180px;/s);
     assert.match(form.text, /\.lead-submission-form-new > label\.lead-submission-subject\s*\{[^}]*grid-column: 1 \/ -1;[^}]*grid-template-columns: 105px minmax\(0, 1fr\);/s);
     assert.match(form.text, /@media \(max-width: 900px\)\s*\{[^}]*\.form-panel\.lead-submission-form\s*\{[^}]*grid-template-columns: 1fr;/s);
@@ -685,6 +688,7 @@ test('pending lead creator can open the edit form and save corrected details', a
     const edit = await agent.get('/lead-submissions/11/edit');
     assert.equal(edit.status, 200);
     assert.match(edit.text, /action="\/lead-submissions\/11\/update"/);
+    assert.doesNotMatch(edit.text, /class="form-panel lead-submission-form lead-submission-form-new"/);
     assert.match(edit.text, /name="companyWebsite"[^>]*value="https:\/\/acme\.example"/);
     assert.match(edit.text, />Save changes</);
     const draftToken = edit.text.match(/name="attachmentDraftToken" value="([^"]+)"/)?.[1];

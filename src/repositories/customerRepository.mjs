@@ -86,21 +86,66 @@ const customerSelect = `
   LEFT JOIN contacts ct ON ct.customer_id = c.id AND ct.archived_at IS NULL
 `;
 
+function customerScopeConditions(filter) {
+  const where = [];
+  const params = [];
+  if (filter.archiveScope === 'all') {
+    // Include active and archived customer records.
+  } else if (filter.archiveScope === 'archived') {
+    where.push('c.archived_at IS NOT NULL');
+  } else {
+    where.push('c.archived_at IS NULL');
+  }
+  if (filter.ownerUserId) {
+    params.push(filter.ownerUserId);
+    where.push(`c.owner_user_id = $${params.length}`);
+  }
+  return { where, params };
+}
+
 export function createCustomerRepository(queryTarget) {
   return {
-    async listCustomers(filter = {}) {
-      const where = [];
-      const params = [];
-      if (filter.archiveScope === 'all') {
-        // Include active and archived customer records.
-      } else if (filter.archiveScope === 'archived') {
-        where.push('c.archived_at IS NOT NULL');
-      } else {
-        where.push('c.archived_at IS NULL');
+    async listCustomerFilterOptions(filter = {}) {
+      const { where, params } = customerScopeConditions(filter);
+      const result = await queryTarget.query(`
+        SELECT c.id, c.customer_code, c.name, btrim(c.country) AS country,
+          c.owner_user_id, u.display_name AS owner_display_name, u.username AS owner_username
+        FROM customers c
+        LEFT JOIN users u ON u.id = c.owner_user_id
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY c.name, c.id
+      `, params);
+      const customers = result.rows.map((row) => ({
+        id: Number(row.id), customerCode: row.customer_code || '', name: row.name
+      }));
+      const salesOwners = new Map();
+      const countries = new Set();
+      for (const row of result.rows) {
+        const ownerId = Number(row.owner_user_id);
+        if (Number.isSafeInteger(ownerId) && ownerId > 0 && !salesOwners.has(ownerId)) {
+          salesOwners.set(ownerId, {
+            id: ownerId,
+            displayName: row.owner_display_name || row.owner_username || String(ownerId)
+          });
+        }
+        if (row.country) countries.add(row.country);
       }
-      if (filter.ownerUserId) {
-        params.push(filter.ownerUserId);
-        where.push(`c.owner_user_id = $${params.length}`);
+      return {
+        customers,
+        salesOwners: [...salesOwners.values()].sort((left, right) => left.displayName.localeCompare(right.displayName)),
+        countries: [...countries].sort((left, right) => left.localeCompare(right))
+      };
+    },
+
+    async listCustomers(filter = {}) {
+      const { where, params } = customerScopeConditions(filter);
+      if (filter.customerId) {
+        params.push(filter.customerId);
+        where.push(`c.id = $${params.length}`);
+      }
+      if (filter.country) {
+        params.push(String(filter.country).trim());
+        where.push(`btrim(c.country) = $${params.length}`);
       }
       if (filter.searchTerm) {
         params.push(`%${String(filter.searchTerm).replace(/[\\%_]/g, '\\$&')}%`);

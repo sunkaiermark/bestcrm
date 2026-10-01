@@ -3,10 +3,17 @@ import { PRODUCT_CATEGORIES, suggestProductCategoryCodes } from '../domain/produ
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import multer from 'multer';
 import { createHash, randomUUID as nodeRandomUUID } from 'node:crypto';
-import { readFile } from 'node:fs/promises';
+import { readFile, stat } from 'node:fs/promises';
+import path from 'node:path';
 import { simpleParser } from 'mailparser';
 import { requireLogin } from '../middleware/auth.mjs';
 import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
+import {
+  attachmentPreviewKind,
+  extractDocxPlainText,
+  extractXlsxPreview,
+  renderDxfPreview
+} from '../utils/attachmentPreview.mjs';
 import { formatPlainEmailForReading, resolveInlineEmailContent } from '../utils/emailPresentation.mjs';
 import {
   canPurgeEmailThread,
@@ -48,6 +55,27 @@ function emailFolder(value) {
 
 function emailSearchTerm(value) {
   return String(value || '').trim().slice(0, 200);
+}
+
+const directEmailPreviewMimeByExtension = new Map([
+  ['.pdf', 'application/pdf'],
+  ['.txt', 'text/plain'],
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.gif', 'image/gif'],
+  ['.webp', 'image/webp']
+]);
+const directEmailPreviewMimeTypes = new Set(directEmailPreviewMimeByExtension.values());
+
+function directEmailPreviewMimeType(attachment) {
+  const extension = path.extname(String(attachment.originalName || attachment.storedPath || '')).toLowerCase();
+  if (directEmailPreviewMimeByExtension.has(extension)) {
+    return directEmailPreviewMimeByExtension.get(extension);
+  }
+  if (extension) return null;
+  const declaredMimeType = String(attachment.mimeType || '').split(';', 1)[0].trim().toLowerCase();
+  return directEmailPreviewMimeTypes.has(declaredMimeType) ? declaredMimeType : null;
 }
 
 function emailFolderFilter(folder, mailboxKey, searchTerm = '') {
@@ -473,6 +501,89 @@ export function emailCenterRoutes({
       res.setHeader('Content-Disposition', attachmentContentDisposition(attachment.originalName));
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Archive-SHA256', attachment.sha256);
+      res.sendFile(filePath, (error) => {
+        if (error && !res.headersSent) next(error);
+      });
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.get('/email-center/attachments/:attachmentId/preview', async (req, res, next) => {
+    try {
+      const { attachment, message, thread } = await getVisibleEmailAttachment(
+        dependencies,
+        req.currentUser,
+        req.params.attachmentId
+      );
+      const filePath = resolveStoredPath(uploadDir, attachment.storedPath);
+      if (!filePath) {
+        res.status(404).send('Email attachment file not found');
+        return;
+      }
+      let fileStat;
+      try {
+        fileStat = await stat(filePath);
+      } catch (error) {
+        if (error.code !== 'ENOENT' && error.code !== 'ENOTDIR') throw error;
+      }
+      if (!fileStat?.isFile()) {
+        res.status(404).send('Email attachment file not found');
+        return;
+      }
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+      res.setHeader('Referrer-Policy', 'no-referrer');
+      const previewContext = {
+        activeNav: 'email-center',
+        attachment,
+        downloadUrl: `/email-center/attachments/${attachment.id}/download`,
+        contextLabelKey: 'emailCenter',
+        contextText: message.subject || thread.subject || attachment.originalName,
+        backUrl: `/email-center/threads/${thread.id}`,
+        backLabelKey: 'emailConversation'
+      };
+      const kind = attachmentPreviewKind(attachment);
+      if (kind === 'unsupported-dwg' || kind === 'unsupported-doc') {
+        res.status(200).render('attachments/unsupported-preview', {
+          ...previewContext,
+          messageKey: kind === 'unsupported-dwg' ? 'dwgPreviewRequiresDxfOrPdf' : 'docPreviewRequiresDocx'
+        });
+        return;
+      }
+      if (kind === 'dxf') {
+        res.status(200).render('attachments/dxf-preview', {
+          ...previewContext,
+          preview: renderDxfPreview(await readFile(filePath, 'utf8'))
+        });
+        return;
+      }
+      if (kind === 'docx') {
+        res.status(200).render('attachments/docx-preview', {
+          ...previewContext,
+          paragraphs: extractDocxPlainText(await readFile(filePath))
+        });
+        return;
+      }
+      if (kind === 'spreadsheet') {
+        res.status(200).render('attachments/spreadsheet-preview', {
+          ...previewContext,
+          preview: extractXlsxPreview(await readFile(filePath))
+        });
+        return;
+      }
+      const previewMimeType = directEmailPreviewMimeType(attachment);
+      if (!previewMimeType) {
+        res.status(200).render('attachments/unsupported-preview', {
+          ...previewContext,
+          messageKey: 'previewNotAvailableDownload'
+        });
+        return;
+      }
+      res.setHeader('Content-Type', previewMimeType);
+      res.setHeader('Content-Disposition', inlineContentDisposition(attachment.originalName));
       res.setHeader('X-Archive-SHA256', attachment.sha256);
       res.sendFile(filePath, (error) => {
         if (error && !res.headersSent) next(error);

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
+import { normalizeCustomerContactListQuery } from '../utils/customerContactListQuery.mjs';
 import { canMaintainContact } from '../services/customerService.mjs';
 import {
   archiveContact,
@@ -10,12 +11,6 @@ import {
   reopenContact,
   updateContact
 } from '../services/contactService.mjs';
-
-const archiveScopes = new Set(['active', 'archived', 'all']);
-
-function archiveScope(value) {
-  return archiveScopes.has(value) ? value : 'active';
-}
 
 function contactFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
@@ -53,14 +48,25 @@ export function contactRoutes({ customerRepository, contactRepository }) {
 
   router.get('/contacts', async (req, res, next) => {
     try {
-      const searchTerm = String(req.query.q || '').trim();
-      const selectedArchiveScope = archiveScope(req.query.archiveScope);
-      const contacts = await contactRepository.listContacts({
-        ...contactFilter(req.currentUser),
-        searchTerm,
-        archiveScope: selectedArchiveScope
-      });
-      res.render('contacts/index', { contacts, filters: { searchTerm, archiveScope: selectedArchiveScope } });
+      const isAdministrator = hasRole(req.currentUser, ROLES.ADMINISTRATOR);
+      const filters = normalizeCustomerContactListQuery(req.query);
+      if (!isAdministrator) filters.salespersonId = null;
+      const visibleFilter = contactFilter(req.currentUser);
+      const listFilter = {
+        ...visibleFilter,
+        searchTerm: filters.searchTerm,
+        archiveScope: filters.archiveScope
+      };
+      if (filters.salespersonId) listFilter.ownerUserId = filters.salespersonId;
+      if (filters.customerId) listFilter.customerId = filters.customerId;
+      if (filters.country) listFilter.country = filters.country;
+      const [contacts, filterOptions] = await Promise.all([
+        contactRepository.listContacts(listFilter),
+        typeof customerRepository.listCustomerFilterOptions === 'function'
+          ? customerRepository.listCustomerFilterOptions({ ...visibleFilter, archiveScope: 'all' })
+          : { salesOwners: [], customers: [], countries: [] }
+      ]);
+      res.render('contacts/index', { contacts, filters, filterOptions, showSalesOwnerFilter: isAdministrator });
     } catch (error) {
       next(error);
     }
