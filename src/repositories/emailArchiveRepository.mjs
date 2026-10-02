@@ -134,6 +134,7 @@ function mapMessageRow(row) {
     authorDisplayName: text(row.author_display_name),
     sentAt: row.sent_at,
     receivedAt: row.received_at,
+    mailboxReceivedAt: row.mailbox_received_at || null,
     createdAt: row.created_at,
     attachments: [],
     deliveryAttempts: []
@@ -1848,13 +1849,14 @@ export function createEmailArchiveRepository(queryTarget) {
           classification_category,
           classification_reason,
           delivery_status,
-          received_at
+          received_at,
+          mailbox_received_at
         )
         VALUES (
           $1, 'inbound', $2, $3, $4::jsonb, $5, $6, $7,
           $8, $9, $10, $11, $12,
           $13, $14, $15::jsonb, $16::jsonb, $17, $18, $19, $20::jsonb,
-          $21, $22, $23, 'received', $24
+          $21, $22, $23, 'received', $24, $25
         )
         ON CONFLICT DO NOTHING
         RETURNING *
@@ -1882,7 +1884,8 @@ export function createEmailArchiveRepository(queryTarget) {
         input.archiveDisposition || 'active',
         input.classificationCategory || 'inquiry',
         input.classificationReason || 'manual_review',
-        input.receivedAt
+        input.receivedAt,
+        input.mailboxReceivedAt || null
       ]);
       return mapMessageRow(result.rows[0]);
     },

@@ -217,6 +217,7 @@ export function normalizeEmailArchivePayload(parsed = {}, meta = {}) {
     htmlBody: archiveHtmlBody(parsed),
     safeHeaders: safeHeaders(parsed),
     receivedAt: direction === 'inbound' ? observedAt : null,
+    mailboxReceivedAt: direction === 'inbound' ? dateToIso(meta.internalDate) : null,
     sentAt: direction === 'outbound' ? observedAt : null
   };
 }

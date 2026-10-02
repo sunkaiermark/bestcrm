@@ -943,6 +943,15 @@ test('opportunity correspondence is a single collapsed timeline with expandable 
   const { agent } = await createLoggedInAgent({
     emailCenter: { enabled: true },
     customerEmail: { enabled: true },
+    emailResponseRepository: {
+      async listThreadStates() {
+        return [{
+          messageId: 91, tracked: true, overdue: false, confirmedBy: null,
+          confirmedByName: '', confirmedAt: null, repliedAt: null,
+          dueAt: '2026-09-09T11:20:00.000Z'
+        }];
+      }
+    },
     emailArchiveRepository: {
       supportsEmailArchive: true,
       async listThreadsByOpportunity() {
@@ -976,6 +985,8 @@ test('opportunity correspondence is a single collapsed timeline with expandable 
 
   assert.equal(detail.status, 200);
   assert.match(detail.text, /id="opportunity-correspondence"/);
+  assert.match(detail.text, /action="\/email-center\/messages\/91\/acknowledge"/);
+  assert.match(detail.text, /Reply due/);
   assert.match(detail.text, /<h2>\s*<span>Correspondence<\/span>[\s\S]*<span class="section-heading-meta">1 messages<\/span>[\s\S]*href="\/email-center\/compose\?threadId=81"[^>]*>Reply to customer<\/a>[\s\S]*<\/h2>/);
   assert.match(detail.text, /<details class="correspondence-item">[\s\S]*Request to revise pump capacity[\s\S]*← Incoming/);
   assert.doesNotMatch(detail.text, /<details class="correspondence-item" open>/);

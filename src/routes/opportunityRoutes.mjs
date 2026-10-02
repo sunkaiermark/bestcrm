@@ -208,16 +208,27 @@ async function loadUsersByRole(userRepository) {
   return Object.fromEntries(entries);
 }
 
-async function loadOpportunityCorrespondence(emailArchiveRepository, opportunityId) {
+async function loadOpportunityCorrespondence(emailArchiveRepository, emailResponseRepository, opportunityId, ownerUserId) {
   if (emailArchiveRepository?.supportsEmailArchive !== true
       || typeof emailArchiveRepository.listThreadsByOpportunity !== 'function'
       || typeof emailArchiveRepository.getThreadDetail !== 'function') {
     return [];
   }
   const threads = await emailArchiveRepository.listThreadsByOpportunity(opportunityId);
-  return Promise.all(threads.map(async (thread) => (
-    await emailArchiveRepository.getThreadDetail(thread.id) || { ...thread, messages: [] }
-  )));
+  return Promise.all(threads.map(async (thread) => {
+    const detail = await emailArchiveRepository.getThreadDetail(thread.id) || { ...thread, messages: [] };
+    const states = typeof emailResponseRepository?.listThreadStates === 'function'
+      ? await emailResponseRepository.listThreadStates(thread.id, ownerUserId)
+      : [];
+    const byMessageId = new Map(states.map((state) => [state.messageId, state]));
+    return {
+      ...detail,
+      messages: (detail.messages || []).map((message) => ({
+        ...message,
+        response: byMessageId.get(Number(message.id)) || null
+      }))
+    };
+  }));
 }
 
 function userSelectField(name, label, users, value = null) {
@@ -748,6 +759,7 @@ export function opportunityRoutes({
   contactRepository,
   attachmentRepository,
   emailArchiveRepository,
+  emailResponseRepository = null,
   emailArchiveTransaction = null,
   sharedAddress = 'sales@sunkaier.com',
   emailCenterEnabled = false,
@@ -1124,7 +1136,9 @@ export function opportunityRoutes({
         quotationPackageRepository?.supportsQuotationPackages === true
           ? quotationPackageRepository.listByOpportunity(opportunity.id)
           : [],
-        emailCenterEnabled ? loadOpportunityCorrespondence(emailArchiveRepository, opportunity.id) : [],
+        emailCenterEnabled ? loadOpportunityCorrespondence(
+          emailArchiveRepository, emailResponseRepository, opportunity.id, opportunity.salespersonId
+        ) : [],
         opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true
           && typeof opportunityTechnicalDraftRepository.listByOpportunity === 'function'
           ? opportunityTechnicalDraftRepository.listByOpportunity(opportunity.id)
@@ -1161,6 +1175,7 @@ export function opportunityRoutes({
         attachments,
         requirementUpdates,
         correspondenceThreads,
+        canAcknowledgeCustomerEmail: Number(opportunity.salespersonId) === Number(req.currentUser.id),
         formatPlainEmailForReading,
         materialVersions,
         technicalFileLimitMb: Math.min(maxUploadMb, 25),

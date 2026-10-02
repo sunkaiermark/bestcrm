@@ -562,6 +562,7 @@ test('manual opportunity linking is limited to a manager-visible shared mailbox 
   };
   let listFilter;
   let linked;
+  const assignmentNotices = [];
   const dependencies = {
     emailArchiveRepository: {
       async findThreadById() { return thread; },
@@ -585,6 +586,9 @@ test('manual opportunity linking is limited to a manager-visible shared mailbox 
       async listOpportunities(filter) { listFilter = filter; return [opportunity]; },
       async getOpportunityDetail(id) { return Number(id) === 20 ? opportunity : null; }
     },
+    emailResponseRepository: {
+      async notifyOpportunityAssignment(input) { assignmentNotices.push(input); }
+    },
     opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return []; } }
   };
 
@@ -592,6 +596,7 @@ test('manual opportunity linking is limited to a manager-visible shared mailbox 
   assert.deepEqual(listFilter, { archiveScope: 'active', visibleToUserId: 2 });
   assert.equal((await linkEmailThreadToOpportunity(dependencies, actor, 3, 20)).opportunityId, 20);
   assert.deepEqual(linked, [3, 20]);
+  assert.deepEqual(assignmentNotices, [{ threadId: 3, opportunityId: 20, actorUserId: 2 }]);
   await assert.rejects(
     () => linkEmailThreadToOpportunity(dependencies, actor, 3, 21),
     (error) => error.statusCode === 409

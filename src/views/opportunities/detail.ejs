@@ -378,6 +378,7 @@
                       <span class="correspondence-direction"><%= message.direction === 'outbound' ? `→ ${t('outgoing')}` : `← ${t('incoming')}` %></span>
                     </summary>
                     <div class="correspondence-content">
+                      <%- include('../email-center/_response-status', { message, canAcknowledgeCustomerEmail, formatEmailListDate: formatShortDate, returnTo: `/opportunities/${opportunity.id}#opportunity-correspondence` }) %>
                       <%- include('../email-center/_message-content', { message, formatPlainEmailForReading }) %>
                       <div class="inline-actions correspondence-actions">
                         <a href="/email-center/threads/<%= message.threadId %>"><%= t('openEmailThread') %></a>

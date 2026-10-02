@@ -50,7 +50,8 @@ async function createAgent({
   nonBusinessPurgeCandidates = [],
   unlinkedOverrides = {},
   linkedOverrides = {},
-  additionalOpportunityThreads = []
+  additionalOpportunityThreads = [],
+  emailResponseRepository = null
 }) {
   const passwordHash = await hashPassword('ChangeMe123!');
   const user = {
@@ -186,6 +187,7 @@ async function createAgent({
       async listUsersByRole() { return []; }, async listUsersWithRoles() { return [user]; }
     },
     emailArchiveRepository: repository,
+    emailResponseRepository,
     opportunityRepository: {
       async getOpportunityDetail(id) {
         return Number(id) === 20 ? {
@@ -208,6 +210,52 @@ async function createAgent({
   await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
   return agent;
 }
+
+test('linked customer email shows owner-only receipt confirmation without confirming on page read', async () => {
+  let confirmedAt = null;
+  const acknowledgments = [];
+  const emailResponseRepository = {
+    async listThreadStates(threadId, ownerUserId) {
+      assert.equal(Number(threadId), 2);
+      assert.equal(Number(ownerUserId), 7);
+      return [{
+        messageId: 31, tracked: true, overdue: false, confirmedBy: confirmedAt ? 7 : null,
+        confirmedByName: confirmedAt ? 'User 7' : '', confirmedAt,
+        receivedAt: '2026-10-02T02:00:00Z', dueAt: '2026-10-02T06:00:00Z', repliedAt: null
+      }];
+    },
+    async acknowledge(messageId, userId, at) {
+      acknowledgments.push([messageId, userId]);
+      confirmedAt = at;
+      return { messageId, confirmedBy: userId, confirmedAt };
+    }
+  };
+  const linkedOverrides = { messages: [thread().messages[0]].map((message) => ({ ...message, id: 31 })) };
+  const owner = await createAgent({
+    userId: 7, roles: [ROLES.SALESPERSON], language: 'zh',
+    linkedOverrides, emailResponseRepository
+  });
+  const detail = await owner.get('/email-center/threads/2?from=inbox');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /确认收到/);
+  assert.match(detail.text, /email-center\/messages\/31\/acknowledge/);
+  assert.equal(acknowledgments.length, 0);
+  const confirmed = await owner.post('/email-center/messages/31/acknowledge').type('form').send({});
+  assert.equal(confirmed.status, 302);
+  assert.equal(acknowledgments.length, 1);
+  const after = await owner.get('/email-center/threads/2?from=inbox');
+  assert.equal(after.status, 200);
+  assert.match(after.text, /已确认收到/);
+  assert.doesNotMatch(after.text, /email-center\/messages\/31\/acknowledge/);
+
+  const manager = await createAgent({
+    userId: 2, roles: [ROLES.SALES_MANAGER], language: 'zh',
+    linkedOverrides, emailResponseRepository
+  });
+  const denied = await manager.post('/email-center/messages/31/acknowledge').type('form').send({});
+  assert.equal(denied.status, 403);
+  assert.equal(acknowledgments.length, 1);
+});
 
 test('email center remains unavailable while the feature flag is disabled', async () => {
   const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret', emailCenter: { enabled: false } });

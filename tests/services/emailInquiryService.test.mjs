@@ -150,7 +150,8 @@ test('email archive parser normalizes reply headers and keeps HTML separate from
   ].join('\r\n');
 
   const result = await parseEmailArchiveSourceWithAttachments(Buffer.from(raw), {
-    uid: 9, uidValidity: '44', mailbox: 'INBOX', mailboxKey: 'sales@sunkaier.com'
+    uid: 9, uidValidity: '44', mailbox: 'INBOX', mailboxKey: 'sales@sunkaier.com',
+    internalDate: new Date('2026-09-03T01:07:00Z')
   });
   assert.equal(result.message.messageId, 'reply-2@example.com');
   assert.equal(result.message.inReplyTo, 'sent-1@example.com');
@@ -161,6 +162,7 @@ test('email archive parser normalizes reply headers and keeps HTML separate from
   assert.doesNotMatch(result.message.textBody, /alert\(1\)/);
   assert.match(result.message.htmlBody, /<script>/);
   assert.equal(result.message.providerUidValidity, '44');
+  assert.equal(result.message.mailboxReceivedAt, '2026-09-03T01:07:00.000Z');
 });
 
 test('email archive parser preserves complete HTML and plain bodies beyond the inquiry preview limit', async () => {

@@ -33,6 +33,7 @@ import { createDevelopmentPolicyRepository } from './repositories/developmentPol
 import { createDevelopmentProjectRepository } from './repositories/developmentProjectRepository.mjs';
 import { createDevelopmentRepository } from './repositories/developmentRepository.mjs';
 import { createEmailArchiveRepository } from './repositories/emailArchiveRepository.mjs';
+import { createEmailResponseRepository } from './repositories/emailResponseRepository.mjs';
 import { createFormSubmissionRepository } from './repositories/formSubmissionRepository.mjs';
 import { createInquiryAttachmentRepository } from './repositories/inquiryAttachmentRepository.mjs';
 import { createInquiryCustomerApprovalRepository } from './repositories/inquiryCustomerApprovalRepository.mjs';
@@ -101,6 +102,7 @@ import { createTotpService } from './services/totpService.mjs';
 import { createTrustedDeviceService } from './services/trustedDeviceService.mjs';
 import { createCustomerEmailTransport } from './services/customerEmailService.mjs';
 import { startEmailPurgeFileCleanupLoop } from './services/emailPurgeFileCleanupService.mjs';
+import { startEmailReplyReminderLoop } from './services/emailResponseService.mjs';
 import { startInquiryAttachmentPurgeFileCleanupLoop } from './services/inquiryAttachmentPurgeFileCleanupService.mjs';
 
 const dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -708,6 +710,8 @@ export function createApp(options = {}) {
   const inquiryRepository = options.inquiryRepository || (pool ? createInquiryRepository(pool) : emptyInquiryRepository);
   const emailArchiveRepository = options.emailArchiveRepository
     || (pool ? createEmailArchiveRepository(pool) : emptyEmailArchiveRepository);
+  const emailResponseRepository = options.emailResponseRepository
+    || (pool ? createEmailResponseRepository(pool) : null);
   const formSubmissionRepository = 'formSubmissionRepository' in options
     ? options.formSubmissionRepository
     : pool ? createFormSubmissionRepository(pool) : null;
@@ -786,6 +790,17 @@ export function createApp(options = {}) {
         emailArchiveRepository,
         uploadDir: config.uploadDir
       }, {
+        logger: options.logger || console,
+        writeMaintenanceFlagPath: options.writeMaintenanceFlagPath ?? config.writeMaintenanceFlagPath,
+        writeMaintenanceFlagExists: options.writeMaintenanceFlagExists
+      })
+    : null;
+  const replyReminderStarter = options.startEmailReplyReminderLoop || startEmailReplyReminderLoop;
+  app.locals.emailReplyReminder = pool
+    && config.nodeEnv === 'production'
+    && config.emailCenter?.enabled
+    && options.emailReplyReminderEnabled !== false
+    ? replyReminderStarter(emailResponseRepository, {
         logger: options.logger || console,
         writeMaintenanceFlagPath: options.writeMaintenanceFlagPath ?? config.writeMaintenanceFlagPath,
         writeMaintenanceFlagExists: options.writeMaintenanceFlagExists
@@ -995,6 +1010,7 @@ export function createApp(options = {}) {
   app.use(emailCenterRoutes({
     enabled: Boolean(config.emailCenter?.enabled),
     emailArchiveRepository,
+    emailResponseRepository,
     customerRepository,
     contactRepository,
     inquiryRepository,
@@ -1068,6 +1084,7 @@ export function createApp(options = {}) {
     contactRepository,
     attachmentRepository,
     emailArchiveRepository,
+    emailResponseRepository,
     emailArchiveTransaction,
     sharedAddress: config.customerEmail?.sharedAddress || 'sales@sunkaier.com',
     emailCenterEnabled: Boolean(config.emailCenter?.enabled),

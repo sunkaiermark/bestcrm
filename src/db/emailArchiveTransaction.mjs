@@ -1,4 +1,5 @@
 import { createEmailArchiveRepository } from '../repositories/emailArchiveRepository.mjs';
+import { createEmailResponseRepository } from '../repositories/emailResponseRepository.mjs';
 import { createAttachmentRepository } from '../repositories/attachmentRepository.mjs';
 import { createContactRepository } from '../repositories/contactRepository.mjs';
 import { createCustomerRepository } from '../repositories/customerRepository.mjs';
@@ -19,6 +20,7 @@ export function createEmailArchiveTransaction(pool) {
       const result = await callback({
         attachmentRepository: createAttachmentRepository(client),
         emailArchiveRepository: createEmailArchiveRepository(client),
+        emailResponseRepository: createEmailResponseRepository(client),
         contactRepository: createContactRepository(client),
         customerRepository: createCustomerRepository(client),
         inquiryAttachmentRepository: createInquiryAttachmentRepository(client),

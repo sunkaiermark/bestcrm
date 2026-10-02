@@ -181,6 +181,23 @@ export function createNotificationRepository(queryTarget) {
       `, [endpoint]);
     },
 
+    async isEmailReplyStillDue(messageId) {
+      const result = await queryTarget.query(`
+        SELECT 1
+        FROM email_messages inbound
+        JOIN email_threads thread ON thread.id = inbound.thread_id
+        WHERE inbound.id = $1
+          AND inbound.direction = 'inbound'
+          AND inbound.canonical_message_id IS NULL
+          AND thread.opportunity_id IS NOT NULL
+          AND thread.archive_disposition = 'active'
+          AND thread.triage_status = 'linked_opportunity'
+          AND bestcrm_email_customer_reply_at(inbound.id) IS NULL
+        LIMIT 1
+      `, [messageId]);
+      return result.rowCount > 0;
+    },
+
     async claimDueDeliveries(limit = 20) {
       const result = await queryTarget.query(`
         WITH due AS (
@@ -210,6 +227,8 @@ export function createNotificationRepository(queryTarget) {
           n.title,
           n.body,
           n.action_url,
+          n.source_type,
+          n.source_id,
           n.read_at,
           u.display_name,
           u.email,
@@ -234,6 +253,8 @@ export function createNotificationRepository(queryTarget) {
         title: row.title,
         body: row.body,
         actionUrl: row.action_url,
+        sourceType: row.source_type,
+        sourceId: Number(row.source_id),
         readAt: row.read_at || null,
         displayName: row.display_name,
         email: row.email || '',

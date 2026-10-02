@@ -119,12 +119,13 @@
         <section class="email-conversation-list" aria-label="<%= t('emailConversation') %>">
           <% for (const [messageIndex, message] of thread.messages.entries()) { const recipients = (items) => items.map((item) => item.name ? `${item.name} <${item.address}>` : item.address).join(', '); const messageDate = message.receivedAt || message.sentAt || message.createdAt; const avatarText = (message.fromName || message.fromAddress || '?').trim().slice(0, 1).toUpperCase(); %>
             <details class="email-conversation-item email-message-<%= message.direction %>"<% if (messageIndex === thread.messages.length - 1) { %> open<% } %>>
-              <summary class="email-conversation-summary">
+              <summary id="email-message-<%= message.id %>" class="email-conversation-summary">
                 <span class="email-sender-avatar" aria-hidden="true"><%= avatarText %></span>
                 <span class="email-conversation-heading"><strong><%= message.fromName || message.fromAddress %></strong><span class="email-conversation-preview"><%= message.subject || t('noSubject') %> — <%= message.textBody %></span></span>
                 <span class="email-conversation-meta"><time datetime="<%= messageDate || '' %>"><%= formatEmailListDate(messageDate) %></time><span class="status"><%= t(`emailDeliveryStatus.${message.deliveryStatus}`) %></span></span>
               </summary>
               <div class="email-conversation-body">
+                <%- include('_response-status', { message, canAcknowledgeCustomerEmail, returnTo: '' }) %>
                 <div class="email-recipient-line"><%= t('emailTo') %>: <%= recipients(message.toRecipients) || '-' %><% if (message.ccRecipients.length) { %> · <%= t('emailCc') %>: <%= recipients(message.ccRecipients) %><% } %></div>
                 <details class="email-message-details"><summary><%= t('emailMessageDetails') %></summary><dl class="detail-grid"><div><dt><%= t('emailFrom') %></dt><dd><%= message.fromName ? `${message.fromName} <${message.fromAddress}>` : message.fromAddress %></dd></div><div><dt><%= t('emailDate') %></dt><dd><%= formatEmailListDate(messageDate) %></dd></div><div><dt><%= t('emailTo') %></dt><dd><%= recipients(message.toRecipients) || '-' %></dd></div><div><dt><%= t('emailCc') %></dt><dd><%= recipients(message.ccRecipients) || '-' %></dd></div><div><dt>Message-ID</dt><dd><%= message.messageId || '-' %></dd></div><div><dt>In-Reply-To</dt><dd><%= message.inReplyTo || '-' %></dd></div></dl></details>
                 <%- include('_message-content', { message, formatPlainEmailForReading }) %>

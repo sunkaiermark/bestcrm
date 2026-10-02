@@ -737,12 +737,20 @@ export async function linkEmailThreadToOpportunity(dependencies, actor, threadId
       targetOpportunityId
     );
     if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
-    return transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
+    const transitioned = await transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
       eventType: 'linked_opportunity',
       triageStatus: 'linked_opportunity',
       opportunityId: targetOpportunityId,
       triagedAt: dependencies.now?.() || new Date().toISOString()
     });
+    if (typeof transactionDependencies.emailResponseRepository?.notifyOpportunityAssignment === 'function') {
+      await transactionDependencies.emailResponseRepository.notifyOpportunityAssignment({
+        threadId: current.id,
+        opportunityId: targetOpportunityId,
+        actorUserId: actor.id
+      });
+    }
+    return transitioned;
   });
   return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
 }

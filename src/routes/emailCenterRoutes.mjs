@@ -33,6 +33,7 @@ import {
   listVisibleEmailThreads
 } from '../services/emailArchiveService.mjs';
 import { resolveStoredPath } from '../services/attachmentFileService.mjs';
+import { acknowledgeCustomerEmail, EmailResponseError } from '../services/emailResponseService.mjs';
 import { canSubmitNewLead } from '../services/leadSubmissionService.mjs';
 import {
   CustomerEmailError,
@@ -42,7 +43,7 @@ import {
 } from '../services/customerEmailService.mjs';
 
 function handleError(error, res, next) {
-  if (error instanceof EmailArchiveError || error instanceof CustomerEmailError || Number.isInteger(error?.statusCode)) {
+  if (error instanceof EmailArchiveError || error instanceof CustomerEmailError || error instanceof EmailResponseError || Number.isInteger(error?.statusCode)) {
     res.status(error.statusCode || 400).send(error.message);
     return;
   }
@@ -211,6 +212,7 @@ function emailHtmlDocument(htmlBody, textBody) {
 export function emailCenterRoutes({
   enabled = false,
   emailArchiveRepository,
+  emailResponseRepository = null,
   customerRepository,
   contactRepository,
   inquiryRepository,
@@ -234,6 +236,7 @@ export function emailCenterRoutes({
   });
   const dependencies = {
     emailArchiveRepository,
+    emailResponseRepository,
     customerRepository,
     contactRepository,
     inquiryRepository,
@@ -329,6 +332,17 @@ export function emailCenterRoutes({
       const categoryOpportunity = thread.opportunityId
         ? await opportunityRepository.getOpportunityDetail(thread.opportunityId)
         : null;
+      const responseStates = categoryOpportunity && typeof emailResponseRepository?.listThreadStates === 'function'
+        ? await emailResponseRepository.listThreadStates(thread.id, categoryOpportunity.salespersonId)
+        : [];
+      const responseByMessageId = new Map(responseStates.map((state) => [state.messageId, state]));
+      const threadWithResponses = {
+        ...thread,
+        messages: (thread.messages || []).map((message) => ({
+          ...message,
+          response: responseByMessageId.get(Number(message.id)) || null
+        }))
+      };
       const canReviewProductCategories = (thread.archiveDisposition || 'active') === 'active'
         && !['spam', 'archived'].includes(thread.triageStatus || 'pending')
         && (hasRole(req.currentUser, ROLES.ADMINISTRATOR)
@@ -336,7 +350,8 @@ export function emailCenterRoutes({
         || (categoryOpportunity && !categoryOpportunity.archivedAt
           && Number(categoryOpportunity.salespersonId) === Number(req.currentUser.id)));
       res.render('email-center/detail', {
-        thread,
+        thread: threadWithResponses,
+        canAcknowledgeCustomerEmail: Number(categoryOpportunity?.salespersonId) === Number(req.currentUser.id),
         canReviewProductCategories,
         productCategorySuggestions: suggestProductCategoryCodes({
           subject: thread.subject,
@@ -358,6 +373,33 @@ export function emailCenterRoutes({
         canCreateLead: canSubmitNewLead(req.currentUser),
         linkableOpportunities
       });
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.get('/email-center/messages/:messageId/response', async (req, res, next) => {
+    try {
+      const message = await getVisibleEmailMessage(dependencies, req.currentUser, req.params.messageId);
+      const thread = await getVisibleEmailThread(dependencies, req.currentUser, message.threadId);
+      res.redirect(`/email-center/threads/${thread.id}?from=${thread.opportunityId ? 'inbox' : 'pending'}#email-message-${message.id}`);
+    } catch (error) {
+      handleError(error, res, next);
+    }
+  });
+
+  router.post('/email-center/messages/:messageId/acknowledge', async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        return res.status(403).send('Invalid CSRF token');
+      }
+      const { thread, opportunity } = await acknowledgeCustomerEmail(
+        dependencies, req.currentUser, req.params.messageId, now()
+      );
+      const opportunityReturn = `/opportunities/${opportunity.id}#opportunity-correspondence`;
+      res.redirect(req.body.returnTo === opportunityReturn
+        ? opportunityReturn
+        : `/email-center/threads/${thread.id}?from=inbox#email-message-${req.params.messageId}`);
     } catch (error) {
       handleError(error, res, next);
     }
