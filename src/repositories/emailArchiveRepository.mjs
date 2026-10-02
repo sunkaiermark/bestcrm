@@ -516,8 +516,78 @@ const messageSelect = `
 `;
 
 export function createEmailArchiveRepository(queryTarget) {
+  async function unambiguousInboundSender(threadId) {
+    const result = await queryTarget.query(`
+      SELECT
+        count(DISTINCT lower(btrim(message.from_address))) AS sender_count,
+        min(lower(btrim(message.from_address))) AS sender_address
+      FROM email_messages message
+      WHERE message.thread_id = $1
+        AND message.direction = 'inbound'
+    `, [threadId]);
+    const senderAddress = text(result.rows[0]?.sender_address).trim().toLowerCase();
+    if (Number(result.rows[0]?.sender_count) !== 1
+      || !/^[^\s@]+@[^\s@]+$/.test(senderAddress)
+      || senderAddress.endsWith('@sunkaier.com')) return '';
+    return senderAddress;
+  }
+
   return {
     supportsEmailArchive: true,
+
+    async findActiveHumanSpamSenderRule(senderAddress) {
+      const normalized = text(senderAddress).trim().toLowerCase();
+      if (!normalized) return null;
+      const result = await queryTarget.query(`
+        SELECT sender_address, confirmed_at
+        FROM email_sender_spam_rules
+        WHERE sender_address = $1 AND enabled = true
+        LIMIT 1
+      `, [normalized]);
+      return result.rows[0] || null;
+    },
+
+    async confirmHumanSpamSender({ threadId, actorUserId }) {
+      const senderAddress = await unambiguousInboundSender(threadId);
+      if (!senderAddress) return null;
+      const result = await queryTarget.query(`
+        INSERT INTO email_sender_spam_rules (
+          sender_address, confirmed_by, source_thread_id
+        ) VALUES ($1, $2, $3)
+        ON CONFLICT (sender_address) DO UPDATE SET
+          enabled = true,
+          confirmed_by = EXCLUDED.confirmed_by,
+          confirmed_at = now(),
+          disabled_by = NULL,
+          disabled_at = NULL,
+          source_thread_id = EXCLUDED.source_thread_id
+        RETURNING sender_address
+      `, [senderAddress, actorUserId, threadId]);
+      await queryTarget.query(`
+        INSERT INTO email_sender_spam_rule_events (
+          sender_address, action, actor_user_id, source_thread_id
+        ) VALUES ($1, 'enabled', $2, $3)
+      `, [senderAddress, actorUserId, threadId]);
+      return result.rows[0]?.sender_address || null;
+    },
+
+    async disableHumanSpamSender({ threadId, actorUserId }) {
+      const senderAddress = await unambiguousInboundSender(threadId);
+      if (!senderAddress) return null;
+      const result = await queryTarget.query(`
+        UPDATE email_sender_spam_rules
+        SET enabled = false, disabled_by = $2, disabled_at = now()
+        WHERE sender_address = $1 AND enabled = true AND source_thread_id = $3
+        RETURNING sender_address
+      `, [senderAddress, actorUserId, threadId]);
+      if (!result.rows[0]) return null;
+      await queryTarget.query(`
+        INSERT INTO email_sender_spam_rule_events (
+          sender_address, action, actor_user_id, source_thread_id
+        ) VALUES ($1, 'disabled', $2, $3)
+      `, [senderAddress, actorUserId, threadId]);
+      return senderAddress;
+    },
 
     async findRawMessageIdentity(input) {
       const result = await queryTarget.query(`

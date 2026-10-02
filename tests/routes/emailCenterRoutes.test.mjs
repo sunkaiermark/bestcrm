@@ -140,6 +140,8 @@ async function createAgent({
       unlinked.triageEvents.push(input);
       return input;
     },
+    async confirmHumanSpamSender() { return 'buyer@example.com'; },
+    async disableHumanSpamSender() { return 'buyer@example.com'; },
     async getCleanupSummary({ folder }) {
       return folder === 'non_business' ? nonBusinessCleanupSummary : spamCleanupSummary;
     },
@@ -245,13 +247,14 @@ test('sales manager sees shared mailbox pending threads without a rule-category 
   assert.match(list.text, />已发件箱<\/a>/);
   assert.doesNotMatch(list.text, /“待处理”指仍需人工判断的正常业务收件/);
   assert.match(list.text, /class="email-inbox-list"/);
-  assert.match(list.text, /class="email-inbox-row" href="\/email-center\/threads\/1\?mailbox=sales%40sunkaier\.com&from=pending" title="打开会话"/);
-  assert.match(list.text, /class="email-inbox-sender" title="buyer@example\.com">buyer@example\.com<\/span>/);
+  assert.match(list.text, /class="email-inbox-row">\s*<span class="email-inbox-sender" title="buyer@example\.com">buyer@example\.com<\/span>\s*<a class="email-inbox-open" href="\/email-center\/threads\/1\?mailbox=sales%40sunkaier\.com&from=pending" title="打开会话"/);
   assert.match(list.text, /class="email-inbox-preview" title="&lt;img src=x onerror=alert\(1\)&gt; Need quote"/);
   assert.match(list.text, /class="email-inbox-message-count" title="往来封数">\(2\)<\/span>/);
   assert.match(list.text, /class="email-inbox-attachment" title="附件数"><span aria-hidden="true">📎<\/span> 1<\/span>/);
   assert.doesNotMatch(list.text, /C000010|Acme Co|CT000020|Alice/);
-  assert.match(list.text, /\.email-inbox-row\s*\{[\s\S]*font-size:\s*18px;[\s\S]*grid-template-columns:\s*minmax\(260px, 300px\) minmax\(0, 1fr\) 64px 168px;/);
+  assert.match(list.text, /\.email-inbox-row\s*\{[\s\S]*font-size:\s*18px;[\s\S]*grid-template-columns:\s*minmax\(260px, 300px\) minmax\(0, 1fr\);/);
+  assert.match(list.text, /\.email-inbox-open\s*\{[^}]*grid-template-columns:\s*minmax\(0, 1fr\) 64px 168px;/);
+  assert.match(list.text, /\.email-inbox-sender\s*\{[^}]*cursor:\s*text;[^}]*user-select:\s*text;/);
   assert.match(list.text, /\.email-inbox-preview\s*\{[\s\S]*text-overflow:\s*ellipsis;/);
   assert.match(list.text, /2026-09-03 09:00/);
   assert.doesNotMatch(list.text, /GMT\+0800|China Standard Time|09:00:00/);

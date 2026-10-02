@@ -64,6 +64,7 @@
                 </form>
               <% } %>
             </div>
+            <p class="muted"><%= t('emailSpamSenderRuleHelp') %></p>
           </section>
         <% } %>
 
@@ -77,6 +78,7 @@
               <input type="hidden" name="action" value="spam">
               <button class="danger-action" type="submit"><%= t('emailSpamAction') %></button>
             </form>
+            <p class="muted"><%= t('emailSpamSenderRuleHelp') %></p>
           </section>
         <% } %>
 

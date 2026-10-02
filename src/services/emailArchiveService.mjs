@@ -134,10 +134,15 @@ export async function resolveInboundEmailClassification(repositories, parsed) {
     ? await repositories.emailArchiveRepository.findThreadByReferences(message.replyReferenceIds)
     : null;
   let effectiveInquiry = inquiry;
+  let contact = null;
   if (!thread && typeof repositories.contactRepository?.findUniqueByEmail === 'function') {
-    const contact = await repositories.contactRepository.findUniqueByEmail(message.fromAddress);
+    contact = await repositories.contactRepository.findUniqueByEmail(message.fromAddress);
     effectiveInquiry = knownContactInquiry(inquiry, contact);
   }
+  const humanSpamSenderRule = !thread && !contact && !effectiveInquiry.matchedContactId
+    && typeof repositories.emailArchiveRepository?.findActiveHumanSpamSenderRule === 'function'
+    ? await repositories.emailArchiveRepository.findActiveHumanSpamSenderRule(message.fromAddress)
+    : null;
   const classification = thread
     ? {
         archiveDisposition: thread.archiveDisposition || 'active',
@@ -151,8 +156,19 @@ export async function resolveInboundEmailClassification(repositories, parsed) {
           : [],
         protectedReasons: ['known_thread_reply']
       }
-    : inboundClassification(effectiveInquiry);
-  return { thread, inquiry: effectiveInquiry, classification };
+    : humanSpamSenderRule
+      ? {
+          archiveDisposition: 'spam',
+          classificationCategory: 'marketing_spam',
+          classificationReason: 'human_confirmed_sender_spam',
+          entryDecision: 'reject_spam',
+          ruleVersion: 'human-confirmed-sender-v1',
+          spamScore: 0,
+          spamSignals: ['human_confirmed_sender'],
+          protectedReasons: []
+        }
+      : inboundClassification(effectiveInquiry);
+  return { thread, inquiry: effectiveInquiry, classification, humanSpamSenderRule: Boolean(humanSpamSenderRule) };
 }
 
 function assertRawCaptureMatches(rawMessage, rawCapture) {
@@ -293,7 +309,7 @@ export async function archiveInboundEmailRecord(repositories, parsed, options = 
   const classification = resolved.classification;
   const archiveClassification = thread
     ? classification
-    : { ...classification, archiveDisposition: 'active' };
+    : { ...classification, archiveDisposition: resolved.humanSpamSenderRule ? 'spam' : 'active' };
   const rawMessage = options.rawCapture
     ? await persistRawEmailCapture(emailArchiveRepository, options.rawCapture)
     : null;
@@ -305,7 +321,9 @@ export async function archiveInboundEmailRecord(repositories, parsed, options = 
       inquiryId: null,
       customerId: effectiveInquiry.matchedCustomerId,
       contactId: effectiveInquiry.matchedContactId,
-      triageStatus: 'pending',
+      triageStatus: resolved.humanSpamSenderRule ? 'spam' : 'pending',
+      triagedAt: resolved.humanSpamSenderRule ? new Date().toISOString() : null,
+      triageNote: resolved.humanSpamSenderRule ? 'Matched a human-confirmed spam sender' : '',
       ...archiveClassification,
       lastMessageAt: message.receivedAt
     });
@@ -335,13 +353,13 @@ export async function archiveInboundEmailRecord(repositories, parsed, options = 
       actorType: 'rule',
       actorVersion: classification.ruleVersion || 'email-intake-rule-v1',
       category: classification.classificationCategory,
-      confidence: classification.entryDecision === 'accept' ? 1 : 0.5,
+      confidence: resolved.humanSpamSenderRule || classification.entryDecision === 'accept' ? 1 : 0.5,
       reasonCodes: [
         classification.classificationReason,
         ...classification.spamSignals,
         ...classification.protectedReasons
       ].filter(Boolean),
-      isFinal: false
+      isFinal: Boolean(resolved.humanSpamSenderRule)
     });
   }
   await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage?.id);
@@ -974,9 +992,10 @@ export async function setEmailThreadDisposition(dependencies, actor, threadId, a
   await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
     const current = await transactionDependencies.emailArchiveRepository.findThreadById(thread.id);
     if (!current) throw new EmailArchiveError('Email thread not found', 404);
+    const wasSpam = current.triageStatus === 'spam';
     const orphanedConvertedInquirySpam = action === 'spam'
       && await canReclassifyOrphanedConvertedInquiryAsSpam(transactionDependencies, actor, current);
-    return transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
+    const transitioned = await transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
       ...target,
       ...(orphanedConvertedInquirySpam
         ? { allowedFromStatuses: ['converted_inquiry'] }
@@ -984,6 +1003,18 @@ export async function setEmailThreadDisposition(dependencies, actor, threadId, a
       note: text(note).slice(0, 1000),
       triagedAt: dependencies.now?.() || new Date().toISOString()
     });
+    if (action === 'spam') {
+      await transactionDependencies.emailArchiveRepository.confirmHumanSpamSender({
+        threadId: current.id,
+        actorUserId: actor.id
+      });
+    } else if (action === 'restore' && wasSpam) {
+      await transactionDependencies.emailArchiveRepository.disableHumanSpamSender({
+        threadId: current.id,
+        actorUserId: actor.id
+      });
+    }
+    return transitioned;
   });
   return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
 }

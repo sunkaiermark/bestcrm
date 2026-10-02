@@ -57,6 +57,7 @@ const userPersonalMailboxAssignmentsMigrationPath = new URL('../../src/db/migrat
 const emailMailboxDeliveriesMigrationPath = new URL('../../src/db/migrations/056_email_mailbox_deliveries.sql', import.meta.url);
 const emailCenterTriageWorkflowMigrationPath = new URL('../../src/db/migrations/057_email_center_triage_workflow.sql', import.meta.url);
 const emailSpamRetentionAndPurgeMigrationPath = new URL('../../src/db/migrations/058_email_spam_retention_and_purge.sql', import.meta.url);
+const humanConfirmedEmailSpamSendersMigrationPath = new URL('../../src/db/migrations/104_human_confirmed_email_spam_senders.sql', import.meta.url);
 const unifiedWorkItemsMigrationPath = new URL('../../src/db/migrations/059_unified_work_items.sql', import.meta.url);
 const projectExecutionsMigrationPath = new URL('../../src/db/migrations/060_project_executions.sql', import.meta.url);
 const opportunityTechnicalDocumentsMigrationPath = new URL('../../src/db/migrations/061_opportunity_technical_documents.sql', import.meta.url);
@@ -1337,6 +1338,17 @@ test('email purge migration keeps a permanent non-content audit and narrow delet
   assert.match(sql, /Email purge audit records are immutable/);
   assert.match(sql, /current_setting\('bestcrm\.email_purge', true\) = 'enabled'/);
   assert.doesNotMatch(sql, /subject text|text_body|html_body/);
+});
+
+test('human-confirmed sender rules survive email purge and keep an immutable audit', async () => {
+  const sql = await readFile(humanConfirmedEmailSpamSendersMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE email_sender_spam_rules/);
+  assert.match(sql, /sender_address text PRIMARY KEY/);
+  assert.match(sql, /source_thread_id bigint NOT NULL/);
+  assert.match(sql, /CREATE TABLE email_sender_spam_rule_events/);
+  assert.match(sql, /Email sender spam rule events are immutable/);
+  assert.doesNotMatch(sql, /source_thread_id bigint[^\n]*REFERENCES email_threads/);
+  assert.doesNotMatch(sql, /subject text|text_body|html_body|to_recipients/);
 });
 
 test('email reimport reset migration keeps an immutable non-content operation audit', async () => {

@@ -77,6 +77,15 @@ test('spam, junk, trash, and deleted folders are excluded from personal mailbox 
   }]), /cannot be imported/);
 });
 
+test('single-mailbox intake also refuses a provider spam folder', () => {
+  const configured = config();
+  configured.emailIntake.accountsFile = '';
+  configured.emailIntake.mailbox = '垃圾邮件';
+  assert.throws(() => loadEmailIntakeSources(configured), /cannot be imported/);
+  configured.emailIntake.mailbox = 'INBOX';
+  assert.equal(loadEmailIntakeSources(configured)[0].mailbox, 'INBOX');
+});
+
 test('duplicate personal mailbox accounts fail closed', () => {
   assert.throws(() => normalizeEmailIntakeSources(config(), [{
     address: 'amber@sunkaier.com', password: 'one'

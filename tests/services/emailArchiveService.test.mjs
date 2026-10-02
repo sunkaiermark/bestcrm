@@ -121,6 +121,33 @@ test('rule-classified spam stays advisory and enters pending without creating an
   assert.equal(result.classification.spamScore, 8);
 });
 
+test('a human-confirmed exact sender goes straight to CRM spam in another connected inbox', async () => {
+  const created = {};
+  const result = await archiveInboundEmailRecord({
+    contactRepository: { async findUniqueByEmail() { return null; } },
+    emailArchiveRepository: {
+      async findMessageIdentity() { return null; },
+      async findThreadByReferences() { return null; },
+      async findActiveHumanSpamSenderRule(address) {
+        assert.equal(address, 'repeat@example.com');
+        return { sender_address: address };
+      },
+      async createThread(input) { created.thread = input; return { id: 31, ...input }; },
+      async createInboundMessage(input) { created.message = input; return { id: 32, ...input }; },
+      async createClassificationEvent(input) { created.event = input; return input; },
+      async touchThread() {}
+    }
+  }, parsed({ mailboxKey: 'markyang@sunkaier.com', fromAddress: 'repeat@example.com' }));
+
+  assert.equal(result.thread.triageStatus, 'spam');
+  assert.equal(result.thread.archiveDisposition, 'spam');
+  assert.equal(created.message.archiveDisposition, 'spam');
+  assert.equal(created.thread.classificationReason, 'human_confirmed_sender_spam');
+  assert.equal(created.event.actorType, 'rule');
+  assert.equal(created.event.isFinal, true);
+  assert.equal(result.inquiry, null);
+});
+
 test('one exact existing contact overrides spam heuristics and links the archived thread', async () => {
   const created = {};
   const candidate = parsed();
@@ -142,6 +169,7 @@ test('one exact existing contact overrides spam heuristics and links the archive
     emailArchiveRepository: {
       async findMessageIdentity() { return null; },
       async findThreadByReferences() { return null; },
+      async findActiveHumanSpamSenderRule() { assert.fail('known CRM contacts must bypass sender spam rules'); },
       async createThread(input) { created.thread = input; return { id: 3, ...input }; },
       async createInboundMessage(input) { created.message = input; return { id: 9, ...input }; },
       async touchThread() {}
@@ -636,6 +664,7 @@ function triageMemory(threadOverrides = {}) {
     ...threadOverrides
   };
   const events = [];
+  const senderRuleActions = [];
   const repository = {
     async findThreadById() { return thread; },
     async getThreadDetail() { return thread; },
@@ -661,9 +690,11 @@ function triageMemory(threadOverrides = {}) {
       thread.archiveDisposition = input.archiveDisposition;
       return thread;
     },
-    async createTriageEvent(input) { events.push(input); return input; }
+    async createTriageEvent(input) { events.push(input); return input; },
+    async confirmHumanSpamSender(input) { senderRuleActions.push(['enabled', input]); return 'buyer@example.com'; },
+    async disableHumanSpamSender(input) { senderRuleActions.push(['disabled', input]); return 'buyer@example.com'; }
   };
-  return { thread, events, repository };
+  return { thread, events, senderRuleActions, repository };
 }
 
 test('email intake suggests Plug screw feeder without locking the category', async () => {
@@ -898,6 +929,16 @@ test('misclassified spam can be restored to pending with an immutable reopen eve
   assert.equal(memory.events[0].eventType, 'reopened');
   assert.equal(memory.events[0].fromStatus, 'spam');
   assert.equal(memory.events[0].toStatus, 'pending');
+  assert.deepEqual(memory.senderRuleActions, [['disabled', { threadId: 30, actorUserId: 2 }]]);
+});
+
+test('human spam marking records a sender rule once and keeps the thread recoverable', async () => {
+  const memory = triageMemory();
+  const actor = { id: 2, roles: [ROLES.SALES_MANAGER] };
+  await setEmailThreadDisposition({ emailArchiveRepository: memory.repository }, actor, 30, 'spam');
+  await setEmailThreadDisposition({ emailArchiveRepository: memory.repository }, actor, 30, 'spam');
+  assert.equal(memory.thread.triageStatus, 'spam');
+  assert.deepEqual(memory.senderRuleActions, [['enabled', { threadId: 30, actorUserId: 2 }]]);
 });
 
 test('only an administrator can mark an orphaned converted inquiry as spam', async () => {

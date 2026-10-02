@@ -337,6 +337,78 @@ test('email archive repository filters one advisory rule category without changi
   assert.match(calls[0].sql, /thread\.classification_category = \$3/);
 });
 
+test('human-confirmed sender spam rule is exact-address, global, durable, and reversible', async () => {
+  const calls = [];
+  let enabled = false;
+  let confirmingThreadId = null;
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      const statement = String(sql);
+      calls.push({ statement, params });
+      if (statement.includes('count(DISTINCT lower(btrim(message.from_address)))')) {
+        return { rows: [{ sender_count: '1', sender_address: 'repeat@example.com' }] };
+      }
+      if (statement.includes('INSERT INTO email_sender_spam_rules')) {
+        enabled = true;
+        confirmingThreadId = params[2];
+        return { rows: [{ sender_address: 'repeat@example.com' }] };
+      }
+      if (statement.includes('UPDATE email_sender_spam_rules')) {
+        if (params[2] !== confirmingThreadId) return { rows: [] };
+        enabled = false;
+        return { rows: [{ sender_address: 'repeat@example.com' }] };
+      }
+      if (statement.includes('FROM email_sender_spam_rules')) {
+        return { rows: enabled ? [{ sender_address: 'repeat@example.com' }] : [] };
+      }
+      return { rows: [] };
+    }
+  });
+
+  assert.equal(await repository.confirmHumanSpamSender({ threadId: 30, actorUserId: 2 }), 'repeat@example.com');
+  assert.deepEqual((await repository.findActiveHumanSpamSenderRule('REPEAT@EXAMPLE.COM')).sender_address,
+    'repeat@example.com');
+  assert.equal(await repository.disableHumanSpamSender({ threadId: 31, actorUserId: 3 }), null);
+  assert.deepEqual((await repository.findActiveHumanSpamSenderRule('repeat@example.com')).sender_address,
+    'repeat@example.com');
+  assert.equal(await repository.disableHumanSpamSender({ threadId: 30, actorUserId: 3 }), 'repeat@example.com');
+  assert.equal(await repository.findActiveHumanSpamSenderRule('repeat@example.com'), null);
+  assert.deepEqual(calls.filter((call) => call.statement.includes('email_sender_spam_rule_events'))
+    .map((call) => call.params), [
+    ['repeat@example.com', 2, 30],
+    ['repeat@example.com', 3, 30]
+  ]);
+  assert.deepEqual(calls.filter((call) => call.statement.includes('FROM email_sender_spam_rules'))
+    .map((call) => call.params), [
+    ['repeat@example.com'], ['repeat@example.com'], ['repeat@example.com']
+  ]);
+  assert.deepEqual(calls.filter((call) => call.statement.includes('UPDATE email_sender_spam_rules'))
+    .map((call) => call.params), [
+    ['repeat@example.com', 3, 31], ['repeat@example.com', 3, 30]
+  ]);
+});
+
+test('human spam marking does not create a global rule for ambiguous or internal senders', async () => {
+  const writes = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      const statement = String(sql);
+      if (statement.includes('count(DISTINCT lower(btrim(message.from_address)))')) {
+        return { rows: [{
+          sender_count: params[0] === 40 ? '2' : '1',
+          sender_address: params[0] === 40 ? 'a@example.com' : 'staff@sunkaier.com'
+        }] };
+      }
+      writes.push(statement);
+      return { rows: [] };
+    }
+  });
+
+  assert.equal(await repository.confirmHumanSpamSender({ threadId: 40, actorUserId: 2 }), null);
+  assert.equal(await repository.confirmHumanSpamSender({ threadId: 41, actorUserId: 2 }), null);
+  assert.deepEqual(writes, []);
+});
+
 test('email archive repository searches sender email subject opportunity and linked record identities', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({

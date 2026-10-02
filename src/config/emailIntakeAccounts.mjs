@@ -131,6 +131,8 @@ export function loadEmailIntakeSources(config, {
 } = {}) {
   const filePath = text(accountsFile);
   if (!filePath) {
+    normalizeFolder({ name: config.emailIntake?.mailbox || 'INBOX', direction: 'inbound' },
+      text(config.emailIntake?.mailboxKey || config.emailIntake?.user || 'sales'), '');
     return [{ ...config.emailIntake, direction: 'inbound' }];
   }
   if (statFile && process.platform !== 'win32') {
