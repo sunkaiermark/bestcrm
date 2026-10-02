@@ -52,7 +52,7 @@ test('old mail is not eligible for receipt confirmation and a page read does not
 test('eight-natural-hour reminder processing respects write maintenance and queues linked then pending mail', async () => {
   const calls = [];
   const repo = {
-    async queueDueLinkedReminders(at) { calls.push(['linked', at]); return { created: 2, queued_sms: 2 }; },
+    async queueDueLinkedReminders(at) { calls.push(['linked', at]); return { created: 2 }; },
     async queueDueUnassignedReminders(at) { calls.push(['unassigned', at]); return { created: 1 }; }
   };
   const at = new Date('2026-10-02T04:00:00Z');
@@ -62,6 +62,6 @@ test('eight-natural-hour reminder processing respects write maintenance and queu
   assert.equal(paused.paused, true);
   assert.equal(calls.length, 0);
   const result = await processEmailReplyReminders(repo, { at });
-  assert.deepEqual(result, { paused: false, linked: 2, unassigned: 1, smsQueued: 2 });
+  assert.deepEqual(result, { paused: false, linked: 2, unassigned: 1 });
   assert.deepEqual(calls, [['linked', at], ['unassigned', at]]);
 });

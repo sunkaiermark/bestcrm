@@ -32,15 +32,14 @@ export async function acknowledgeCustomerEmail(dependencies, actor, messageId, a
 
 export async function processEmailReplyReminders(repository, { at = new Date(), writeMaintenanceFlagPath = '', writeMaintenanceFlagExists = existsSync } = {}) {
   if (writeMaintenanceFlagPath && writeMaintenanceFlagExists(writeMaintenanceFlagPath)) {
-    return { paused: true, linked: 0, unassigned: 0, smsQueued: 0 };
+    return { paused: true, linked: 0, unassigned: 0 };
   }
   const linked = await repository.queueDueLinkedReminders(at);
   const unassigned = await repository.queueDueUnassignedReminders(at);
   return {
     paused: false,
     linked: Number(linked.created || 0),
-    unassigned: Number(unassigned.created || 0),
-    smsQueued: Number(linked.queued_sms || 0)
+    unassigned: Number(unassigned.created || 0)
   };
 }
 

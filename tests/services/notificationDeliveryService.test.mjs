@@ -37,25 +37,3 @@ test('notification batch records sent, skipped, and failed channel outcomes', as
   assert.equal(completions[1].status, 'skipped');
   assert.equal(completions[2].status, 'failed');
 });
-
-test('overdue SMS is skipped if the customer was replied to before delivery', async () => {
-  const completed = [];
-  let smsCalls = 0;
-  const results = await deliverNotificationBatch({
-    notificationRepository: {
-      async claimDueDeliveries() {
-        return [{ id: 5, channel: 'sms', sourceType: 'email_reply_overdue', sourceId: 11, attempts: 1 }];
-      },
-      async isEmailReplyStillDue(messageId) {
-        assert.equal(messageId, 11);
-        return false;
-      },
-      async completeDelivery(id, outcome) { completed.push({ id, ...outcome }); }
-    },
-    config: { batchSize: 10 },
-    senders: { async sms() { smsCalls += 1; return { status: 'sent' }; } }
-  });
-  assert.equal(smsCalls, 0);
-  assert.deepEqual(results.map((item) => item.status), ['skipped']);
-  assert.equal(completed[0].status, 'skipped');
-});

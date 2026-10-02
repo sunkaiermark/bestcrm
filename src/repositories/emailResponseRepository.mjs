@@ -100,22 +100,13 @@ export function createEmailResponseRepository(queryTarget) {
           WHERE opportunity.id = $2
           ON CONFLICT (user_id, source_type, source_id) DO NOTHING
           RETURNING id, user_id
-        ), push AS (
-          INSERT INTO notification_deliveries (notification_id, channel)
-          SELECT inserted.id, 'web_push'
-          FROM inserted
-          LEFT JOIN notification_preferences preference ON preference.user_id = inserted.user_id
-          WHERE COALESCE(preference.web_push_enabled, true)
-          ON CONFLICT DO NOTHING
-          RETURNING id
         ), announced AS (
           SELECT pg_notify('bestcrm_notifications', user_id::text) FROM inserted
         )
         SELECT (SELECT count(*) FROM inserted)::integer AS created,
-          (SELECT count(*) FROM push)::integer AS queued_push,
           (SELECT count(*) FROM announced)::integer AS announced
       `, [threadId, opportunityId, actorUserId]);
-      return result.rows[0] || { created: 0, queued_push: 0 };
+      return result.rows[0] || { created: 0 };
     },
 
     async queueDueLinkedReminders(at = new Date()) {
@@ -158,22 +149,13 @@ export function createEmailResponseRepository(queryTarget) {
           WHERE true
           ON CONFLICT (user_id, source_type, source_id) DO NOTHING
           RETURNING id, user_id
-        ), sms AS (
-          INSERT INTO notification_deliveries (notification_id, channel)
-          SELECT inserted.id, 'sms'
-          FROM inserted
-          LEFT JOIN notification_preferences preference ON preference.user_id = inserted.user_id
-          WHERE COALESCE(preference.sms_enabled, true)
-          ON CONFLICT DO NOTHING
-          RETURNING id
         ), announced AS (
           SELECT pg_notify('bestcrm_notifications', user_id::text) FROM inserted
         )
         SELECT (SELECT count(*) FROM inserted)::integer AS created,
-          (SELECT count(*) FROM sms)::integer AS queued_sms,
           (SELECT count(*) FROM announced)::integer AS announced
       `, [at, ACTIVATION_MIGRATION]);
-      return result.rows[0] || { created: 0, queued_sms: 0 };
+      return result.rows[0] || { created: 0 };
     },
 
     async queueDueUnassignedReminders(at = new Date()) {

@@ -3,11 +3,10 @@ import assert from 'node:assert/strict';
 import { randomUUID } from 'node:crypto';
 import pg from 'pg';
 import { createEmailResponseRepository } from '../../src/repositories/emailResponseRepository.mjs';
-import { createNotificationRepository } from '../../src/repositories/notificationRepository.mjs';
 
 const connectionString = process.env.EMAIL_RESPONSE_TEST_DATABASE_URL;
 
-test('email receipt, exact-recipient reply clock, assignment push, and eight-hour deduplicated alerts', {
+test('email receipt, exact-recipient reply clock, and eight-hour in-app-only deduplicated alerts', {
   skip: !connectionString && 'Set EMAIL_RESPONSE_TEST_DATABASE_URL to an isolated migrated test database'
 }, async () => {
   const client = new pg.Client({ connectionString });
@@ -68,7 +67,6 @@ test('email receipt, exact-recipient reply clock, assignment push, and eight-hou
       threadId, 'legacy@example.com', new Date(new Date(activation.rows[0].applied_at).getTime() - 3_600_000)
     );
     const response = createEmailResponseRepository(client);
-    const notifications = createNotificationRepository(client);
 
     const confirmation = await response.acknowledge(firstId, ownerId, at);
     assert.equal(confirmation.confirmedBy, ownerId);
@@ -77,7 +75,6 @@ test('email receipt, exact-recipient reply clock, assignment push, and eight-hou
 
     const assignment = await response.notifyOpportunityAssignment({ threadId, opportunityId, actorUserId: adminId });
     assert.equal(assignment.created, 1);
-    assert.equal(assignment.queued_push, 1);
     assert.equal((await response.notifyOpportunityAssignment({ threadId, opportunityId, actorUserId: adminId })).created, 0);
 
     await client.query(`
@@ -103,7 +100,6 @@ test('email receipt, exact-recipient reply clock, assignment push, and eight-hou
 
     const overdue = await response.queueDueLinkedReminders(at);
     assert.equal(overdue.created, 2);
-    assert.equal(overdue.queued_sms, 2);
     assert.equal((await response.queueDueLinkedReminders(at)).created, 0);
     const recipients = await client.query(`
       SELECT user_id FROM notifications
@@ -115,13 +111,6 @@ test('email receipt, exact-recipient reply clock, assignment push, and eight-hou
       WHERE source_type = 'email_reply_overdue' AND source_id = $1
     `, [legacyId]);
     assert.equal(legacyNotifications.rows[0].count, 0);
-
-    await client.query(`
-      INSERT INTO email_messages (
-        thread_id, direction, from_address, to_recipients, delivery_status, sent_at, created_at
-      ) VALUES ($1, 'outbound', 'sales@sunkaier.com', $2::jsonb, 'sent', $3, $3)
-    `, [threadId, JSON.stringify([{ address: 'buyer@example.com' }]), new Date(receivedAt.getTime() + 3 * 3_600_000)]);
-    assert.equal(await notifications.isEmailReplyStillDue(firstId), false);
 
     const pending = await client.query(`
       INSERT INTO email_threads (mailbox_key, subject, last_message_at, triage_status)
@@ -147,6 +136,15 @@ test('email receipt, exact-recipient reply clock, assignment push, and eight-hou
       WHERE source_type = 'email_unassigned_overdue' AND source_id = $1
     `, [personalId]);
     assert.equal(privateNotifications.rows[0].count, 0);
+    const externalDeliveries = await client.query(`
+      SELECT count(*)::integer AS count
+      FROM notification_deliveries delivery
+      JOIN notifications notification ON notification.id = delivery.notification_id
+      WHERE notification.source_type IN (
+        'email_opportunity_assignment', 'email_reply_overdue', 'email_unassigned_overdue'
+      )
+    `);
+    assert.equal(externalDeliveries.rows[0].count, 0);
   } finally {
     await client.query('ROLLBACK');
     await client.end();

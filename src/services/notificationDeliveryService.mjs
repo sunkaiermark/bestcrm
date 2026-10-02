@@ -136,16 +136,6 @@ export async function deliverNotificationBatch({ notificationRepository, config,
   const results = [];
   for (const delivery of deliveries) {
     try {
-      if (delivery.sourceType === 'email_reply_overdue'
-        && delivery.channel === 'sms'
-        && typeof notificationRepository.isEmailReplyStillDue === 'function'
-        && !await notificationRepository.isEmailReplyStillDue(delivery.sourceId)) {
-        await notificationRepository.completeDelivery(delivery.id, {
-          status: 'skipped', error: 'Customer was replied to before SMS delivery'
-        });
-        results.push({ id: delivery.id, channel: delivery.channel, status: 'skipped' });
-        continue;
-      }
       const senderName = delivery.channel === 'web_push' ? 'webPush' : delivery.channel;
       const sender = senders[senderName];
       const outcome = delivery.channelEnabled === false
