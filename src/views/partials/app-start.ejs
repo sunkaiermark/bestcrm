@@ -4248,6 +4248,80 @@
         font-weight: 700;
       }
 
+      .customer-email-editor-field {
+        margin-bottom: 12px;
+      }
+
+      .customer-email-editor-field > label {
+        margin-bottom: 5px;
+      }
+
+      .customer-email-editor-field > textarea[hidden],
+      .customer-email-rich-controls[hidden] {
+        display: none;
+      }
+
+      .customer-email-editor-toolbar {
+        background: #f3f7fa;
+        border: 1px solid var(--line);
+        border-radius: 6px 6px 0 0;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+        padding: 6px;
+      }
+
+      .customer-email-editor-toolbar button {
+        min-width: 38px;
+        padding: 5px 9px;
+      }
+
+      .customer-email-rich-body {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-top: 0;
+        border-radius: 0 0 6px 6px;
+        color: var(--ink);
+        min-height: 280px;
+        overflow-x: auto;
+        overflow-wrap: anywhere;
+        padding: 12px;
+        white-space: pre-wrap;
+      }
+
+      .customer-email-rich-body:focus {
+        outline: 2px solid var(--accent);
+        outline-offset: -2px;
+      }
+
+      .customer-email-rich-body table {
+        border-collapse: collapse;
+        width: 100%;
+      }
+
+      .customer-email-rich-body th,
+      .customer-email-rich-body td {
+        border: 1px solid var(--line);
+        color: inherit;
+        font-size: inherit;
+        padding: 6px 8px;
+        text-transform: none;
+      }
+
+      .customer-email-editor-hint {
+        font-size: 14px;
+        margin: 5px 0 0;
+      }
+
+      .customer-email-editor-error {
+        color: #b42318;
+        margin: 5px 0 0;
+      }
+
+      .customer-email-editor-error[hidden] {
+        display: none;
+      }
+
       .customer-email-header-field input {
         min-width: 0;
       }

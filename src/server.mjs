@@ -828,6 +828,9 @@ export function createApp(options = {}) {
   app.disable('x-powered-by');
   app.set('view engine', 'ejs');
   app.set('views', path.join(dirname, 'views'));
+  app.get('/assets/email-purify.js', (req, res) => {
+    res.type('application/javascript').sendFile(path.join(dirname, '..', 'node_modules', 'dompurify', 'dist', 'purify.min.js'));
+  });
   app.use('/assets', express.static(path.join(dirname, 'public', 'assets')));
   app.get('/favicon.ico', (req, res) => res.status(204).end());
   app.get('/service-worker.js', (req, res) => {

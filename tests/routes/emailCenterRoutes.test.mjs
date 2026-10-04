@@ -988,6 +988,14 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(salesCompose.text, /25 MB total across all attachments/);
   assert.match(salesCompose.text, />No files selected</);
   assert.match(salesCompose.text, /src="\/assets\/email-compose\.js"/);
+  assert.match(salesCompose.text, /src="\/assets\/email-purify\.js"/);
+  const purifyScript = await salesperson.get('/assets/email-purify.js');
+  assert.equal(purifyScript.status, 200);
+  assert.match(purifyScript.headers['content-type'], /javascript/);
+  assert.match(salesCompose.text, /name="bodyHtml"/);
+  assert.match(salesCompose.text, /data-email-rich-body/);
+  assert.match(salesCompose.text, /data-email-insert-table/);
+  assert.match(salesCompose.text, /paste a table from Excel or Word/);
   assert.match(salesCompose.text, /value="buyer@example\.com"/);
   assert.match(salesCompose.text, /Need quote/);
   assert.match(salesCompose.text, /Quotation sent/);
@@ -1003,6 +1011,7 @@ test('compose page shows send only to an authorized opportunity member and remai
   const supportingCompose = await supporting.get('/email-center/compose?opportunityId=20');
   assert.equal(supportingCompose.status, 200);
   assert.match(supportingCompose.text, /编写客户邮件/);
+  assert.match(supportingCompose.text, /可粘贴 Excel 或 Word 表格/);
   assert.match(supportingCompose.text, />邮件签名预览</);
   assert.doesNotMatch(supportingCompose.text, /所有客户邮件统一通过 sales@sunkaier\.com 发出/);
   assert.match(supportingCompose.text, />附件</);

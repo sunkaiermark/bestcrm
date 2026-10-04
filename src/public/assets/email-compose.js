@@ -27,3 +27,133 @@ for (const picker of document.querySelectorAll('[data-approved-file-picker]')) {
   for (const checkbox of checkboxes) checkbox.addEventListener('change', updateCount);
   updateCount();
 }
+
+const EMAIL_ALLOWED_TAGS = [
+  'p', 'div', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'span',
+  'ul', 'ol', 'li', 'blockquote', 'table', 'thead', 'tbody',
+  'tfoot', 'tr', 'th', 'td'
+];
+
+function safeEmailMarkup(html) {
+  return window.DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: EMAIL_ALLOWED_TAGS,
+    ALLOWED_ATTR: ['colspan', 'rowspan'],
+    ALLOW_ARIA_ATTR: false,
+    ALLOW_DATA_ATTR: false
+  });
+}
+
+function insertEmailFragment(editor, fragment) {
+  editor.focus();
+  const selection = window.getSelection();
+  const range = selection?.rangeCount ? selection.getRangeAt(0) : null;
+  if (!range || !editor.contains(range.commonAncestorContainer)) {
+    editor.append(fragment);
+    return;
+  }
+  range.deleteContents();
+  const lastNode = fragment.lastChild;
+  range.insertNode(fragment);
+  if (lastNode) {
+    range.setStartAfter(lastNode);
+    range.collapse(true);
+    selection.removeAllRanges();
+    selection.addRange(range);
+  }
+}
+
+function plainTextTable(text) {
+  const rows = text.replace(/\r\n?/g, '\n').trimEnd().split('\n');
+  if (rows.length < 2 || rows.length > 100 || !rows.every((row) => row.includes('\t'))) return null;
+  const cells = rows.map((row) => row.split('\t'));
+  const width = cells[0].length;
+  if (width < 2 || width > 20 || !cells.every((row) => row.length === width)) return null;
+  const table = document.createElement('table');
+  const body = table.createTBody();
+  for (const row of cells) {
+    const tr = body.insertRow();
+    for (const value of row) tr.insertCell().textContent = value;
+  }
+  return table;
+}
+
+for (const field of document.querySelectorAll('[data-email-editor]')) {
+  const textarea = field.querySelector('textarea[name="body"]');
+  const richHtml = field.querySelector('input[name="bodyHtml"]');
+  const controls = field.querySelector('.customer-email-rich-controls');
+  const editor = field.querySelector('[data-email-rich-body]');
+  const errorMessage = field.querySelector('[data-email-editor-error]');
+  const form = field.closest('form');
+  if (!textarea || !richHtml || !controls || !editor || !form || !window.DOMPurify?.isSupported) continue;
+
+  controls.hidden = false;
+  editor.textContent = textarea.value;
+  textarea.hidden = true;
+  textarea.required = false;
+  field.querySelector('label[for="customer-email-body"]')?.addEventListener('click', (event) => {
+    event.preventDefault();
+    editor.focus();
+  });
+
+  editor.addEventListener('paste', (event) => {
+    const clipboard = event.clipboardData;
+    if (!clipboard) return;
+    event.preventDefault();
+    const clipboardHtml = clipboard.getData('text/html');
+    const safeHtml = clipboardHtml && safeEmailMarkup(clipboardHtml);
+    if (safeHtml && new DOMParser().parseFromString(safeHtml, 'text/html').body.textContent.trim()) {
+      const template = document.createElement('template');
+      template.innerHTML = safeHtml;
+      insertEmailFragment(editor, template.content);
+      return;
+    }
+    const plain = clipboard.getData('text/plain');
+    const table = plainTextTable(plain);
+    if (table) {
+      insertEmailFragment(editor, table);
+    } else if (plain) {
+      insertEmailFragment(editor, document.createTextNode(plain));
+    }
+  });
+  editor.addEventListener('drop', (event) => event.preventDefault());
+
+  for (const button of field.querySelectorAll('[data-email-format]')) {
+    button.addEventListener('mousedown', (event) => event.preventDefault());
+    button.addEventListener('click', () => {
+      editor.focus();
+      document.execCommand(button.dataset.emailFormat, false);
+    });
+  }
+  const insertTable = field.querySelector('[data-email-insert-table]');
+  insertTable?.addEventListener('mousedown', (event) => event.preventDefault());
+  insertTable?.addEventListener('click', () => {
+    const table = document.createElement('table');
+    const body = table.createTBody();
+    for (let row = 0; row < 2; row += 1) {
+      const tr = body.insertRow();
+      for (let column = 0; column < 2; column += 1) {
+        tr.insertCell().append(document.createElement('br'));
+      }
+    }
+    insertEmailFragment(editor, table);
+  });
+
+  form.addEventListener('submit', (event) => {
+    const safeHtml = safeEmailMarkup(editor.innerHTML);
+    const visibleText = new DOMParser().parseFromString(safeHtml, 'text/html').body.textContent
+      .replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
+    if (!visibleText) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      editor.focus();
+      if (errorMessage) errorMessage.hidden = false;
+      return;
+    }
+    if (errorMessage) errorMessage.hidden = true;
+    richHtml.value = safeHtml;
+    textarea.value = editor.innerText || editor.textContent;
+  });
+  editor.addEventListener('input', () => {
+    if (errorMessage) errorMessage.hidden = true;
+  });
+}

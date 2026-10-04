@@ -262,6 +262,57 @@ test('a CRM-native outbound opportunity thread starts linked and never enters pe
   }
 });
 
+test('pasted table email is archived and sent with sanitized HTML and plain-text alternatives', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));
+  const sent = [];
+  try {
+    const dependencies = createDependencies(uploadDir, {
+      transport: { async sendMail(message) { sent.push(message); return { messageId: '<table@example.com>' }; } }
+    });
+    const result = await createCustomerEmailDraft(dependencies, actor(), {
+      threadId: 1,
+      to: 'buyer@example.com',
+      subject: 'Table quote',
+      body: 'fallback must not replace the table',
+      bodyHtml: '<p>Please see below:</p><table><tr><td style="color:red" onclick="alert(1)">Mixer</td><td>USD 100</td></tr></table><img src="https://tracker.example/open">',
+      action: 'send'
+    });
+    assert.equal(result.deliveryStatus, 'sent');
+    const archived = dependencies.state.messages.find((message) => message.direction === 'outbound');
+    assert.match(archived.htmlBody, /<table style=/);
+    assert.match(archived.textBody, /Mixer\s+USD 100/);
+    assert.doesNotMatch(archived.textBody, /fallback must not replace/);
+    assert.doesNotMatch(archived.htmlBody, /onclick|color:red|tracker\.example|<img src="https/i);
+    const parsed = await simpleParser(sent[0].raw);
+    assert.match(parsed.html, /<table style=/);
+    assert.match(parsed.text, /Mixer\s+USD 100/);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('unsafe-only and oversized rich email bodies cannot create an outbound draft', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));
+  try {
+    const dependencies = createDependencies(uploadDir);
+    const input = {
+      threadId: 1,
+      to: 'buyer@example.com',
+      subject: 'Empty rich content',
+      body: 'a forged plain fallback',
+      bodyHtml: '<img src="https://tracker.example/open"><script>alert(1)</script>',
+      action: 'draft'
+    };
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), input), /Email body is required/);
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+      ...input, bodyHtml: `<p>${'A'.repeat(500001)}</p>`
+    }), /Email body is too long/);
+    assert.equal(dependencies.state.messages.some((message) => message.direction === 'outbound'), false);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
 test('selected approved opportunity files are revalidated and copied into the immutable outbound archive', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));
   const sent = [];

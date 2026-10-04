@@ -232,7 +232,7 @@ export function emailCenterRoutes({
   const router = Router();
   const upload = multer({
     storage: multer.memoryStorage(),
-    limits: { fileSize: maxUploadMb * 1024 * 1024, files: 10 }
+    limits: { fileSize: maxUploadMb * 1024 * 1024, fieldSize: 512 * 1024, files: 10 }
   });
   const dependencies = {
     emailArchiveRepository,
@@ -502,6 +502,9 @@ export function emailCenterRoutes({
     upload.array('attachments', 10)(req, res, (error) => {
       if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
         return res.status(413).send(`Email attachment exceeds ${maxUploadMb} MB`);
+      }
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FIELD_VALUE') {
+        return res.status(413).send('Email content is too long');
       }
       next(error);
     });

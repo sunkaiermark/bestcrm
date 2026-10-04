@@ -80,7 +80,24 @@
               </select>
             </label>
           <% } %>
-          <label><%= t('emailBody') %><textarea name="body" rows="12" required></textarea></label>
+          <div class="customer-email-editor-field" data-email-editor>
+            <label id="customer-email-body-label" for="customer-email-body"><%= t('emailBody') %></label>
+            <textarea id="customer-email-body" name="body" rows="12" required></textarea>
+            <input type="hidden" name="bodyHtml" value="">
+            <div class="customer-email-rich-controls" hidden>
+              <div class="customer-email-editor-toolbar" role="toolbar" aria-label="<%= t('emailFormatting') %>">
+                <button type="button" class="secondary-action" data-email-format="bold" aria-label="<%= t('emailBold') %>" title="<%= t('emailBold') %>"><strong>B</strong></button>
+                <button type="button" class="secondary-action" data-email-format="italic" aria-label="<%= t('emailItalic') %>" title="<%= t('emailItalic') %>"><em>I</em></button>
+                <button type="button" class="secondary-action" data-email-format="underline" aria-label="<%= t('emailUnderline') %>" title="<%= t('emailUnderline') %>"><u>U</u></button>
+                <button type="button" class="secondary-action" data-email-format="insertUnorderedList" aria-label="<%= t('emailBullets') %>" title="<%= t('emailBullets') %>">•</button>
+                <button type="button" class="secondary-action" data-email-format="insertOrderedList" aria-label="<%= t('emailNumbers') %>" title="<%= t('emailNumbers') %>">1.</button>
+                <button type="button" class="secondary-action" data-email-insert-table><%= t('emailInsertTable') %></button>
+              </div>
+              <div class="customer-email-rich-body" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="customer-email-body-label" aria-describedby="customer-email-editor-error" data-email-rich-body></div>
+              <p class="customer-email-editor-error" id="customer-email-editor-error" role="alert" data-email-editor-error hidden><%= t('emailBodyRequired') %></p>
+              <p class="muted customer-email-editor-hint"><%= t('emailPasteTableHint') %></p>
+            </div>
+          </div>
           <div class="customer-email-signature-field">
             <span class="customer-email-field-label" id="customer-email-signature-label"><%= t('emailSignaturePreview') %></span>
             <div class="customer-email-signature-preview<%= context.signatureHtmlPreview ? '' : ' is-empty' %>" role="textbox" aria-readonly="true" aria-labelledby="customer-email-signature-label" tabindex="0"><% if (context.signatureHtmlPreview) { %><%- context.signatureHtmlPreview %><% } else { %><%= t('emailSignaturePreviewUnavailable') %><% } %></div>
@@ -135,5 +152,6 @@
         <% } %>
         </div>
         </div>
+        <script src="/assets/email-purify.js" defer></script>
         <script src="/assets/email-compose.js" defer></script>
 <%- include('../partials/app-end') %>

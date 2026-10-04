@@ -7,6 +7,7 @@ import { canViewOpportunity } from './opportunityService.mjs';
 import { resolveStoredPath } from './attachmentFileService.mjs';
 import { storeEmailArchiveAttachments } from './emailArchiveService.mjs';
 import { prepareOutboundMimeArtifact } from './emailOutboundMimeService.mjs';
+import { sanitizeRichEmailBody } from './emailRichTextService.mjs';
 import { SUNKAIER_SIGNATURE_LOGO_CID } from '../utils/emailPresentation.mjs';
 
 const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
@@ -143,11 +144,8 @@ function appendSignature(body, signature) {
   return `${normalized}\n\n${signature}`;
 }
 
-function appendHtmlSignature(body, signature) {
-  const normalized = text(body);
-  if (!normalized) throw new CustomerEmailError('Email body is required');
-  const bodyHtml = escapeHtml(normalized).replace(/\r?\n/g, '<br>');
-  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;line-height:1.55;">${bodyHtml}</div><div style="height:18px;line-height:18px;">&nbsp;</div>${signature}`;
+function appendHtmlSignature(safeBodyHtml, signature) {
+  return `<div style="font-family:Arial,Helvetica,sans-serif;color:#172033;line-height:1.55;">${safeBodyHtml}</div><div style="height:18px;line-height:18px;">&nbsp;</div>${signature}`;
 }
 
 function generateMessageId(uuid = randomUUID()) {
@@ -410,8 +408,14 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
   const subject = text(input.subject);
   if (!subject || /[\r\n]/.test(subject)) throw new CustomerEmailError('Email subject is required');
   if (subject.length > 300) throw new CustomerEmailError('Email subject is too long');
-  const textBody = appendSignature(input.body, identity.signature);
-  const htmlBody = appendHtmlSignature(input.body, identity.signatureHtml);
+  const richHtmlInput = String(input.bodyHtml || '');
+  if (richHtmlInput.length > 500000) throw new CustomerEmailError('Email body is too long', 413);
+  const richBody = richHtmlInput ? sanitizeRichEmailBody(richHtmlInput) : null;
+  const plainBody = richBody?.text || text(input.body);
+  if (richBody && !richBody.text) throw new CustomerEmailError('Email body is required');
+  const safeBodyHtml = richBody?.html || escapeHtml(plainBody).replace(/\r?\n/g, '<br>');
+  const textBody = appendSignature(plainBody, identity.signature);
+  const htmlBody = appendHtmlSignature(safeBodyHtml, identity.signatureHtml);
   if (textBody.length > 200000) throw new CustomerEmailError('Email body is too long');
   if (htmlBody.length > 300000) throw new CustomerEmailError('Email body is too long');
 
