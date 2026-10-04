@@ -995,6 +995,9 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(salesCompose.text, /name="bodyHtml"/);
   assert.match(salesCompose.text, /data-email-rich-body/);
   assert.match(salesCompose.text, /data-email-insert-table/);
+  assert.match(salesCompose.text, /data-email-set-column-widths/);
+  assert.match(salesCompose.text, />Set column widths</);
+  assert.match(salesCompose.text, /data-email-column-width-inputs/);
   assert.match(salesCompose.text, /paste a table from Excel or Word/);
   assert.match(salesCompose.text, /value="buyer@example\.com"/);
   assert.match(salesCompose.text, /Need quote/);
@@ -1012,6 +1015,7 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.equal(supportingCompose.status, 200);
   assert.match(supportingCompose.text, /编写客户邮件/);
   assert.match(supportingCompose.text, /可粘贴 Excel 或 Word 表格/);
+  assert.match(supportingCompose.text, />设置列宽</);
   assert.match(supportingCompose.text, />邮件签名预览</);
   assert.doesNotMatch(supportingCompose.text, /所有客户邮件统一通过 sales@sunkaier\.com 发出/);
   assert.match(supportingCompose.text, />附件</);

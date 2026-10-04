@@ -34,10 +34,10 @@ const EMAIL_ALLOWED_TAGS = [
   'tfoot', 'tr', 'th', 'td'
 ];
 
-function safeEmailMarkup(html) {
+function safeEmailMarkup(html, preserveWidths = false) {
   return window.DOMPurify.sanitize(html, {
     ALLOWED_TAGS: EMAIL_ALLOWED_TAGS,
-    ALLOWED_ATTR: ['colspan', 'rowspan'],
+    ALLOWED_ATTR: preserveWidths ? ['colspan', 'rowspan', 'width'] : ['colspan', 'rowspan'],
     ALLOW_ARIA_ATTR: false,
     ALLOW_DATA_ATTR: false
   });
@@ -77,12 +77,55 @@ function plainTextTable(text) {
   return table;
 }
 
+function selectedEmailTable(editor) {
+  const node = window.getSelection()?.anchorNode;
+  const element = node?.nodeType === 1 ? node : node?.parentElement;
+  const table = element?.closest?.('td, th')?.closest('table');
+  return table && editor.contains(table) ? table : null;
+}
+
+function simpleTableRows(table) {
+  const rows = Array.from(table.rows).filter((row) => row.closest('table') === table);
+  const count = rows[0]?.cells.length || 0;
+  if (count < 2 || count > 20 || !rows.every((row) => row.cells.length === count &&
+    Array.from(row.cells).every((cell) => cell.colSpan === 1 && cell.rowSpan === 1))) return null;
+  return rows;
+}
+
+function currentColumnWidths(rows) {
+  const cells = Array.from(rows[0].cells);
+  const stored = cells.map((cell) => Number(cell.getAttribute('width')?.match(/^([1-9]\d?)%$/)?.[1]));
+  if (stored.every((value) => Number.isInteger(value) && value >= 1 && value <= 99)
+      && stored.reduce((sum, value) => sum + value, 0) === 100) return stored;
+
+  const measured = cells.map((cell) => cell.getBoundingClientRect().width);
+  const weights = measured.some((value) => value > 0) ? measured : cells.map(() => 1);
+  const total = weights.reduce((sum, value) => sum + value, 0);
+  const exact = weights.map((value) => value * 100 / total);
+  const widths = exact.map((value) => Math.max(1, Math.floor(value)));
+  const order = exact.map((value, index) => ({ index, remainder: value % 1 }))
+    .sort((a, b) => b.remainder - a.remainder).map(({ index }) => index);
+  let difference = 100 - widths.reduce((sum, value) => sum + value, 0);
+  for (let index = 0; difference > 0; index += 1, difference -= 1) widths[order[index % order.length]] += 1;
+  while (difference < 0) {
+    const index = widths.findIndex((value) => value > 1);
+    if (index < 0) break;
+    widths[index] -= 1;
+    difference += 1;
+  }
+  return widths;
+}
+
 for (const field of document.querySelectorAll('[data-email-editor]')) {
   const textarea = field.querySelector('textarea[name="body"]');
   const richHtml = field.querySelector('input[name="bodyHtml"]');
   const controls = field.querySelector('.customer-email-rich-controls');
   const editor = field.querySelector('[data-email-rich-body]');
   const errorMessage = field.querySelector('[data-email-editor-error]');
+  const widthButton = field.querySelector('[data-email-set-column-widths]');
+  const widthPanel = field.querySelector('[data-email-column-width-panel]');
+  const widthInputs = field.querySelector('[data-email-column-width-inputs]');
+  const widthError = field.querySelector('[data-email-column-width-error]');
   const form = field.closest('form');
   if (!textarea || !richHtml || !controls || !editor || !form || !window.DOMPurify?.isSupported) continue;
 
@@ -138,8 +181,83 @@ for (const field of document.querySelectorAll('[data-email-editor]')) {
     insertEmailFragment(editor, table);
   });
 
+  if (widthButton && widthPanel && widthInputs && widthError) {
+    let activeTable = null;
+    const showWidthError = (message = '') => {
+      widthError.textContent = message;
+      widthError.hidden = !message;
+    };
+    const closeWidthPanel = () => {
+      activeTable = null;
+      widthPanel.hidden = true;
+      widthInputs.replaceChildren();
+      widthButton.setAttribute('aria-expanded', 'false');
+    };
+    widthButton.addEventListener('mousedown', (event) => event.preventDefault());
+    widthButton.addEventListener('click', () => {
+      showWidthError();
+      const table = selectedEmailTable(editor);
+      if (!table) {
+        closeWidthPanel();
+        showWidthError(widthPanel.dataset.noTableLabel);
+        return;
+      }
+      const rows = simpleTableRows(table);
+      if (!rows) {
+        closeWidthPanel();
+        showWidthError(widthPanel.dataset.mergedLabel);
+        return;
+      }
+      activeTable = table;
+      widthInputs.replaceChildren();
+      for (const [index, value] of currentColumnWidths(rows).entries()) {
+        const label = document.createElement('label');
+        const name = widthPanel.dataset.columnLabel.replace('{n}', String(index + 1));
+        const input = document.createElement('input');
+        input.type = 'text';
+        input.inputMode = 'numeric';
+        input.autocomplete = 'off';
+        input.value = String(value);
+        input.setAttribute('aria-label', name);
+        input.addEventListener('input', () => showWidthError());
+        label.append(document.createTextNode(`${name} `), input, document.createTextNode('%'));
+        widthInputs.append(label);
+      }
+      widthPanel.hidden = false;
+      widthButton.setAttribute('aria-expanded', 'true');
+      widthInputs.querySelector('input')?.focus();
+    });
+    field.querySelector('[data-email-cancel-column-widths]')?.addEventListener('click', () => {
+      showWidthError();
+      closeWidthPanel();
+      editor.focus();
+    });
+    field.querySelector('[data-email-apply-column-widths]')?.addEventListener('click', () => {
+      const rows = activeTable?.isConnected && editor.contains(activeTable) ? simpleTableRows(activeTable) : null;
+      if (!rows) {
+        closeWidthPanel();
+        showWidthError(widthPanel.dataset.mergedLabel);
+        return;
+      }
+      const widths = Array.from(widthInputs.querySelectorAll('input'), (input) => Number(input.value));
+      if (widths.length !== rows[0].cells.length || !widths.every((value) => Number.isInteger(value)
+          && value >= 1 && value <= 99) || widths.reduce((sum, value) => sum + value, 0) !== 100) {
+        showWidthError(widthPanel.dataset.invalidLabel);
+        return;
+      }
+      for (const row of rows) {
+        Array.from(row.cells).forEach((cell, index) => cell.setAttribute('width', `${widths[index]}%`));
+      }
+      activeTable.style.tableLayout = 'fixed';
+      showWidthError();
+      closeWidthPanel();
+      editor.focus();
+      editor.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
   form.addEventListener('submit', (event) => {
-    const safeHtml = safeEmailMarkup(editor.innerHTML);
+    const safeHtml = safeEmailMarkup(editor.innerHTML, true);
     const visibleText = new DOMParser().parseFromString(safeHtml, 'text/html').body.textContent
       .replace(/[\u200B-\u200D\uFEFF]/g, '').trim();
     if (!visibleText) {

@@ -274,17 +274,19 @@ test('pasted table email is archived and sent with sanitized HTML and plain-text
       to: 'buyer@example.com',
       subject: 'Table quote',
       body: 'fallback must not replace the table',
-      bodyHtml: '<p>Please see below:</p><table><tr><td style="color:red" onclick="alert(1)">Mixer</td><td>USD 100</td></tr></table><img src="https://tracker.example/open">',
+      bodyHtml: '<p>Please see below:</p><table><tr><td width="70%" style="color:red" onclick="alert(1)">Mixer</td><td width="30%">USD 100</td></tr></table><img src="https://tracker.example/open">',
       action: 'send'
     });
     assert.equal(result.deliveryStatus, 'sent');
     const archived = dependencies.state.messages.find((message) => message.direction === 'outbound');
     assert.match(archived.htmlBody, /<table style=/);
+    assert.match(archived.htmlBody, /width="70%" style="[^"]*width:70%/);
     assert.match(archived.textBody, /Mixer\s+USD 100/);
     assert.doesNotMatch(archived.textBody, /fallback must not replace/);
     assert.doesNotMatch(archived.htmlBody, /onclick|color:red|tracker\.example|<img src="https/i);
     const parsed = await simpleParser(sent[0].raw);
     assert.match(parsed.html, /<table style=/);
+    assert.match(parsed.html, /width="30%" style="[^"]*width:30%/);
     assert.match(parsed.text, /Mixer\s+USD 100/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });

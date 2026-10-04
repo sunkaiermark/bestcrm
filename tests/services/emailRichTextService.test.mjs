@@ -29,3 +29,17 @@ test('rich email rejects image-only or script-only content as empty', () => {
   assert.equal(sanitizeRichEmailBody('<img src="https://tracker.example/open">').text, '');
   assert.equal(sanitizeRichEmailBody('<script>alert(1)</script>').text, '');
 });
+
+test('rich email preserves only a complete safe set of percentage column widths', () => {
+  const result = sanitizeRichEmailBody('<table width="500" style="color:red"><tr><th width="70%">Item</th><th width="30%">Price</th></tr><tr><td width="70%" style="background:url(https://tracker.example/x)">Mixer</td><td width="30%">100</td></tr></table>');
+  assert.match(result.html, /table-layout:fixed/);
+  assert.match(result.html, /<th width="70%" style="[^"]*width:70%/);
+  assert.match(result.html, /<td width="30%" style="[^"]*width:30%/);
+  assert.doesNotMatch(result.html, /width="500"|color:red|tracker\.example/);
+  assert.match(result.text, /Mixer\s+100/);
+
+  const invalid = sanitizeRichEmailBody('<table><tr><td width="70%">A</td><td width="40%">B</td></tr><tr><td width="70%">C</td><td width="40%">D</td></tr></table>');
+  assert.doesNotMatch(invalid.html, /width=|table-layout:fixed/);
+  const malicious = sanitizeRichEmailBody('<table><tr><td width="70%;background:url(https://tracker.example/x)">A</td><td width="30%">B</td></tr></table>');
+  assert.doesNotMatch(malicious.html, /width=|table-layout:fixed|tracker\.example/);
+});

@@ -92,7 +92,21 @@
                 <button type="button" class="secondary-action" data-email-format="insertUnorderedList" aria-label="<%= t('emailBullets') %>" title="<%= t('emailBullets') %>">•</button>
                 <button type="button" class="secondary-action" data-email-format="insertOrderedList" aria-label="<%= t('emailNumbers') %>" title="<%= t('emailNumbers') %>">1.</button>
                 <button type="button" class="secondary-action" data-email-insert-table><%= t('emailInsertTable') %></button>
+                <button type="button" class="secondary-action" data-email-set-column-widths aria-controls="email-column-width-panel" aria-expanded="false"><%= t('emailSetColumnWidths') %></button>
               </div>
+              <div class="customer-email-column-width-panel" id="email-column-width-panel" data-email-column-width-panel
+                data-column-label="<%= t('emailColumnWidthColumn') %>"
+                data-no-table-label="<%= t('emailColumnWidthNoTable') %>"
+                data-merged-label="<%= t('emailColumnWidthMergedUnsupported') %>"
+                data-invalid-label="<%= t('emailColumnWidthInvalid') %>" hidden>
+                <p class="customer-email-editor-hint"><%= t('emailColumnWidthHint') %></p>
+                <div class="customer-email-column-width-inputs" data-email-column-width-inputs></div>
+                <div class="customer-email-column-width-actions">
+                  <button type="button" data-email-apply-column-widths><%= t('emailColumnWidthApply') %></button>
+                  <button type="button" class="secondary-action" data-email-cancel-column-widths><%= t('emailColumnWidthCancel') %></button>
+                </div>
+              </div>
+              <p class="customer-email-editor-error" role="alert" data-email-column-width-error hidden></p>
               <div class="customer-email-rich-body" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="customer-email-body-label" aria-describedby="customer-email-editor-error" data-email-rich-body></div>
               <p class="customer-email-editor-error" id="customer-email-editor-error" role="alert" data-email-editor-error hidden><%= t('emailBodyRequired') %></p>
               <p class="muted customer-email-editor-hint"><%= t('emailPasteTableHint') %></p>
