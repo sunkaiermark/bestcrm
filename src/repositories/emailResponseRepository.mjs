@@ -14,6 +14,19 @@ function mapState(row) {
   };
 }
 
+function mapOpportunityIndicator(row) {
+  return {
+    opportunityId: Number(row.opportunity_id),
+    newCount: Number(row.new_count),
+    newMessageId: row.new_message_id == null ? null : Number(row.new_message_id),
+    waitingCount: Number(row.waiting_count),
+    waitingMessageId: row.waiting_message_id == null ? null : Number(row.waiting_message_id),
+    overdueCount: Number(row.overdue_count),
+    overdueMessageId: row.overdue_message_id == null ? null : Number(row.overdue_message_id),
+    latestReceivedAt: row.latest_received_at
+  };
+}
+
 export function createEmailResponseRepository(queryTarget) {
   return {
     async listThreadStates(threadId, ownerUserId, at = new Date()) {
@@ -43,6 +56,61 @@ export function createEmailResponseRepository(queryTarget) {
         ORDER BY COALESCE(inbound.mailbox_received_at, inbound.created_at), inbound.id
       `, [threadId, ownerUserId || null, at, ACTIVATION_MIGRATION]);
       return result.rows.map(mapState);
+    },
+
+    async listOpportunityEmailIndicators(opportunityIds, at = new Date()) {
+      const ids = [...new Set((opportunityIds || [])
+        .map(Number)
+        .filter((id) => Number.isSafeInteger(id) && id > 0))];
+      if (!ids.length) return [];
+      const result = await queryTarget.query(`
+        WITH tracked_inbound AS (
+          SELECT thread.opportunity_id, inbound.id AS message_id,
+            COALESCE(inbound.mailbox_received_at, inbound.created_at) AS received_at,
+            receipt.confirmed_at,
+            bestcrm_email_customer_reply_at(inbound.id) AS replied_at
+          FROM email_threads thread
+          JOIN opportunities opportunity ON opportunity.id = thread.opportunity_id
+          JOIN email_messages inbound ON inbound.thread_id = thread.id
+          JOIN schema_migrations activation ON activation.name = $3
+          LEFT JOIN email_message_owner_acknowledgments receipt
+            ON receipt.message_id = inbound.id AND receipt.user_id = opportunity.salesperson_id
+          WHERE thread.opportunity_id = ANY($1::bigint[])
+            AND thread.archive_disposition = 'active'
+            AND thread.triage_status = 'linked_opportunity'
+            AND inbound.direction = 'inbound'
+            AND inbound.canonical_message_id IS NULL
+            AND inbound.archive_disposition = 'active'
+            AND inbound.created_at >= activation.applied_at
+            AND COALESCE(inbound.mailbox_received_at, inbound.created_at) >= activation.applied_at
+        ), pending AS (
+          SELECT opportunity_id, message_id, received_at,
+            CASE
+              WHEN received_at + interval '8 hours' <= $2::timestamptz THEN 'overdue'
+              WHEN confirmed_at IS NULL THEN 'new'
+              ELSE 'waiting'
+            END AS response_state
+          FROM tracked_inbound
+          WHERE replied_at IS NULL
+        ), ranked AS (
+          SELECT *, row_number() OVER (
+            PARTITION BY opportunity_id, response_state
+            ORDER BY received_at DESC, message_id DESC
+          ) AS state_rank
+          FROM pending
+        )
+        SELECT opportunity_id,
+          count(*) FILTER (WHERE response_state = 'new')::integer AS new_count,
+          max(message_id) FILTER (WHERE response_state = 'new' AND state_rank = 1) AS new_message_id,
+          count(*) FILTER (WHERE response_state = 'waiting')::integer AS waiting_count,
+          max(message_id) FILTER (WHERE response_state = 'waiting' AND state_rank = 1) AS waiting_message_id,
+          count(*) FILTER (WHERE response_state = 'overdue')::integer AS overdue_count,
+          max(message_id) FILTER (WHERE response_state = 'overdue' AND state_rank = 1) AS overdue_message_id,
+          max(received_at) AS latest_received_at
+        FROM ranked
+        GROUP BY opportunity_id
+      `, [ids, at, ACTIVATION_MIGRATION]);
+      return result.rows.map(mapOpportunityIndicator);
     },
 
     async acknowledge(messageId, ownerUserId, at = new Date()) {

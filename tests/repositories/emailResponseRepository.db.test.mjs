@@ -98,6 +98,19 @@ test('email receipt, exact-recipient reply clock, and eight-hour in-app-only ded
     assert.ok(secondState.repliedAt);
     assert.equal(legacyState.tracked, false);
 
+    const newId = await addInbound(threadId, 'new@example.com', new Date(at.getTime() - 3_600_000));
+    const waitingId = await addInbound(threadId, 'waiting@example.com', new Date(at.getTime() - 2 * 3_600_000));
+    await response.acknowledge(waitingId, ownerId, at);
+    const [indicator] = await response.listOpportunityEmailIndicators([opportunityId], at);
+    assert.equal(indicator.opportunityId, opportunityId);
+    assert.equal(indicator.newCount, 1);
+    assert.equal(indicator.newMessageId, newId);
+    assert.equal(indicator.waitingCount, 1);
+    assert.equal(indicator.waitingMessageId, waitingId);
+    assert.equal(indicator.overdueCount, 1);
+    assert.equal(indicator.overdueMessageId, firstId);
+    assert.equal(new Date(indicator.latestReceivedAt).getTime(), at.getTime() - 3_600_000);
+
     const overdue = await response.queueDueLinkedReminders(at);
     assert.equal(overdue.created, 2);
     assert.equal((await response.queueDueLinkedReminders(at)).created, 0);
@@ -111,6 +124,17 @@ test('email receipt, exact-recipient reply clock, and eight-hour in-app-only ded
       WHERE source_type = 'email_reply_overdue' AND source_id = $1
     `, [legacyId]);
     assert.equal(legacyNotifications.rows[0].count, 0);
+
+    await client.query(`
+      INSERT INTO email_messages (
+        thread_id, direction, from_address, to_recipients, delivery_status, sent_at, created_at
+      ) VALUES ($1, 'outbound', 'sales@sunkaier.com', $2::jsonb, 'sent', $3, $3)
+    `, [threadId, JSON.stringify([{ address: 'buyer@example.com' }]), new Date(at.getTime() + 60_000)]);
+    const [afterReply] = await response.listOpportunityEmailIndicators([opportunityId], at);
+    assert.equal(afterReply.newCount, 1);
+    assert.equal(afterReply.waitingCount, 1);
+    assert.equal(afterReply.overdueCount, 0);
+    assert.equal(afterReply.overdueMessageId, null);
 
     const pending = await client.query(`
       INSERT INTO email_threads (mailbox_key, subject, last_message_at, triage_status)

@@ -60,6 +60,7 @@ function opportunityVisibilityFilter(user) {
 }
 
 const opportunityArchiveScopes = new Set(['active', 'archived', 'all']);
+const opportunityEmailScopes = new Set(['all', 'pending']);
 
 function normalizeOpportunityArchiveScope(value) {
   return opportunityArchiveScopes.has(value) ? value : 'active';
@@ -77,11 +78,27 @@ function normalizeOpportunityListId(value) {
 function normalizeOpportunityListQuery(query = {}) {
   return {
     archiveScope: normalizeOpportunityArchiveScope(query.archiveScope),
+    emailScope: opportunityEmailScopes.has(query.emailScope) ? query.emailScope : 'all',
     salespersonId: normalizeOpportunityListId(query.salespersonId),
     customerId: normalizeOpportunityListId(query.customerId),
     contactId: normalizeOpportunityListId(query.contactId),
     query: String(query.query ?? '').trim().slice(0, 200)
   };
+}
+
+function opportunityEmailScopeHref(filters, emailScope) {
+  const params = new URLSearchParams({ archiveScope: filters.archiveScope });
+  if (filters.salespersonId) params.set('salespersonId', String(filters.salespersonId));
+  if (filters.customerId) params.set('customerId', String(filters.customerId));
+  if (filters.contactId) params.set('contactId', String(filters.contactId));
+  if (filters.query) params.set('query', filters.query);
+  if (emailScope === 'pending') params.set('emailScope', 'pending');
+  return `/opportunities?${params.toString()}`;
+}
+
+function hasPendingOpportunityEmail(opportunity) {
+  const indicator = opportunity.emailIndicator;
+  return Boolean(indicator && indicator.newCount + indicator.waitingCount + indicator.overdueCount > 0);
 }
 
 function opportunityListFilter(user, filters) {
@@ -793,6 +810,9 @@ export function opportunityRoutes({
   router.get('/opportunities', async (req, res, next) => {
     try {
       const filters = normalizeOpportunityListQuery(req.query);
+      const emailIndicatorsAvailable = emailCenterEnabled
+        && typeof emailResponseRepository?.listOpportunityEmailIndicators === 'function';
+      if (!emailIndicatorsAvailable) filters.emailScope = 'all';
       const baseFilter = opportunityListFilter(req.currentUser, {
         archiveScope: filters.archiveScope
       });
@@ -800,10 +820,27 @@ export function opportunityRoutes({
         opportunityRepository.listOpportunities(opportunityListFilter(req.currentUser, filters)),
         loadOpportunityFilterOptions(opportunityRepository, userRepository, baseFilter)
       ]);
+      const indicators = emailIndicatorsAvailable && opportunities.length
+        ? await emailResponseRepository.listOpportunityEmailIndicators(opportunities.map((opportunity) => opportunity.id))
+        : [];
+      const indicatorByOpportunityId = new Map(indicators.map((indicator) => [indicator.opportunityId, indicator]));
+      const opportunitiesWithEmail = opportunities.map((opportunity) => ({
+        ...opportunity,
+        emailIndicator: indicatorByOpportunityId.get(Number(opportunity.id)) || null
+      }));
+      const pendingOpportunityCount = opportunitiesWithEmail.filter(hasPendingOpportunityEmail).length;
       res.render('opportunities/index', {
-        opportunities,
+        opportunities: filters.emailScope === 'pending'
+          ? opportunitiesWithEmail.filter(hasPendingOpportunityEmail)
+          : opportunitiesWithEmail,
         archiveScope: filters.archiveScope,
         filters,
+        emailIndicatorsAvailable,
+        pendingOpportunityCount,
+        opportunityEmailScopeHrefs: {
+          all: opportunityEmailScopeHref(filters, 'all'),
+          pending: opportunityEmailScopeHref(filters, 'pending')
+        },
         salespeople: filterOptions.salespeople,
         customers: filterOptions.customers,
         contacts: filterOptions.contacts
@@ -1170,6 +1207,7 @@ export function opportunityRoutes({
       );
       res.render('opportunities/detail', {
         opportunity,
+        selectedEmailMessageId: normalizeOpportunityListId(req.query.emailMessageId),
         workflowForms,
         timelineEvents: activity.timelineEvents,
         attachments,

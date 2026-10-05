@@ -696,6 +696,55 @@ test('opportunity list supports active archived and all scopes', async () => {
   assert.match(allList.text, /<option value="all" selected>All opportunities<\/option>/);
 });
 
+test('opportunity list shows pending customer mail only for visible opportunities and keeps filters', async () => {
+  const filters = [];
+  const indicatorCalls = [];
+  const { agent } = await createLoggedInAgent({
+    emailCenter: { enabled: true },
+    opportunityRepository: {
+      async listOpportunities(filter) {
+        filters.push(filter);
+        return [
+          { id: 30, opportunityNo: 'OPP-30', title: 'Mail opportunity', status: STATUSES.DRAFT },
+          { id: 31, opportunityNo: 'OPP-31', title: 'Quiet opportunity', status: STATUSES.DRAFT }
+        ];
+      }
+    },
+    emailResponseRepository: {
+      async listOpportunityEmailIndicators(ids) {
+        indicatorCalls.push(ids);
+        return [{
+          opportunityId: 30,
+          newCount: 1, newMessageId: 91,
+          waitingCount: 2, waitingMessageId: 92,
+          overdueCount: 1, overdueMessageId: 93,
+          latestReceivedAt: '2026-10-05T04:00:00.000Z'
+        }];
+      }
+    }
+  });
+
+  const all = await agent.get('/opportunities?archiveScope=all&query=mail');
+  assert.equal(all.status, 200);
+  assert.equal(filters[0].visibleToUserId, 7);
+  assert.deepEqual(indicatorCalls[0], [30, 31]);
+  assert.match(all.text, /Mail opportunity/);
+  assert.match(all.text, /Quiet opportunity/);
+  assert.match(all.text, /href="\/opportunities\/30\?emailMessageId=91#opportunity-email-91"[^>]*>✉ New email 1<\/a>/);
+  assert.match(all.text, /href="\/opportunities\/30\?emailMessageId=92#opportunity-email-92"[^>]*>✉ Awaiting reply 2<\/a>/);
+  assert.match(all.text, /href="\/opportunities\/30\?emailMessageId=93#opportunity-email-93"[^>]*>✉ Overdue 1<\/a>/);
+  assert.match(all.text, /Latest customer email：<time>2026-10-05 12:00<\/time>/);
+  assert.match(all.text, /href="\/opportunities\?archiveScope=all&amp;query=mail&amp;emailScope=pending"/);
+
+  const pending = await agent.get('/opportunities?archiveScope=all&query=mail&emailScope=pending');
+  assert.equal(pending.status, 200);
+  assert.match(pending.text, /<input type="hidden" name="emailScope" value="pending">/);
+  assert.match(pending.text, /Mail opportunity/);
+  assert.doesNotMatch(pending.text, /Quiet opportunity/);
+  assert.equal(filters[1].visibleToUserId, 7);
+  assert.deepEqual(indicatorCalls[1], [30, 31]);
+});
+
 test('opportunity list and API combine sales owner customer contact and keyword filters', async () => {
   const filters = [];
   const optionFilters = [];
@@ -988,8 +1037,8 @@ test('opportunity correspondence is a single collapsed timeline with expandable 
   assert.match(detail.text, /action="\/email-center\/messages\/91\/acknowledge"/);
   assert.match(detail.text, /Reply due/);
   assert.match(detail.text, /<h2>\s*<span>Correspondence<\/span>[\s\S]*<span class="section-heading-meta">1 messages<\/span>[\s\S]*href="\/email-center\/compose\?threadId=81"[^>]*>Reply to customer<\/a>[\s\S]*<\/h2>/);
-  assert.match(detail.text, /<details class="correspondence-item">[\s\S]*Request to revise pump capacity[\s\S]*← Incoming/);
-  assert.doesNotMatch(detail.text, /<details class="correspondence-item" open>/);
+  assert.match(detail.text, /<details class="correspondence-item" id="opportunity-email-91">[\s\S]*Request to revise pump capacity[\s\S]*← Incoming/);
+  assert.doesNotMatch(detail.text, /<details class="correspondence-item" id="opportunity-email-91" open>/);
   assert.match(detail.text, /class="email-html-body" src="\/email-center\/messages\/91\/content" sandbox="allow-same-origin"/);
   assert.match(detail.text, /Please revise the required capacity to 12 m3\/h\./);
   assert.match(detail.text, /class="email-attachment-chip"[\s\S]*?pump-parameters-rev2\.pdf[\s\S]*?href="\/email-center\/attachments\/101\/preview"/);
@@ -1000,6 +1049,11 @@ test('opportunity correspondence is a single collapsed timeline with expandable 
   assert.match(detail.text, /2 · Uploaded files/);
   assert.doesNotMatch(detail.text, /href="\/email-center\/compose\?threadId=81">Reply<\/a>/);
   assert.equal((detail.text.match(/>Reply to customer<\/a>/g) || []).length, 1);
+
+  const selected = await agent.get('/opportunities/30?emailMessageId=91');
+  assert.equal(selected.status, 200);
+  assert.match(selected.text, /<details class="correspondence-item" id="opportunity-email-91" open>/);
+  assert.match(selected.text, /name="returnTo" value="\/opportunities\/30\?emailMessageId=91#opportunity-email-91"/);
 });
 
 test('opportunity correspondence uses one reply entry and requests thread selection for multiple conversations', async () => {

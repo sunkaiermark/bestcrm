@@ -1444,6 +1444,31 @@
         padding-top: 0;
       }
 
+      .opportunity-email-scope {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin: 0 12px 12px;
+      }
+
+      .opportunity-email-scope a {
+        background: #ffffff;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--ink);
+        display: inline-flex;
+        gap: 5px;
+        padding: 7px 10px;
+        text-decoration: none;
+      }
+
+      .opportunity-email-scope a[aria-current="page"] {
+        background: #0b7e76;
+        border-color: #0b7e76;
+        color: #ffffff;
+      }
+
       .form-panel.inquiry-filter-panel {
         align-items: flex-end;
         display: flex;
@@ -1757,6 +1782,50 @@
       .opportunity-list-table th:last-child,
       .opportunity-list-table td:last-child {
         border-right: 0;
+      }
+
+      .opportunity-name-cell {
+        display: grid;
+        gap: 5px;
+        min-width: 0;
+        white-space: normal;
+      }
+
+      .opportunity-email-badges {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 5px;
+      }
+
+      .opportunity-list-table .opportunity-email-badge {
+        border-radius: 4px;
+        display: inline-flex;
+        font-size: 12px;
+        font-weight: 600;
+        max-width: 100%;
+        padding: 3px 7px;
+        text-decoration: none;
+        white-space: nowrap;
+      }
+
+      .opportunity-email-badge.is-new {
+        background: #e4f1ff;
+        color: #1458a3;
+      }
+
+      .opportunity-email-badge.is-waiting {
+        background: #fff0d4;
+        color: #805507;
+      }
+
+      .opportunity-email-badge.is-overdue {
+        background: #ffe5e5;
+        color: #a51f2b;
+      }
+
+      .opportunity-email-latest {
+        color: var(--muted);
+        font-size: 12px;
       }
 
       .content-fit-table {

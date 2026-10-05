@@ -367,7 +367,7 @@
               <div class="section-body correspondence-timeline">
                 <% if (correspondence.length > 0) { %>
                 <% for (const message of correspondence) { const recipients = (message.toRecipients || []).map((recipient) => recipient.name ? `${recipient.name} <${recipient.address}>` : recipient.address).join(', '); %>
-                  <details class="correspondence-item">
+                  <details class="correspondence-item" id="opportunity-email-<%= message.id %>"<%- Number(selectedEmailMessageId) === Number(message.id) ? ' open' : '' %>>
                     <summary>
                       <time><%= formatShortDate(message.occurredAt) %></time>
                       <span class="correspondence-marker" aria-hidden="true"></span>
@@ -378,7 +378,7 @@
                       <span class="correspondence-direction"><%= message.direction === 'outbound' ? `→ ${t('outgoing')}` : `← ${t('incoming')}` %></span>
                     </summary>
                     <div class="correspondence-content">
-                      <%- include('../email-center/_response-status', { message, canAcknowledgeCustomerEmail, formatEmailListDate: formatShortDate, returnTo: `/opportunities/${opportunity.id}#opportunity-correspondence` }) %>
+                      <%- include('../email-center/_response-status', { message, canAcknowledgeCustomerEmail, formatEmailListDate: formatShortDate, returnTo: `/opportunities/${opportunity.id}?emailMessageId=${message.id}#opportunity-email-${message.id}` }) %>
                       <%- include('../email-center/_message-content', { message, formatPlainEmailForReading }) %>
                       <div class="inline-actions correspondence-actions">
                         <a href="/email-center/threads/<%= message.threadId %>"><%= t('openEmailThread') %></a>
