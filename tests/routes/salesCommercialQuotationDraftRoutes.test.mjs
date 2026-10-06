@@ -51,13 +51,17 @@ test('sales owner sees the early draft form and saves two lines without technica
   const { agent, calls } = await createAgent({ standardTerms: [paymentTerm] });
   const page = await agent.get('/opportunities/20/commercial-quotation-draft');
   assert.equal(page.status, 200);
-  assert.match(page.text, /Quotation Draft/);
+  assert.match(page.text, /<title>QUOTATION - BESTCRM<\/title>/);
+  assert.match(page.text, /<h1>QUOTATION<\/h1><span class="draft-status-tag">Draft · Not issued<\/span>/);
   assert.doesNotMatch(page.text, /Internal Commercial Quotation Draft/);
+  assert.match(page.text, /font: 20px\/1\.45 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif;/);
   assert.match(page.text, /\.sales-quote-draft \.form-panel\s*\{[^}]*max-width:\s*none;[^}]*width:\s*100%;/);
   assert.match(page.text, /800020/);
   assert.match(page.text, /internal-technical-quote\.pdf/);
   assert.match(page.text, /Add row/);
   assert.match(page.text, /QUOTATION/);
+  assert.match(page.text, /<div class="draft-document-title"><strong>QUOTATION<\/strong><\/div>/);
+  assert.doesNotMatch(page.text, /Draft layout · not an issued quotation/);
   assert.match(page.text, /<span>Quote No\.<\/span><strong class="draft-pending">Not issued<\/strong>/);
   assert.match(page.text, /<span>Ref\.<\/span><strong>800020<\/strong>/);
   assert.match(page.text, /<h2 class="draft-section-title">CUSTOMER<\/h2>[\s\S]*<h2 class="draft-section-title">SUPPLIER<\/h2>/);
@@ -69,12 +73,20 @@ test('sales owner sees the early draft form and saves two lines without technica
   assert.match(page.text, /<th scope="row">Contact<\/th><td class="">Sales Owner<\/td>/);
   assert.match(page.text, /<th scope="row">Email<\/th><td>sales@sunkaier\.com<\/td>/);
   assert.doesNotMatch(page.text.split('<div class="draft-parties">')[1].split('</section>')[0], /<th scope="row">Project<\/th>/);
-  assert.match(page.text, /<h2 class="draft-section-title">SUPPLIER<\/h2>[\s\S]*<div class="draft-project-info">[\s\S]*<div class="draft-project-row">[\s\S]*<th scope="row">Project<\/th><td>Mixer Project<\/td>[\s\S]*<h2 class="draft-section-title">Quoted items<\/h2>/);
+  assert.match(page.text, /<h2 class="draft-section-title">SUPPLIER<\/h2>[\s\S]*<div class="draft-project-info">[\s\S]*<tr class="draft-project-row"><th scope="row">Project<\/th><td>Mixer Project<\/td>[\s\S]*<h2 class="draft-section-title">Quoted items<\/h2>/);
   assert.match(page.text, /<th scope="row">Currency<\/th><td>[\s\S]*<input name="currency" form="sales-quote-draft-form"/);
   assert.doesNotMatch(page.text.split('<div class="draft-project-info">')[1].split('</div>')[0], /<th scope="row">Currency code \(draft\)<\/th>/);
   assert.match(page.text, /<h2 class="draft-section-title">Project information<\/h2>/);
-  assert.match(page.text, /\.draft-parties \.draft-detail-table th,\s*\.sales-quote-draft \.draft-project-info \.draft-detail-table th,\s*\.sales-quote-draft \.draft-project-row \.draft-detail-table th \{ width: 190px; \}/);
-  assert.match(page.text, /\.draft-commercial-terms th \{ white-space: nowrap; width: 320px; \}/);
+  const projectTable = page.text.match(/<div class="draft-project-info">[\s\S]*?<table class="draft-detail-table"><tbody>([\s\S]*?)<\/tbody><\/table>/)?.[1];
+  assert.ok(projectTable);
+  assert.match(projectTable, /Technical quotation source[\s\S]*Version confirmation[\s\S]*<tr class="draft-project-row"><th scope="row">Project<\/th>/);
+  assert.match(page.text, /\.draft-project-info \.draft-detail-table \{[^}]*table-layout: auto;/);
+  assert.match(page.text, /\.draft-project-info \.draft-detail-table th \{[^}]*white-space: nowrap; width: 1%; \}/);
+  assert.match(page.text, /\.draft-project-info \.draft-detail-table td \{ width: 99%; \}/);
+  assert.match(page.text, /\.draft-commercial-terms \{ table-layout: auto; \}/);
+  assert.match(page.text, /\.draft-commercial-terms th \{[^}]*white-space: nowrap; width: 1%; \}/);
+  assert.match(page.text, /\.draft-commercial-terms td \{ width: 99%; \}/);
+  assert.match(page.text, /<div class="draft-terms-scroll"><table class="draft-detail-table draft-commercial-terms">/);
   assert.match(page.text, /<table class="draft-detail-table draft-commercial-terms">/);
   assert.match(page.text, /name="term_payment" form="sales-quote-draft-form" data-standard-term-select/);
   assert.match(page.text, /Approved payment · R1/);
@@ -101,7 +113,7 @@ test('sales owner sees the early draft form and saves two lines without technica
   assert.deepEqual(calls[0].lineItems.map((line) => line.includeInTotal), ['included', 'excluded']);
 });
 
-test('Chinese quotation draft uses the short title and aligns multiple saved lines in one table', async () => {
+test('Chinese quotation draft keeps QUOTATION as the title and aligns saved lines', async () => {
   const { agent } = await createAgent({ existingDraft: {
     draftRevisionNo: 2, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64),
     language: 'zh', currency: 'USD', lineItems: [
@@ -112,14 +124,14 @@ test('Chinese quotation draft uses the short title and aligns multiple saved lin
   await agent.get('/language?lang=zh&returnTo=/opportunities/20/commercial-quotation-draft');
   const page = await agent.get('/opportunities/20/commercial-quotation-draft');
   assert.equal(page.status, 200);
-  assert.match(page.text, /<h1>报价草稿<\/h1>/);
+  assert.match(page.text, /<h1>QUOTATION<\/h1><span class="draft-status-tag">草稿 · 未签发<\/span>/);
   assert.doesNotMatch(page.text, /商务报价内部草稿/);
   assert.doesNotMatch(page.text, /仅供内部编制|保存不会提交审批/);
   assert.equal((page.text.match(/<tr class="draft-row">/g) || []).length, 2);
   assert.match(page.text, /<th scope="col">序号<\/th>[\s\S]*<th scope="col">产品说明<\/th>[\s\S]*<th scope="col">数量<\/th>[\s\S]*<th scope="col">单位<\/th>[\s\S]*<th scope="col">单价<\/th>[\s\S]*<th scope="col">金额<\/th>[\s\S]*<th scope="col">计入总价<\/th>/);
   assert.match(page.text, /<h2 class="draft-section-title">客户<\/h2>[\s\S]*<h2 class="draft-section-title">供应商<\/h2>/);
   assert.doesNotMatch(page.text.split('<div class="draft-parties">')[1].split('</section>')[0], /<th scope="row">项目<\/th>/);
-  assert.match(page.text, /<div class="draft-project-info">[\s\S]*<div class="draft-project-row">[\s\S]*<th scope="row">项目<\/th><td>Mixer Project<\/td>[\s\S]*<h2 class="draft-section-title">报价明细<\/h2>/);
+  assert.match(page.text, /<div class="draft-project-info">[\s\S]*<tr class="draft-project-row"><th scope="row">项目<\/th><td>Mixer Project<\/td>[\s\S]*<h2 class="draft-section-title">报价明细<\/h2>/);
   assert.match(page.text, /<th scope="row">币种<\/th><td>[\s\S]*<input name="currency" form="sales-quote-draft-form"/);
   assert.doesNotMatch(page.text.split('<div class="draft-project-info">')[1].split('</div>')[0], /<th scope="row">币种代码（草稿）<\/th>/);
   assert.match(page.text, /<h2 class="draft-section-title">项目信息<\/h2>/);

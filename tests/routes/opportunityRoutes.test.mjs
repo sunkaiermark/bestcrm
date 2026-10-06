@@ -342,7 +342,7 @@ function assertAppSidebar(html, activeHref) {
   const navAccount = html.match(/<div class="nav-account"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || '';
   assert.match(html, /class="left-nav"/);
   assert.match(html, /\.app-shell\s*\{[^}]*grid-template-columns:\s*280px minmax\(0, 1fr\);/);
-  assert.match(html, /font:\s*20px\/1\.45 Arial, "Microsoft YaHei", Helvetica, sans-serif;/);
+  assert.match(html, /font:\s*20px\/1\.45 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif;/);
   assert.match(html, /th\s*\{[\s\S]*font-size:\s*20px;/);
   assert.match(html, /h1\s*\{[\s\S]*font-size:\s*24px;/);
   assert.match(html, /\.nav-subgroup \.nav-link\s*\{[^}]*font-size:\s*15px;/);
