@@ -5318,6 +5318,9 @@
             <a class="<%= navClass('lead-submissions') %>" href="/lead-submissions"><%- navIcon('user-plus') %><span><%= sidebarLabel('leads', t('navLeadSubmissions')) %></span></a>
           <% } %>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%- navIcon('briefcase') %><span><%= sidebarLabel('opportunities', t('opportunities')) %></span></a>
+          <% if (currentUser?.roles?.some((role) => ['commercial_manager', 'general_manager'].includes(role))) { %>
+            <a class="<%= navClass('quotation-standard-terms') %>" href="/quotation-standard-terms"><%- navIcon('bookmark') %><span><%= language === 'zh' ? '商务报价标准文案' : 'Quotation wording' %></span></a>
+          <% } %>
           <% if (typeof developmentWorkspaceEnabled !== 'undefined' && developmentWorkspaceEnabled) { %>
             <a class="<%= navClass('development') %>" href="/development/topics"><%- navIcon('bulb') %><span><%= sidebarLabel('development', 'New Product Development') %></span></a>
           <% } %>

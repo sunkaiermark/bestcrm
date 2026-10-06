@@ -96,6 +96,7 @@
 <div class="sales-quote-draft">
   <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %> · <%= opportunity.title %></a></p>
   <header class="page-header"><div><h1>QUOTATION</h1><span class="draft-status-tag"><%= zh ? '草稿 · 未签发' : 'Draft · Not issued' %></span></div></header>
+  <% if (draft) { %><p><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/commercial-quotation-draft/preview.pdf" target="_blank" rel="noopener"><%= zh ? '预览 A4 PDF（内部草稿）' : 'Preview A4 PDF (internal draft)' %></a></p><% } %>
   <section class="form-panel">
     <% if (saved) { %><p role="status"><%= zh ? '草稿已保存。' : 'Draft saved.' %></p><% } %>
     <% if (sourceChanged) { %><p role="alert"><%= zh ? '技术依据文件已有更新或不可用；保存前请重新确认所选版本。' : 'The technical source has a newer revision or is unavailable; reconfirm the exact version before saving.' %></p><% } %>
@@ -202,7 +203,7 @@
         <tr><th scope="row"><%= zh ? '签署人' : 'Signatory' %></th><td class="draft-pending"><%= pending %></td></tr>
         <tr><th scope="row"><%= zh ? '签署时间' : 'Signed at' %></th><td class="draft-pending"><%= zh ? '未签署' : 'Not signed' %></td></tr>
       </tbody></table></div>
-      <div><h2 class="draft-section-title"><%= zh ? '电子签署' : 'Electronic signature' %></h2><div class="draft-signature-box"><%= zh ? '报价获批后，由已批准的电子签署服务完成。' : 'Applied by the approved signing service after quotation approval.' %></div></div>
+      <div><h2 class="draft-section-title"><%= zh ? '电子签署' : 'Electronic signature' %></h2><div class="draft-signature-box"><%= zh ? '正式电子签署尚未配置。印章图片不会自动使报价生效或开放对客发送。' : 'Formal electronic signing is not configured. A stamp image does not make this quotation effective or sendable.' %></div></div>
     </div>
     <p class="muted"><%= zh ? '正式签发仍须技术批准、公司已批准条款及电子签署；内部技术依据不会自动成为对客附件。' : 'Formal issuance still requires technical approval, approved company terms and electronic signing. The internal technical source does not become a customer attachment.' %></p>
   </section>

@@ -1,0 +1,18 @@
+<%- include('../partials/app-start', { title: `${language === 'zh' ? '商务报价标准文案' : 'Quotation standard wording'} - BESTCRM`, activeNav: 'quotation-standard-terms' }) %>
+<% const zh = language === 'zh'; %>
+<header class="page-header">
+  <div><h1><%= zh ? '商务报价标准文案' : 'Quotation standard wording' %></h1>
+    <p class="muted"><%= zh ? '只有已发布的同语种文案可进入报价下拉。修改已发布文案须新建修订；已引用的报价保留原文快照。' : 'Only published wording in the quotation language appears in the selector. Create a new revision to change published text; existing quotations keep their snapshot.' %></p></div>
+  <% if (canAuthor) { %><a class="quick-action" href="/quotation-standard-terms/new"><%= zh ? '新建文案草稿' : 'New wording draft' %></a><% } %>
+</header>
+<p><a class="secondary-action" href="/quotation-standard-terms?language=en" aria-current="<%= catalogLanguage === 'en' ? 'page' : 'false' %>">English</a> <a class="secondary-action" href="/quotation-standard-terms?language=zh" aria-current="<%= catalogLanguage === 'zh' ? 'page' : 'false' %>">中文</a></p>
+<section class="list-section"><div class="list-body"><table class="list-table content-fit-table">
+  <thead><tr><th><%= zh ? '类别' : 'Section' %></th><th><%= zh ? '修订' : 'Revision' %></th><th><%= zh ? '标题' : 'Title' %></th><th><%= zh ? '状态' : 'Status' %></th><th><%= zh ? '编写人' : 'Author' %></th><th><%= zh ? '审核人' : 'Approver' %></th><th><%= zh ? '查看' : 'View' %></th></tr></thead>
+  <tbody>
+    <% for (const term of terms) { const section = sections.find((item) => item.key === term.key); %>
+      <tr><td><%= section ? (zh ? section.zh : section.en) : term.key %></td><td>R<%= term.revisionNo %></td><td><%= term.title %></td><td><%= term.status %></td><td><%= term.createdByDisplayName || term.createdBy %></td><td><%= term.approvedByDisplayName || '—' %></td><td><a href="/quotation-standard-terms/<%= term.id %>"><%= zh ? '详情' : 'Details' %></a></td></tr>
+    <% } %>
+    <% if (!terms.length) { %><tr><td colspan="7" class="empty"><%= zh ? '暂无文案。不会自动生成或预选商务承诺。' : 'No wording yet. Commercial commitments are not generated or preselected.' %></td></tr><% } %>
+  </tbody>
+</table></div></section>
+<%- include('../partials/app-end') %>

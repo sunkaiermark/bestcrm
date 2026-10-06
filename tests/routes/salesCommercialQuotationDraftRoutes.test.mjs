@@ -5,7 +5,7 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function createAgent({ userId = 7, roles = [ROLES.SALESPERSON], archivedAt = null, sourceAvailable = true, existingDraft = null, standardTerms = [] } = {}) {
+async function createAgent({ userId = 7, roles = [ROLES.SALESPERSON], archivedAt = null, sourceAvailable = true, existingDraft = null, standardTerms = [], quotationPreviewPdfRenderer } = {}) {
   const user = {
     id: userId, username: `user${userId}`, displayName: 'Test User',
     passwordHash: await hashPassword('ChangeMe123!'), isActive: true, roles
@@ -33,6 +33,7 @@ async function createAgent({ userId = 7, roles = [ROLES.SALESPERSON], archivedAt
       async listOpportunities() { return []; }
     },
     opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return []; } },
+    quotationPreviewPdfRenderer,
     salesCommercialQuotationDraftRepository: {
       async getByOpportunity() { return existingDraft; },
       async listPublishedStandardTerms(language) { return standardTerms.filter((term) => term.language === language); },
@@ -111,6 +112,26 @@ test('sales owner sees the early draft form and saves two lines without technica
     id: 91, revisionNo: 1, language: 'en', title: 'Approved payment', body: 'Approved example text'
   });
   assert.deepEqual(calls[0].lineItems.map((line) => line.includeInTotal), ['included', 'excluded']);
+});
+
+test('internal A4 PDF preview requires a visible saved draft and never issues a formal quote', async () => {
+  const pdf = Buffer.from('%PDF-1.7\ninternal-preview');
+  const rendererCalls = [];
+  const saved = await createAgent({
+    existingDraft: { opportunityId: 20, draftRevisionNo: 2, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64), language: 'en', lineItems: [] },
+    quotationPreviewPdfRenderer: async (input) => { rendererCalls.push(input); return pdf; }
+  });
+  const page = await saved.agent.get('/opportunities/20/commercial-quotation-draft');
+  assert.match(page.text, /Preview A4 PDF \(internal draft\)/);
+  const preview = await saved.agent.get('/opportunities/20/commercial-quotation-draft/preview.pdf');
+  assert.equal(preview.status, 200);
+  assert.match(preview.headers['content-type'], /application\/pdf/);
+  assert.match(preview.headers['cache-control'], /no-store/);
+  assert.equal(rendererCalls[0].draft.draftRevisionNo, 2);
+  const absent = await createAgent({ quotationPreviewPdfRenderer: async () => pdf });
+  assert.equal((await absent.agent.get('/opportunities/20/commercial-quotation-draft/preview.pdf')).status, 404);
+  const unauthorized = await createAgent({ userId: 8, existingDraft: { opportunityId: 20 }, quotationPreviewPdfRenderer: async () => pdf });
+  assert.equal((await unauthorized.agent.get('/opportunities/20/commercial-quotation-draft/preview.pdf')).status, 403);
 });
 
 test('Chinese quotation draft keeps QUOTATION as the title and aligns saved lines', async () => {

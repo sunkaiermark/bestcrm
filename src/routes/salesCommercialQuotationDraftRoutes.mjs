@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireLogin } from '../middleware/auth.mjs';
 import { QUOTATION_SELLER_EMAIL, QUOTATION_SELLER_ENTITIES } from '../domain/quotationSellerEntities.mjs';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
+import { renderSalesCommercialQuotationPreviewPdf } from '../services/salesCommercialQuotationPreviewPdfService.mjs';
 import {
   SalesCommercialQuotationDraftError,
   canEditSalesCommercialQuotationDraft,
@@ -12,7 +13,9 @@ import {
 export function salesCommercialQuotationDraftRoutes({
   opportunityRepository,
   opportunityResponsibilityRepository,
-  salesCommercialQuotationDraftRepository
+  salesCommercialQuotationDraftRepository,
+  quotationPreviewPdfRenderer = renderSalesCommercialQuotationPreviewPdf,
+  quotationPreviewPdfFontPath = ''
 }) {
   const router = Router();
   router.use('/opportunities', requireLogin);
@@ -71,6 +74,24 @@ export function salesCommercialQuotationDraftRoutes({
     } catch (error) {
       handleError(error, res, next);
     }
+  });
+
+  router.get('/opportunities/:opportunityId/commercial-quotation-draft/preview.pdf', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunity(req, res);
+      if (!opportunity) return;
+      const context = await loadSalesCommercialQuotationDraft(
+        salesCommercialQuotationDraftRepository, req.currentUser, opportunity, req.language
+      );
+      if (!context.draft) return res.status(404).send('Quotation draft not found');
+      const pdf = await quotationPreviewPdfRenderer({
+        draft: context.draft, opportunity, fontPath: quotationPreviewPdfFontPath
+      });
+      res.set('Content-Type', 'application/pdf');
+      res.set('Content-Disposition', `inline; filename="quotation-draft-preview-${opportunity.id}.pdf"`);
+      res.set('Cache-Control', 'private, no-store');
+      res.send(pdf);
+    } catch (error) { handleError(error, res, next); }
   });
 
   return router;

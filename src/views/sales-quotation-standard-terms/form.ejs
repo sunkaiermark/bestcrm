@@ -1,0 +1,31 @@
+<%- include('../partials/app-start', { title: `${language === 'zh' ? '商务报价标准文案' : 'Quotation standard wording'} - BESTCRM`, activeNav: 'quotation-standard-terms' }) %>
+<% const zh = language === 'zh'; const section = sections.find((item) => item.key === term.key); %>
+<p class="breadcrumb"><a href="/quotation-standard-terms"><%= zh ? '商务报价标准文案' : 'Quotation standard wording' %></a></p>
+<header class="page-header"><h1><%= mode === 'new' ? (zh ? '新建文案草稿' : 'New wording draft') : `${term.title} · R${term.revisionNo}` %></h1></header>
+<section class="form-panel">
+  <% if (mode === 'detail') { %><p class="muted"><%= zh ? '状态' : 'Status' %>: <%= term.status %> · <%= zh ? '语言' : 'Language' %>: <%= term.language %> · <%= zh ? '编写人' : 'Author' %>: <%= term.createdByDisplayName || term.createdBy %><% if (term.approvedBy) { %> · <%= zh ? '审核人' : 'Approver' %>: <%= term.approvedByDisplayName || term.approvedBy %><% } %></p><% } %>
+  <% if (mode === 'new' || canEdit) { %>
+    <form method="post" action="<%= mode === 'new' ? '/quotation-standard-terms' : `/quotation-standard-terms/${term.id}` %>">
+      <%- csrfField() %>
+      <% if (mode === 'new') { %>
+        <div class="form-grid"><label><%= zh ? '类别' : 'Section' %><select name="termKey" required><option value=""><%= zh ? '请选择' : 'Select' %></option><% for (const item of sections) { %><option value="<%= item.key %>"><%= zh ? item.zh : item.en %></option><% } %></select></label>
+        <label><%= zh ? '语言' : 'Language' %><select name="language" required><option value="zh" <%= term.language === 'zh' ? 'selected' : '' %>>中文</option><option value="en" <%= term.language === 'en' ? 'selected' : '' %>>English</option></select></label></div>
+      <% } else { %><p><%= zh ? '类别' : 'Section' %>: <%= section ? (zh ? section.zh : section.en) : term.key %></p><% } %>
+      <label><%= zh ? '标题' : 'Title' %><input name="title" maxlength="200" value="<%= term.title %>" required></label>
+      <label><%= zh ? '完整文案' : 'Full wording' %><textarea name="body" maxlength="10000" rows="12" required><%= term.body %></textarea></label>
+      <p class="muted"><%= zh ? '保存仅为草稿；由另一位有审核权限的账号核对完整正文后发布。' : 'Saving creates only a draft. Another authorized account must review the complete text before publication.' %></p>
+      <button type="submit"><%= zh ? '保存草稿' : 'Save draft' %></button>
+    </form>
+  <% } else { %>
+    <p><%= zh ? '类别' : 'Section' %>: <%= section ? (zh ? section.zh : section.en) : term.key %></p>
+    <p><%= zh ? '标题' : 'Title' %>: <%= term.title %></p>
+    <div style="white-space:pre-wrap"><%= term.body %></div>
+  <% } %>
+  <% if (mode === 'detail' && canApprove) { %>
+    <form method="post" action="/quotation-standard-terms/<%= term.id %>/publish" onsubmit="return confirm('<%= zh ? '已核对完整文案并确认发布？' : 'Reviewed the complete wording and publish it?' %>')"><%- csrfField() %><input type="hidden" name="expectedFingerprint" value="<%= termFingerprint %>"><button type="submit"><%= zh ? '审核并发布' : 'Approve and publish' %></button></form>
+  <% } %>
+  <% if (mode === 'detail' && term.status === 'published' && currentUser.roles.includes('general_manager')) { %>
+    <form method="post" action="/quotation-standard-terms/<%= term.id %>/retire" onsubmit="return confirm('<%= zh ? '停用后新报价将不可选用；历史引用仍保留。确认停用？' : 'Retire this wording for new quotations? Existing snapshots remain.' %>')"><%- csrfField() %><button class="danger-action" type="submit"><%= zh ? '停用文案' : 'Retire wording' %></button></form>
+  <% } %>
+</section>
+<%- include('../partials/app-end') %>

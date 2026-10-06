@@ -54,6 +54,7 @@ import { createRequirementUpdateRepository } from './repositories/requirementUpd
 import { createRoleRepository } from './repositories/roleRepository.mjs';
 import { createSalesWorkRepository } from './repositories/salesWorkRepository.mjs';
 import { createSalesCommercialQuotationDraftRepository } from './repositories/salesCommercialQuotationDraftRepository.mjs';
+import { createSalesQuotationStandardTermRepository } from './repositories/salesQuotationStandardTermRepository.mjs';
 import { createTechnicalSolutionRepository } from './repositories/technicalSolutionRepository.mjs';
 import { createTechnicalTemplateRepository } from './repositories/technicalTemplateRepository.mjs';
 import { createTodoRepository } from './repositories/todoRepository.mjs';
@@ -87,6 +88,7 @@ import { opportunityTechnicalDocumentRoutes } from './routes/opportunityTechnica
 import { quotationPackageRoutes } from './routes/quotationPackageRoutes.mjs';
 import { salesWorkRoutes } from './routes/salesWorkRoutes.mjs';
 import { salesCommercialQuotationDraftRoutes } from './routes/salesCommercialQuotationDraftRoutes.mjs';
+import { salesQuotationStandardTermRoutes } from './routes/salesQuotationStandardTermRoutes.mjs';
 import { systemRoutes } from './routes/systemRoutes.mjs';
 import { technicalTemplateRoutes } from './routes/technicalTemplateRoutes.mjs';
 import { workbenchRoutes } from './routes/workbenchRoutes.mjs';
@@ -457,6 +459,15 @@ const emptySalesCommercialQuotationDraftRepository = {
   async saveDraft() { throw new Error('Sales commercial quotation draft repository is not configured'); }
 };
 
+const emptySalesQuotationStandardTermRepository = {
+  async listAll() { return []; },
+  async findById() { return null; },
+  async createDraft() { throw new Error('Standard commercial term repository is not configured'); },
+  async updateDraft() { throw new Error('Standard commercial term repository is not configured'); },
+  async publish() { throw new Error('Standard commercial term repository is not configured'); },
+  async retire() { throw new Error('Standard commercial term repository is not configured'); }
+};
+
 const emptyEmailArchiveRepository = {
   supportsEmailArchive: false,
   async listThreads() { return []; },
@@ -761,6 +772,8 @@ export function createApp(options = {}) {
     || (pool ? createQuotationPackageRepository(pool) : emptyQuotationPackageRepository);
   const salesCommercialQuotationDraftRepository = options.salesCommercialQuotationDraftRepository
     || (pool ? createSalesCommercialQuotationDraftRepository(pool) : emptySalesCommercialQuotationDraftRepository);
+  const salesQuotationStandardTermRepository = options.salesQuotationStandardTermRepository
+    || (pool ? createSalesQuotationStandardTermRepository(pool) : emptySalesQuotationStandardTermRepository);
   const workflowEventRepository = options.workflowEventRepository || (pool ? createWorkflowEventRepository(pool) : emptyWorkflowEventRepository);
   const todoRepository = options.todoRepository || (pool ? createTodoRepository(pool) : emptyTodoRepository);
   const workbenchRepository = options.workbenchRepository || (pool ? createWorkbenchRepository(pool) : emptyWorkbenchRepository);
@@ -1080,8 +1093,11 @@ export function createApp(options = {}) {
   app.use(salesCommercialQuotationDraftRoutes({
     opportunityRepository,
     opportunityResponsibilityRepository,
-    salesCommercialQuotationDraftRepository
+    salesCommercialQuotationDraftRepository,
+    quotationPreviewPdfRenderer: options.quotationPreviewPdfRenderer,
+    quotationPreviewPdfFontPath: config.technicalDocumentFontPath
   }));
+  app.use(salesQuotationStandardTermRoutes({ salesQuotationStandardTermRepository }));
   app.use(opportunityRoutes({
     customerRepository,
     contactRepository,
