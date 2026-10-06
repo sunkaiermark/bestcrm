@@ -84,7 +84,7 @@
                 <span class="customer-email-field-label"><%= language === 'zh' ? '已签发正式报价 PDF' : 'Issued formal quotation PDF' %></span>
                 <select name="salesQuotationVersionId" data-email-quotation-select>
                   <option value=""><%= language === 'zh' ? '不附加正式报价 PDF' : 'No issued quotation PDF' %></option>
-                  <% for (const item of context.salesQuotationVersions) { %><option value="<%= item.id %>" <%= Number(context.defaults.salesQuotationVersionId) === Number(item.id) ? 'selected' : '' %>><%= item.quotationNo %> · V<%= item.versionNo %></option><% } %>
+                  <% for (const item of context.salesQuotationVersions) { %><option value="<%= item.id %>" <%= Number(context.defaults.salesQuotationVersionId) === Number(item.id) ? 'selected' : '' %>><%= item.quotationNo %> · V<%= item.versionNo %><%= item.snapshot?.missingFields?.length ? (language === 'zh' ? ` · 省略 ${item.snapshot.missingFields.length} 项` : ` · ${item.snapshot.missingFields.length} omissions`) : '' %></option><% } %>
                 </select>
               </label>
             <% } %>

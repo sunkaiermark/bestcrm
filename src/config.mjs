@@ -316,6 +316,7 @@ export function loadConfig(env = process.env) {
     ).trim(),
     technicalDocumentFontPath: env.TECHNICAL_DOCUMENT_FONT_PATH || '',
     quotationSigning: {
+      allowIncompleteFormal: booleanEnv(env.QUOTATION_ALLOW_INCOMPLETE_FORMAL, false),
       sellerProfilesFile: String(env.QUOTATION_SELLER_PROFILES_FILE || '').trim(),
       signatureFile: String(env.QUOTATION_MARK_SIGNATURE_FILE || '').trim(),
       apacSealFile: String(env.QUOTATION_APAC_SEAL_FILE || '').trim()

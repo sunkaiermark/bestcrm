@@ -9,6 +9,14 @@ test('development config can use the local session secret default', () => {
   assert.equal(Object.hasOwn(config, 'bidCenter'), false);
   assert.equal(config.loginSecondFactor.enabled, false);
   assert.equal(config.maxUploadMb, 3072);
+  assert.equal(config.quotationSigning.allowIncompleteFormal, false);
+});
+
+test('incomplete formal quotation policy requires an explicit opt-in', () => {
+  assert.equal(loadConfig({ NODE_ENV: 'development', QUOTATION_ALLOW_INCOMPLETE_FORMAL: 'true' })
+    .quotationSigning.allowIncompleteFormal, true);
+  assert.equal(loadConfig({ NODE_ENV: 'development', QUOTATION_ALLOW_INCOMPLETE_FORMAL: 'false' })
+    .quotationSigning.allowIncompleteFormal, false);
 });
 
 test('administrator technical self-approval test stays off unless an explicit deadline is configured', () => {

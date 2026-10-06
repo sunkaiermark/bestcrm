@@ -1038,6 +1038,7 @@ export function createApp(options = {}) {
     emailArchiveTransaction,
     transport: customerEmailTransport,
     sendingEnabled: Boolean(config.customerEmail?.enabled),
+    allowIncompleteFormal: config.quotationSigning.allowIncompleteFormal,
     sharedAddress: config.customerEmail?.sharedAddress || 'sales@sunkaier.com',
     uploadDir: config.uploadDir,
     maxUploadMb: config.customerEmail?.maxUploadMb || 25,

@@ -92,7 +92,7 @@
     .sales-quote-draft .draft-parties, .sales-quote-draft .draft-signature { grid-template-columns: 1fr; }
   }
 </style>
-<% const zh = language === 'zh'; const selectedSourceId = draft?.sourceAttachmentId || sources[0]?.attachmentId; const rows = draft?.lineItems?.length ? draft.lineItems : [{ description: '', quantity: '', unit: '', unitPrice: '' }]; const pending = zh ? '待配置' : 'Pending setup'; const notIssued = zh ? '未签发' : 'Not issued'; %>
+<% const zh = language === 'zh'; const selectedSourceId = draft?.sourceAttachmentId || sources[0]?.attachmentId; const rows = draft?.lineItems?.length ? draft.lineItems : [{ description: '', quantity: '', unit: '', unitPrice: '' }]; const pending = zh ? '待配置' : 'Pending setup'; const notIssued = zh ? '未签发' : 'Not issued'; const missingFieldName = (key) => { const term = termSections.find((section) => `term.${section.key}` === key); if (term) return zh ? term.zh : term.en; return ({ 'seller.address': zh ? '卖方地址' : 'Seller address', 'seller.phone': zh ? '卖方电话' : 'Seller telephone', 'seller.website': zh ? '卖方网站' : 'Seller website' })[key] || key; }; %>
 <div class="sales-quote-draft">
   <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %> · <%= opportunity.title %></a></p>
   <header class="page-header"><div><h1>QUOTATION</h1><span class="draft-status-tag"><%= zh ? '草稿 · 未签发' : 'Draft · Not issued' %></span></div></header>
@@ -205,24 +205,26 @@
       </tbody></table></div>
       <div><h2 class="draft-section-title"><%= zh ? '电子签署' : 'Electronic signature' %></h2><div class="draft-signature-box"><%= zh ? '这里仅显示内部草稿，不带签名或企业章。正式报价须在下方完成审批，由 MarkYang 本人点击签发。' : 'This is an internal draft without a signature or company seal. The formal version must be approved below and personally issued by MarkYang.' %></div></div>
     </div>
-    <p class="muted"><%= zh ? '正式签发仍须技术批准、公司已批准条款及电子签署；内部技术依据不会自动成为对客附件。' : 'Formal issuance still requires technical approval, approved company terms and electronic signing. The internal technical source does not become a customer attachment.' %></p>
+    <p class="muted"><%= allowIncompleteFormal ? (zh ? '测试期允许未选择的条款和卖方联系资料留空；已选择的条款仍须为当前已发布版本。技术批准与本人签发仍为必需，内部技术依据不会自动成为对客附件。' : 'During this test phase, unselected terms and seller contact details may be omitted. Every selected term must still be currently published. Technical approval and personal issue remain required; the internal technical source does not become a customer attachment.') : (zh ? '正式签发仍须技术批准、公司已批准条款及电子签署；内部技术依据不会自动成为对客附件。' : 'Formal issuance still requires technical approval, approved company terms and electronic signing. The internal technical source does not become a customer attachment.') %></p>
   </section>
   <section class="form-panel" aria-labelledby="formal-quotation-heading">
     <h2 id="formal-quotation-heading" class="draft-section-title"><%= zh ? '正式报价流程' : 'Formal quotation workflow' %></h2>
     <p class="muted"><%= zh ? '草稿提交后冻结准确版本；商务经理异人审批。审批不会自动签名，须 MarkYang 本人登录点击签发。仅签发后的 PDF 可选作对客邮件附件。' : 'Submitting freezes the exact draft version. An assigned commercial manager other than the submitter reviews it. Approval never signs automatically; MarkYang must personally sign in and click Issue. Only the signed PDF may be attached to customer email.' %></p>
+    <% if (allowIncompleteFormal) { %><p role="status"><%= zh ? '当前启用测试期缺项签发。未提供的联系资料与未选择的条款将从正式 PDF 和对应邮件签名中省略；签发后的 PDF 仍可对客发送。请在审批、签发和发送前核对内容。' : 'Test-phase incomplete issuance is enabled. Missing contact details and unselected terms are omitted from the formal PDF and its email signature. The issued PDF may still be sent to customers; review the omissions before approval, issue, and send.' %></p><% } %>
     <% if (draft && canSubmitFormal) { %>
       <form method="post" action="/opportunities/<%= opportunity.id %>/commercial-quotation-draft/submit">
         <%- csrfField() %>
         <input type="hidden" name="expectedRevisionNo" value="<%= draft.draftRevisionNo %>">
         <button type="submit"><%= zh ? '提交当前草稿供商务审批' : 'Submit current draft for commercial review' %></button>
       </form>
-      <p class="muted"><%= zh ? '提交前须技术文件已批准、八类条款均已发布并选定、卖方资料已配置且明细完整。' : 'Submission requires an approved technical source, all eight published terms, configured seller details, and complete line items.' %></p>
+      <p class="muted"><%= allowIncompleteFormal ? (zh ? '提交前须技术文件已批准、卖方主体正确且报价明细完整；未选条款和未配置联系资料将记录为缺项。' : 'Submission requires an approved technical source, valid seller identity, and complete line items. Unselected terms and missing contact details are recorded as omissions.') : (zh ? '提交前须技术文件已批准、八类条款均已发布并选定、卖方资料已配置且明细完整。' : 'Submission requires an approved technical source, all eight published terms, configured seller details, and complete line items.') %></p>
     <% } %>
     <% if (!formalVersions.length) { %><p class="draft-pending"><%= zh ? '尚无正式提交版本。' : 'No formal version has been submitted.' %></p><% } %>
     <% for (const version of formalVersions) { %>
       <div class="form-panel">
         <p><strong><%= version.quotationNo %></strong> · V<%= version.versionNo %> · D<%= version.draftRevisionNo %> · <%= zh ? ({ pending: '待商务审批', approved: '待本人签发', rejected: '已退回', signed: '已签发' }[version.status] || version.status) : ({ pending: 'Pending commercial review', approved: 'Awaiting personal issue', rejected: 'Returned', signed: 'Issued' }[version.status] || version.status) %></p>
         <p class="muted"><%= zh ? '提交人' : 'Submitted by' %> <%= version.submittedByName || `#${version.submittedBy}` %> · <%= version.submittedAt %><% if (version.reviewedAt) { %> · <%= zh ? '审批人' : 'Reviewed by' %> <%= version.reviewedByName || `#${version.reviewedBy}` %> · <%= version.reviewedAt %><% } %><% if (version.signedAt) { %> · <%= zh ? '签发人' : 'Issued by' %> <%= version.signedByName || `#${version.signedBy}` %> · <%= version.signedAt %><% } %></p>
+        <% if (version.snapshot?.missingFields?.length) { %><p class="muted"><%= zh ? '此版本省略' : 'Omitted from this version' %>: <%= version.snapshot.missingFields.map(missingFieldName).join(zh ? '、' : ', ') %></p><% } %>
         <% if (canReviewFormal(version)) { %>
           <form method="post" action="/opportunities/<%= opportunity.id %>/commercial-quotation-draft/versions/<%= version.id %>/review">
             <%- csrfField() %>

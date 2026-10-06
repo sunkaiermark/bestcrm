@@ -28,11 +28,13 @@ function positiveId(value) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
-function validSignedSeller(seller) {
+function validSignedSeller(seller, allowIncompleteFormal = false) {
   const entity = getQuotationSellerEntity(seller?.code);
   return Boolean(entity && seller.legalName === entity.legalName
-    && text(seller.address) && text(seller.phone)
-    && /^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(text(seller.website))
+    && (allowIncompleteFormal || (text(seller.address) && text(seller.phone) && text(seller.website)))
+    && text(seller.address).length <= 1000 && text(seller.phone).length <= 100
+    && text(seller.website).length <= 300
+    && (!text(seller.website) || /^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(text(seller.website)))
     && seller.email === 'sales@sunkaier.com');
 }
 
@@ -65,7 +67,7 @@ function signatureHtml({ name, title, contactEmail, phone, logoSrc, companyName,
     '<td width="53%" style="padding:0 18px 0 0;vertical-align:top;width:53%;">',
     `<img src="${escapeHtml(logoSrc)}" width="245" height="36" alt="SUNKAIER" style="border:0;display:block;height:36px;max-width:100%;object-fit:contain;width:245px;">`,
     `<div style="color:#334155;font-size:12px;font-weight:700;margin-top:9px;">${escapeHtml(companyName)}</div>`,
-    `<div style="color:#64748b;font-size:11px;line-height:1.45;margin-top:3px;">${escapeHtml(companyAddress)}</div>`,
+    companyAddress ? `<div style="color:#64748b;font-size:11px;line-height:1.45;margin-top:3px;">${escapeHtml(companyAddress)}</div>` : '',
     '</td>',
     '<td width="47%" style="border-left:1px solid #dbe4ec;padding:0 0 0 18px;vertical-align:top;width:47%;">',
     `<div style="color:#173f73;font-size:20px;font-weight:700;line-height:1.2;">${escapeHtml(name)}</div>`,
@@ -73,7 +75,7 @@ function signatureHtml({ name, title, contactEmail, phone, logoSrc, companyName,
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:12px;margin-top:12px;width:auto;">',
     `<tr><td style="padding:3px 9px 3px 0;color:#f15a24;font-weight:700;vertical-align:top;">E</td><td style="padding:3px 0;"><a href="mailto:${escapeHtml(contactEmail)}" style="color:#173f73;text-decoration:none;">${escapeHtml(contactEmail)}</a></td></tr>`,
     phoneRow,
-    `<tr><td style="padding:3px 9px 3px 0;color:#f15a24;font-weight:700;vertical-align:top;">W</td><td style="padding:3px 0;"><a href="${escapeHtml(companyWebsite)}" style="color:#173f73;text-decoration:none;">${escapeHtml(companyWebsite.replace(/^https?:\/\//, ''))}</a></td></tr>`,
+    companyWebsite ? `<tr><td style="padding:3px 9px 3px 0;color:#f15a24;font-weight:700;vertical-align:top;">W</td><td style="padding:3px 0;"><a href="${escapeHtml(companyWebsite)}" style="color:#173f73;text-decoration:none;">${escapeHtml(companyWebsite.replace(/^https?:\/\//, ''))}</a></td></tr>` : '',
     '</table>',
     '</td>',
     '</tr>',
@@ -118,13 +120,15 @@ function personalEmailIdentity(actor, sharedAddress = 'sales@sunkaier.com', sell
   const title = text(actor.emailSignatureTitle);
   if (!name || !title) return null;
   const contactEmail = seller?.email || text(actor.email) || sharedAddress;
-  const phone = seller?.phone || text(actor.phone);
+  const phone = seller ? text(seller.phone) : text(actor.phone);
   const companyName = seller?.legalName || 'SUNKAIER Asia Pacific Pte. Ltd.';
-  const companyAddress = seller?.address || COMPANY_ADDRESS;
-  const companyWebsite = seller?.website || 'https://www.sunkaier.com';
-  const lines = ['Best regards,', '', name, title, companyName, companyAddress, `E: ${contactEmail}`];
+  const companyAddress = seller ? text(seller.address) : COMPANY_ADDRESS;
+  const companyWebsite = seller ? text(seller.website) : 'https://www.sunkaier.com';
+  const lines = ['Best regards,', '', name, title, companyName];
+  if (companyAddress) lines.push(companyAddress);
+  lines.push(`E: ${contactEmail}`);
   if (phone) lines.push(`T: ${phone}`);
-  lines.push(`W: ${companyWebsite.replace(/^https?:\/\//, '')}`);
+  if (companyWebsite) lines.push(`W: ${companyWebsite.replace(/^https?:\/\//, '')}`);
   lines.push('', CONFIDENTIALITY_NOTICE);
   return {
     fromAddress: sharedAddress.toLowerCase(),
@@ -290,7 +294,7 @@ async function signedSalesQuotation(dependencies, opportunity, versionId) {
   if (!version || version.status !== 'signed' || Number(version.opportunityId) !== Number(opportunity.id)) {
     throw new CustomerEmailError('Only a signed PDF from this opportunity may be sent', 409);
   }
-  if (!validSignedSeller(version.snapshot?.seller)) {
+  if (!validSignedSeller(version.snapshot?.seller, dependencies.allowIncompleteFormal)) {
     throw new CustomerEmailError('The signed quotation seller identity is incomplete or invalid', 409);
   }
   const source = await dependencies.salesCommercialQuotationDraftRepository.getTechnicalSource(
@@ -406,7 +410,7 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
   if (salesQuotationVersions.length) {
     const sources = await dependencies.salesCommercialQuotationDraftRepository.listTechnicalSources(context.opportunity.id);
     const newestRevision = Math.max(...sources.map((source) => source.technicalDraftRevisionNo));
-    salesQuotationVersions = salesQuotationVersions.filter((version) => validSignedSeller(version.snapshot?.seller)
+    salesQuotationVersions = salesQuotationVersions.filter((version) => validSignedSeller(version.snapshot?.seller, dependencies.allowIncompleteFormal)
       && sources.some((source) => (
         source.technicalStatus === 'approved'
         && source.technicalDraftRevisionNo === newestRevision
@@ -451,6 +455,7 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
     threadSelectionRequired,
     packages,
     salesQuotationVersions,
+    selectedSalesQuotationMissingFields: selectedSalesQuotation?.snapshot?.missingFields || [],
     defaultSignatureHtmlPreview,
     salesQuotationSignaturePreviews,
     approvedOpportunityFiles,

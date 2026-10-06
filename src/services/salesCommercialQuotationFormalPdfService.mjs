@@ -172,10 +172,10 @@ export async function renderSalesCommercialQuotationFormalPdf({ version, signedA
     heading(zh ? '供应商' : 'SUPPLIER');
     kv(zh ? '卖方主体' : 'Seller entity', snapshot.seller.legalName);
     kv(zh ? '联系人' : 'Contact', snapshot.sellerContact);
-    kv(zh ? '电话' : 'Telephone', snapshot.seller.phone);
+    if (snapshot.seller.phone) kv(zh ? '电话' : 'Telephone', snapshot.seller.phone);
     kv(zh ? '邮箱' : 'Email', snapshot.seller.email);
-    kv(zh ? '地址' : 'Address', snapshot.seller.address);
-    kv(zh ? '网站' : 'Website', snapshot.seller.website);
+    if (snapshot.seller.address) kv(zh ? '地址' : 'Address', snapshot.seller.address);
+    if (snapshot.seller.website) kv(zh ? '网站' : 'Website', snapshot.seller.website);
     heading(zh ? '报价明细' : 'QUOTED ITEMS');
     tableHeader();
     let subtotal = 0n;
@@ -189,8 +189,10 @@ export async function renderSalesCommercialQuotationFormalPdf({ version, signedA
       `${zh ? '计入项目小计' : 'Included items subtotal'}: ${snapshot.currency} ${money(subtotal)}`,
       x, document.y, { width, align: 'right' }
     );
-    heading(zh ? '商务条件' : 'COMMERCIAL TERMS');
-    for (const section of QUOTATION_COMMERCIAL_TERM_SECTIONS) {
+    const selectedSections = QUOTATION_COMMERCIAL_TERM_SECTIONS
+      .filter((section) => snapshot.termSelections?.[section.key]);
+    if (selectedSections.length) heading(zh ? '商务条件' : 'COMMERCIAL TERMS');
+    for (const section of selectedSections) {
       ensure(35);
       document.fillColor(NAVY).fontSize(9).text(zh ? section.zh : section.en, x, document.y, { width });
       document.y += 3;

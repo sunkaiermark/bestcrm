@@ -5,7 +5,7 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function createAgent({ userId = 7, username = `user${userId}`, roles = [ROLES.SALESPERSON], archivedAt = null, sourceAvailable = true, existingDraft = null, standardTerms = [], formalVersions = [], quotationPreviewPdfRenderer } = {}) {
+async function createAgent({ userId = 7, username = `user${userId}`, roles = [ROLES.SALESPERSON], archivedAt = null, sourceAvailable = true, existingDraft = null, standardTerms = [], formalVersions = [], quotationPreviewPdfRenderer, quotationSigning } = {}) {
   const user = {
     id: userId, username, displayName: 'Test User',
     passwordHash: await hashPassword('ChangeMe123!'), isActive: true, roles
@@ -34,6 +34,7 @@ async function createAgent({ userId = 7, username = `user${userId}`, roles = [RO
     },
     opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return []; } },
     quotationPreviewPdfRenderer,
+    ...(quotationSigning ? { quotationSigning } : {}),
     salesCommercialQuotationDraftRepository: {
       async getByOpportunity() { return existingDraft; },
       async listFormalVersions() { return formalVersions; },
@@ -209,4 +210,23 @@ test('formal quote routes deny unrelated submission, review and personal signing
   assert.equal((await unrelated.agent.get('/opportunities/20/commercial-quotation-draft/versions/81.pdf')).status, 403);
   const owner = await createAgent({ formalVersions: versions });
   assert.equal((await owner.agent.get('/opportunities/20/commercial-quotation-draft/versions/81.pdf')).status, 404);
+});
+
+test('test-phase quotation page discloses omissions and customer-sendable issue without changing approval roles', async () => {
+  const { agent } = await createAgent({
+    quotationSigning: { allowIncompleteFormal: true },
+    existingDraft: { opportunityId: 20, draftRevisionNo: 2, sourceAttachmentId: 51,
+      sourceSha256: 'a'.repeat(64), language: 'en', lineItems: [] },
+    formalVersions: [{ id: 81, opportunityId: 20, draftRevisionNo: 2, versionNo: 1,
+      quotationNo: 'Q-800020-V1', status: 'pending', submittedBy: 7,
+      submittedAt: new Date().toISOString(), snapshot: {
+        missingFields: ['seller.address', 'term.payment']
+      } }]
+  });
+  const page = await agent.get('/opportunities/20/commercial-quotation-draft');
+  assert.equal(page.status, 200);
+  assert.match(page.text, /Test-phase incomplete issuance is enabled/);
+  assert.match(page.text, /The issued PDF may still be sent to customers/);
+  assert.match(page.text, /Omitted from this version: Seller address, Payment terms/);
+  assert.match(page.text, /An assigned commercial manager other than the submitter reviews it/);
 });

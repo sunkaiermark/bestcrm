@@ -14,6 +14,10 @@ import {
 import { renderSalesCommercialQuotationFormalPdf } from '../../src/services/salesCommercialQuotationFormalPdfService.mjs';
 
 const profile = { address: 'Approved address', phone: '+65 6000 0000', website: 'https://www.sunkaier.com' };
+function completeSeller(code = 'sunkaier_china') {
+  return { code, legalName: code === 'sunkaier_china' ? '江苏胜开尔工业技术有限公司' : 'SUNKAIER ASIA PACIFIC PTE. LTD.',
+    ...profile, email: 'sales@sunkaier.com' };
+}
 // A checked-in logo is harmless stand-in image data; no actual signature asset enters Git.
 const png = await readFile(new URL('../../src/public/assets/sunkaier-logo-login.png', import.meta.url));
 const sales = { id: 7, username: 'SalesOwner', isActive: true, roles: [ROLES.SALESPERSON] };
@@ -83,7 +87,7 @@ test('formal submit freezes only an approved exact source and eight published te
 test('review is assigned-commercial-manager only, separate from submitter, and approval does not sign', async () => {
   const pending = { id: 70, opportunityId: 20, status: 'pending', submittedBy: 7,
     sourceTechnicalDraftId: 41, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64),
-    snapshot: draft() };
+    snapshot: { ...draft(), seller: completeSeller() } };
   const repo = repository(draft(), pending);
   await assert.rejects(() => reviewSalesCommercialQuotation(repo, sales, opportunity, 70, 'approved'),
     (error) => error.statusCode === 403);
@@ -101,8 +105,7 @@ test('only MarkYang can personally issue a China PDF without any company seal', 
     const signatureFile = path.join(privateDir, 'mark.png');
     await writeFile(signatureFile, png);
     const version = { id: 70, opportunityId: 20, status: 'approved',
-      quotationNo: 'Q-800020-V1', versionNo: 1, snapshot: { ...draft(),
-        seller: { code: 'sunkaier_china', legalName: '江苏胜开尔工业技术有限公司' } },
+      quotationNo: 'Q-800020-V1', versionNo: 1, snapshot: { ...draft(), seller: completeSeller() },
       sourceTechnicalDraftId: 41, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64) };
     const repo = repository(draft(), version);
     assert.equal(canSignSalesCommercialQuotation(manager, opportunity, version), false);
@@ -131,7 +134,7 @@ test('Singapore issue requires its own private seal and formal renderer rejects 
     await writeFile(signatureFile, png);
     const version = { id: 71, opportunityId: 20, status: 'approved',
       quotationNo: 'Q-800020-V2', versionNo: 2, snapshot: { ...draft('sunkaier_apac'),
-        seller: { code: 'sunkaier_apac', legalName: 'SUNKAIER ASIA PACIFIC PTE. LTD.' } },
+        seller: completeSeller('sunkaier_apac') },
       sourceTechnicalDraftId: 41, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64) };
     const repo = repository(draft('sunkaier_apac'), version);
     await assert.rejects(() => signSalesCommercialQuotation(repo, mark, opportunity, 71, {
@@ -172,5 +175,70 @@ test('issued A4 PDF renders a frozen China quotation with personal signature and
   assert.equal((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length >= 1, true);
   if (process.env.BESTCRM_PDF_QA_OUTPUT) {
     await writeFile(process.env.BESTCRM_PDF_QA_OUTPUT, pdf);
+  }
+});
+
+test('explicit test-phase policy permits omitted contact fields and terms but keeps approval, source and personal-signing gates', async () => {
+  const dir = await mkdtemp(path.join(tmpdir(), 'bestcrm-formal-incomplete-'));
+  try {
+    const quoteDraft = { ...draft(), termSelections: {} };
+    const repo = repository(quoteDraft);
+    await assert.rejects(() => submitSalesCommercialQuotation(repo, sales, opportunity, 2),
+      /current published standard wording/);
+    const submitted = await submitSalesCommercialQuotation(repo, sales, opportunity, 2,
+      { allowIncompleteFormal: true });
+    assert.deepEqual(submitted.snapshot.seller, {
+      code: 'sunkaier_china', legalName: '江苏胜开尔工业技术有限公司',
+      address: '', phone: '', website: '', email: 'sales@sunkaier.com'
+    });
+    assert.equal(submitted.snapshot.missingFields.length, 11);
+    assert.ok(submitted.snapshot.missingFields.includes('term.price_tax'));
+    const version = {
+      ...submitted, opportunityId: 20, quotationNo: 'Q-800020-V4', versionNo: 4,
+      sourceTechnicalDraftId: 41, sourceAttachmentId: 51, sourceSha256: source.sha256
+    };
+    repo.getFormalVersion = async () => version;
+    await assert.rejects(() => reviewSalesCommercialQuotation(repo, manager, opportunity, 70, 'approved'),
+      /current published standard wording/);
+    await reviewSalesCommercialQuotation(repo, manager, opportunity, 70, 'approved', '',
+      { allowIncompleteFormal: true });
+    version.status = 'approved';
+    const privateDir = path.join(dir, 'quotation-signing-assets');
+    await mkdir(privateDir);
+    const signatureFile = path.join(privateDir, 'mark.png');
+    await writeFile(signatureFile, png);
+    await assert.rejects(() => signSalesCommercialQuotation(repo, mark, opportunity, 70, {
+      uploadDir: dir, signatureFile, renderPdf: async () => Buffer.from('%PDF-1.7')
+    }), /current published standard wording/);
+    const signed = await signSalesCommercialQuotation(repo, mark, opportunity, 70, {
+      uploadDir: dir, signatureFile, allowIncompleteFormal: true,
+      renderPdf: async () => Buffer.from('%PDF-1.7\nNo invented terms or seller fields')
+    });
+    assert.equal(signed.status, 'signed');
+    quoteDraft.termSelections.price_tax = { ...terms[0], revisionNo: 999 };
+    await assert.rejects(() => submitSalesCommercialQuotation(repo, sales, opportunity, 2,
+      { allowIncompleteFormal: true }), /current published standard wording/);
+  } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('incomplete formal PDF omits absent seller fields and empty term section instead of printing placeholders', async () => {
+  const quoteDraft = draft();
+  const version = {
+    id: 73, opportunityId: 20, status: 'approved', quotationNo: 'Q-800020-V5', versionNo: 5,
+    snapshot: {
+      opportunityNo: '800020', project: 'Mixer project', customerName: 'Customer', attention: 'Buyer',
+      seller: { code: 'sunkaier_china', legalName: '江苏胜开尔工业技术有限公司',
+        address: '', phone: '', website: '', email: 'sales@sunkaier.com' },
+      sellerContact: 'Sales Owner', language: 'en', currency: 'USD',
+      lineItems: quoteDraft.lineItems, termSelections: {},
+      missingFields: ['seller.address', 'seller.phone', 'seller.website']
+    }
+  };
+  const pdf = await renderSalesCommercialQuotationFormalPdf({
+    version, signedAt: '2026-10-06T01:02:03.000Z', signature: png, seal: null
+  });
+  assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
+  if (process.env.BESTCRM_INCOMPLETE_PDF_QA_OUTPUT) {
+    await writeFile(process.env.BESTCRM_INCOMPLETE_PDF_QA_OUTPUT, pdf);
   }
 });

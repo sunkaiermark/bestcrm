@@ -73,6 +73,7 @@ export function salesCommercialQuotationDraftRoutes({
         termSections: QUOTATION_COMMERCIAL_TERM_SECTIONS,
         canEdit: canEditSalesCommercialQuotationDraft(req.currentUser, opportunity),
         canSubmitFormal: canSubmitSalesCommercialQuotation(req.currentUser, opportunity),
+        allowIncompleteFormal: quotationSigning.allowIncompleteFormal === true,
         formalVersions,
         canReviewFormal: (version) => canReviewSalesCommercialQuotation(req.currentUser, opportunity, version),
         canSignFormal: (version) => canSignSalesCommercialQuotation(req.currentUser, opportunity, version),
@@ -130,7 +131,7 @@ export function salesCommercialQuotationDraftRoutes({
       const opportunity = await loadOpportunity(req, res);
       if (!opportunity) return;
       await reviewSalesCommercialQuotation(salesCommercialQuotationDraftRepository, req.currentUser,
-        opportunity, req.params.versionId, req.body.decision, req.body.comment);
+        opportunity, req.params.versionId, req.body.decision, req.body.comment, quotationSigning);
       res.redirect(`/opportunities/${opportunity.id}/commercial-quotation-draft`);
     } catch (error) { handleError(error, res, next); }
   });

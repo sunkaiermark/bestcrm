@@ -285,6 +285,37 @@ test('only a signed, integrity-checked quotation PDF is bound to its opportunity
     assert.match(parsed.html, /江苏胜开尔工业技术有限公司/);
     assert.doesNotMatch(parsed.html, /SUNKAIER Asia Pacific Pte\. Ltd\./);
     assert.match(parsed.text, /江苏胜开尔工业技术有限公司/);
+    version.snapshot.seller.address = '';
+    version.snapshot.seller.phone = '';
+    version.snapshot.seller.website = '';
+    version.snapshot.missingFields = ['seller.address', 'seller.phone', 'seller.website'];
+    const strictCompose = await getCustomerEmailComposeContext(dependencies, actor(), { opportunityId: 20 });
+    assert.deepEqual(strictCompose.salesQuotationVersions, []);
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+      opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
+      subject: 'Incomplete signed quotation', body: 'Please see the quotation.', action: 'send'
+    }), /seller identity is incomplete/);
+    dependencies.allowIncompleteFormal = true;
+    const incompleteCompose = await getCustomerEmailComposeContext(dependencies, actor(), {
+      opportunityId: 20, salesQuotationVersionId: '81'
+    });
+    assert.equal(incompleteCompose.salesQuotationVersions.length, 1);
+    assert.equal(incompleteCompose.selectedSalesQuotationMissingFields.length, 3);
+    assert.doesNotMatch(incompleteCompose.signatureHtmlPreview, /Approved address|Vision Exchange|www\.sunkaier\.com|\+65 6000 0000/);
+    await createCustomerEmailDraft(dependencies, actor(), {
+      opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
+      subject: 'Incomplete signed quotation', body: 'Please see the quotation.', action: 'send'
+    });
+    const incompleteSent = await simpleParser(sent.at(-1).raw);
+    assert.deepEqual(incompleteSent.attachments.find((item) => item.filename === 'Q-800020-V1.pdf').content, content);
+    assert.match(incompleteSent.html, /江苏胜开尔工业技术有限公司/);
+    assert.doesNotMatch(incompleteSent.html, /Approved address|Vision Exchange|www\.sunkaier\.com|\+65 6000 0000/);
+    version.snapshot.seller.website = 'http://invalid.example';
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+      opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
+      subject: 'Invalid seller website', body: 'Do not send.', action: 'send'
+    }), /seller identity is incomplete/);
+    version.snapshot.seller.website = '';
     newerSource = { ...source, technicalDraftId: 42, technicalDraftRevisionNo: 2 };
     const staleCompose = await getCustomerEmailComposeContext(dependencies, actor(), { opportunityId: 20 });
     assert.deepEqual(staleCompose.salesQuotationVersions, []);

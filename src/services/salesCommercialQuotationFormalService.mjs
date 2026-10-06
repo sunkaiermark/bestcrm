@@ -46,6 +46,14 @@ function requiredText(value, label, max = 500) {
   return result;
 }
 
+function optionalText(value, label, max = 500) {
+  const result = String(value ?? '').trim();
+  if (result.length > max || /[\u0000-\u0008\u000b\u000c\u000e-\u001f]/.test(result)) {
+    fail(`${label} is invalid`);
+  }
+  return result;
+}
+
 function requireVersion(repository, opportunityId, id) {
   return repository.getFormalVersion(id).then((version) => {
     if (!version || Number(version.opportunityId) !== Number(opportunityId)) fail('Quotation version not found', 404);
@@ -70,10 +78,11 @@ function validateLineItems(items) {
   if (!included) fail('At least one quoted item must be included in the total');
 }
 
-function validatePublishedSelections(draft, publishedTerms) {
+function validatePublishedSelections(draft, publishedTerms, allowIncomplete = false) {
   const byId = new Map(publishedTerms.map((term) => [Number(term.id), term]));
   for (const section of QUOTATION_COMMERCIAL_TERM_SECTIONS) {
     const selection = draft.termSelections?.[section.key];
+    if (selection == null && allowIncomplete) continue;
     const current = byId.get(Number(selection?.id));
     if (!selection || !current || current.key !== section.key
       || current.language !== draft.language || current.revisionNo !== selection.revisionNo
@@ -84,20 +93,44 @@ function validatePublishedSelections(draft, publishedTerms) {
 }
 
 async function sellerProfile(settings, entity) {
-  if (!settings.sellerProfilesFile) fail('Approved seller contact details are not configured');
-  let profiles;
-  try {
-    profiles = JSON.parse(await readFile(settings.sellerProfilesFile, 'utf8'));
-  } catch {
-    fail('Approved seller contact details are unavailable');
+  if (!settings.sellerProfilesFile && !settings.allowIncompleteFormal) {
+    fail('Approved seller contact details are not configured');
   }
-  const profile = profiles?.[entity.code];
-  const address = requiredText(profile?.address, 'Seller address', 1000);
-  const phone = requiredText(profile?.phone, 'Seller telephone', 100);
-  const website = requiredText(profile?.website, 'Seller website', 300);
-  if (!/^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(website)) fail('Seller website must be an HTTPS URL');
+  let profiles = {};
+  if (settings.sellerProfilesFile) {
+    try {
+      profiles = JSON.parse(await readFile(settings.sellerProfilesFile, 'utf8'));
+    } catch {
+      fail('Approved seller contact details are unavailable');
+    }
+  }
+  const profile = profiles?.[entity.code] || {};
+  return validatedSeller({ code: entity.code, legalName: entity.legalName,
+    address: profile.address, phone: profile.phone, website: profile.website,
+    email: QUOTATION_SELLER_EMAIL }, settings.allowIncompleteFormal);
+}
+
+function validatedSeller(seller, allowIncomplete = false) {
+  const entity = getQuotationSellerEntity(seller?.code);
+  if (!entity || seller.legalName !== entity.legalName || seller.email !== QUOTATION_SELLER_EMAIL) {
+    fail('Seller identity mismatch');
+  }
+  const field = allowIncomplete ? optionalText : requiredText;
+  const address = field(seller.address, 'Seller address', 1000);
+  const phone = field(seller.phone, 'Seller telephone', 100);
+  const website = field(seller.website, 'Seller website', 300);
+  if (website && !/^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(website)) fail('Seller website must be an HTTPS URL');
   return { code: entity.code, legalName: entity.legalName, address, phone, website,
     email: QUOTATION_SELLER_EMAIL };
+}
+
+function missingFormalFields(snapshot) {
+  const missing = ['address', 'phone', 'website']
+    .filter((key) => !snapshot.seller[key]).map((key) => `seller.${key}`);
+  for (const section of QUOTATION_COMMERCIAL_TERM_SECTIONS) {
+    if (!snapshot.termSelections?.[section.key]) missing.push(`term.${section.key}`);
+  }
+  return missing;
 }
 
 async function currentApprovedSource(repository, versionOrDraft, opportunityId) {
@@ -125,7 +158,7 @@ export async function submitSalesCommercialQuotation(repository, user, opportuni
   validateLineItems(draft.lineItems);
   await currentApprovedSource(repository, draft, opportunity.id);
   const publishedTerms = await repository.listPublishedStandardTerms(draft.language);
-  validatePublishedSelections(draft, publishedTerms);
+  validatePublishedSelections(draft, publishedTerms, settings.allowIncompleteFormal);
   const profile = await sellerProfile(settings, entity);
   const snapshot = {
     opportunityNo: requiredText(opportunity.opportunityNo, 'Opportunity reference', 100),
@@ -137,8 +170,9 @@ export async function submitSalesCommercialQuotation(repository, user, opportuni
     language: draft.language, currency: draft.currency,
     sourceFileName: draft.sourceFileName,
     lineItems: structuredClone(draft.lineItems),
-    termSelections: structuredClone(draft.termSelections)
+    termSelections: structuredClone(draft.termSelections || {})
   };
+  snapshot.missingFields = missingFormalFields(snapshot);
   try {
     const version = await repository.submitFormalVersion({
       opportunityId: opportunity.id, expectedRevisionNo: draft.draftRevisionNo,
@@ -152,14 +186,15 @@ export async function submitSalesCommercialQuotation(repository, user, opportuni
   }
 }
 
-export async function reviewSalesCommercialQuotation(repository, user, opportunity, id, decision, comment = '') {
+export async function reviewSalesCommercialQuotation(repository, user, opportunity, id, decision, comment = '', settings = {}) {
   const version = await requireVersion(repository, opportunity.id, id);
   if (!canReviewSalesCommercialQuotation(user, opportunity, version)) fail('Forbidden', 403);
   if (!['approved', 'rejected'].includes(decision)) fail('Invalid review decision', 400);
   if (decision === 'approved') {
     await currentApprovedSource(repository, version, opportunity.id);
     const terms = await repository.listPublishedStandardTerms(version.snapshot.language);
-    validatePublishedSelections(version.snapshot, terms);
+    validatePublishedSelections(version.snapshot, terms, settings.allowIncompleteFormal);
+    validatedSeller(version.snapshot.seller, settings.allowIncompleteFormal);
   }
   const result = await repository.reviewFormalVersion({
     id: version.id, opportunityId: opportunity.id, decision, actorUserId: user.id,
@@ -185,9 +220,8 @@ export async function signSalesCommercialQuotation(repository, user, opportunity
   if (!canSignSalesCommercialQuotation(user, opportunity, version)) fail('Only the active MarkYang account may personally sign an approved quotation', 403);
   await currentApprovedSource(repository, version, opportunity.id);
   const terms = await repository.listPublishedStandardTerms(version.snapshot.language);
-  validatePublishedSelections(version.snapshot, terms);
-  const seller = getQuotationSellerEntity(version.snapshot.seller?.code);
-  if (!seller || version.snapshot.seller.legalName !== seller.legalName) fail('Seller identity mismatch');
+  validatePublishedSelections(version.snapshot, terms, options.allowIncompleteFormal);
+  const seller = validatedSeller(version.snapshot.seller, options.allowIncompleteFormal);
   const signature = await privatePng(options.uploadDir, options.signatureFile, 'Mark Yang signature');
   const seal = seller.code === 'sunkaier_apac'
     ? await privatePng(options.uploadDir, options.apacSealFile, 'Singapore company seal')
