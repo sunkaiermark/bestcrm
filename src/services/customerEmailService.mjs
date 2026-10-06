@@ -2,9 +2,11 @@ import { createHash, randomUUID } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { ROLES, hasRole } from '../domain/roles.mjs';
+import { getQuotationSellerEntity } from '../domain/quotationSellerEntities.mjs';
 import { canAccessInquiryInbox } from './inquiryService.mjs';
 import { canViewOpportunity } from './opportunityService.mjs';
-import { resolveStoredPath } from './attachmentFileService.mjs';
+import { inspectStoredAttachmentFile, resolveStoredPath } from './attachmentFileService.mjs';
+import { readSignedSalesCommercialQuotationPdf } from './salesCommercialQuotationFormalService.mjs';
 import { storeEmailArchiveAttachments } from './emailArchiveService.mjs';
 import { prepareOutboundMimeArtifact } from './emailOutboundMimeService.mjs';
 import { sanitizeRichEmailBody } from './emailRichTextService.mjs';
@@ -26,6 +28,14 @@ function positiveId(value) {
   return Number.isInteger(id) && id > 0 ? id : null;
 }
 
+function validSignedSeller(seller) {
+  const entity = getQuotationSellerEntity(seller?.code);
+  return Boolean(entity && seller.legalName === entity.legalName
+    && text(seller.address) && text(seller.phone)
+    && /^https:\/\/[^\s/]+(?:\/[^\s]*)?$/.test(text(seller.website))
+    && seller.email === 'sales@sunkaier.com');
+}
+
 function safeError(error) {
   return text(error?.message).replace(/[\r\n]+/g, ' ').slice(0, 500) || 'SMTP delivery failed';
 }
@@ -39,7 +49,7 @@ function escapeHtml(value) {
     .replaceAll("'", '&#39;');
 }
 
-function signatureHtml({ name, title, contactEmail, phone, logoSrc }) {
+function signatureHtml({ name, title, contactEmail, phone, logoSrc, companyName, companyAddress, companyWebsite }) {
   const phoneRow = phone
     ? `<tr><td style="padding:3px 9px 3px 0;color:#f15a24;font-weight:700;vertical-align:top;">T</td><td style="padding:3px 0;color:#334155;">${escapeHtml(phone)}</td></tr>`
     : '';
@@ -54,8 +64,8 @@ function signatureHtml({ name, title, contactEmail, phone, logoSrc }) {
     '<tr>',
     '<td width="53%" style="padding:0 18px 0 0;vertical-align:top;width:53%;">',
     `<img src="${escapeHtml(logoSrc)}" width="245" height="36" alt="SUNKAIER" style="border:0;display:block;height:36px;max-width:100%;object-fit:contain;width:245px;">`,
-    '<div style="color:#334155;font-size:12px;font-weight:700;margin-top:9px;">SUNKAIER Asia Pacific Pte. Ltd.</div>',
-    `<div style="color:#64748b;font-size:11px;line-height:1.45;margin-top:3px;">${escapeHtml(COMPANY_ADDRESS)}</div>`,
+    `<div style="color:#334155;font-size:12px;font-weight:700;margin-top:9px;">${escapeHtml(companyName)}</div>`,
+    `<div style="color:#64748b;font-size:11px;line-height:1.45;margin-top:3px;">${escapeHtml(companyAddress)}</div>`,
     '</td>',
     '<td width="47%" style="border-left:1px solid #dbe4ec;padding:0 0 0 18px;vertical-align:top;width:47%;">',
     `<div style="color:#173f73;font-size:20px;font-weight:700;line-height:1.2;">${escapeHtml(name)}</div>`,
@@ -63,7 +73,7 @@ function signatureHtml({ name, title, contactEmail, phone, logoSrc }) {
     '<table role="presentation" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;font-family:Arial,Helvetica,sans-serif;font-size:12px;margin-top:12px;width:auto;">',
     `<tr><td style="padding:3px 9px 3px 0;color:#f15a24;font-weight:700;vertical-align:top;">E</td><td style="padding:3px 0;"><a href="mailto:${escapeHtml(contactEmail)}" style="color:#173f73;text-decoration:none;">${escapeHtml(contactEmail)}</a></td></tr>`,
     phoneRow,
-    '<tr><td style="padding:3px 9px 3px 0;color:#f15a24;font-weight:700;vertical-align:top;">W</td><td style="padding:3px 0;"><a href="https://www.sunkaier.com" style="color:#173f73;text-decoration:none;">www.sunkaier.com</a></td></tr>',
+    `<tr><td style="padding:3px 9px 3px 0;color:#f15a24;font-weight:700;vertical-align:top;">W</td><td style="padding:3px 0;"><a href="${escapeHtml(companyWebsite)}" style="color:#173f73;text-decoration:none;">${escapeHtml(companyWebsite.replace(/^https?:\/\//, ''))}</a></td></tr>`,
     '</table>',
     '</td>',
     '</tr>',
@@ -103,27 +113,32 @@ export class CustomerEmailError extends Error {
   }
 }
 
-function personalEmailIdentity(actor, sharedAddress = 'sales@sunkaier.com') {
+function personalEmailIdentity(actor, sharedAddress = 'sales@sunkaier.com', seller = null) {
   const name = text(actor.emailSignatureName);
   const title = text(actor.emailSignatureTitle);
   if (!name || !title) return null;
-  const contactEmail = text(actor.email) || sharedAddress;
-  const phone = text(actor.phone);
-  const lines = ['Best regards,', '', name, title, 'SUNKAIER Asia Pacific Pte. Ltd.', COMPANY_ADDRESS, `E: ${contactEmail}`];
+  const contactEmail = seller?.email || text(actor.email) || sharedAddress;
+  const phone = seller?.phone || text(actor.phone);
+  const companyName = seller?.legalName || 'SUNKAIER Asia Pacific Pte. Ltd.';
+  const companyAddress = seller?.address || COMPANY_ADDRESS;
+  const companyWebsite = seller?.website || 'https://www.sunkaier.com';
+  const lines = ['Best regards,', '', name, title, companyName, companyAddress, `E: ${contactEmail}`];
   if (phone) lines.push(`T: ${phone}`);
-  lines.push('W: www.sunkaier.com');
+  lines.push(`W: ${companyWebsite.replace(/^https?:\/\//, '')}`);
   lines.push('', CONFIDENTIALITY_NOTICE);
   return {
     fromAddress: sharedAddress.toLowerCase(),
     fromName: `${name} | SUNKAIER`,
     signature: lines.join('\n'),
-    signatureHtml: signatureHtml({ name, title, contactEmail, phone, logoSrc: `cid:${SUNKAIER_SIGNATURE_LOGO_CID}` }),
-    signaturePreviewHtml: signatureHtml({ name, title, contactEmail, phone, logoSrc: '/assets/sunkaier-logo-email.png' })
+    signatureHtml: signatureHtml({ name, title, contactEmail, phone, logoSrc: `cid:${SUNKAIER_SIGNATURE_LOGO_CID}`,
+      companyName, companyAddress, companyWebsite }),
+    signaturePreviewHtml: signatureHtml({ name, title, contactEmail, phone, logoSrc: '/assets/sunkaier-logo-email.png',
+      companyName, companyAddress, companyWebsite })
   };
 }
 
-export function buildPersonalEmailIdentity(actor, sharedAddress = 'sales@sunkaier.com') {
-  const identity = personalEmailIdentity(actor, sharedAddress);
+export function buildPersonalEmailIdentity(actor, sharedAddress = 'sales@sunkaier.com', seller = null) {
+  const identity = personalEmailIdentity(actor, sharedAddress, seller);
   if (!identity) {
     throw new CustomerEmailError('Complete the employee English email name and title before sending', 409);
   }
@@ -134,8 +149,8 @@ export function personalEmailSignaturePreview(actor, sharedAddress = 'sales@sunk
   return personalEmailIdentity(actor, sharedAddress)?.signature || '';
 }
 
-export function personalEmailSignatureHtmlPreview(actor, sharedAddress = 'sales@sunkaier.com') {
-  return personalEmailIdentity(actor, sharedAddress)?.signaturePreviewHtml || '';
+export function personalEmailSignatureHtmlPreview(actor, sharedAddress = 'sales@sunkaier.com', seller = null) {
+  return personalEmailIdentity(actor, sharedAddress, seller)?.signaturePreviewHtml || '';
 }
 
 function appendSignature(body, signature) {
@@ -265,6 +280,34 @@ async function approvedQuotationPackage(dependencies, opportunity, packageId) {
   return packageVersion;
 }
 
+async function signedSalesQuotation(dependencies, opportunity, versionId) {
+  const id = positiveId(versionId);
+  if (!id) return null;
+  if (!opportunity || typeof dependencies.salesCommercialQuotationDraftRepository?.getFormalVersion !== 'function') {
+    throw new CustomerEmailError('Signed quotation requires an opportunity', 409);
+  }
+  const version = await dependencies.salesCommercialQuotationDraftRepository.getFormalVersion(id);
+  if (!version || version.status !== 'signed' || Number(version.opportunityId) !== Number(opportunity.id)) {
+    throw new CustomerEmailError('Only a signed PDF from this opportunity may be sent', 409);
+  }
+  if (!validSignedSeller(version.snapshot?.seller)) {
+    throw new CustomerEmailError('The signed quotation seller identity is incomplete or invalid', 409);
+  }
+  const source = await dependencies.salesCommercialQuotationDraftRepository.getTechnicalSource(
+    opportunity.id, version.sourceAttachmentId
+  );
+  if (!source || source.technicalStatus !== 'approved'
+    || source.technicalDraftId !== version.sourceTechnicalDraftId
+    || source.sha256 !== version.sourceSha256) {
+    throw new CustomerEmailError('Quotation technical approval has changed; do not send this version', 409);
+  }
+  const sources = await dependencies.salesCommercialQuotationDraftRepository.listTechnicalSources(opportunity.id);
+  if (sources.some((item) => item.technicalDraftRevisionNo > source.technicalDraftRevisionNo)) {
+    throw new CustomerEmailError('A newer technical source revision exists; refresh the quotation before sending', 409);
+  }
+  return version;
+}
+
 function approvedOpportunityFileTokens(value) {
   const values = Array.isArray(value) ? value : [value];
   const tokens = [...new Set(values.map(text).filter(Boolean))];
@@ -347,10 +390,35 @@ function assertAttachmentTotalWithinLimit(attachments, maxUploadMb) {
 
 export async function getCustomerEmailComposeContext(dependencies, actor, input) {
   const context = await resolveComposeContext(dependencies, actor, input);
+  const selectedSalesQuotation = await signedSalesQuotation(
+    dependencies, context.opportunity, input.salesQuotationVersionId
+  );
+  const previewIdentity = personalEmailIdentity(actor, dependencies.sharedAddress,
+    selectedSalesQuotation?.snapshot?.seller);
   const packages = context.opportunity
     ? (await dependencies.quotationPackageRepository.listByOpportunity(context.opportunity.id))
       .filter((item) => item.status === 'approved' && item.versionNo)
     : [];
+  let salesQuotationVersions = context.opportunity
+    && typeof dependencies.salesCommercialQuotationDraftRepository?.listFormalVersions === 'function'
+    ? (await dependencies.salesCommercialQuotationDraftRepository.listFormalVersions(context.opportunity.id))
+      .filter((item) => item.status === 'signed') : [];
+  if (salesQuotationVersions.length) {
+    const sources = await dependencies.salesCommercialQuotationDraftRepository.listTechnicalSources(context.opportunity.id);
+    const newestRevision = Math.max(...sources.map((source) => source.technicalDraftRevisionNo));
+    salesQuotationVersions = salesQuotationVersions.filter((version) => validSignedSeller(version.snapshot?.seller)
+      && sources.some((source) => (
+        source.technicalStatus === 'approved'
+        && source.technicalDraftRevisionNo === newestRevision
+        && source.technicalDraftId === version.sourceTechnicalDraftId
+        && source.attachmentId === version.sourceAttachmentId
+        && source.sha256 === version.sourceSha256
+      )));
+  }
+  const defaultSignatureHtmlPreview = personalEmailSignatureHtmlPreview(actor, dependencies.sharedAddress);
+  const salesQuotationSignaturePreviews = Object.fromEntries(salesQuotationVersions.map((version) => [
+    version.id, personalEmailSignatureHtmlPreview(actor, dependencies.sharedAddress, version.snapshot.seller)
+  ]));
   const approvedOpportunityFiles = context.opportunity
     && typeof dependencies.quotationPackageRepository.listApprovedEmailAttachmentChoices === 'function'
     ? await dependencies.quotationPackageRepository.listApprovedEmailAttachmentChoices(context.opportunity.id)
@@ -382,14 +450,18 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
     opportunityThreads,
     threadSelectionRequired,
     packages,
+    salesQuotationVersions,
+    defaultSignatureHtmlPreview,
+    salesQuotationSignaturePreviews,
     approvedOpportunityFiles,
-    signaturePreview: personalEmailSignaturePreview(actor, dependencies.sharedAddress),
-    signatureHtmlPreview: personalEmailSignatureHtmlPreview(actor, dependencies.sharedAddress),
+    signaturePreview: previewIdentity?.signature || '',
+    signatureHtmlPreview: previewIdentity?.signaturePreviewHtml || '',
     defaults: {
       to: context.inquiry?.contactEmail || replyAddress || '',
       subject: selectedThread?.subject || context.inquiry?.subject || context.opportunity?.title || '',
       replyToMessageId: positiveId(input.replyToMessageId) || latestMessage?.id || null,
-      quotationPackageVersionId: positiveId(input.quotationPackageVersionId)
+      quotationPackageVersionId: positiveId(input.quotationPackageVersionId),
+      salesQuotationVersionId: positiveId(input.salesQuotationVersionId)
     }
   };
 }
@@ -400,7 +472,6 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
   if (!['draft', 'send'].includes(action)) throw new CustomerEmailError('Email action is invalid');
   if (action === 'send' && !context.canSend) throw new CustomerEmailError('You may save a draft but cannot send customer email for this opportunity', 403);
 
-  const identity = buildPersonalEmailIdentity(actor, dependencies.sharedAddress);
   const toRecipients = parseRecipients(input.to, 'To');
   const ccRecipients = parseRecipients(input.cc, 'CC');
   if (!toRecipients.length) throw new CustomerEmailError('At least one To recipient is required');
@@ -414,17 +485,29 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
   const plainBody = richBody?.text || text(input.body);
   if (richBody && !richBody.text) throw new CustomerEmailError('Email body is required');
   const safeBodyHtml = richBody?.html || escapeHtml(plainBody).replace(/\r?\n/g, '<br>');
-  const textBody = appendSignature(plainBody, identity.signature);
-  const htmlBody = appendHtmlSignature(safeBodyHtml, identity.signatureHtml);
-  if (textBody.length > 200000) throw new CustomerEmailError('Email body is too long');
-  if (htmlBody.length > 300000) throw new CustomerEmailError('Email body is too long');
-
   const packageVersion = await approvedQuotationPackage(
     dependencies,
     context.opportunity,
     input.quotationPackageVersionId
   );
+  const salesQuotationVersion = await signedSalesQuotation(
+    dependencies, context.opportunity, input.salesQuotationVersionId
+  );
+  if (packageVersion && salesQuotationVersion) {
+    throw new CustomerEmailError('Select either a legacy quotation package or a signed quotation PDF, not both');
+  }
+  const identity = buildPersonalEmailIdentity(actor, dependencies.sharedAddress,
+    salesQuotationVersion?.snapshot?.seller);
+  const textBody = appendSignature(plainBody, identity.signature);
+  const htmlBody = appendHtmlSignature(safeBodyHtml, identity.signatureHtml);
+  if (textBody.length > 200000) throw new CustomerEmailError('Email body is too long');
+  if (htmlBody.length > 300000) throw new CustomerEmailError('Email body is too long');
   const packageFiles = await quotationAttachments(dependencies, packageVersion);
+  const salesQuotationFiles = salesQuotationVersion ? [{
+    filename: `${salesQuotationVersion.quotationNo}.pdf`,
+    contentType: 'application/pdf',
+    content: await readSignedSalesCommercialQuotationPdf(salesQuotationVersion, dependencies.uploadDir)
+  }] : [];
   const opportunityFiles = await approvedOpportunityAttachments(
     dependencies,
     context.opportunity,
@@ -436,7 +519,7 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
     content: file.buffer
   }));
   assertAttachmentTotalWithinLimit(
-    [...packageFiles, ...opportunityFiles, ...uploadFiles],
+    [...packageFiles, ...salesQuotationFiles, ...opportunityFiles, ...uploadFiles],
     dependencies.maxUploadMb
   );
   const signatureLogo = {
@@ -446,7 +529,7 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
     cid: SUNKAIER_SIGNATURE_LOGO_CID,
     contentDisposition: 'inline'
   };
-  const attachments = [...packageFiles, ...opportunityFiles, ...uploadFiles, signatureLogo];
+  const attachments = [...packageFiles, ...salesQuotationFiles, ...opportunityFiles, ...uploadFiles, signatureLogo];
 
   let thread = context.thread;
   if (!thread) {
@@ -470,6 +553,7 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
     referenceIds: headers.referenceIds,
     replyToMessageId: headers.replyToMessage?.id || null,
     quotationPackageVersionId: packageVersion?.id || null,
+    salesQuotationVersionId: salesQuotationVersion?.id || null,
     fromAddress: identity.fromAddress,
     fromName: identity.fromName,
     toRecipients,
@@ -591,6 +675,18 @@ export async function sendCustomerEmail(dependencies, actor, messageId) {
     if (typeof dependencies.quotationPackageRepository.hasUnreleasedTechnicalAttachments !== 'function'
         || await dependencies.quotationPackageRepository.hasUnreleasedTechnicalAttachments(original.quotationPackageVersionId)) {
       throw new CustomerEmailError('Quotation package customer-release approval has changed; prepare a new email', 409);
+    }
+  }
+  if (original.salesQuotationVersionId) {
+    const version = await signedSalesQuotation(dependencies, context.opportunity, original.salesQuotationVersionId);
+    await readSignedSalesCommercialQuotationPdf(version, dependencies.uploadDir);
+    const archived = await dependencies.emailArchiveRepository.listAttachmentsByMessage(original.id);
+    const pdf = archived.find((item) => item.mimeType === 'application/pdf'
+      && item.sha256 === version.pdfSha256 && item.fileSize === version.pdfFileSize);
+    if (!pdf) throw new CustomerEmailError('Signed quotation PDF attachment is missing', 409);
+    const copy = await inspectStoredAttachmentFile({ uploadDir: dependencies.uploadDir, storedPath: pdf.storedPath });
+    if (copy.sha256 !== version.pdfSha256 || copy.fileSize !== version.pdfFileSize) {
+      throw new CustomerEmailError('Archived signed quotation PDF integrity check failed', 409);
     }
   }
   if (context.opportunity && (

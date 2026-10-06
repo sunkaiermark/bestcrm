@@ -892,8 +892,10 @@ test('outbound archive state keeps immutable content while delivery attempts inc
 
   assert.match(calls[0].sql, /INSERT INTO email_messages/);
   assert.match(calls[0].sql, /quotation_package_version_id/);
+  assert.match(calls[0].sql, /sales_quotation_version_id/);
   assert.equal(calls[0].params[5], 51);
-  assert.equal(calls[0].params[12], '<p>Frozen body</p>');
+  assert.equal(calls[0].params[6], null);
+  assert.equal(calls[0].params[13], '<p>Frozen body</p>');
   assert.match(calls[1].sql, /delivery_status IN \('draft', 'failed'\)/);
   assert.match(calls[2].sql, /delivery_status = 'pending'/);
   assert.match(calls[3].sql, /MAX\(attempt_number\)/);

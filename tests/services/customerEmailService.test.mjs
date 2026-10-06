@@ -9,6 +9,7 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import {
   buildPersonalEmailIdentity,
   createCustomerEmailDraft,
+  getCustomerEmailComposeContext,
   personalEmailSignatureHtmlPreview,
   personalEmailSignaturePreview,
   sendCustomerEmail
@@ -225,6 +226,7 @@ function createDependencies(uploadDir, options = {}) {
       async listTeamMembersByOpportunity() { return options.teamMembers || []; }
     },
     quotationPackageRepository,
+    salesCommercialQuotationDraftRepository: options.salesQuotationRepository,
     transport: options.transport || { async sendMail() { return { messageId: '<provider-default@example.com>' }; } },
     sharedAddress: 'sales@sunkaier.com',
     uploadDir,
@@ -234,6 +236,70 @@ function createDependencies(uploadDir, options = {}) {
     state: { thread, messages, attachments, attempts, sentPackages, outboundMimeArtifacts, packageVersion }
   };
 }
+
+test('only a signed, integrity-checked quotation PDF is bound to its opportunity email', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));
+  const content = Buffer.from('%PDF-1.7\nSigned commercial quotation');
+  const pdfSha256 = createHash('sha256').update(content).digest('hex');
+  const storedPath = 'signed-sales-quotations/frozen.pdf';
+  const source = { technicalDraftId: 41, technicalDraftRevisionNo: 1, attachmentId: 51,
+    sha256: 'a'.repeat(64), technicalStatus: 'approved' };
+  const version = {
+    id: 81, opportunityId: 20, quotationNo: 'Q-800020-V1', versionNo: 1,
+    status: 'signed', sourceTechnicalDraftId: 41, sourceAttachmentId: 51,
+    sourceSha256: source.sha256, pdfStoredPath: storedPath,
+    pdfSha256, pdfFileSize: content.length,
+    snapshot: { seller: { code: 'sunkaier_china', legalName: '江苏胜开尔工业技术有限公司',
+      address: 'Approved address', phone: '+86 000', website: 'https://www.sunkaier.com',
+      email: 'sales@sunkaier.com' } }
+  };
+  let newerSource = null;
+  const salesQuotationRepository = {
+    async getFormalVersion() { return version; },
+    async listFormalVersions() { return [version]; },
+    async getTechnicalSource() { return source; },
+    async listTechnicalSources() { return newerSource ? [source, newerSource] : [source]; }
+  };
+  const sent = [];
+  try {
+    await mkdir(path.dirname(path.join(uploadDir, storedPath)), { recursive: true });
+    await writeFile(path.join(uploadDir, storedPath), content);
+    const dependencies = createDependencies(uploadDir, {
+      salesQuotationRepository,
+      transport: { async sendMail(message) { sent.push(message); return { messageId: '<signed@example.com>' }; } }
+    });
+    const compose = await getCustomerEmailComposeContext(dependencies, actor(), {
+      opportunityId: 20, salesQuotationVersionId: '81'
+    });
+    assert.match(compose.signatureHtmlPreview, /江苏胜开尔工业技术有限公司/);
+    assert.match(compose.defaultSignatureHtmlPreview, /SUNKAIER Asia Pacific Pte\. Ltd\./);
+    assert.match(compose.salesQuotationSignaturePreviews[81], /江苏胜开尔工业技术有限公司/);
+    const result = await createCustomerEmailDraft(dependencies, actor(), {
+      opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
+      subject: 'Signed quotation', body: 'Please find our signed quotation.', action: 'send'
+    });
+    assert.equal(result.salesQuotationVersionId, 81);
+    assert.equal(result.quotationPackageVersionId, null);
+    const parsed = await simpleParser(sent[0].raw);
+    assert.deepEqual(parsed.attachments.find((item) => item.filename === 'Q-800020-V1.pdf').content, content);
+    assert.match(parsed.html, /江苏胜开尔工业技术有限公司/);
+    assert.doesNotMatch(parsed.html, /SUNKAIER Asia Pacific Pte\. Ltd\./);
+    assert.match(parsed.text, /江苏胜开尔工业技术有限公司/);
+    newerSource = { ...source, technicalDraftId: 42, technicalDraftRevisionNo: 2 };
+    const staleCompose = await getCustomerEmailComposeContext(dependencies, actor(), { opportunityId: 20 });
+    assert.deepEqual(staleCompose.salesQuotationVersions, []);
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+      opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
+      subject: 'Stale quotation', body: 'Do not send.', action: 'draft'
+    }), /newer technical source revision/);
+    newerSource = null;
+    version.status = 'approved';
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+      opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
+      subject: 'Unsigned quotation', body: 'Do not send.', action: 'draft'
+    }), /Only a signed PDF/);
+  } finally { await rm(uploadDir, { recursive: true, force: true }); }
+});
 
 test('a CRM-native outbound opportunity thread starts linked and never enters pending triage', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));

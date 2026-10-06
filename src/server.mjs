@@ -1034,6 +1034,7 @@ export function createApp(options = {}) {
     opportunityRepository,
     opportunityResponsibilityRepository,
     quotationPackageRepository,
+    salesCommercialQuotationDraftRepository,
     emailArchiveTransaction,
     transport: customerEmailTransport,
     sendingEnabled: Boolean(config.customerEmail?.enabled),
@@ -1095,7 +1096,10 @@ export function createApp(options = {}) {
     opportunityResponsibilityRepository,
     salesCommercialQuotationDraftRepository,
     quotationPreviewPdfRenderer: options.quotationPreviewPdfRenderer,
-    quotationPreviewPdfFontPath: config.technicalDocumentFontPath
+    quotationPreviewPdfFontPath: config.technicalDocumentFontPath,
+    quotationFormalPdfRenderer: options.quotationFormalPdfRenderer,
+    quotationSigning: config.quotationSigning,
+    uploadDir: config.uploadDir
   }));
   app.use(salesQuotationStandardTermRoutes({ salesQuotationStandardTermRepository }));
   app.use(opportunityRoutes({

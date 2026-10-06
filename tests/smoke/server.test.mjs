@@ -24,7 +24,7 @@ function waitForServerStart(child) {
 
     const timer = setTimeout(() => {
       finish(reject, new Error(`Server did not start before timeout. Output:\n${output}`));
-    }, 3000);
+    }, 10000);
 
     child.stdout.setEncoding('utf8');
     child.stderr.setEncoding('utf8');

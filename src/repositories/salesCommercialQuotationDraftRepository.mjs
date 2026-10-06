@@ -34,6 +34,27 @@ function mapDraft(row) {
   };
 }
 
+function mapFormalVersion(row) {
+  if (!row) return null;
+  return {
+    id: Number(row.id), opportunityId: Number(row.opportunity_id), draftId: Number(row.draft_id),
+    draftRevisionNo: Number(row.draft_revision_no), versionNo: Number(row.version_no),
+    quotationNo: row.quotation_no, snapshot: row.snapshot, status: row.status,
+    sourceTechnicalDraftId: Number(row.source_technical_draft_id),
+    sourceAttachmentId: Number(row.source_attachment_id), sourceSha256: row.source_sha256,
+    submittedBy: Number(row.submitted_by), submittedAt: row.submitted_at,
+    submittedByName: row.submitted_by_name || '',
+    reviewedBy: row.reviewed_by == null ? null : Number(row.reviewed_by),
+    reviewedAt: row.reviewed_at, reviewComment: row.review_comment || '',
+    reviewedByName: row.reviewed_by_name || '',
+    signedBy: row.signed_by == null ? null : Number(row.signed_by),
+    signedByName: row.signed_by_name || '',
+    signedAt: row.signed_at, signatureSha256: row.signature_sha256,
+    sealSha256: row.seal_sha256, pdfStoredPath: row.pdf_stored_path,
+    pdfSha256: row.pdf_sha256, pdfFileSize: row.pdf_file_size == null ? null : Number(row.pdf_file_size)
+  };
+}
+
 const sourceSelect = `
   SELECT draft.id AS technical_draft_id,
     draft.draft_revision_no AS technical_draft_revision_no,
@@ -54,6 +75,122 @@ const sourceSelect = `
 
 export function createSalesCommercialQuotationDraftRepository(queryTarget) {
   return {
+    async listFormalVersions(opportunityId) {
+      const result = await queryTarget.query(`
+        SELECT version.*, submitter.display_name AS submitted_by_name,
+          reviewer.display_name AS reviewed_by_name, signer.display_name AS signed_by_name
+        FROM sales_commercial_quotation_versions version
+        JOIN users submitter ON submitter.id = version.submitted_by
+        LEFT JOIN users reviewer ON reviewer.id = version.reviewed_by
+        LEFT JOIN users signer ON signer.id = version.signed_by
+        WHERE version.opportunity_id = $1 ORDER BY version.version_no DESC, version.id DESC
+      `, [opportunityId]);
+      return result.rows.map(mapFormalVersion);
+    },
+
+    async getFormalVersion(id) {
+      const result = await queryTarget.query(`
+        SELECT version.*, submitter.display_name AS submitted_by_name,
+          reviewer.display_name AS reviewed_by_name, signer.display_name AS signed_by_name
+        FROM sales_commercial_quotation_versions version
+        JOIN users submitter ON submitter.id = version.submitted_by
+        LEFT JOIN users reviewer ON reviewer.id = version.reviewed_by
+        LEFT JOIN users signer ON signer.id = version.signed_by
+        WHERE version.id = $1 LIMIT 1
+      `, [id]);
+      return mapFormalVersion(result.rows[0]);
+    },
+
+    async submitFormalVersion(input) {
+      if (typeof queryTarget.connect !== 'function') {
+        throw new Error('Formal quotation submission requires a database transaction');
+      }
+      const client = await queryTarget.connect();
+      try {
+        await client.query('BEGIN');
+        await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [input.opportunityId]);
+        const result = await client.query(`
+          WITH next_version AS (
+            SELECT COALESCE(MAX(version_no), 0) + 1 AS version_no
+            FROM sales_commercial_quotation_versions WHERE opportunity_id = $1
+          )
+          INSERT INTO sales_commercial_quotation_versions (
+            opportunity_id, draft_id, draft_revision_no, version_no, quotation_no,
+            snapshot, source_technical_draft_id, source_attachment_id, source_sha256,
+            submitted_by
+          )
+          SELECT draft.opportunity_id, draft.id, draft.draft_revision_no,
+            next_version.version_no,
+            'Q-' || opportunity.opportunity_no || '-V' || next_version.version_no,
+            $4::jsonb, draft.source_technical_draft_id, draft.source_attachment_id,
+            draft.source_sha256, $3
+          FROM sales_commercial_quotation_drafts draft
+          JOIN opportunities opportunity ON opportunity.id = draft.opportunity_id
+          CROSS JOIN next_version
+          WHERE draft.opportunity_id = $1 AND draft.draft_revision_no = $2
+            AND opportunity.archived_at IS NULL
+          RETURNING *
+        `, [input.opportunityId, input.expectedRevisionNo, input.actorUserId,
+          JSON.stringify(input.snapshot)]);
+        await client.query('COMMIT');
+        return mapFormalVersion(result.rows[0]);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
+    },
+
+    async reviewFormalVersion(input) {
+      const result = await queryTarget.query(`
+        UPDATE sales_commercial_quotation_versions
+        SET status = $3, reviewed_by = $4, reviewed_at = now(), review_comment = $5
+        WHERE id = $1 AND opportunity_id = $2 AND status = 'pending'
+          AND submitted_by <> $4
+          AND ($3 <> 'approved' OR NOT EXISTS (
+            SELECT 1 FROM opportunity_technical_drafts newer
+            JOIN opportunity_technical_drafts source ON source.id = sales_commercial_quotation_versions.source_technical_draft_id
+            WHERE newer.opportunity_id = sales_commercial_quotation_versions.opportunity_id
+              AND newer.source_kind = 'uploaded_file'
+              AND newer.status IN ('ready', 'pending', 'approved')
+              AND newer.draft_revision_no > source.draft_revision_no
+          ))
+        RETURNING *
+      `, [input.id, input.opportunityId, input.decision, input.actorUserId,
+        input.comment || '']);
+      return mapFormalVersion(result.rows[0]);
+    },
+
+    async signFormalVersion(input) {
+      const result = await queryTarget.query(`
+        UPDATE sales_commercial_quotation_versions version
+        SET status = 'signed', signed_by = $3, signed_at = $4,
+          signature_sha256 = $5, seal_sha256 = $6,
+          pdf_stored_path = $7, pdf_sha256 = $8, pdf_file_size = $9
+        FROM opportunity_technical_drafts technical
+        JOIN attachments attachment ON attachment.id = $10
+        WHERE version.id = $1 AND version.opportunity_id = $2
+          AND version.status = 'approved'
+          AND technical.id = version.source_technical_draft_id
+          AND technical.status = 'approved'
+          AND attachment.id = version.source_attachment_id
+          AND attachment.sha256 = version.source_sha256
+          AND attachment.retired_at IS NULL
+          AND NOT EXISTS (
+            SELECT 1 FROM opportunity_technical_drafts newer
+            WHERE newer.opportunity_id = version.opportunity_id
+              AND newer.source_kind = 'uploaded_file'
+              AND newer.status IN ('ready', 'pending', 'approved')
+              AND newer.draft_revision_no > technical.draft_revision_no
+          )
+        RETURNING version.*
+      `, [input.id, input.opportunityId, input.actorUserId, input.signedAt,
+        input.signatureSha256, input.sealSha256, input.pdfStoredPath,
+        input.pdfSha256, input.pdfFileSize, input.sourceAttachmentId]);
+      return mapFormalVersion(result.rows[0]);
+    },
+
     async listPublishedStandardTerms(language) {
       const result = await queryTarget.query(`
         SELECT id, term_key, language, revision_no, title, body

@@ -79,6 +79,15 @@
                 <% for (const item of context.packages) { %><option value="<%= item.id %>" <%= Number(context.defaults.quotationPackageVersionId) === Number(item.id) ? 'selected' : '' %>><%= item.label %> · <%= item.currency %> <%= item.totalPrice %></option><% } %>
               </select>
             </label>
+            <% if (context.salesQuotationVersions?.length) { %>
+              <label class="customer-email-header-field customer-email-quotation-field">
+                <span class="customer-email-field-label"><%= language === 'zh' ? '已签发正式报价 PDF' : 'Issued formal quotation PDF' %></span>
+                <select name="salesQuotationVersionId" data-email-quotation-select>
+                  <option value=""><%= language === 'zh' ? '不附加正式报价 PDF' : 'No issued quotation PDF' %></option>
+                  <% for (const item of context.salesQuotationVersions) { %><option value="<%= item.id %>" <%= Number(context.defaults.salesQuotationVersionId) === Number(item.id) ? 'selected' : '' %>><%= item.quotationNo %> · V<%= item.versionNo %></option><% } %>
+                </select>
+              </label>
+            <% } %>
           <% } %>
           <div class="customer-email-editor-field" data-email-editor>
             <label id="customer-email-body-label" for="customer-email-body"><%= t('emailBody') %></label>
@@ -114,7 +123,13 @@
           </div>
           <div class="customer-email-signature-field">
             <span class="customer-email-field-label" id="customer-email-signature-label"><%= t('emailSignaturePreview') %></span>
-            <div class="customer-email-signature-preview<%= context.signatureHtmlPreview ? '' : ' is-empty' %>" role="textbox" aria-readonly="true" aria-labelledby="customer-email-signature-label" tabindex="0"><% if (context.signatureHtmlPreview) { %><%- context.signatureHtmlPreview %><% } else { %><%= t('emailSignaturePreviewUnavailable') %><% } %></div>
+            <div class="customer-email-signature-preview<%= context.signatureHtmlPreview ? '' : ' is-empty' %>" role="textbox" aria-readonly="true" aria-labelledby="customer-email-signature-label" tabindex="0" data-email-signature-preview data-empty-label="<%= t('emailSignaturePreviewUnavailable') %>"><% if (context.signatureHtmlPreview) { %><%- context.signatureHtmlPreview %><% } else { %><%= t('emailSignaturePreviewUnavailable') %><% } %></div>
+            <% if (context.salesQuotationVersions?.length) { %>
+              <template data-email-signature-default><%- context.defaultSignatureHtmlPreview %></template>
+              <% for (const item of context.salesQuotationVersions) { %>
+                <template data-email-signature-quotation="<%= item.id %>"><%- context.salesQuotationSignaturePreviews[item.id] %></template>
+              <% } %>
+            <% } %>
           </div>
           <div class="customer-email-attachment-field">
             <span class="customer-email-field-label" id="customer-email-attachments-label"><%= t('emailAttachments') %></span>

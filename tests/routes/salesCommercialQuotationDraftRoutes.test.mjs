@@ -5,9 +5,9 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function createAgent({ userId = 7, roles = [ROLES.SALESPERSON], archivedAt = null, sourceAvailable = true, existingDraft = null, standardTerms = [], quotationPreviewPdfRenderer } = {}) {
+async function createAgent({ userId = 7, username = `user${userId}`, roles = [ROLES.SALESPERSON], archivedAt = null, sourceAvailable = true, existingDraft = null, standardTerms = [], formalVersions = [], quotationPreviewPdfRenderer } = {}) {
   const user = {
-    id: userId, username: `user${userId}`, displayName: 'Test User',
+    id: userId, username, displayName: 'Test User',
     passwordHash: await hashPassword('ChangeMe123!'), isActive: true, roles
   };
   const opportunity = {
@@ -36,6 +36,8 @@ async function createAgent({ userId = 7, roles = [ROLES.SALESPERSON], archivedAt
     quotationPreviewPdfRenderer,
     salesCommercialQuotationDraftRepository: {
       async getByOpportunity() { return existingDraft; },
+      async listFormalVersions() { return formalVersions; },
+      async getFormalVersion(id) { return formalVersions.find((version) => version.id === Number(id)) || null; },
       async listPublishedStandardTerms(language) { return standardTerms.filter((term) => term.language === language); },
       async listTechnicalSources() { return sourceAvailable ? [source] : []; },
       async getTechnicalSource(_opportunityId, id) { return sourceAvailable && Number(id) === 51 ? source : null; },
@@ -190,4 +192,21 @@ test('archived opportunity and missing uploaded source cannot create a draft', a
   assert.equal(page.status, 200);
   assert.match(page.text, /No active uploaded technical file/);
   assert.equal((await missing.agent.post('/opportunities/20/commercial-quotation-draft').type('form').send({ sourceAttachmentId: '51', expectedRevisionNo: '0' })).status, 409);
+});
+
+test('formal quote routes deny unrelated submission, review and personal signing', async () => {
+  const versions = [{ id: 81, opportunityId: 20, draftRevisionNo: 1, versionNo: 1,
+    quotationNo: 'Q-800020-V1', status: 'pending', submittedBy: 7,
+    submittedAt: new Date().toISOString() }];
+  const unrelated = await createAgent({ userId: 8, formalVersions: versions });
+  assert.equal((await unrelated.agent.post('/opportunities/20/commercial-quotation-draft/submit')
+    .type('form').send({ expectedRevisionNo: '1' })).status, 403);
+  assert.equal((await unrelated.agent.post('/opportunities/20/commercial-quotation-draft/versions/81/review')
+    .type('form').send({ decision: 'approved' })).status, 403);
+  versions[0].status = 'approved';
+  assert.equal((await unrelated.agent.post('/opportunities/20/commercial-quotation-draft/versions/81/sign')
+    .type('form').send({})).status, 403);
+  assert.equal((await unrelated.agent.get('/opportunities/20/commercial-quotation-draft/versions/81.pdf')).status, 403);
+  const owner = await createAgent({ formalVersions: versions });
+  assert.equal((await owner.agent.get('/opportunities/20/commercial-quotation-draft/versions/81.pdf')).status, 404);
 });

@@ -28,6 +28,25 @@ for (const picker of document.querySelectorAll('[data-approved-file-picker]')) {
   updateCount();
 }
 
+for (const select of document.querySelectorAll('[data-email-quotation-select]')) {
+  const form = select.closest('form');
+  const preview = form?.querySelector('[data-email-signature-preview]');
+  if (!preview) continue;
+  select.addEventListener('change', () => {
+    const template = select.value
+      ? Array.from(form.querySelectorAll('template[data-email-signature-quotation]'))
+        .find((item) => item.dataset.emailSignatureQuotation === select.value)
+      : form.querySelector('template[data-email-signature-default]');
+    if (template?.innerHTML) {
+      preview.innerHTML = template.innerHTML;
+      preview.classList.remove('is-empty');
+    } else {
+      preview.textContent = preview.dataset.emptyLabel || '';
+      preview.classList.add('is-empty');
+    }
+  });
+}
+
 const EMAIL_ALLOWED_TAGS = [
   'p', 'div', 'br', 'strong', 'b', 'em', 'i', 'u', 's', 'span',
   'ul', 'ol', 'li', 'blockquote', 'table', 'thead', 'tbody',

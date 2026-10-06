@@ -107,6 +107,7 @@ function mapMessageRow(row) {
     referenceIds: jsonArray(row.reference_ids),
     replyToMessageId: numberOrNull(row.reply_to_message_id),
     quotationPackageVersionId: numberOrNull(row.quotation_package_version_id),
+    salesQuotationVersionId: numberOrNull(row.sales_quotation_version_id),
     quotationPackageLabel: text(row.quotation_package_label),
     providerMailbox: text(row.provider_mailbox),
     providerUidValidity: text(row.provider_uid_validity),
@@ -1996,6 +1997,7 @@ export function createEmailArchiveRepository(queryTarget) {
           reference_ids,
           reply_to_message_id,
           quotation_package_version_id,
+          sales_quotation_version_id,
           from_address,
           from_name,
           to_recipients,
@@ -2007,7 +2009,7 @@ export function createEmailArchiveRepository(queryTarget) {
           delivery_status,
           authored_by
         )
-        VALUES ($1, 'outbound', $2, $3, $4::jsonb, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12, $13, $14::jsonb, $15, $16)
+        VALUES ($1, 'outbound', $2, $3, $4::jsonb, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $13, $14, $15::jsonb, $16, $17)
         RETURNING *
       `, [
         input.threadId,
@@ -2016,6 +2018,7 @@ export function createEmailArchiveRepository(queryTarget) {
         JSON.stringify(input.referenceIds || []),
         input.replyToMessageId || null,
         input.quotationPackageVersionId || null,
+        input.salesQuotationVersionId || null,
         input.fromAddress,
         input.fromName,
         JSON.stringify(input.toRecipients || []),

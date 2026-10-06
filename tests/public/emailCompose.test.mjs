@@ -155,3 +155,25 @@ test('cancelling an unfinished width edit does not block the email form', () => 
     dom.window.close();
   }
 });
+
+test('choosing an issued quotation updates the seller shown in the email signature preview', () => {
+  const dom = new JSDOM(`<!doctype html><form>
+    <select data-email-quotation-select>
+      <option value="">No issued PDF</option><option value="81">China quotation</option>
+    </select>
+    <div data-email-signature-preview data-empty-label="Unavailable">Singapore signature</div>
+    <template data-email-signature-default><span>Singapore signature</span></template>
+    <template data-email-signature-quotation="81"><span>江苏胜开尔工业技术有限公司</span></template>
+    </form>`, { runScripts: 'outside-only' });
+  try {
+    dom.window.eval(composeScript);
+    const select = dom.window.document.querySelector('select');
+    const preview = dom.window.document.querySelector('[data-email-signature-preview]');
+    select.value = '81';
+    select.dispatchEvent(new dom.window.Event('change'));
+    assert.match(preview.textContent, /江苏胜开尔工业技术有限公司/);
+    select.value = '';
+    select.dispatchEvent(new dom.window.Event('change'));
+    assert.match(preview.textContent, /Singapore signature/);
+  } finally { dom.window.close(); }
+});

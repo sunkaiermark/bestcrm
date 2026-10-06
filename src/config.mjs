@@ -315,6 +315,11 @@ export function loadConfig(env = process.env) {
       env.BESTCRM_WRITE_MAINTENANCE_FLAG || '/run/bestcrm/write-maintenance'
     ).trim(),
     technicalDocumentFontPath: env.TECHNICAL_DOCUMENT_FONT_PATH || '',
+    quotationSigning: {
+      sellerProfilesFile: String(env.QUOTATION_SELLER_PROFILES_FILE || '').trim(),
+      signatureFile: String(env.QUOTATION_MARK_SIGNATURE_FILE || '').trim(),
+      apacSealFile: String(env.QUOTATION_APAC_SEAL_FILE || '').trim()
+    },
     maxUploadMb: numberEnv(env.MAX_UPLOAD_MB, 3072)
   };
 }

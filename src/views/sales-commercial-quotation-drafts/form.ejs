@@ -203,9 +203,46 @@
         <tr><th scope="row"><%= zh ? '签署人' : 'Signatory' %></th><td class="draft-pending"><%= pending %></td></tr>
         <tr><th scope="row"><%= zh ? '签署时间' : 'Signed at' %></th><td class="draft-pending"><%= zh ? '未签署' : 'Not signed' %></td></tr>
       </tbody></table></div>
-      <div><h2 class="draft-section-title"><%= zh ? '电子签署' : 'Electronic signature' %></h2><div class="draft-signature-box"><%= zh ? '正式电子签署尚未配置。印章图片不会自动使报价生效或开放对客发送。' : 'Formal electronic signing is not configured. A stamp image does not make this quotation effective or sendable.' %></div></div>
+      <div><h2 class="draft-section-title"><%= zh ? '电子签署' : 'Electronic signature' %></h2><div class="draft-signature-box"><%= zh ? '这里仅显示内部草稿，不带签名或企业章。正式报价须在下方完成审批，由 MarkYang 本人点击签发。' : 'This is an internal draft without a signature or company seal. The formal version must be approved below and personally issued by MarkYang.' %></div></div>
     </div>
     <p class="muted"><%= zh ? '正式签发仍须技术批准、公司已批准条款及电子签署；内部技术依据不会自动成为对客附件。' : 'Formal issuance still requires technical approval, approved company terms and electronic signing. The internal technical source does not become a customer attachment.' %></p>
+  </section>
+  <section class="form-panel" aria-labelledby="formal-quotation-heading">
+    <h2 id="formal-quotation-heading" class="draft-section-title"><%= zh ? '正式报价流程' : 'Formal quotation workflow' %></h2>
+    <p class="muted"><%= zh ? '草稿提交后冻结准确版本；商务经理异人审批。审批不会自动签名，须 MarkYang 本人登录点击签发。仅签发后的 PDF 可选作对客邮件附件。' : 'Submitting freezes the exact draft version. An assigned commercial manager other than the submitter reviews it. Approval never signs automatically; MarkYang must personally sign in and click Issue. Only the signed PDF may be attached to customer email.' %></p>
+    <% if (draft && canSubmitFormal) { %>
+      <form method="post" action="/opportunities/<%= opportunity.id %>/commercial-quotation-draft/submit">
+        <%- csrfField() %>
+        <input type="hidden" name="expectedRevisionNo" value="<%= draft.draftRevisionNo %>">
+        <button type="submit"><%= zh ? '提交当前草稿供商务审批' : 'Submit current draft for commercial review' %></button>
+      </form>
+      <p class="muted"><%= zh ? '提交前须技术文件已批准、八类条款均已发布并选定、卖方资料已配置且明细完整。' : 'Submission requires an approved technical source, all eight published terms, configured seller details, and complete line items.' %></p>
+    <% } %>
+    <% if (!formalVersions.length) { %><p class="draft-pending"><%= zh ? '尚无正式提交版本。' : 'No formal version has been submitted.' %></p><% } %>
+    <% for (const version of formalVersions) { %>
+      <div class="form-panel">
+        <p><strong><%= version.quotationNo %></strong> · V<%= version.versionNo %> · D<%= version.draftRevisionNo %> · <%= zh ? ({ pending: '待商务审批', approved: '待本人签发', rejected: '已退回', signed: '已签发' }[version.status] || version.status) : ({ pending: 'Pending commercial review', approved: 'Awaiting personal issue', rejected: 'Returned', signed: 'Issued' }[version.status] || version.status) %></p>
+        <p class="muted"><%= zh ? '提交人' : 'Submitted by' %> <%= version.submittedByName || `#${version.submittedBy}` %> · <%= version.submittedAt %><% if (version.reviewedAt) { %> · <%= zh ? '审批人' : 'Reviewed by' %> <%= version.reviewedByName || `#${version.reviewedBy}` %> · <%= version.reviewedAt %><% } %><% if (version.signedAt) { %> · <%= zh ? '签发人' : 'Issued by' %> <%= version.signedByName || `#${version.signedBy}` %> · <%= version.signedAt %><% } %></p>
+        <% if (canReviewFormal(version)) { %>
+          <form method="post" action="/opportunities/<%= opportunity.id %>/commercial-quotation-draft/versions/<%= version.id %>/review">
+            <%- csrfField() %>
+            <label><%= zh ? '审批意见' : 'Review comment' %><textarea name="comment" maxlength="2000"></textarea></label>
+            <button type="submit" name="decision" value="approved"><%= zh ? '批准冻结版本' : 'Approve frozen version' %></button>
+            <button type="submit" name="decision" value="rejected" class="secondary-action"><%= zh ? '退回修改' : 'Return for changes' %></button>
+          </form>
+        <% } %>
+        <% if (canSignFormal(version)) { %>
+          <form method="post" action="/opportunities/<%= opportunity.id %>/commercial-quotation-draft/versions/<%= version.id %>/sign">
+            <%- csrfField() %>
+            <button type="submit"><%= zh ? 'MarkYang 本人签发 PDF' : 'Personally issue PDF as MarkYang' %></button>
+          </form>
+        <% } %>
+        <% if (version.status === 'signed') { %>
+          <p><a href="/opportunities/<%= opportunity.id %>/commercial-quotation-draft/versions/<%= version.id %>.pdf" target="_blank" rel="noopener"><%= zh ? '查看已签发 PDF' : 'View issued PDF' %></a>
+          · <a href="/email-center/compose?opportunityId=<%= opportunity.id %>&salesQuotationVersionId=<%= version.id %>"><%= zh ? '作为对客邮件附件' : 'Attach to customer email' %></a></p>
+        <% } %>
+      </div>
+    <% } %>
   </section>
 </div>
 <script src="/assets/sales-commercial-quotation-draft.js" defer></script>
