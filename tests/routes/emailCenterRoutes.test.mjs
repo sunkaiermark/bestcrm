@@ -327,6 +327,8 @@ test('sales manager sees shared mailbox pending threads without a rule-category 
   assert.match(detail.text, /href="\/email-center\?mailbox=sales%40sunkaier\.com&folder=pending">← 返回邮件列表<\/a>/);
   assert.doesNotMatch(detail.text, /name="assignedUserId"|\/assignment/);
   assert.match(detail.text, /<button type="submit">关联商机<\/button>[\s\S]*?<select name="opportunityId"/);
+  assert.match(detail.text, /\.email-pending-link-form > select\s*\{[^}]*display:\s*block;[^}]*text-align:\s*left;[^}]*text-align-last:\s*left;/);
+  assert.match(detail.text, /\.email-pending-link-form > select option\s*\{[^}]*text-align:\s*left;/);
   assert.match(detail.text, /class="email-pending-actions-row"[\s\S]*?关联商机[\s\S]*?选择商机[\s\S]*?新建线索[\s\S]*?标记为垃圾邮件/);
   assert.match(detail.text, /href="\/lead-submissions\/new\?emailThreadId=1"/);
   assert.doesNotMatch(detail.text, /新建商机|标记为非业务邮件/);

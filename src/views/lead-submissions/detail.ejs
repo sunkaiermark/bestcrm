@@ -66,23 +66,25 @@
           </div>
         </header>
 
-        <section class="content-section">
-          <div class="inquiry-summary-grid">
-            <span><strong><%= t('status') %>:</strong> <%= t(`leadStatus.${submission.status}`) %></span>
-            <span><strong><%= t('submittedAt') %>:</strong> <%= formatLeadDateTime(submission.createdAt) %></span>
-            <span><strong><%= t('reviewSalesManager') %>:</strong> <%= submission.assignedDisplayName || '-' %></span>
-            <span><strong><%= t('leadSourceChannel') %>:</strong> <%= t(`leadSourceChannel.${submission.sourceChannel}`) %></span>
-            <span><strong><%= t('companyName') %>:</strong> <%= submission.companyName || '-' %></span>
-            <span><strong><%= t('website') %>:</strong> <%= submission.companyWebsite || submission.matchedCustomerWebsite || '-' %></span>
-            <span><strong><%= t('contactName') %>:</strong> <%= submission.contactName || '-' %></span>
-            <span><strong><%= t('email') %>:</strong> <%= submission.contactEmail || '-' %></span>
-            <span><strong><%= t('phone') %>:</strong> <%= submission.contactPhone || '-' %></span>
-            <span><strong><%= t('productInterest') %>:</strong> <%= submission.productInterest || '-' %></span>
-            <span><strong><%= t('opportunityType') %>:</strong> <%= submission.opportunityType || '-' %></span>
-            <span><strong><%= t('recommendedSalesOwner') %>:</strong> <%= submission.recommendedSalespersonDisplayName || '-' %></span>
-            <p class="inquiry-field-full detail-text-cell"><strong><%= t('requirement') %>:</strong><br><%= submission.requirementText || '-' %></p>
-            <% if (submission.reviewNote) { %><p class="inquiry-field-full detail-text-cell"><strong><%= t('latestDecisionReason') %>:</strong><br><%= submission.reviewNote %></p><% } %>
-          </div>
+        <section class="content-section lead-summary-section">
+          <dl class="lead-summary-details">
+            <dt><%= t('status') %></dt><dd><%= t(`leadStatus.${submission.status}`) %></dd>
+            <dt><%= t('submittedAt') %></dt><dd><%= formatLeadDateTime(submission.createdAt) %></dd>
+            <dt><%= t('reviewSalesManager') %></dt><dd><%= submission.assignedDisplayName || '-' %></dd>
+            <dt><%= t('leadSourceChannel') %></dt><dd><%= t(`leadSourceChannel.${submission.sourceChannel}`) %></dd>
+            <dt><%= t('companyName') %></dt><dd><%= submission.companyName || '-' %></dd>
+            <dt><%= t('website') %></dt><dd><%= submission.companyWebsite || submission.matchedCustomerWebsite || '-' %></dd>
+            <dt><%= t('contactName') %></dt><dd><%= submission.contactName || '-' %></dd>
+            <dt><%= t('email') %></dt><dd><%= submission.contactEmail || '-' %></dd>
+            <dt><%= t('phone') %></dt><dd><%= submission.contactPhone || '-' %></dd>
+            <dt><%= t('productInterest') %></dt><dd><%= submission.productInterest || '-' %></dd>
+            <dt><%= t('opportunityType') %></dt><dd><%= submission.opportunityType || '-' %></dd>
+            <dt><%= t('recommendedSalesOwner') %></dt><dd><%= submission.recommendedSalespersonDisplayName || '-' %></dd>
+          </dl>
+          <dl class="lead-summary-narrative">
+            <div><dt><%= t('requirement') %></dt><dd class="detail-text-cell"><%= submission.requirementText || '-' %></dd></div>
+            <% if (submission.reviewNote) { %><div><dt><%= t('latestDecisionReason') %></dt><dd class="detail-text-cell"><%= submission.reviewNote %></dd></div><% } %>
+          </dl>
         </section>
 
         <%- include('../partials/product-category-review', { record: submission, action: `/lead-submissions/${submission.id}/product-categories`, canEditCategories: canEditCategories, suggestions: suggestProductCategoryCodes({ productInterest: submission.productInterest, subject: submission.subject, requirementText: submission.requirementText }) }) %>
@@ -166,34 +168,6 @@
                 <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount" value="<%= leadApprovalValue('estimatedAmount') || '' %>"></label>
                 <label><%= t('deliveryPeriod') %><input name="deliveryCycle" value="<%= leadApprovalValue('deliveryCycle') || '' %>"></label>
                 <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate" value="<%= leadApprovalValue('expectedBidDate') || '' %>"></label>
-                  <div class="workflow-inline-field workflow-engineer-field inquiry-field-wide">
-                    <span><%= t('workflowField.quotationEngineerIds') %></span>
-                    <details class="workflow-engineer-picker" data-engineer-picker data-selected-order="<%= orderedQuotationEngineerIds.join(',') %>">
-                      <summary data-engineer-summary><%= orderedQuotationEngineerIds.length > 0
-                        ? orderedQuotationEngineerIds
-                            .map((id) => quotationEngineers.find((user) => Number(user.id) === id))
-                            .filter(Boolean)
-                            .map((user) => user.displayName || user.username)
-                            .join(', ')
-                        : t('workflowField.quotationEngineerIds') %></summary>
-                      <input type="hidden" name="quotationEngineerLeadId" value="<%= selectedQuotationEngineerLeadId || '' %>" data-engineer-lead>
-                      <div class="workflow-engineer-options">
-                        <% for (const engineer of quotationEngineers) { %>
-                          <label>
-                            <input
-                              type="checkbox"
-                              name="quotationEngineerIds"
-                              value="<%= engineer.id %>"
-                              data-engineer-option
-                              data-engineer-name="<%= engineer.displayName || engineer.username %>"
-                              <%= selectedQuotationEngineerIds.includes(Number(engineer.id)) ? 'checked' : '' %>
-                            >
-                            <span><%= engineer.displayName || engineer.username %></span>
-                          </label>
-                        <% } %>
-                      </div>
-                    </details>
-                  </div>
                   <label>
                     <%= t('workflowField.technicalPlanSubmitDate') %>
                     <input type="date" name="technicalPlanSubmitDate" value="<%= leadApprovalValue('technicalPlanSubmitDate') || '' %>" required>
@@ -201,6 +175,36 @@
                   <label class="inquiry-field-full"><%= t('requirement') %><textarea name="requirementText" required><%= leadApprovalValue('requirementText', submission.requirementText) || '' %></textarea></label>
                 </div>
                 <div class="workflow-action-list lead-review-action-list">
+                  <div class="lead-review-engineer-row">
+                    <div class="workflow-inline-field workflow-engineer-field">
+                      <span><%= t('workflowField.quotationEngineerIds') %></span>
+                      <details class="workflow-engineer-picker" data-engineer-picker data-selected-order="<%= orderedQuotationEngineerIds.join(',') %>">
+                        <summary data-engineer-summary><%= orderedQuotationEngineerIds.length > 0
+                          ? orderedQuotationEngineerIds
+                              .map((id) => quotationEngineers.find((user) => Number(user.id) === id))
+                              .filter(Boolean)
+                              .map((user) => user.displayName || user.username)
+                              .join(', ')
+                          : t('workflowField.quotationEngineerIds') %></summary>
+                        <input type="hidden" name="quotationEngineerLeadId" value="<%= selectedQuotationEngineerLeadId || '' %>" data-engineer-lead>
+                        <div class="workflow-engineer-options">
+                          <% for (const engineer of quotationEngineers) { %>
+                            <label>
+                              <input
+                                type="checkbox"
+                                name="quotationEngineerIds"
+                                value="<%= engineer.id %>"
+                                data-engineer-option
+                                data-engineer-name="<%= engineer.displayName || engineer.username %>"
+                                <%= selectedQuotationEngineerIds.includes(Number(engineer.id)) ? 'checked' : '' %>
+                              >
+                              <span><%= engineer.displayName || engineer.username %></span>
+                            </label>
+                          <% } %>
+                        </div>
+                      </details>
+                    </div>
+                  </div>
                   <div class="workflow-compact-row workflow-approve-row">
                     <button class="workflow-action-button workflow-approve-button" type="submit"><%= t('approveLeadAndCreateOpportunity') %></button>
                     <div class="lead-review-action-fields lead-review-action-fields-single">

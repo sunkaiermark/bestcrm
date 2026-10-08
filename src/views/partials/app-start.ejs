@@ -2499,6 +2499,79 @@
         width: 24px;
       }
 
+      .lead-summary-section {
+        container-type: inline-size;
+      }
+
+      .lead-summary-details {
+        display: grid;
+        grid-template-columns: max-content minmax(0, 1fr) max-content minmax(0, 1fr);
+        margin: 0;
+      }
+
+      .lead-summary-details dt,
+      .lead-summary-details dd {
+        border-bottom: 1px solid var(--line);
+        margin: 0;
+        min-width: 0;
+        padding: 10px 12px;
+      }
+
+      .lead-summary-details dt {
+        background: #f2f5f8;
+        color: var(--muted);
+        font-weight: 600;
+        white-space: nowrap;
+      }
+
+      .lead-summary-details dd,
+      .lead-summary-narrative dd {
+        overflow-wrap: anywhere;
+      }
+
+      .lead-summary-narrative {
+        margin: 0;
+      }
+
+      .lead-summary-narrative > div {
+        border-bottom: 1px solid var(--line);
+        padding: 12px 14px;
+      }
+
+      .lead-summary-narrative > div:last-child {
+        border-bottom: 0;
+      }
+
+      .lead-summary-narrative dt {
+        font-weight: 600;
+      }
+
+      .lead-summary-narrative dd {
+        margin: 6px 0 0;
+      }
+
+      @container (max-width: 1040px) {
+        .lead-summary-details {
+          grid-template-columns: max-content minmax(0, 1fr);
+        }
+      }
+
+      @container (max-width: 500px) {
+        .lead-summary-details {
+          grid-template-columns: minmax(0, 1fr);
+        }
+
+        .lead-summary-details dt {
+          border-bottom: 0;
+          padding-bottom: 2px;
+          white-space: normal;
+        }
+
+        .lead-summary-details dd {
+          padding-top: 2px;
+        }
+      }
+
       .inquiry-form-grid,
       .inquiry-summary-grid {
         display: grid;
@@ -3508,6 +3581,14 @@
         border-top: 1px solid var(--line);
       }
 
+      .lead-review-engineer-row {
+        padding-top: 10px;
+      }
+
+      .lead-review-action-list .workflow-approve-row {
+        padding-top: 6px;
+      }
+
       .lead-review-action-list .workflow-compact-row {
         align-items: center;
         display: grid;
@@ -3813,6 +3894,16 @@
         margin: 0;
         text-align: center;
         width: 100%;
+      }
+
+      .email-pending-link-form > select {
+        display: block;
+        text-align: left;
+        text-align-last: left;
+      }
+
+      .email-pending-link-form > select option {
+        text-align: left;
       }
 
       .email-pending-actions-row button,
