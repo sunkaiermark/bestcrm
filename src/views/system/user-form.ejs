@@ -50,6 +50,14 @@
             <input name="phone" value="<%= user.phone || '' %>">
           </label>
           <label>
+            <%= t('representedCompany') %>
+            <select name="representedCompanyCode" required>
+              <% for (const company of representedCompanies) { %>
+                <option value="<%= company.code %>" <%= user.representedCompanyCode === company.code ? 'selected' : '' %>><%= company.name %></option>
+              <% } %>
+            </select>
+          </label>
+          <label>
             <%= t('emailSignatureName') %>
             <input name="emailSignatureName" value="<%= user.emailSignatureName || '' %>" placeholder="e.g. Steven Yang">
           </label>

@@ -3,6 +3,10 @@ import { readFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { getQuotationSellerEntity } from '../domain/quotationSellerEntities.mjs';
+import {
+  DEFAULT_REPRESENTED_COMPANY_CODE,
+  getRepresentedCompany
+} from '../domain/representedCompanies.mjs';
 import { canAccessInquiryInbox } from './inquiryService.mjs';
 import { canViewOpportunity } from './opportunityService.mjs';
 import { inspectStoredAttachmentFile, resolveStoredPath } from './attachmentFileService.mjs';
@@ -13,7 +17,6 @@ import { sanitizeRichEmailBody } from './emailRichTextService.mjs';
 import { SUNKAIER_SIGNATURE_LOGO_CID } from '../utils/emailPresentation.mjs';
 
 const EMAIL_PATTERN = /^[^\s@<>]+@[^\s@<>]+\.[^\s@<>]+$/;
-const COMPANY_ADDRESS = '2 Venture Drive, #10-30, Vision Exchange, Singapore 608526';
 const CONFIDENTIALITY_NOTICE = 'CONFIDENTIALITY NOTICE: This email and any attachments may contain confidential or privileged information intended only for the named recipient. If you received it in error, please notify the sender and delete it. Any unauthorized use, disclosure, copying, or distribution is prohibited.';
 const SIGNATURE_LOGO_PATH = fileURLToPath(new URL('../public/assets/sunkaier-logo-email.png', import.meta.url));
 const APPROVED_FILE_TOKEN_PATTERN = /^(technical_document|opportunity_attachment):(\d+)$/;
@@ -115,15 +118,31 @@ export class CustomerEmailError extends Error {
   }
 }
 
+function representedCompanyForActor(actor) {
+  const code = text(actor?.representedCompanyCode) || DEFAULT_REPRESENTED_COMPANY_CODE;
+  const company = getRepresentedCompany(code);
+  if (!company) throw new CustomerEmailError('User represented company is invalid', 409);
+  return company;
+}
+
+function assertQuotationSellerMatchesActor(actor, salesQuotationVersion) {
+  if (!salesQuotationVersion) return;
+  const company = representedCompanyForActor(actor);
+  if (salesQuotationVersion.snapshot?.seller?.code !== company.code) {
+    throw new CustomerEmailError('The signed quotation seller does not match the user represented company', 409);
+  }
+}
+
 function personalEmailIdentity(actor, sharedAddress = 'sales@sunkaier.com', seller = null) {
   const name = text(actor.emailSignatureName);
   const title = text(actor.emailSignatureTitle);
   if (!name || !title) return null;
+  const company = representedCompanyForActor(actor);
   const contactEmail = seller?.email || text(actor.email) || sharedAddress;
   const phone = seller ? text(seller.phone) : text(actor.phone);
-  const companyName = seller?.legalName || 'SUNKAIER Asia Pacific Pte. Ltd.';
-  const companyAddress = seller ? text(seller.address) : COMPANY_ADDRESS;
-  const companyWebsite = seller ? text(seller.website) : 'https://www.sunkaier.com';
+  const companyName = company.name;
+  const companyAddress = seller ? text(seller.address) : company.emailSignatureAddress;
+  const companyWebsite = seller ? text(seller.website) : company.website;
   const lines = ['Best regards,', '', name, title, companyName];
   if (companyAddress) lines.push(companyAddress);
   lines.push(`E: ${contactEmail}`);
@@ -397,8 +416,11 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
   const selectedSalesQuotation = await signedSalesQuotation(
     dependencies, context.opportunity, input.salesQuotationVersionId
   );
-  const previewIdentity = personalEmailIdentity(actor, dependencies.sharedAddress,
-    selectedSalesQuotation?.snapshot?.seller);
+  assertQuotationSellerMatchesActor(actor, selectedSalesQuotation);
+  const representedCompany = representedCompanyForActor(actor);
+  const previewIdentity = personalEmailIdentity(
+    actor, dependencies.sharedAddress, selectedSalesQuotation?.snapshot?.seller
+  );
   const packages = context.opportunity
     ? (await dependencies.quotationPackageRepository.listByOpportunity(context.opportunity.id))
       .filter((item) => item.status === 'approved' && item.versionNo)
@@ -411,6 +433,7 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
     const sources = await dependencies.salesCommercialQuotationDraftRepository.listTechnicalSources(context.opportunity.id);
     const newestRevision = Math.max(...sources.map((source) => source.technicalDraftRevisionNo));
     salesQuotationVersions = salesQuotationVersions.filter((version) => validSignedSeller(version.snapshot?.seller, dependencies.allowIncompleteFormal)
+      && version.snapshot.seller.code === representedCompany.code
       && sources.some((source) => (
         source.technicalStatus === 'approved'
         && source.technicalDraftRevisionNo === newestRevision
@@ -421,7 +444,8 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
   }
   const defaultSignatureHtmlPreview = personalEmailSignatureHtmlPreview(actor, dependencies.sharedAddress);
   const salesQuotationSignaturePreviews = Object.fromEntries(salesQuotationVersions.map((version) => [
-    version.id, personalEmailSignatureHtmlPreview(actor, dependencies.sharedAddress, version.snapshot.seller)
+    version.id,
+    personalEmailSignatureHtmlPreview(actor, dependencies.sharedAddress, version.snapshot.seller)
   ]));
   const approvedOpportunityFiles = context.opportunity
     && typeof dependencies.quotationPackageRepository.listApprovedEmailAttachmentChoices === 'function'
@@ -501,8 +525,10 @@ export async function createCustomerEmailDraft(dependencies, actor, input, uploa
   if (packageVersion && salesQuotationVersion) {
     throw new CustomerEmailError('Select either a legacy quotation package or a signed quotation PDF, not both');
   }
-  const identity = buildPersonalEmailIdentity(actor, dependencies.sharedAddress,
-    salesQuotationVersion?.snapshot?.seller);
+  assertQuotationSellerMatchesActor(actor, salesQuotationVersion);
+  const identity = buildPersonalEmailIdentity(
+    actor, dependencies.sharedAddress, salesQuotationVersion?.snapshot?.seller
+  );
   const textBody = appendSignature(plainBody, identity.signature);
   const htmlBody = appendHtmlSignature(safeBodyHtml, identity.signatureHtml);
   if (textBody.length > 200000) throw new CustomerEmailError('Email body is too long');
@@ -684,6 +710,7 @@ export async function sendCustomerEmail(dependencies, actor, messageId) {
   }
   if (original.salesQuotationVersionId) {
     const version = await signedSalesQuotation(dependencies, context.opportunity, original.salesQuotationVersionId);
+    assertQuotationSellerMatchesActor(actor, version);
     await readSignedSalesCommercialQuotationPdf(version, dependencies.uploadDir);
     const archived = await dependencies.emailArchiveRepository.listAttachmentsByMessage(original.id);
     const pdf = archived.find((item) => item.mimeType === 'application/pdf'

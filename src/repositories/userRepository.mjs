@@ -1,3 +1,5 @@
+import { DEFAULT_REPRESENTED_COMPANY_CODE } from '../domain/representedCompanies.mjs';
+
 function mapUserRow(row) {
   if (!row) {
     return null;
@@ -12,6 +14,7 @@ function mapUserRow(row) {
     phone: row.phone,
     emailSignatureName: row.email_signature_name || '',
     emailSignatureTitle: row.email_signature_title || '',
+    representedCompanyCode: row.represented_company_code || DEFAULT_REPRESENTED_COMPANY_CODE,
     isActive: row.is_active,
     roles: row.roles || []
   };
@@ -35,6 +38,7 @@ const userWithRolesSelect = `
     u.phone,
     u.email_signature_name,
     u.email_signature_title,
+    u.represented_company_code,
     u.is_active,
     COALESCE(array_remove(array_agg(r.code ORDER BY r.code), NULL), ARRAY[]::text[]) AS roles
   FROM users u
@@ -137,9 +141,9 @@ export function createUserRepository(pool) {
         const result = await pool.query(`
           INSERT INTO users (
             username, password_hash, display_name, email, phone,
-            email_signature_name, email_signature_title, is_active
+            email_signature_name, email_signature_title, represented_company_code, is_active
           )
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
           RETURNING id
         `, [
           user.username,
@@ -149,6 +153,7 @@ export function createUserRepository(pool) {
           user.phone || null,
           user.emailSignatureName || '',
           user.emailSignatureTitle || '',
+          user.representedCompanyCode || DEFAULT_REPRESENTED_COMPANY_CODE,
           user.isActive
         ]);
         const userId = Number(result.rows[0].id);
@@ -172,7 +177,7 @@ export function createUserRepository(pool) {
     async updateUser(id, user) {
       await pool.query('BEGIN');
       try {
-        const passwordAssignment = user.passwordHash ? 'password_hash = $8,' : '';
+        const passwordAssignment = user.passwordHash ? 'password_hash = $9,' : '';
         const params = [
           id,
           user.displayName,
@@ -180,6 +185,7 @@ export function createUserRepository(pool) {
           user.phone || null,
           user.emailSignatureName || '',
           user.emailSignatureTitle || '',
+          user.representedCompanyCode || DEFAULT_REPRESENTED_COMPANY_CODE,
           user.isActive
         ];
         if (user.passwordHash) {
@@ -193,7 +199,8 @@ export function createUserRepository(pool) {
             phone = $4,
             email_signature_name = $5,
             email_signature_title = $6,
-            is_active = $7,
+            represented_company_code = $7,
+            is_active = $8,
             ${passwordAssignment}
             updated_at = now()
           WHERE id = $1

@@ -50,6 +50,7 @@ test('findByUsernameWithRoles returns camelCase user with roles', async () => {
     phone: '123',
     emailSignatureName: '',
     emailSignatureTitle: '',
+    representedCompanyCode: 'sunkaier_apac',
     isActive: true,
     roles: ['salesperson']
   });
@@ -94,6 +95,7 @@ test('listUsersByRole returns active users for assignment selects', async () => 
     phone: '456',
     emailSignatureName: '',
     emailSignatureTitle: '',
+    representedCompanyCode: 'sunkaier_apac',
     isActive: true,
     roles: ['sales_manager']
   }]);
@@ -128,6 +130,7 @@ test('listUsersWithRoles returns all users for system user detail page', async (
     phone: '789',
     emailSignatureName: '',
     emailSignatureTitle: '',
+    representedCompanyCode: 'sunkaier_apac',
     isActive: true,
     roles: ['technical_manager']
   }]);
@@ -145,6 +148,7 @@ test('createUser inserts user and assigns roles in one transaction', async () =>
     displayName: 'New User',
     email: 'new@example.com',
     phone: '555',
+    representedCompanyCode: 'sunkaier_china',
     isActive: true,
     roles: ['salesperson']
   });
@@ -160,6 +164,7 @@ test('createUser inserts user and assigns roles in one transaction', async () =>
     '555',
     '',
     '',
+    'sunkaier_china',
     true
   ]);
   assert.match(pool.queries[2].sql, /DELETE FROM user_roles/);
@@ -244,6 +249,7 @@ test('updateUser updates profile fields, replaces roles, and revokes access when
     '777',
     '',
     '',
+    'sunkaier_apac',
     false
   ]);
   assert.match(pool.queries[2].sql, /DELETE FROM user_roles/);
@@ -271,7 +277,7 @@ test('updateUser updates password hash and revokes trusted devices and sessions 
   });
 
   assert.deepEqual(user, { id: 12 });
-  assert.match(pool.queries[1].sql, /password_hash = \$8/);
+  assert.match(pool.queries[1].sql, /password_hash = \$9/);
   assert.deepEqual(pool.queries[1].params, [
     12,
     'Updated User',
@@ -279,6 +285,7 @@ test('updateUser updates password hash and revokes trusted devices and sessions 
     '777',
     '',
     '',
+    'sunkaier_apac',
     true,
     'new-hashed-password'
   ]);

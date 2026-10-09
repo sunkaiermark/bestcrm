@@ -1,6 +1,10 @@
 import { Router } from 'express';
 import { APPROVAL_SETTINGS } from '../domain/systemCatalog.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
+import {
+  DEFAULT_REPRESENTED_COMPANY_CODE,
+  REPRESENTED_COMPANIES
+} from '../domain/representedCompanies.mjs';
 import { requireLogin } from '../middleware/auth.mjs';
 import { createSystemApprovalSetting, deactivateSystemApprovalSetting, updateSystemApprovalSetting } from '../services/systemApprovalSettingService.mjs';
 import { createSystemRole, deactivateSystemRole, updateSystemRole } from '../services/systemRoleService.mjs';
@@ -323,10 +327,12 @@ export function systemRoutes({
           phone: '',
           emailSignatureName: '',
           emailSignatureTitle: '',
+          representedCompanyCode: DEFAULT_REPRESENTED_COMPANY_CODE,
           isActive: true,
           roles: [defaultUserRole(roles)]
         },
-        roles
+        roles,
+        representedCompanies: REPRESENTED_COMPANIES
       });
     } catch (error) {
       next(error);
@@ -361,7 +367,8 @@ export function systemRoutes({
         mode: 'edit',
         action: `/system/users/${user.id}`,
         user,
-        roles
+        roles,
+        representedCompanies: REPRESENTED_COMPANIES
       });
     } catch (error) {
       next(error);

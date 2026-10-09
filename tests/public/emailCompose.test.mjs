@@ -156,14 +156,14 @@ test('cancelling an unfinished width edit does not block the email form', () => 
   }
 });
 
-test('choosing an issued quotation updates the seller shown in the email signature preview', () => {
+test('choosing an issued quotation keeps the represented company and updates approved seller details', () => {
   const dom = new JSDOM(`<!doctype html><form>
     <select data-email-quotation-select>
       <option value="">No issued PDF</option><option value="81">China quotation</option>
     </select>
-    <div data-email-signature-preview data-empty-label="Unavailable">Singapore signature</div>
-    <template data-email-signature-default><span>Singapore signature</span></template>
-    <template data-email-signature-quotation="81"><span>江苏胜开尔工业技术有限公司</span></template>
+    <div data-email-signature-preview data-empty-label="Unavailable">JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO., LTD · User contact</div>
+    <template data-email-signature-default><span>JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO., LTD · User contact</span></template>
+    <template data-email-signature-quotation="81"><span>JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO., LTD · Approved seller contact</span></template>
     </form>`, { runScripts: 'outside-only' });
   try {
     dom.window.eval(composeScript);
@@ -171,9 +171,10 @@ test('choosing an issued quotation updates the seller shown in the email signatu
     const preview = dom.window.document.querySelector('[data-email-signature-preview]');
     select.value = '81';
     select.dispatchEvent(new dom.window.Event('change'));
-    assert.match(preview.textContent, /江苏胜开尔工业技术有限公司/);
+    assert.match(preview.textContent, /JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO\., LTD/);
+    assert.match(preview.textContent, /Approved seller contact/);
     select.value = '';
     select.dispatchEvent(new dom.window.Event('change'));
-    assert.match(preview.textContent, /Singapore signature/);
+    assert.match(preview.textContent, /User contact/);
   } finally { dom.window.close(); }
 });

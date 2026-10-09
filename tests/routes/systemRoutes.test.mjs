@@ -25,6 +25,7 @@ async function createSystemAgent(options = {}) {
     email: 'sales.manager01@bestcrm.local',
     personalMailboxAddress: 'helena@sunkaier.com',
     phone: '',
+    representedCompanyCode: 'sunkaier_apac',
     isActive: true,
     roles: [ROLES.SALES_MANAGER]
   };
@@ -384,6 +385,7 @@ test('system framework text uses selected Chinese language', async () => {
   assert.match(userForm.text, /\u521d\u59cb\u5bc6\u7801/);
   assert.match(userForm.text, /name="password"[^>]*minlength="6"[^>]*maxlength="6"[^>]*pattern="\[0-9\]\{6\}"/);
   assert.match(userForm.text, /\u663e\u793a\u540d\u79f0/);
+  assert.match(userForm.text, /\u4ee3\u8868\u516c\u53f8/);
   assert.match(userForm.text, /\u6fc0\u6d3b\u767b\u5f55\u8d26\u53f7/);
   assert.match(userForm.text, /\u53d6\u6d88/);
 
@@ -419,6 +421,9 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.match(newForm.text, /name="username"/);
   assert.match(newForm.text, /name="password"/);
   assert.match(newForm.text, /name="personalMailboxAddress"/);
+  assert.match(newForm.text, /name="representedCompanyCode"/);
+  assert.match(newForm.text, /SUNKAIER Asia Pacific Pte\. Ltd\./);
+  assert.match(newForm.text, /JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO\., LTD/);
   assert.match(newForm.text, /name@sunkaier\.com/);
   assert.match(newForm.text, /Use exactly 6 digits/);
   assert.match(newForm.text, /value="service_manager"/);
@@ -441,6 +446,7 @@ test('administrator can add edit and deactivate system users', async () => {
     phone: '555',
     emailSignatureName: 'New User',
     emailSignatureTitle: 'Sales Engineer',
+    representedCompanyCode: 'sunkaier_china',
     password: '482951',
     roles: ROLES.SALESPERSON,
     isActive: 'on'
@@ -452,6 +458,7 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.equal(calls[0].input.displayName, 'New User');
   assert.equal(calls[0].input.emailSignatureName, 'New User');
   assert.equal(calls[0].input.emailSignatureTitle, 'Sales Engineer');
+  assert.equal(calls[0].input.representedCompanyCode, 'sunkaier_china');
   assert.equal(calls[0].input.personalMailboxAddress, 'new.user@sunkaier.com');
   assert.equal(calls[0].input.mailboxAssignedBy, 7);
   assert.deepEqual(calls[0].input.roles, [ROLES.SALESPERSON]);
@@ -468,6 +475,7 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.match(editForm.text, /New login password/);
   assert.match(editForm.text, /name="password"/);
   assert.match(editForm.text, /value="helena@sunkaier\.com"/);
+  assert.match(editForm.text, /value="sunkaier_apac" selected/);
 
   const updated = await agent.post('/system/users/11').type('form').send({
     displayName: 'Updated Manager',
@@ -476,6 +484,7 @@ test('administrator can add edit and deactivate system users', async () => {
     phone: '777',
     emailSignatureName: 'Updated Manager',
     emailSignatureTitle: 'Technical Manager',
+    representedCompanyCode: 'sunkaier_china',
     roles: ROLES.TECHNICAL_MANAGER
   });
   assert.equal(updated.status, 302);
@@ -490,6 +499,7 @@ test('administrator can add edit and deactivate system users', async () => {
     phone: '777',
     emailSignatureName: 'Updated Manager',
     emailSignatureTitle: 'Technical Manager',
+    representedCompanyCode: 'sunkaier_china',
     isActive: false,
     roles: [ROLES.TECHNICAL_MANAGER]
   });
@@ -501,6 +511,7 @@ test('administrator can add edit and deactivate system users', async () => {
     phone: '777',
     emailSignatureName: 'Updated Manager',
     emailSignatureTitle: 'Technical Manager',
+    representedCompanyCode: 'sunkaier_china',
     password: '730846',
     roles: ROLES.TECHNICAL_MANAGER,
     isActive: 'on'
@@ -522,6 +533,14 @@ test('administrator can add edit and deactivate system users', async () => {
   assert.equal(invalidMailbox.status, 400);
   assert.match(invalidMailbox.text, /@sunkaier\.com/);
 
+  const invalidCompany = await agent.post('/system/users/11').type('form').send({
+    displayName: 'Updated Manager',
+    representedCompanyCode: 'unapproved_company',
+    roles: ROLES.TECHNICAL_MANAGER
+  });
+  assert.equal(invalidCompany.status, 400);
+  assert.match(invalidCompany.text, /Represented company is invalid/);
+
   const deleted = await agent.post('/system/users/11/delete').type('form').send();
   assert.equal(deleted.status, 302);
   assert.equal(deleted.headers.location, '/system/users');
@@ -539,6 +558,7 @@ test('administrator can reset user password and unlock login attempts', async ()
   assert.equal(calls[0].method, 'updateUser');
   assert.equal(calls[0].id, 11);
   assert.equal(calls[0].input.displayName, 'Sales Manager');
+  assert.equal(calls[0].input.representedCompanyCode, 'sunkaier_apac');
   assert.equal(calls[0].input.isActive, true);
   assert.deepEqual(calls[0].input.roles, [ROLES.SALES_MANAGER]);
   assert.notEqual(calls[0].input.passwordHash, '269470');

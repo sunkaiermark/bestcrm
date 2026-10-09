@@ -1,5 +1,9 @@
 import { ROLE_DETAILS } from '../domain/systemCatalog.mjs';
 import { ROLES } from '../domain/roles.mjs';
+import {
+  DEFAULT_REPRESENTED_COMPANY_CODE,
+  getRepresentedCompany
+} from '../domain/representedCompanies.mjs';
 import { hashPassword, requireRole } from './authService.mjs';
 import { assertPasswordPolicy } from './passwordPolicy.mjs';
 
@@ -30,6 +34,14 @@ export function normalizePersonalMailboxAddress(value) {
     throw new SystemUserValidationError('The shared sales mailbox cannot be assigned to one user');
   }
   return mailboxAddress;
+}
+
+export function normalizeRepresentedCompanyCode(value) {
+  const code = text(value) || DEFAULT_REPRESENTED_COMPANY_CODE;
+  if (!getRepresentedCompany(code)) {
+    throw new SystemUserValidationError('Represented company is invalid');
+  }
+  return code;
 }
 
 function checkbox(value) {
@@ -91,6 +103,7 @@ export function normalizeSystemUserInput(input, options = {}) {
     phone: text(input.phone),
     emailSignatureName: text(input.emailSignatureName),
     emailSignatureTitle: text(input.emailSignatureTitle),
+    representedCompanyCode: normalizeRepresentedCompanyCode(input.representedCompanyCode),
     isActive: checkbox(input.isActive),
     roles: normalizeRolesWithAllowedCodes(input.roles, options.allowedRoleCodes)
   };
@@ -147,6 +160,7 @@ export async function resetSystemUserPassword(userRepository, actor, userId, pas
     phone: user.phone,
     emailSignatureName: user.emailSignatureName,
     emailSignatureTitle: user.emailSignatureTitle,
+    representedCompanyCode: user.representedCompanyCode,
     isActive: user.isActive,
     roles: user.roles,
     passwordHash: await hashPassword(newPassword)

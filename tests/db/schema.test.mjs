@@ -86,6 +86,7 @@ const temporaryAdminTechnicalSelfApprovalMigrationPath = new URL('../../src/db/m
 const technicalDocumentCustomerReleaseMigrationPath = new URL('../../src/db/migrations/099_technical_document_customer_release.sql', import.meta.url);
 const salesCommercialQuotationDraftMigrationPath = new URL('../../src/db/migrations/100_sales_commercial_quotation_drafts.sql', import.meta.url);
 const quotationSellerEntityMigrationPath = new URL('../../src/db/migrations/102_quotation_draft_seller_entity.sql', import.meta.url);
+const userRepresentedCompanyMigrationPath = new URL('../../src/db/migrations/108_user_represented_company.sql', import.meta.url);
 const quotationStandardTermsMigrationPath = new URL('../../src/db/migrations/103_quotation_draft_standard_terms.sql', import.meta.url);
 const uploadedTechnicalFileWithdrawalEventMigrationPath = new URL('../../src/db/migrations/101_uploaded_technical_file_withdrawal_event.sql', import.meta.url);
 
@@ -113,6 +114,12 @@ test('quotation draft records the selected seller identity and only approved sta
   assert.match(termsSql, /Published standard commercial term content is immutable/);
   assert.match(termsSql, /ADD COLUMN term_selections jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
   assert.doesNotMatch(termsSql, /INSERT INTO sales_quotation_standard_terms/);
+});
+
+test('users have one constrained represented company with a safe existing-user default', async () => {
+  const sql = await readFile(userRepresentedCompanyMigrationPath, 'utf8');
+  assert.match(sql, /represented_company_code text NOT NULL DEFAULT 'sunkaier_apac'/);
+  assert.match(sql, /represented_company_code IN \('sunkaier_apac', 'sunkaier_china'\)/);
 });
 
 test('technical-file customer release defaults old files to internal and guards exact-version external use', async () => {

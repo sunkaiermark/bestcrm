@@ -36,6 +36,7 @@ async function createAgent({
   userId,
   roles,
   language = 'en',
+  representedCompanyCode = 'sunkaier_apac',
   uploadDir = './var/uploads',
   sendingEnabled = false,
   teamMembers = [],
@@ -57,6 +58,7 @@ async function createAgent({
   const user = {
     id: userId, username: `user${userId}`, displayName: `User ${userId}`,
     emailSignatureName: `User ${userId}`, emailSignatureTitle: 'Project Engineer',
+    representedCompanyCode,
     email: `user${userId}@sunkaier.com`, passwordHash, isActive: true, roles
   };
   const unlinked = thread(unlinkedOverrides);
@@ -1027,6 +1029,21 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(supportingCompose.text, />未选择任何文件</);
   assert.match(supportingCompose.text, /value="draft"/);
   assert.doesNotMatch(supportingCompose.text, /value="send"/);
+});
+
+test('compose signature uses the company assigned to the current user', async () => {
+  const agent = await createAgent({
+    userId: 7,
+    roles: [ROLES.SALESPERSON],
+    representedCompanyCode: 'sunkaier_china',
+    sendingEnabled: true
+  });
+  const compose = await agent.get('/email-center/compose?opportunityId=20');
+  assert.equal(compose.status, 200);
+  assert.match(compose.text, /JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO\., LTD/);
+  assert.match(compose.text, /Yixing, Jiangsu Province, China/);
+  assert.doesNotMatch(compose.text, /SUNKAIER Asia Pacific Pte\. Ltd\./);
+  assert.doesNotMatch(compose.text, /name="signatureCompanyCode"/);
 });
 
 test('reply entry requires choosing a conversation when an opportunity has multiple email threads', async () => {

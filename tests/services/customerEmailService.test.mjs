@@ -48,6 +48,14 @@ test('signature preview uses the exact identity signature and stays unavailable 
   assert.match(personalEmailSignatureHtmlPreview(completeActor), /2 Venture Drive, #10-30, Vision Exchange, Singapore 608526/);
   assert.match(personalEmailSignatureHtmlPreview(completeActor), /CONFIDENTIALITY NOTICE:/);
   assert.match(personalEmailSignatureHtmlPreview(completeActor), /www\.sunkaier\.com/);
+  const chinaIdentity = buildPersonalEmailIdentity(actor({ representedCompanyCode: 'sunkaier_china' }));
+  assert.match(chinaIdentity.signature, /JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO\., LTD/);
+  assert.match(chinaIdentity.signature, /Yixing, Jiangsu Province, China/);
+  assert.doesNotMatch(chinaIdentity.signature, /SUNKAIER Asia Pacific Pte\. Ltd\./);
+  assert.throws(
+    () => buildPersonalEmailIdentity(actor({ representedCompanyCode: 'unknown_company' })),
+    /User represented company is invalid/
+  );
   assert.equal(personalEmailSignaturePreview(actor({ emailSignatureTitle: '' })), '');
   assert.equal(personalEmailSignatureHtmlPreview(actor({ emailSignatureTitle: '' })), '');
 });
@@ -261,6 +269,7 @@ test('only a signed, integrity-checked quotation PDF is bound to its opportunity
     async listTechnicalSources() { return newerSource ? [source, newerSource] : [source]; }
   };
   const sent = [];
+  const chinaSender = actor({ representedCompanyCode: 'sunkaier_china' });
   try {
     await mkdir(path.dirname(path.join(uploadDir, storedPath)), { recursive: true });
     await writeFile(path.join(uploadDir, storedPath), content);
@@ -268,13 +277,17 @@ test('only a signed, integrity-checked quotation PDF is bound to its opportunity
       salesQuotationRepository,
       transport: { async sendMail(message) { sent.push(message); return { messageId: '<signed@example.com>' }; } }
     });
-    const compose = await getCustomerEmailComposeContext(dependencies, actor(), {
+    await assert.rejects(() => getCustomerEmailComposeContext(dependencies, actor(), {
+      opportunityId: 20, salesQuotationVersionId: '81'
+    }), /quotation seller does not match the user represented company/);
+    const compose = await getCustomerEmailComposeContext(dependencies, chinaSender, {
       opportunityId: 20, salesQuotationVersionId: '81'
     });
-    assert.match(compose.signatureHtmlPreview, /江苏胜开尔工业技术有限公司/);
-    assert.match(compose.defaultSignatureHtmlPreview, /SUNKAIER Asia Pacific Pte\. Ltd\./);
-    assert.match(compose.salesQuotationSignaturePreviews[81], /江苏胜开尔工业技术有限公司/);
-    const result = await createCustomerEmailDraft(dependencies, actor(), {
+    assert.match(compose.signatureHtmlPreview, /JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO\., LTD/);
+    assert.match(compose.signatureHtmlPreview, /Approved address/);
+    assert.match(compose.signatureHtmlPreview, /\+86 000/);
+    assert.equal(compose.salesQuotationVersions.length, 1);
+    const result = await createCustomerEmailDraft(dependencies, chinaSender, {
       opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
       subject: 'Signed quotation', body: 'Please find our signed quotation.', action: 'send'
     });
@@ -282,50 +295,54 @@ test('only a signed, integrity-checked quotation PDF is bound to its opportunity
     assert.equal(result.quotationPackageVersionId, null);
     const parsed = await simpleParser(sent[0].raw);
     assert.deepEqual(parsed.attachments.find((item) => item.filename === 'Q-800020-V1.pdf').content, content);
-    assert.match(parsed.html, /江苏胜开尔工业技术有限公司/);
+    assert.match(parsed.html, /JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO\., LTD/);
     assert.doesNotMatch(parsed.html, /SUNKAIER Asia Pacific Pte\. Ltd\./);
-    assert.match(parsed.text, /江苏胜开尔工业技术有限公司/);
+    assert.match(parsed.text, /JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO\., LTD/);
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+      opportunityId: 20, salesQuotationVersionId: '81',
+      to: 'buyer@example.com', subject: 'Mismatched seller', body: 'Do not send.', action: 'draft'
+    }), /quotation seller does not match the user represented company/);
     version.snapshot.seller.address = '';
     version.snapshot.seller.phone = '';
     version.snapshot.seller.website = '';
     version.snapshot.missingFields = ['seller.address', 'seller.phone', 'seller.website'];
-    const strictCompose = await getCustomerEmailComposeContext(dependencies, actor(), { opportunityId: 20 });
+    const strictCompose = await getCustomerEmailComposeContext(dependencies, chinaSender, { opportunityId: 20 });
     assert.deepEqual(strictCompose.salesQuotationVersions, []);
-    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, chinaSender, {
       opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
       subject: 'Incomplete signed quotation', body: 'Please see the quotation.', action: 'send'
     }), /seller identity is incomplete/);
     dependencies.allowIncompleteFormal = true;
-    const incompleteCompose = await getCustomerEmailComposeContext(dependencies, actor(), {
+    const incompleteCompose = await getCustomerEmailComposeContext(dependencies, chinaSender, {
       opportunityId: 20, salesQuotationVersionId: '81'
     });
     assert.equal(incompleteCompose.salesQuotationVersions.length, 1);
     assert.equal(incompleteCompose.selectedSalesQuotationMissingFields.length, 3);
-    assert.doesNotMatch(incompleteCompose.signatureHtmlPreview, /Approved address|Vision Exchange|www\.sunkaier\.com|\+65 6000 0000/);
-    await createCustomerEmailDraft(dependencies, actor(), {
+    assert.doesNotMatch(incompleteCompose.signatureHtmlPreview, /Approved address|Vision Exchange|Yixing|www\.sunkaier\.com|\+65 6000 0000/);
+    await createCustomerEmailDraft(dependencies, chinaSender, {
       opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
       subject: 'Incomplete signed quotation', body: 'Please see the quotation.', action: 'send'
     });
     const incompleteSent = await simpleParser(sent.at(-1).raw);
     assert.deepEqual(incompleteSent.attachments.find((item) => item.filename === 'Q-800020-V1.pdf').content, content);
-    assert.match(incompleteSent.html, /江苏胜开尔工业技术有限公司/);
-    assert.doesNotMatch(incompleteSent.html, /Approved address|Vision Exchange|www\.sunkaier\.com|\+65 6000 0000/);
+    assert.match(incompleteSent.html, /JIANGSU SUNKAIER INDUSTRIAL TECHNOLOGY CO\., LTD/);
+    assert.doesNotMatch(incompleteSent.html, /Approved address|Vision Exchange|Yixing|www\.sunkaier\.com|\+65 6000 0000/);
     version.snapshot.seller.website = 'http://invalid.example';
-    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, chinaSender, {
       opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
       subject: 'Invalid seller website', body: 'Do not send.', action: 'send'
     }), /seller identity is incomplete/);
     version.snapshot.seller.website = '';
     newerSource = { ...source, technicalDraftId: 42, technicalDraftRevisionNo: 2 };
-    const staleCompose = await getCustomerEmailComposeContext(dependencies, actor(), { opportunityId: 20 });
+    const staleCompose = await getCustomerEmailComposeContext(dependencies, chinaSender, { opportunityId: 20 });
     assert.deepEqual(staleCompose.salesQuotationVersions, []);
-    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, chinaSender, {
       opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
       subject: 'Stale quotation', body: 'Do not send.', action: 'draft'
     }), /newer technical source revision/);
     newerSource = null;
     version.status = 'approved';
-    await assert.rejects(() => createCustomerEmailDraft(dependencies, actor(), {
+    await assert.rejects(() => createCustomerEmailDraft(dependencies, chinaSender, {
       opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',
       subject: 'Unsigned quotation', body: 'Do not send.', action: 'draft'
     }), /Only a signed PDF/);

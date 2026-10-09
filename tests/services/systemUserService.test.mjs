@@ -5,6 +5,7 @@ import {
   SystemMfaAdministrationError,
   SystemUserValidationError,
   normalizePersonalMailboxAddress,
+  normalizeRepresentedCompanyCode,
   resetSystemUserMfaEnrollment,
   revokeSystemUserTrustedDevices,
   updateSystemUserMfaRequirement
@@ -20,6 +21,16 @@ test('personal mailbox normalization accepts one company address and reserves th
   assert.throws(
     () => normalizePersonalMailboxAddress('sales@sunkaier.com'),
     /shared sales mailbox/
+  );
+});
+
+test('represented company normalization accepts only the two configured companies', () => {
+  assert.equal(normalizeRepresentedCompanyCode('sunkaier_apac'), 'sunkaier_apac');
+  assert.equal(normalizeRepresentedCompanyCode('sunkaier_china'), 'sunkaier_china');
+  assert.equal(normalizeRepresentedCompanyCode(''), 'sunkaier_apac');
+  assert.throws(
+    () => normalizeRepresentedCompanyCode('another_company'),
+    (error) => error instanceof SystemUserValidationError && error.statusCode === 400
   );
 });
 
