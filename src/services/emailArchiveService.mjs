@@ -638,6 +638,13 @@ export async function listEmailLinkableOpportunities(dependencies, actor) {
   return dependencies.opportunityRepository.listOpportunities(filter);
 }
 
+export function canLinkConvertedInquiryToOpportunity(actor, thread) {
+  return canAccessInquiryInbox(actor)
+    && Boolean(thread?.inquiryId)
+    && !thread?.opportunityId
+    && thread?.triageStatus === 'converted_inquiry';
+}
+
 export async function listEmailLinkableInquiries(dependencies, actor) {
   if (!canAccessInquiryInbox(actor)) return [];
   if (typeof dependencies.inquiryRepository?.listInquiries !== 'function') return [];
@@ -711,6 +718,10 @@ export async function linkEmailThreadToOpportunity(dependencies, actor, threadId
   if (!(await canViewEmailThread(dependencies, actor, thread))) {
     throw new EmailArchiveError('Forbidden', 403);
   }
+  const linksConvertedInquiry = thread.triageStatus === 'converted_inquiry';
+  if (linksConvertedInquiry && !canLinkConvertedInquiryToOpportunity(actor, thread)) {
+    throw new EmailArchiveError(thread.inquiryId ? 'Forbidden' : 'Historical inquiry link is missing', thread.inquiryId ? 403 : 409);
+  }
   if (thread.opportunityId) {
     if (Number(thread.opportunityId) === targetOpportunityId
       && thread.triageStatus === 'linked_opportunity') return thread;
@@ -718,6 +729,9 @@ export async function linkEmailThreadToOpportunity(dependencies, actor, threadId
   }
   const opportunity = await dependencies.opportunityRepository.getOpportunityDetail(targetOpportunityId);
   if (!opportunity) throw new EmailArchiveError('Opportunity not found', 404);
+  if (linksConvertedInquiry && (opportunity.archivedAt || opportunity.deletedAt)) {
+    throw new EmailArchiveError('Historical inquiry can only be linked to an active opportunity', 409);
+  }
   const teamMembers = typeof dependencies.opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
     ? await dependencies.opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
     : [];
@@ -732,15 +746,57 @@ export async function linkEmailThreadToOpportunity(dependencies, actor, threadId
         && current.triageStatus === 'linked_opportunity') return current;
       throw new EmailArchiveError('Email thread is already linked to an opportunity', 409);
     }
-    const linked = await transactionDependencies.emailArchiveRepository.linkThreadToOpportunity(
-      current.id,
-      targetOpportunityId
-    );
+    const linksCurrentConvertedInquiry = current.triageStatus === 'converted_inquiry';
+    let linked;
+    let auditNote = '';
+    if (linksCurrentConvertedInquiry) {
+      if (!canLinkConvertedInquiryToOpportunity(actor, current)) {
+        throw new EmailArchiveError(current.inquiryId ? 'Forbidden' : 'Historical inquiry link is missing', current.inquiryId ? 403 : 409);
+      }
+      if (typeof transactionDependencies.inquiryRepository?.findById !== 'function'
+        || typeof transactionDependencies.inquiryRepository?.markConverted !== 'function'
+        || typeof transactionDependencies.emailArchiveRepository?.linkConvertedInquiryThreadToOpportunity !== 'function') {
+        throw new EmailArchiveError('Historical inquiry linking is not configured', 500);
+      }
+      const inquiry = await transactionDependencies.inquiryRepository.findById(current.inquiryId);
+      if (!inquiry || inquiry.submissionType === 'sales_lead') {
+        throw new EmailArchiveError('Historical inquiry not found', 409);
+      }
+      if (!['new', 'reviewing'].includes(inquiry.status)) {
+        throw new EmailArchiveError('Historical inquiry has already been processed', 409);
+      }
+      linked = await transactionDependencies.emailArchiveRepository.linkConvertedInquiryThreadToOpportunity({
+        threadId: current.id,
+        inquiryId: inquiry.id,
+        opportunityId: targetOpportunityId,
+        customerId: opportunity.customerId,
+        contactId: opportunity.primaryContactId
+      });
+      if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
+      const converted = await transactionDependencies.inquiryRepository.markConverted(inquiry.id, {
+        matchedCustomerId: opportunity.customerId,
+        matchedContactId: opportunity.primaryContactId,
+        convertedOpportunityId: targetOpportunityId,
+        productCategoryCode: inquiry.productCategoryCode,
+        confirmedProductCategoryCodes: inquiry.confirmedProductCategoryCodes,
+        reviewedBy: actor.id
+      });
+      if (!converted) throw new EmailArchiveError('Historical inquiry changed; refresh and try again', 409);
+      auditNote = `Historical inquiry #${inquiry.id} linked to existing opportunity ${opportunity.opportunityNo || opportunity.id}`;
+    } else {
+      linked = await transactionDependencies.emailArchiveRepository.linkThreadToOpportunity(
+        current.id,
+        targetOpportunityId
+      );
+    }
     if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
     const transitioned = await transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
       eventType: 'linked_opportunity',
       triageStatus: 'linked_opportunity',
+      ...(linksCurrentConvertedInquiry ? { allowedFromStatuses: ['converted_inquiry'] } : {}),
+      inquiryId: linksCurrentConvertedInquiry ? current.inquiryId : null,
       opportunityId: targetOpportunityId,
+      note: auditNote,
       triagedAt: dependencies.now?.() || new Date().toISOString()
     });
     if (typeof transactionDependencies.emailResponseRepository?.notifyOpportunityAssignment === 'function') {

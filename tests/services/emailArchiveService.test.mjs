@@ -603,6 +603,105 @@ test('manual opportunity linking is limited to a manager-visible shared mailbox 
   );
 });
 
+test('linking a converted historical inquiry updates the inquiry, canonical thread, and triage audit together', async () => {
+  const actor = { id: 2, roles: [ROLES.SALES_MANAGER] };
+  const calls = [];
+  const thread = {
+    id: 157,
+    mailboxKey: 'sales@sunkaier.com',
+    mailboxOwnerUserIds: [],
+    hasSharedMailboxDelivery: true,
+    inquiryId: 444,
+    opportunityId: null,
+    customerId: null,
+    contactId: null,
+    triageStatus: 'converted_inquiry'
+  };
+  const inquiry = {
+    id: 444,
+    submissionType: 'standard',
+    status: 'new',
+    productCategoryCode: '',
+    confirmedProductCategoryCodes: []
+  };
+  const opportunity = {
+    id: 20,
+    opportunityNo: '800020',
+    salespersonId: 7,
+    salesManagerId: 2,
+    quotationEngineerId: 3,
+    technicalManagerId: 6,
+    commercialManagerId: 9,
+    customerId: 10,
+    primaryContactId: 30
+  };
+  const emailArchiveRepository = {
+    async findThreadById() { return thread; },
+    async linkConvertedInquiryThreadToOpportunity(input) {
+      calls.push(['thread', input]);
+      if (thread.opportunityId || thread.triageStatus !== 'converted_inquiry') return null;
+      thread.opportunityId = input.opportunityId;
+      thread.customerId = input.customerId;
+      thread.contactId = input.contactId;
+      return thread;
+    },
+    async transitionThreadTriage(input) {
+      calls.push(['transition', input]);
+      if (thread.triageStatus !== input.expectedStatus) return null;
+      thread.triageStatus = input.triageStatus;
+      return thread;
+    },
+    async createTriageEvent(input) { calls.push(['audit', input]); return input; },
+    async getThreadDetail() { return { ...thread, messages: [] }; }
+  };
+  const inquiryRepository = {
+    async findById(id) { return Number(id) === inquiry.id ? inquiry : null; },
+    async markConverted(id, input) {
+      calls.push(['inquiry', id, input]);
+      if (inquiry.status !== 'new') return null;
+      inquiry.status = 'converted';
+      inquiry.convertedOpportunityId = input.convertedOpportunityId;
+      inquiry.matchedCustomerId = input.matchedCustomerId;
+      inquiry.matchedContactId = input.matchedContactId;
+      return inquiry;
+    }
+  };
+  const emailResponseRepository = {
+    async notifyOpportunityAssignment(input) { calls.push(['notify', input]); }
+  };
+  const dependencies = {
+    emailArchiveRepository,
+    inquiryRepository,
+    emailResponseRepository,
+    opportunityRepository: { async getOpportunityDetail(id) { return Number(id) === 20 ? opportunity : null; } },
+    opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return []; } },
+    now: () => '2026-10-09T02:00:00Z',
+    emailArchiveTransaction: (callback) => callback({
+      emailArchiveRepository,
+      inquiryRepository,
+      emailResponseRepository
+    })
+  };
+
+  const linked = await linkEmailThreadToOpportunity(dependencies, actor, 157, 20);
+
+  assert.equal(linked.opportunityId, 20);
+  assert.equal(linked.triageStatus, 'linked_opportunity');
+  assert.deepEqual([inquiry.convertedOpportunityId, inquiry.matchedCustomerId, inquiry.matchedContactId], [20, 10, 30]);
+  assert.deepEqual(calls.map((call) => call[0]), ['thread', 'inquiry', 'transition', 'audit', 'notify']);
+  assert.deepEqual(calls[0][1], {
+    threadId: 157,
+    inquiryId: 444,
+    opportunityId: 20,
+    customerId: 10,
+    contactId: 30
+  });
+  assert.equal(calls[2][1].expectedStatus, 'converted_inquiry');
+  assert.equal(calls[3][1].inquiryId, 444);
+  assert.equal(calls[3][1].opportunityId, 20);
+  assert.match(calls[3][1].note, /Historical inquiry #444 linked to existing opportunity 800020/);
+});
+
 test('thread visibility forwards the requested archive folder without changing RBAC checks', async () => {
   let receivedFilter;
   const dependencies = {

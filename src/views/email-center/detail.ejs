@@ -25,6 +25,24 @@
 
         <%- include('../partials/product-category-review', { record: thread, action: `/email-center/threads/${thread.id}/product-categories`, canEditCategories: canReviewProductCategories, suggestions: productCategorySuggestions }) %>
 
+        <% if (canLinkExistingOpportunity) { %>
+          <section class="email-triage-panel email-pending-actions-panel email-existing-opportunity-panel" aria-label="<%= t('linkExistingOpportunity') %>">
+            <% if (linkableOpportunities.length) { %>
+              <form class="email-pending-link-form" method="post" action="/email-center/threads/<%= thread.id %>/opportunity" onsubmit="return confirm('<%= t('linkExistingOpportunityConfirm') %>')">
+                <%- csrfField() %>
+                <input type="hidden" name="mailbox" value="<%= backMailbox %>">
+                <input type="hidden" name="from" value="<%= backFolder %>">
+                <input type="hidden" name="q" value="<%= backSearchTerm %>">
+                <button type="submit"><%= t('linkExistingOpportunity') %></button>
+                <select name="opportunityId" aria-label="<%= t('selectOpportunity') %>" required><option value=""><%= t('selectOpportunity') %></option><% for (const opportunity of linkableOpportunities) { %><option value="<%= opportunity.id %>"><%= opportunity.opportunityNo || `#${opportunity.id}` %> · <%= opportunity.title %></option><% } %></select>
+              </form>
+            <% } else { %>
+              <p class="muted"><%= t('noLinkableOpportunities') %></p>
+            <% } %>
+            <p class="muted"><%= t('linkExistingOpportunityHelp') %></p>
+          </section>
+        <% } %>
+
         <% if (canTriage) { %>
           <section class="email-triage-panel email-pending-actions-panel" aria-label="<%= t('emailManualTriage') %>">
             <div class="email-pending-actions-row">

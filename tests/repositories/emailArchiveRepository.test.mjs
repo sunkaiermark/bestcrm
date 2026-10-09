@@ -939,6 +939,38 @@ test('email archive repository links an opportunity only while the expected lead
   assert.deepEqual(calls[0].params, [1, 20, 8]);
 });
 
+test('email archive repository synchronizes a converted inquiry thread to an existing opportunity', async () => {
+  const calls = [];
+  const repository = createEmailArchiveRepository({
+    async query(sql, params) {
+      calls.push({ sql: String(sql), params });
+      return { rows: [threadRow({
+        inquiry_id: 444,
+        opportunity_id: 20,
+        customer_id: 10,
+        contact_id: 30,
+        triage_status: 'converted_inquiry'
+      })] };
+    }
+  });
+
+  const linked = await repository.linkConvertedInquiryThreadToOpportunity({
+    threadId: 157,
+    inquiryId: 444,
+    opportunityId: 20,
+    customerId: 10,
+    contactId: 30
+  });
+
+  assert.equal(linked.opportunityId, 20);
+  assert.equal(linked.customerId, 10);
+  assert.equal(linked.contactId, 30);
+  assert.match(calls[0].sql, /inquiry_id = \$2/);
+  assert.match(calls[0].sql, /opportunity_id IS NULL/);
+  assert.match(calls[0].sql, /triage_status = 'converted_inquiry'/);
+  assert.deepEqual(calls[0].params, [157, 444, 20, 10, 30]);
+});
+
 test('Sent-folder observation reconciles a pending outbound message without changing its content identity', async () => {
   const calls = [];
   const repository = createEmailArchiveRepository({

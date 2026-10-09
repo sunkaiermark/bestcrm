@@ -43,6 +43,7 @@ async function createAgent({
   approvedOpportunityFiles = [],
   linkableOpportunities = [],
   onLinkOpportunity = null,
+  onConvertInquiry = null,
   onPurgeThread = null,
   onListThreads = null,
   spamCleanupSummary = { eligibleThreads: 0, messages: 0, attachments: 0, attachmentBytes: 0, rawMessages: 0, rawMessageBytes: 0 },
@@ -131,6 +132,23 @@ async function createAgent({
       onLinkOpportunity?.(Number(id), Number(opportunityId));
       return unlinked;
     },
+    async linkConvertedInquiryThreadToOpportunity(input) {
+      if (Number(input.threadId) !== 1
+        || Number(unlinked.inquiryId) !== Number(input.inquiryId)
+        || unlinked.opportunityId
+        || unlinked.triageStatus !== 'converted_inquiry') return null;
+      unlinked.opportunityId = Number(input.opportunityId);
+      unlinked.opportunityNo = '800020';
+      unlinked.opportunityTitle = 'Mixer Project';
+      unlinked.customerId = input.customerId;
+      unlinked.customerCode = 'C000010';
+      unlinked.customerName = 'Acme Co';
+      unlinked.contactId = input.contactId;
+      unlinked.contactCode = input.contactId ? 'CT000020' : '';
+      unlinked.contactName = input.contactId ? 'Alice' : '';
+      onLinkOpportunity?.(Number(input.threadId), Number(input.opportunityId));
+      return unlinked;
+    },
     async transitionThreadTriage(input) {
       if (unlinked.triageStatus !== input.expectedStatus) return null;
       unlinked.triageStatus = input.triageStatus;
@@ -180,6 +198,37 @@ async function createAgent({
       ].find((message) => Number(message.id) === Number(id)) || null;
     }
   };
+  const inquiry = unlinked.inquiryId ? {
+    id: Number(unlinked.inquiryId),
+    submissionType: 'standard',
+    status: unlinked.inquiryStatus || 'new',
+    productCategoryCode: '',
+    confirmedProductCategoryCodes: []
+  } : null;
+  const inquiryRepository = {
+    async listInquiries() { return inquiry ? [inquiry] : []; },
+    async findById(id) { return inquiry && Number(id) === inquiry.id ? inquiry : null; },
+    async markConverted(id, input) {
+      if (!inquiry || Number(id) !== inquiry.id || !['new', 'reviewing'].includes(inquiry.status)) return null;
+      inquiry.status = 'converted';
+      inquiry.convertedOpportunityId = Number(input.convertedOpportunityId);
+      inquiry.matchedCustomerId = input.matchedCustomerId;
+      inquiry.matchedContactId = input.matchedContactId;
+      unlinked.inquiryStatus = 'converted';
+      onConvertInquiry?.(id, input);
+      return inquiry;
+    }
+  };
+  const opportunityRepository = {
+    async getOpportunityDetail(id) {
+      return Number(id) === 20 ? {
+        id: 20, salespersonId: 7, salesManagerId: 2, quotationEngineerId: 3,
+        technicalManagerId: 6, commercialManagerId: 9, opportunityNo: '800020', title: 'Mixer Project',
+        customerId: 10, primaryContactId: 20, archivedAt: null
+      } : null;
+    },
+    async listOpportunities() { return linkableOpportunities; }
+  };
   const app = createApp({
     databaseUrl: '', sessionSecret: 'test-secret', csrfProtection: false, emailCenter: { enabled: true },
     customerEmail: { enabled: sendingEnabled, sharedAddress: 'sales@sunkaier.com', maxUploadMb: 25, smtp: {} }, uploadDir,
@@ -190,22 +239,20 @@ async function createAgent({
     },
     emailArchiveRepository: repository,
     emailResponseRepository,
-    opportunityRepository: {
-      async getOpportunityDetail(id) {
-        return Number(id) === 20 ? {
-          id: 20, salespersonId: 7, salesManagerId: 2, quotationEngineerId: 3,
-          technicalManagerId: 6, commercialManagerId: 9, opportunityNo: '800020', title: 'Mixer Project'
-        } : null;
-      },
-      async listOpportunities() { return linkableOpportunities; }
-    },
-    inquiryRepository: { async listInquiries() { return []; } },
+    opportunityRepository,
+    inquiryRepository,
     opportunityResponsibilityRepository: { async listTeamMembersByOpportunity() { return teamMembers; } },
     quotationPackageRepository: {
       async listByOpportunity() { return []; },
       async getPackageDetail() { return null; },
       async listApprovedEmailAttachmentChoices() { return approvedOpportunityFiles; }
-    }
+    },
+    emailArchiveTransaction: (callback) => callback({
+      emailArchiveRepository: repository,
+      emailResponseRepository,
+      inquiryRepository,
+      opportunityRepository
+    })
   });
   const agent = request.agent(app);
   if (language === 'zh') await agent.get('/language?lang=zh&returnTo=/login');
@@ -766,6 +813,53 @@ test('an authorized user can link an unlinked personal conversation to one visib
 
   const relink = await agent.post('/email-center/threads/1/opportunity').type('form').send({ opportunityId: 21 });
   assert.equal(relink.status, 409);
+});
+
+test('a sales manager links a converted historical inquiry to an existing visible opportunity', async () => {
+  const linkedCalls = [];
+  const convertedCalls = [];
+  const agent = await createAgent({
+    userId: 2,
+    roles: [ROLES.SALES_MANAGER],
+    language: 'zh',
+    linkableOpportunities: [{ id: 20, opportunityNo: '800020', title: 'Mixer Project' }],
+    unlinkedOverrides: {
+      inquiryId: 444,
+      inquiryStatus: 'new',
+      triageStatus: 'converted_inquiry'
+    },
+    onLinkOpportunity: (...args) => linkedCalls.push(args),
+    onConvertInquiry: (...args) => convertedCalls.push(args)
+  });
+
+  const detail = await agent.get('/email-center/threads/1?from=inbox');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /关联已有商机/);
+  assert.match(detail.text, /确认将此历史询价和完整邮件会话关联到所选商机/);
+  assert.match(detail.text, /不会新建商机；历史询价和完整邮件会话将关联到所选商机，并保留审计记录/);
+  assert.match(detail.text, /name="opportunityId"/);
+  assert.match(detail.text, /800020 · Mixer Project/);
+
+  const linked = await agent.post('/email-center/threads/1/opportunity').type('form').send({
+    opportunityId: 20,
+    mailbox: 'sales@sunkaier.com',
+    from: 'inbox'
+  });
+  assert.equal(linked.status, 302);
+  assert.equal(linked.headers.location, '/email-center/threads/1?mailbox=sales%40sunkaier.com&from=inbox');
+  assert.deepEqual(linkedCalls, [[1, 20]]);
+  assert.equal(convertedCalls.length, 1);
+  assert.equal(convertedCalls[0][0], 444);
+  assert.equal(convertedCalls[0][1].convertedOpportunityId, 20);
+  assert.equal(convertedCalls[0][1].matchedCustomerId, 10);
+  assert.equal(convertedCalls[0][1].matchedContactId, 20);
+
+  const after = await agent.get('/email-center/threads/1?from=inbox');
+  assert.equal(after.status, 200);
+  assert.match(after.text, /商机 800020 · Mixer Project/);
+  assert.match(after.text, /已关联商机/);
+  assert.match(after.text, /Historical inquiry #444 linked to existing opportunity 800020/);
+  assert.doesNotMatch(after.text, /关联已有商机/);
 });
 
 test('email conversation opens the newest message without reply actions in the archive view', async () => {

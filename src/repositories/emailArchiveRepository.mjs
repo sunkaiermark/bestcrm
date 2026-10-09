@@ -1254,6 +1254,29 @@ export function createEmailArchiveRepository(queryTarget) {
       return mapThreadRow(result.rows[0]);
     },
 
+    async linkConvertedInquiryThreadToOpportunity(input) {
+      const result = await queryTarget.query(`
+        UPDATE email_threads
+        SET
+          opportunity_id = $3,
+          customer_id = $4,
+          contact_id = $5,
+          updated_at = now()
+        WHERE id = $1
+          AND inquiry_id = $2
+          AND opportunity_id IS NULL
+          AND triage_status = 'converted_inquiry'
+        RETURNING *
+      `, [
+        input.threadId,
+        input.inquiryId,
+        input.opportunityId,
+        input.customerId || null,
+        input.contactId || null
+      ]);
+      return mapThreadRow(result.rows[0]);
+    },
+
     async linkThreadToInquiry(threadId, inquiryId) {
       const result = await queryTarget.query(`
         UPDATE email_threads

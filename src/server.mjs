@@ -487,6 +487,7 @@ const emptyEmailArchiveRepository = {
   async listAttachmentsByMessage() { return []; },
   async createThread() { throw new Error('Email archive repository is not configured'); },
   async linkThreadToOpportunity() { throw new Error('Email archive repository is not configured'); },
+  async linkConvertedInquiryThreadToOpportunity() { throw new Error('Email archive repository is not configured'); },
   async linkThreadToInquiry() { throw new Error('Email archive repository is not configured'); },
   async releaseThreadFromInquiry() { throw new Error('Email archive repository is not configured'); },
   async assignThreadTriage() { throw new Error('Email archive repository is not configured'); },

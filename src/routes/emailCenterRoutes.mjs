@@ -16,6 +16,7 @@ import {
 } from '../utils/attachmentPreview.mjs';
 import { formatPlainEmailForReading, resolveInlineEmailContent } from '../utils/emailPresentation.mjs';
 import {
+  canLinkConvertedInquiryToOpportunity,
   canPurgeEmailThread,
   canPurgeEmailSpam,
   canReclassifyOrphanedConvertedInquiryAsSpam,
@@ -319,12 +320,13 @@ export function emailCenterRoutes({
       const backMailbox = String(req.query.mailbox || thread.mailboxKey || '').trim().toLowerCase();
       const backSearchTerm = backFolder === 'inbox' ? emailSearchTerm(req.query.q) : '';
       const canTriage = ['pending', 'outbound_only'].includes(thread.triageStatus || 'pending');
+      const canLinkExistingOpportunity = canLinkConvertedInquiryToOpportunity(req.currentUser, thread);
       const canReclassifyAsSpam = await canReclassifyOrphanedConvertedInquiryAsSpam(
         dependencies,
         req.currentUser,
         thread
       );
-      const linkableOpportunities = thread.opportunityId || !canTriage
+      const linkableOpportunities = thread.opportunityId || (!canTriage && !canLinkExistingOpportunity)
         ? []
         : await listEmailLinkableOpportunities(dependencies, req.currentUser);
       const canManageEmailCleanup = canPurgeEmailSpam(req.currentUser);
@@ -371,6 +373,7 @@ export function emailCenterRoutes({
         backMailbox,
         backSearchTerm,
         canTriage,
+        canLinkExistingOpportunity,
         canReclassifyAsSpam,
         canManageEmailCleanup,
         canDeleteThread,
