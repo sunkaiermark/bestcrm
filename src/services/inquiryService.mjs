@@ -11,11 +11,11 @@ import {
 } from '../domain/inquiries.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { confirmedProductCategoriesFromInput, resolveProductCategoryCode } from '../domain/productCategories.mjs';
-import { STATUSES } from '../domain/statuses.mjs';
+import { ARCHIVED_STATUSES, STATUSES } from '../domain/statuses.mjs';
 import { createContact } from './contactService.mjs';
-import { canMaintainCustomer, createCustomer } from './customerService.mjs';
+import { createCustomer } from './customerService.mjs';
 import { copyInquiryAttachmentsToOpportunity } from './emailInquiryAttachmentService.mjs';
-import { createOpportunityDraft } from './opportunityService.mjs';
+import { canViewOpportunity, createOpportunityDraft } from './opportunityService.mjs';
 
 function forbidden() {
   throw new Error('Forbidden');
@@ -253,8 +253,8 @@ async function validateMatchedRecords({ customerRepository, contactRepository },
     if (!customer) {
       throw new Error('Customer not found');
     }
-    if (!canMaintainCustomer(actor, customer) && !hasRole(actor, ROLES.SALES_MANAGER)) {
-      forbidden();
+    if (customer.archivedAt) {
+      throw new Error('Customer is archived');
     }
   }
   if (input.matchedContactId) {
@@ -262,9 +262,63 @@ async function validateMatchedRecords({ customerRepository, contactRepository },
     if (!contact) {
       throw new Error('Contact not found');
     }
+    if (contact.archivedAt) {
+      throw new Error('Contact is archived');
+    }
     if (input.matchedCustomerId && Number(contact.customerId) !== Number(input.matchedCustomerId)) {
       throw new Error('Contact does not belong to customer');
     }
+  }
+}
+
+async function syncConvertedInquiryEmailThread(repositories, actor, inquiry, opportunity, customerId, contactId) {
+  const repository = repositories.emailArchiveRepository;
+  if (typeof repository?.findLatestThreadByInquiry !== 'function') return;
+  const thread = await repository.findLatestThreadByInquiry(inquiry.id);
+  if (!thread) return;
+  if (thread.opportunityId) {
+    if (Number(thread.opportunityId) !== Number(opportunity.id)) {
+      throw new Error('Email thread is already linked to another opportunity');
+    }
+    if (thread.triageStatus === 'linked_opportunity') return;
+  }
+  if (thread.triageStatus !== 'converted_inquiry') return;
+  const linked = await repository.linkConvertedInquiryThreadToOpportunity({
+    threadId: thread.id,
+    inquiryId: inquiry.id,
+    opportunityId: opportunity.id,
+    customerId,
+    contactId
+  });
+  if (!linked) {
+    throw new Error('Email thread link changed; refresh and try again');
+  }
+  const triagedAt = new Date().toISOString();
+  const note = `Inquiry #${inquiry.id} linked to ${opportunity.opportunityNo || opportunity.id}`;
+  const transitioned = await repository.transitionThreadTriage({
+    threadId: thread.id,
+    expectedStatus: 'converted_inquiry',
+    triageStatus: 'linked_opportunity',
+    archiveDisposition: thread.archiveDisposition || 'active',
+    actorUserId: actor.id,
+    triagedAt,
+    note
+  });
+  if (!transitioned) {
+    throw new Error('Email thread triage changed; refresh and try again');
+  }
+  if (typeof repository.createTriageEvent === 'function') {
+    await repository.createTriageEvent({
+      threadId: thread.id,
+      eventType: 'linked_opportunity',
+      fromStatus: 'converted_inquiry',
+      toStatus: 'linked_opportunity',
+      actorUserId: actor.id,
+      assignedUserId: thread.triageAssignedUserId,
+      inquiryId: inquiry.id,
+      opportunityId: opportunity.id,
+      note
+    });
   }
 }
 
@@ -311,18 +365,35 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     forbidden();
   }
   assertInquiryActionable(inquiry);
-  const salespersonId = numberOrNull(input.salespersonId) || inquiry.recommendedSalespersonId;
-  await assertSalespersonAllowed(repositories.userRepository, actor, salespersonId);
+  const existingOpportunityId = numberOrNull(input.existingOpportunityId);
+  let opportunity = null;
+  let salespersonId = numberOrNull(input.salespersonId) || inquiry.recommendedSalespersonId;
   let customerId = numberInputOrCurrent(input, 'customerId', inquiry.matchedCustomerId);
+  if (existingOpportunityId) {
+    opportunity = await repositories.opportunityRepository.getOpportunityDetail(existingOpportunityId);
+    if (!opportunity || opportunity.archivedAt || ARCHIVED_STATUSES.includes(opportunity.status)) {
+      throw new Error('Active opportunity not found');
+    }
+    if (!canViewOpportunity(actor, opportunity)) {
+      forbidden();
+    }
+    if (customerId && Number(customerId) !== Number(opportunity.customerId)) {
+      throw new Error('Opportunity does not belong to customer');
+    }
+    customerId = opportunity.customerId;
+    salespersonId = opportunity.salespersonId;
+  } else {
+    await assertSalespersonAllowed(repositories.userRepository, actor, salespersonId);
+  }
   const createMissingRecords = input.createMissingRecords !== '0';
-  if (!customerId && createMissingRecords) {
+  if (!customerId && createMissingRecords && !existingOpportunityId) {
     const customerName = text(input.newCustomerName) || text(input.companyName) || inquiry.companyName;
     if (!customerName) {
       throw new Error('Customer name is required');
     }
     const customer = await createCustomer(repositories.customerRepository, actor, {
       name: customerName,
-      ownerUserId: salespersonId,
+      coordinatorUserId: salespersonId,
       website: Object.hasOwn(input, 'companyWebsite')
         ? text(input.companyWebsite)
         : text(inquiry.companyWebsite),
@@ -338,8 +409,8 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
   if (!customer) {
     throw new Error('Customer not found');
   }
-  if (Number(customer.ownerUserId) !== Number(salespersonId)) {
-    throw new CustomerApprovalRequiredError(customer);
+  if (customer.archivedAt) {
+    throw new Error('Customer is archived');
   }
   let primaryContactId = numberInputOrCurrent(input, 'primaryContactId', inquiry.matchedContactId);
   const newContactName = text(input.newContactName) || text(input.contactName) || inquiry.contactName || inquiry.contactEmail || inquiry.contactPhone;
@@ -356,27 +427,41 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
     }, { managedInquiry: true });
     primaryContactId = contact.id;
   }
+  if (primaryContactId && existingOpportunityId) {
+    const selectedContact = await repositories.contactRepository.getContactDetail(primaryContactId);
+    if (!selectedContact) {
+      throw new Error('Contact not found');
+    }
+    if (selectedContact.archivedAt) {
+      throw new Error('Contact is archived');
+    }
+    if (Number(selectedContact.customerId) !== Number(customerId)) {
+      throw new Error('Contact does not belong to customer');
+    }
+  }
   const productCategoryCode = resolveProductCategoryCode(input, inquiry.productCategoryCode);
-  const opportunity = await createOpportunityDraft(repositories, actor, {
-    opportunityNo: null,
-    title: opportunityTitleForInquiry(inquiry, input),
-    customerId,
-    primaryContactId,
-    requirement: text(input.requirement) || text(input.requirementText) || inquiry.requirementText,
-    estimatedAmount: input.estimatedAmount,
-    productInterest: text(input.productInterest) || inquiry.productInterest,
-    productCategoryCode,
-    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input, inquiry.confirmedProductCategoryCodes),
-    projectType: text(input.projectType) || text(input.opportunityType) || inquiry.opportunityType,
-    deliveryCycle: input.deliveryCycle,
-    expectedBidDate: input.expectedBidDate,
-    status: STATUSES.DRAFT
-  }, {
-    validatedCustomer: customer,
-    inquiryConversion: true,
-    originInquiryId: inquiry.id,
-    salespersonId
-  });
+  if (!opportunity) {
+    opportunity = await createOpportunityDraft(repositories, actor, {
+      opportunityNo: null,
+      title: opportunityTitleForInquiry(inquiry, input),
+      customerId,
+      primaryContactId,
+      requirement: text(input.requirement) || text(input.requirementText) || inquiry.requirementText,
+      estimatedAmount: input.estimatedAmount,
+      productInterest: text(input.productInterest) || inquiry.productInterest,
+      productCategoryCode,
+      confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input, inquiry.confirmedProductCategoryCodes),
+      projectType: text(input.projectType) || text(input.opportunityType) || inquiry.opportunityType,
+      deliveryCycle: input.deliveryCycle,
+      expectedBidDate: input.expectedBidDate,
+      status: STATUSES.DRAFT
+    }, {
+      validatedCustomer: customer,
+      inquiryConversion: true,
+      originInquiryId: inquiry.id,
+      salespersonId
+    });
+  }
   if (options.copyAttachments !== false) {
     await copyInquiryAttachmentsToOpportunity({
       inquiryAttachmentRepository: repositories.inquiryAttachmentRepository,
@@ -398,6 +483,27 @@ export async function convertInquiryToOpportunity(repositories, actor, inquiry, 
   if (!converted) {
     throw new Error('Inquiry already processed');
   }
+  if (typeof repositories.inquiryRepository.recordOpportunityLink === 'function') {
+    await repositories.inquiryRepository.recordOpportunityLink({
+      inquiryId: inquiry.id,
+      customerId,
+      opportunityId: opportunity.id,
+      linkKind: existingOpportunityId ? 'existing' : 'created',
+      actorUserId: actor.id,
+      source: 'inquiry_conversion',
+      note: existingOpportunityId
+        ? 'Inquiry classified into an existing opportunity for the same project.'
+        : 'Inquiry converted into an independent opportunity under the shared customer.'
+    });
+  }
+  await syncConvertedInquiryEmailThread(
+    repositories,
+    actor,
+    inquiry,
+    opportunity,
+    customerId,
+    primaryContactId
+  );
   return opportunity;
 }
 
@@ -515,8 +621,8 @@ export async function saveInquiryRecords(repositories, actor, inquiry, input = {
     if (!customer) {
       throw new Error('Customer not found');
     }
-    if (!canMaintainCustomer(actor, customer)) {
-      throw new CustomerApprovalRequiredError(customer);
+    if (customer.archivedAt) {
+      throw new Error('Customer is archived');
     }
   } else {
     const customerName = text(input.companyName) || inquiry.companyName;
@@ -565,46 +671,6 @@ export async function saveInquiryRecords(repositories, actor, inquiry, input = {
   });
 }
 
-function customerApprovalPayload(inquiry, input) {
-  return {
-    salespersonId: numberOrNull(input.salespersonId) || inquiry.recommendedSalespersonId,
-    primaryContactId: numberInputOrCurrent(input, 'primaryContactId', inquiry.matchedContactId),
-    newContactName: text(input.contactName) || text(inquiry.contactName) || text(inquiry.contactEmail) || text(inquiry.contactPhone),
-    newContactTitle: text(input.contactTitle),
-    newContactPhone: text(input.contactPhone) || text(inquiry.contactPhone),
-    newContactEmail: text(input.contactEmail) || text(inquiry.contactEmail),
-    newContactNotes: text(input.requirementText) || inquiry.requirementText,
-    title: opportunityTitleForInquiry(inquiry, input),
-    requirement: text(input.requirementText) || text(input.requirement) || inquiry.requirementText,
-    estimatedAmount: numberOrNull(input.estimatedAmount),
-    productInterest: text(input.productInterest) || inquiry.productInterest,
-    productCategoryCode: resolveProductCategoryCode(input, inquiry.productCategoryCode),
-    confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input, inquiry.confirmedProductCategoryCodes),
-    projectType: text(input.opportunityType) || text(input.projectType) || inquiry.opportunityType,
-    deliveryCycle: text(input.deliveryCycle),
-    expectedBidDate: text(input.expectedBidDate) || null
-  };
-}
-
-async function customerApprovalReviewer(repositories, actor) {
-  if (typeof repositories.approvalSettingRepository?.findActiveByKey === 'function') {
-    const setting = await repositories.approvalSettingRepository.findActiveByKey('inquiry_customer_access');
-    if (setting?.roleCode === ROLES.SALES_MANAGER && Number(setting.userId) !== Number(actor.id)) {
-      return { id: Number(setting.userId), displayName: setting.userDisplayName || setting.username || '' };
-    }
-  }
-  if (typeof repositories.userRepository?.listUsersWithRoles === 'function') {
-    const users = await repositories.userRepository.listUsersWithRoles();
-    const reviewer = users.find((user) => user.isActive !== false
-      && Number(user.id) !== Number(actor.id)
-      && hasRole(user, ROLES.SALES_MANAGER));
-    if (reviewer) {
-      return reviewer;
-    }
-  }
-  throw new Error('Sales manager is not configured');
-}
-
 export function canDecideInquiryCustomerApproval(user, approval) {
   if (!approval) {
     return false;
@@ -618,54 +684,7 @@ export async function requestInquiryCustomerApproval(repositories, actor, inquir
     forbidden();
   }
   assertInquiryActionable(inquiry);
-  const salespersonId = numberOrNull(input.salespersonId) || inquiry.recommendedSalespersonId;
-  await assertSalespersonAllowed(repositories.userRepository, actor, salespersonId);
-  const customerId = numberOrNull(input.approvalCustomerId || input.customerId);
-  if (!customerId) {
-    throw new Error('Customer is required');
-  }
-  const customer = await repositories.customerRepository.getCustomerDetail(customerId);
-  if (!customer) {
-    throw new Error('Customer not found');
-  }
-  if (Number(customer.ownerUserId) === Number(salespersonId)) {
-    throw new Error('Customer approval is not required');
-  }
-  const selectedCustomerId = numberOrNull(input.customerId);
-  const approvalInput = selectedCustomerId && selectedCustomerId !== Number(customer.id)
-    ? { ...input, primaryContactId: '' }
-    : input;
-  const payload = customerApprovalPayload(inquiry, { ...approvalInput, salespersonId });
-  if (payload.primaryContactId) {
-    const contact = await repositories.contactRepository.getContactDetail(payload.primaryContactId);
-    if (!contact) {
-      throw new Error('Contact not found');
-    }
-    if (Number(contact.customerId) !== Number(customer.id)) {
-      throw new Error('Contact does not belong to customer');
-    }
-  }
-  const reviewer = await customerApprovalReviewer(repositories, actor);
-  try {
-    const approval = await repositories.inquiryCustomerApprovalRepository.createPending({
-      inquiryId: inquiry.id,
-      customerId: customer.id,
-      requestedBy: actor.id,
-      customerOwnerUserId: customer.ownerUserId,
-      reviewerUserId: reviewer.id,
-      matchedContactId: payload.primaryContactId,
-      requestPayload: payload
-    });
-    if (!approval) {
-      throw new Error('Inquiry already processed');
-    }
-    return approval;
-  } catch (error) {
-    if (error?.code === '23505') {
-      throw new Error('Customer approval already pending');
-    }
-    throw error;
-  }
+  throw new Error('Customer approval workflow is retired; select the shared customer and continue');
 }
 
 function canReviewCustomerApproval(actor) {

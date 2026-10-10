@@ -10,15 +10,13 @@ import {
   archiveCustomer,
   canArchiveCustomer,
   canMaintainCustomer,
+  canViewCustomer,
+  changeCustomerCoordinator,
   createCustomer,
   DuplicateCustomerError,
   reopenCustomer,
   updateCustomer
 } from '../services/customerService.mjs';
-
-function customerFilter(user) {
-  return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
-}
 
 function customerFormLocals({ customer = {}, action = '/customers', duplicateCustomers = [] } = {}) {
   return {
@@ -32,32 +30,37 @@ function customerFormLocals({ customer = {}, action = '/customers', duplicateCus
   };
 }
 
-export function customerRoutes({ customerRepository }) {
+export function customerRoutes({ customerRepository, opportunityRepository, userRepository }) {
   const router = Router();
 
   router.use('/customers', requireLogin);
 
   router.get('/customers', async (req, res, next) => {
     try {
-      const isAdministrator = hasRole(req.currentUser, ROLES.ADMINISTRATOR);
+      const mayFilterByCoordinator = hasRole(req.currentUser, ROLES.ADMINISTRATOR)
+        || hasRole(req.currentUser, ROLES.SALES_MANAGER);
       const filters = normalizeCustomerContactListQuery(req.query);
-      if (!isAdministrator) filters.salespersonId = null;
-      const visibleFilter = customerFilter(req.currentUser);
+      if (!mayFilterByCoordinator) filters.salespersonId = null;
       const listFilter = {
-        ...visibleFilter,
         searchTerm: filters.searchTerm,
         archiveScope: filters.archiveScope
       };
-      if (filters.salespersonId) listFilter.ownerUserId = filters.salespersonId;
+      if (filters.salespersonId) listFilter.coordinatorUserId = filters.salespersonId;
       if (filters.customerId) listFilter.customerId = filters.customerId;
       if (filters.country) listFilter.country = filters.country;
       const [customers, filterOptions] = await Promise.all([
         customerRepository.listCustomers(listFilter),
         typeof customerRepository.listCustomerFilterOptions === 'function'
-          ? customerRepository.listCustomerFilterOptions({ ...visibleFilter, archiveScope: filters.archiveScope })
+          ? customerRepository.listCustomerFilterOptions({ archiveScope: filters.archiveScope })
           : { salesOwners: [], customers: [], countries: [] }
       ]);
-      res.render('customers/index', { customers, filters, filterOptions, showSalesOwnerFilter: isAdministrator });
+      res.render('customers/index', {
+        customers,
+        filters,
+        filterOptions,
+        showSalesOwnerFilter: mayFilterByCoordinator,
+        showCoordinatorFilter: mayFilterByCoordinator
+      });
     } catch (error) {
       next(error);
     }
@@ -90,16 +93,67 @@ export function customerRoutes({ customerRepository }) {
         res.status(404).send('Customer not found');
         return;
       }
-      if (!canMaintainCustomer(req.currentUser, customer)) {
+      if (!canViewCustomer(req.currentUser, customer)) {
         res.status(403).send('Forbidden');
         return;
       }
+      const mayManageCoordinator = hasRole(req.currentUser, ROLES.ADMINISTRATOR)
+        || hasRole(req.currentUser, ROLES.SALES_MANAGER);
+      const opportunityFilter = {
+        customerId: customer.id,
+        archiveScope: 'active',
+        ...(hasRole(req.currentUser, ROLES.ADMINISTRATOR)
+          ? {}
+          : { visibleToUserId: req.currentUser.id })
+      };
+      const [opportunities, coordinationEvents, coordinators] = await Promise.all([
+        typeof opportunityRepository?.listOpportunities === 'function'
+          ? opportunityRepository.listOpportunities(opportunityFilter)
+          : [],
+        typeof customerRepository.listCoordinationEvents === 'function'
+          ? customerRepository.listCoordinationEvents(customer.id)
+          : [],
+        mayManageCoordinator && typeof userRepository?.listUsersByRole === 'function'
+          ? userRepository.listUsersByRole(ROLES.SALESPERSON)
+          : []
+      ]);
       res.render('customers/detail', {
         customer,
+        opportunities,
+        coordinationEvents,
+        coordinators,
+        canEditCustomer: canMaintainCustomer(req.currentUser, customer) && !customer.archivedAt,
+        canManageCoordinator: mayManageCoordinator && !customer.archivedAt,
         canArchiveCustomer: canArchiveCustomer(req.currentUser) && !customer.archivedAt,
         canReopenCustomer: canArchiveCustomer(req.currentUser) && Boolean(customer.archivedAt) && !customer.mergedIntoId
       });
     } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/customers/:id/coordinator', async (req, res, next) => {
+    try {
+      await changeCustomerCoordinator(
+        { customerRepository, userRepository },
+        req.currentUser,
+        req.params.id,
+        req.body
+      );
+      res.redirect(`/customers/${req.params.id}`);
+    } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Customer not found') {
+        res.status(404).send(error.message);
+        return;
+      }
+      if (/required|different|active salesperson|archived/.test(error.message)) {
+        res.status(400).send(error.message);
+        return;
+      }
       next(error);
     }
   });

@@ -140,10 +140,10 @@ test('createOpportunityDraft rejects direct opportunity creation', async () => {
   assert.deepEqual(repositories.calls, []);
 });
 
-test('sales manager can create a manual opportunity for an active sales owner', async () => {
+test('sales manager can create a manual opportunity for an active sales owner under another coordinator shared customer', async () => {
   const repositories = buildRepositories({
-    customer: { id: 10, ownerUserId: 7 },
-    contact: { id: 20, customerId: 10, customerOwnerUserId: 7 }
+    customer: { id: 10, coordinatorUserId: 8 },
+    contact: { id: 20, customerId: 10, customerCoordinatorUserId: 8 }
   });
 
   const opportunity = await createOpportunityDraft(repositories, {

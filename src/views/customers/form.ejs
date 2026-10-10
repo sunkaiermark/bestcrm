@@ -15,7 +15,7 @@
                   <tr>
                     <th><%= t('customerCode') %></th>
                     <th><%= t('customerName') %></th>
-                    <th><%= t('responsiblePerson') %></th>
+                    <th><%= t('customerCoordinator') %></th>
                     <th><%= t('contacts') %></th>
                   </tr>
                 </thead>
@@ -23,8 +23,8 @@
                   <% for (const duplicate of duplicateCustomers) { %>
                     <tr>
                       <td><%= duplicate.customerCode %></td>
-                      <td><%= duplicate.name %></td>
-                      <td><%= duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></td>
+                      <td><a href="/customers/<%= duplicate.id %>"><%= duplicate.name %></a></td>
+                      <td><%= duplicate.coordinatorDisplayName || duplicate.coordinatorUsername || duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></td>
                       <td><%= duplicate.contactCount %></td>
                     </tr>
                   <% } %>

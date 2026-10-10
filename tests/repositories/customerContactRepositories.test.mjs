@@ -26,13 +26,15 @@ test('customer repository lists and maps customers', async () => {
     enterprise_nature: 'Private',
     company_highlights: 'Regional leader',
     address: 'Road 1',
-    owner_user_id: '7',
+    coordinator_user_id: '7',
+    coordinator_display_name: 'Sales One',
+    coordinator_username: 'sales01',
     notes: 'Important',
     contact_count: '2'
   }]);
   const repository = createCustomerRepository(queryTarget);
 
-  const customers = await repository.listCustomers({ ownerUserId: 7 });
+  const customers = await repository.listCustomers({ coordinatorUserId: 7 });
 
   assert.deepEqual(customers, [{
     id: 10,
@@ -46,67 +48,73 @@ test('customer repository lists and maps customers', async () => {
     enterpriseNature: 'Private',
     companyHighlights: 'Regional leader',
     address: 'Road 1',
+    coordinatorUserId: 7,
+    coordinatorDisplayName: 'Sales One',
+    coordinatorUsername: 'sales01',
     ownerUserId: 7,
+    ownerDisplayName: 'Sales One',
+    ownerUsername: 'sales01',
     notes: 'Important',
     contactCount: 2
   }]);
   assert.match(queryTarget.queries[0].sql, /FROM customers c/);
   assert.match(queryTarget.queries[0].sql, /c\.archived_at IS NULL/);
-  assert.match(queryTarget.queries[0].sql, /c\.owner_user_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /COALESCE\(c\.coordinator_user_id, c\.owner_user_id\) = \$1/);
   assert.deepEqual(queryTarget.queries[0].params, [7]);
 });
 
-test('customer repository searches code name and website inside the owner scope', async () => {
+test('customer repository searches code name and website inside the coordinator filter', async () => {
   const queryTarget = createFakeQueryTarget([]);
   const repository = createCustomerRepository(queryTarget);
 
-  await repository.listCustomers({ ownerUserId: 7, searchTerm: 'C000_10%' });
+  await repository.listCustomers({ coordinatorUserId: 7, searchTerm: 'C000_10%' });
 
   const { sql, params } = queryTarget.queries[0];
-  assert.match(sql, /c\.owner_user_id = \$1/);
+  assert.match(sql, /COALESCE\(c\.coordinator_user_id, c\.owner_user_id\) = \$1/);
   assert.match(sql, /c\.customer_code ILIKE \$2/);
   assert.match(sql, /c\.name ILIKE \$2/);
   assert.match(sql, /c\.website ILIKE \$2/);
   assert.deepEqual(params, [7, '%C000\\_10\\%%']);
 });
 
-test('customer filters combine owner, exact customer, country, archive, and escaped keyword', async () => {
+test('customer filters combine coordinator, exact customer, country, archive, and escaped keyword', async () => {
   const queryTarget = createFakeQueryTarget([]);
   const repository = createCustomerRepository(queryTarget);
 
   await repository.listCustomers({
-    ownerUserId: 7, customerId: 10, country: 'China', archiveScope: 'all', searchTerm: 'Acme_%'
+    coordinatorUserId: 7, customerId: 10, country: 'China', archiveScope: 'all', searchTerm: 'Acme_%'
   });
 
   const { sql, params } = queryTarget.queries[0];
-  assert.match(sql, /c\.owner_user_id = \$1/);
+  assert.match(sql, /COALESCE\(c\.coordinator_user_id, c\.owner_user_id\) = \$1/);
   assert.match(sql, /c\.id = \$2/);
   assert.match(sql, /btrim\(c\.country\) = \$3/);
   assert.match(sql, /c\.name ILIKE \$4/);
   assert.deepEqual(params, [7, 10, 'China', '%Acme\\_\\%%']);
 });
 
-test('customer filter options come only from the permitted owner and archive scope', async () => {
+test('customer filter options expose customer coordinators in the requested archive scope', async () => {
   const queryTarget = createFakeQueryTarget([
     { id: '10', customer_code: 'C000010', name: 'Acme', country: 'China',
-      owner_user_id: '7', owner_display_name: 'Sales One', owner_username: 'sales01' },
+      coordinator_user_id: '7', coordinator_display_name: 'Sales One', coordinator_username: 'sales01' },
     { id: '11', customer_code: 'C000011', name: 'Beta', country: 'India',
-      owner_user_id: '7', owner_display_name: 'Sales One', owner_username: 'sales01' }
+      coordinator_user_id: '7', coordinator_display_name: 'Sales One', coordinator_username: 'sales01' }
   ]);
   const repository = createCustomerRepository(queryTarget);
 
-  const options = await repository.listCustomerFilterOptions({ ownerUserId: 7, archiveScope: 'active' });
+  const options = await repository.listCustomerFilterOptions({ coordinatorUserId: 7, archiveScope: 'active' });
 
   assert.deepEqual(options, {
     customers: [
       { id: 10, customerCode: 'C000010', name: 'Acme' },
       { id: 11, customerCode: 'C000011', name: 'Beta' }
     ],
+    salesCoordinators: [{ id: 7, displayName: 'Sales One' }],
     salesOwners: [{ id: 7, displayName: 'Sales One' }],
     countries: ['China', 'India']
   });
   assert.match(queryTarget.queries[0].sql, /c\.archived_at IS NULL/);
-  assert.match(queryTarget.queries[0].sql, /c\.owner_user_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /COALESCE\(c\.coordinator_user_id, c\.owner_user_id\) = \$1/);
   assert.deepEqual(queryTarget.queries[0].params, [7]);
 });
 test('customer repository supports archived and all record scopes', async () => {
@@ -195,7 +203,8 @@ test('customer repository creates and updates customer rows', async () => {
     enterpriseNature: 'Private',
     companyHighlights: 'Regional leader',
     address: 'Road 1',
-    ownerUserId: 7,
+    coordinatorUserId: 7,
+    actorUserId: 99,
     notes: 'Important'
   });
 
@@ -211,7 +220,8 @@ test('customer repository creates and updates customer rows', async () => {
     'Regional leader',
     'Road 1',
     7,
-    'Important'
+    'Important',
+    99
   ]);
 
   await repository.updateCustomer(10, {
@@ -249,9 +259,9 @@ test('customer repository finds duplicate customers by normalized name', async (
     id: '10',
     customer_code: 'C000010',
     name: 'Acme Co',
-    owner_user_id: '7',
-    owner_display_name: 'Sales One',
-    owner_username: 'sales01',
+    coordinator_user_id: '7',
+    coordinator_display_name: 'Sales One',
+    coordinator_username: 'sales01',
     contact_count: '2'
   }]);
   const repository = createCustomerRepository(queryTarget);
@@ -262,6 +272,9 @@ test('customer repository finds duplicate customers by normalized name', async (
     id: 10,
     customerCode: 'C000010',
     name: 'Acme Co',
+    coordinatorUserId: 7,
+    coordinatorDisplayName: 'Sales One',
+    coordinatorUsername: 'sales01',
     ownerUserId: 7,
     ownerDisplayName: 'Sales One',
     ownerUsername: 'sales01',
@@ -272,6 +285,62 @@ test('customer repository finds duplicate customers by normalized name', async (
   assert.match(queryTarget.queries[0].sql, /c\.id <> \$2/);
   assert.match(queryTarget.queries[0].sql, /LEFT JOIN users u/);
   assert.deepEqual(queryTarget.queries[0].params, ['Acme Co', 99]);
+});
+
+test('customer repository changes the coordinator and appends an audit event atomically', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    id: '10',
+    customer_code: 'C000010',
+    name: 'Acme Co',
+    coordinator_user_id: '8',
+    contact_count: '0'
+  }]);
+  const repository = createCustomerRepository(queryTarget);
+
+  const customer = await repository.updateCoordinator(10, {
+    coordinatorUserId: 8,
+    actorUserId: 2,
+    note: 'Coverage changed'
+  });
+
+  assert.equal(customer.coordinatorUserId, 8);
+  assert.match(queryTarget.queries[0].sql, /FOR UPDATE/);
+  assert.match(queryTarget.queries[0].sql, /INSERT INTO customer_coordination_events/);
+  assert.match(queryTarget.queries[0].sql, /'coordinator_changed'/);
+  assert.deepEqual(queryTarget.queries[0].params, [10, 8, 2, 'Coverage changed']);
+});
+
+test('customer repository maps append-only coordinator history', async () => {
+  const queryTarget = createFakeQueryTarget([{
+    id: '90',
+    event_type: 'coordinator_changed',
+    previous_coordinator_user_id: '7',
+    previous_coordinator_display_name: 'Sales One',
+    coordinator_user_id: '8',
+    coordinator_display_name: 'Sales Two',
+    actor_user_id: '2',
+    actor_display_name: 'Sales Manager',
+    note: 'Coverage changed',
+    created_at: '2026-10-10T01:00:00.000Z'
+  }]);
+  const repository = createCustomerRepository(queryTarget);
+
+  const events = await repository.listCoordinationEvents(10);
+
+  assert.deepEqual(events, [{
+    id: 90,
+    eventType: 'coordinator_changed',
+    previousCoordinatorUserId: 7,
+    previousCoordinatorDisplayName: 'Sales One',
+    coordinatorUserId: 8,
+    coordinatorDisplayName: 'Sales Two',
+    actorUserId: 2,
+    actorDisplayName: 'Sales Manager',
+    note: 'Coverage changed',
+    createdAt: '2026-10-10T01:00:00.000Z'
+  }]);
+  assert.match(queryTarget.queries[0].sql, /FROM customer_coordination_events event/);
+  assert.deepEqual(queryTarget.queries[0].params, [10]);
 });
 
 test('customer repository archives and reopens without deleting the row', async () => {
@@ -291,14 +360,14 @@ test('customer repository archives and reopens without deleting the row', async 
   assert.deepEqual(queryTarget.queries[1].params, [10, 99, 'Archive was incorrect']);
 });
 
-test('contact repository lists and maps contacts with customer owner', async () => {
+test('contact repository lists and maps contacts with customer coordinator', async () => {
   const queryTarget = createFakeQueryTarget([{
     id: '20',
     contact_code: 'CT000020',
     customer_id: '10',
     customer_code: 'C000010',
     customer_name: 'Acme Co',
-    customer_owner_user_id: '7',
+    customer_coordinator_user_id: '7',
     name: 'Alice',
     title: 'Buyer',
     phone: '123',
@@ -311,7 +380,7 @@ test('contact repository lists and maps contacts with customer owner', async () 
   }]);
   const repository = createContactRepository(queryTarget);
 
-  const contacts = await repository.listContacts({ ownerUserId: 7 });
+  const contacts = await repository.listContacts({ coordinatorUserId: 7 });
 
   assert.deepEqual(contacts, [{
     id: 20,
@@ -319,6 +388,7 @@ test('contact repository lists and maps contacts with customer owner', async () 
     customerId: 10,
     customerCode: 'C000010',
     customerName: 'Acme Co',
+    customerCoordinatorUserId: 7,
     customerOwnerUserId: 7,
     name: 'Alice',
     title: 'Buyer',
@@ -333,7 +403,7 @@ test('contact repository lists and maps contacts with customer owner', async () 
   assert.match(queryTarget.queries[0].sql, /JOIN customers c/);
   assert.match(queryTarget.queries[0].sql, /ct\.archived_at IS NULL/);
   assert.match(queryTarget.queries[0].sql, /c\.archived_at IS NULL/);
-  assert.match(queryTarget.queries[0].sql, /c\.owner_user_id = \$1/);
+  assert.match(queryTarget.queries[0].sql, /COALESCE\(c\.coordinator_user_id, c\.owner_user_id\) = \$1/);
 });
 
 test('contact repository archives and reopens without deleting the row', async () => {
@@ -365,14 +435,14 @@ test('contact repository supports archived and all record scopes', async () => {
   assert.doesNotMatch(queryTarget.queries[1].sql, /c\.archived_at IS (?:NOT )?NULL/);
 });
 
-test('contact repository searches contact and customer identity fields inside the owner scope', async () => {
+test('contact repository searches contact and customer identity fields inside the coordinator filter', async () => {
   const queryTarget = createFakeQueryTarget([]);
   const repository = createContactRepository(queryTarget);
 
-  await repository.listContacts({ ownerUserId: 7, customerId: 10, searchTerm: 'CT000_20%' });
+  await repository.listContacts({ coordinatorUserId: 7, customerId: 10, searchTerm: 'CT000_20%' });
 
   const { sql, params } = queryTarget.queries[0];
-  assert.match(sql, /c\.owner_user_id = \$1/);
+  assert.match(sql, /COALESCE\(c\.coordinator_user_id, c\.owner_user_id\) = \$1/);
   assert.match(sql, /ct\.customer_id = \$2/);
   assert.match(sql, /ct\.contact_code ILIKE \$3/);
   assert.match(sql, /ct\.name ILIKE \$3/);
@@ -384,16 +454,16 @@ test('contact repository searches contact and customer identity fields inside th
   assert.deepEqual(params, [7, 10, '%CT000\\_20\\%%']);
 });
 
-test('contact filters combine customer owner, customer, country, archive, and keyword', async () => {
+test('contact filters combine customer coordinator, customer, country, archive, and keyword', async () => {
   const queryTarget = createFakeQueryTarget([]);
   const repository = createContactRepository(queryTarget);
 
   await repository.listContacts({
-    ownerUserId: 7, customerId: 10, country: 'China', archiveScope: 'all', searchTerm: 'Alice'
+    coordinatorUserId: 7, customerId: 10, country: 'China', archiveScope: 'all', searchTerm: 'Alice'
   });
 
   const { sql, params } = queryTarget.queries[0];
-  assert.match(sql, /c\.owner_user_id = \$1/);
+  assert.match(sql, /COALESCE\(c\.coordinator_user_id, c\.owner_user_id\) = \$1/);
   assert.match(sql, /ct\.customer_id = \$2/);
   assert.match(sql, /btrim\(c\.country\) = \$3/);
   assert.match(sql, /ct\.name ILIKE \$4/);

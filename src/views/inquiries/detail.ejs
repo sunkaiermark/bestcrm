@@ -1,7 +1,6 @@
 <% const isWebsiteForm = inquiry.source === 'website'; %>
 <%- include('../partials/app-start', { title: `${inquiry.subject || t(isWebsiteForm ? 'websiteForm' : 'inquiry')} - BESTCRM`, activeNav: 'inquiries' }) %>
         <% const formatFileSize = (bytes) => { const value = Number(bytes || 0); if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`; if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`; return `${value} B`; }; %>
-        <% const canOpenApprovedCustomer = !customerApproval || Number(customerApproval.customerOwnerUserId) === Number(currentUser.id) || (currentUser.roles || []).includes('administrator'); %>
         <p class="breadcrumb"><a href="/inquiries"><%= t(isWebsiteForm ? 'websiteForms' : 'inquiries') %></a></p>
         <header class="page-header inquiry-page-header">
           <div>
@@ -21,10 +20,10 @@
             <% if (inquiry.convertedOpportunityId) { %>
               <a class="quick-action" href="/opportunities/<%= inquiry.convertedOpportunityId %>"><%= t('viewOpportunity') %></a>
             <% } %>
-            <% if (inquiry.matchedCustomerId && canOpenApprovedCustomer) { %>
+            <% if (inquiry.matchedCustomerId) { %>
               <a class="secondary-action" href="/customers/<%= inquiry.matchedCustomerId %>"><%= t('viewCustomer') %></a>
             <% } %>
-            <% if (inquiry.matchedContactId && canOpenApprovedCustomer) { %>
+            <% if (inquiry.matchedContactId) { %>
               <a class="secondary-action" href="/contacts/<%= inquiry.matchedContactId %>"><%= t('viewContact') %></a>
             <% } %>
             <% if (canDeleteInquiry) { %>
@@ -48,25 +47,12 @@
             <h2><%= t('customerCollaborationApproval') %></h2>
             <div class="inquiry-approval-summary">
               <span><strong><%= t('customer') %>:</strong> <%= customerApproval.customerName %></span>
-              <span><strong><%= t('customerCurrentOwner') %>:</strong> <%= customerApproval.customerOwnerDisplayName %></span>
+              <span><strong><%= t('customerCoordinator') %>:</strong> <%= customerApproval.customerOwnerDisplayName %></span>
               <span><strong><%= t('customerApprovalRequester') %>:</strong> <%= customerApproval.requesterDisplayName %></span>
               <span><strong><%= t('customerApprovalReviewer') %>:</strong> <%= customerApproval.reviewerDisplayName %></span>
               <span><strong><%= t('status') %>:</strong> <%= t(`customerApprovalStatus.${customerApproval.status}`) %></span>
             </div>
-            <% if (customerApproval.status === 'pending' && canDecideCustomerApproval) { %>
-              <div class="approval-decision-grid">
-                <form class="form-panel compact-form-panel" method="post" action="/inquiries/<%= inquiry.id %>/customer-approval/<%= customerApproval.id %>/approve">
-                  <%- csrfField() %>
-                  <label><%= t('decisionNote') %><textarea name="decisionNote"></textarea></label>
-                  <button type="submit"><%= t('approveAndCreateOpportunity') %></button>
-                </form>
-                <form class="form-panel compact-form-panel" method="post" action="/inquiries/<%= inquiry.id %>/customer-approval/<%= customerApproval.id %>/reject">
-                  <%- csrfField() %>
-                  <label><%= t('decisionNote') %><textarea name="decisionNote" required></textarea></label>
-                  <button class="danger-action" type="submit"><%= t('rejectAndReturn') %></button>
-                </form>
-              </div>
-            <% } else if (customerApproval.decisionNote) { %>
+            <% if (customerApproval.decisionNote) { %>
               <p class="inquiry-decision-note"><strong><%= t('decisionNote') %>:</strong> <%= customerApproval.decisionNote %></p>
             <% } %>
           </section>
@@ -85,7 +71,7 @@
                   <select name="customerId" id="inquiry-customer-select">
                     <option value=""><%= t('createNewCustomerFromInquiry') %></option>
                     <% for (const customer of customers) { %>
-                      <option value="<%= customer.id %>"<%= Number(inquiry.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.name %></option>
+                      <option value="<%= customer.id %>"<%= Number(inquiry.matchedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
                     <% } %>
                   </select>
                 </label>
@@ -119,18 +105,10 @@
                   <strong><%= t('existingCustomerMatches') %></strong>
                   <% for (const duplicate of duplicateCustomers) { %>
                     <div class="customer-match-card">
-                      <% if (Number(duplicate.ownerUserId) === Number(currentUser.id) || (currentUser.roles || []).includes('administrator')) { %>
-                        <span><a href="/customers/<%= duplicate.id %>"><%= duplicate.name %></a></span>
-                      <% } else { %>
-                        <span><%= duplicate.name %></span>
-                      <% } %>
-                      <span><%= t('owner') %>: <%= duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></span>
+                      <span><a href="/customers/<%= duplicate.id %>"><%= duplicate.customerCode ? `${duplicate.customerCode} · ` : '' %><%= duplicate.name %></a></span>
+                      <span><%= t('customerCoordinator') %>: <%= duplicate.coordinatorDisplayName || duplicate.coordinatorUsername || duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></span>
                       <span><%= t('contacts') %>: <%= duplicate.contactCount %></span>
-                      <% if (Number(duplicate.ownerUserId) === Number(currentUser.id) || (currentUser.roles || []).includes('administrator')) { %>
-                        <span class="muted"><%= t('selectExistingCustomerHint') %></span>
-                      <% } else { %>
-                        <button type="submit" class="secondary-action" formaction="/inquiries/<%= inquiry.id %>/customer-approval" name="approvalCustomerId" value="<%= duplicate.id %>"><%= t('requestCustomerCollaboration') %></button>
-                      <% } %>
+                      <button type="button" class="secondary-action select-existing-customer" data-select-customer-id="<%= duplicate.id %>"><%= t('useExistingCustomer') %></button>
                     </div>
                   <% } %>
                 </div>
@@ -166,16 +144,26 @@
             <section class="content-section inquiry-step-section">
               <h2><span class="inquiry-step-number">3</span><%= t('convertToOpportunity') %></h2>
               <div class="inquiry-form-grid">
+                <label class="inquiry-field-wide">
+                  <%= t('existingOpportunity') %>
+                  <select name="existingOpportunityId" id="inquiry-existing-opportunity-select">
+                    <option value=""><%= t('createIndependentOpportunity') %></option>
+                    <% for (const existingOpportunity of (typeof existingOpportunities !== 'undefined' ? existingOpportunities : [])) { %>
+                      <option value="<%= existingOpportunity.id %>" data-customer-id="<%= existingOpportunity.customerId %>" data-salesperson-id="<%= existingOpportunity.salespersonId %>"><%= existingOpportunity.opportunityNo ? `${existingOpportunity.opportunityNo} · ` : '' %><%= existingOpportunity.title %> · <%= existingOpportunity.salespersonDisplayName || existingOpportunity.salespersonUsername || '' %></option>
+                    <% } %>
+                  </select>
+                  <span class="muted"><%= t('existingOpportunityHint') %></span>
+                </label>
                 <label>
                   <%= t('salesOwner') %>
-                  <select name="salespersonId" required>
+                  <select name="salespersonId" id="inquiry-salesperson-select" required>
                     <option value=""><%= t('selectSalesOwner') %></option>
                     <% for (const salesperson of salespeople) { %>
                       <option value="<%= salesperson.id %>"<%= Number(inquiry.recommendedSalespersonId) === Number(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
                     <% } %>
                   </select>
                 </label>
-                <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" value="<%= inquiry.subject || inquiry.productInterest || inquiry.companyName || '' %>" required></label>
+                <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" id="inquiry-opportunity-title" value="<%= inquiry.subject || inquiry.productInterest || inquiry.companyName || '' %>" required></label>
                 <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount"></label>
                 <label><%= t('deliveryPeriod') %><input name="deliveryCycle"></label>
                 <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate"></label>
@@ -255,6 +243,9 @@
           (() => {
             const customerSelect = document.getElementById('inquiry-customer-select');
             const contactSelect = document.getElementById('inquiry-contact-select');
+            const opportunitySelect = document.getElementById('inquiry-existing-opportunity-select');
+            const salespersonSelect = document.getElementById('inquiry-salesperson-select');
+            const opportunityTitleInput = document.getElementById('inquiry-opportunity-title');
             if (!customerSelect || !contactSelect) return;
             const filterContacts = () => {
               const customerId = customerSelect.value;
@@ -265,8 +256,46 @@
               const selected = contactSelect.selectedOptions[0];
               if (selected && selected.hidden) contactSelect.value = '';
             };
-            customerSelect.addEventListener('change', filterContacts);
+            const filterOpportunities = () => {
+              if (!opportunitySelect) return;
+              const customerId = customerSelect.value;
+              for (const option of opportunitySelect.options) {
+                if (!option.value) continue;
+                const hidden = !customerId || option.dataset.customerId !== customerId;
+                option.hidden = hidden;
+                option.disabled = hidden;
+              }
+              if (opportunitySelect.selectedOptions[0]?.disabled) opportunitySelect.value = '';
+            };
+            const syncExistingOpportunity = () => {
+              const selected = opportunitySelect?.selectedOptions[0];
+              const usesExisting = Boolean(selected?.value);
+              if (salespersonSelect) {
+                if (usesExisting && selected.dataset.salespersonId) {
+                  salespersonSelect.value = selected.dataset.salespersonId;
+                }
+                salespersonSelect.required = !usesExisting;
+              }
+              if (opportunityTitleInput) opportunityTitleInput.required = !usesExisting;
+            };
+            for (const button of document.querySelectorAll('.select-existing-customer')) {
+              button.addEventListener('click', () => {
+                customerSelect.value = button.dataset.selectCustomerId || '';
+                filterContacts();
+                filterOpportunities();
+                syncExistingOpportunity();
+                customerSelect.focus();
+              });
+            }
+            customerSelect.addEventListener('change', () => {
+              filterContacts();
+              filterOpportunities();
+              syncExistingOpportunity();
+            });
+            opportunitySelect?.addEventListener('change', syncExistingOpportunity);
             filterContacts();
+            filterOpportunities();
+            syncExistingOpportunity();
           })();
         </script>
 <%- include('../partials/app-end') %>

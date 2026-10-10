@@ -186,17 +186,21 @@ test('createSalesWorkPlan creates own salesperson plan after validating linked r
   ]);
 });
 
-test('createSalesWorkPlan rejects salesperson links outside their access', async () => {
+test('createSalesWorkPlan allows a salesperson to use a shared customer coordinated by another salesperson', async () => {
   const repositories = buildRepositories({
-    customer: { id: 10, ownerUserId: 8 }
+    customer: { id: 10, coordinatorUserId: 8 }
   });
 
-  await assert.rejects(() => createSalesWorkPlan(repositories, salesperson, {
+  const plan = await createSalesWorkPlan(repositories, salesperson, {
     planDate: '2026-06-27',
     customerId: 10,
     activityType: 'visit',
     subject: 'Customer visit'
-  }), /Forbidden/);
+  });
+
+  assert.equal(plan.salespersonUserId, 7);
+  assert.equal(plan.customerId, 10);
+  assert.deepEqual(repositories.calls.map((call) => call[0]), ['getCustomer', 'createPlan']);
 });
 
 test('sales manager cannot create or update sales work records for salespeople', async () => {

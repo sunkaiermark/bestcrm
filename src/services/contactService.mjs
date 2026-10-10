@@ -86,7 +86,10 @@ export async function createContact({ customerRepository, contactRepository }, a
   }
   const managedInquiry = options.managedInquiry === true
     && (hasRole(actor, ROLES.ADMINISTRATOR) || hasRole(actor, ROLES.SALES_MANAGER));
-  if (!canMaintainCustomer(actor, customer) && !managedInquiry) {
+  const mayAddSharedContact = hasRole(actor, ROLES.SALESPERSON)
+    || hasRole(actor, ROLES.SALES_MANAGER)
+    || hasRole(actor, ROLES.ADMINISTRATOR);
+  if (!canMaintainCustomer(actor, customer) && !managedInquiry && !mayAddSharedContact) {
     forbidden();
   }
   await assertNoDuplicateContact(contactRepository, normalized);

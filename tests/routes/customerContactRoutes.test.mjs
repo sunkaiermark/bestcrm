@@ -10,7 +10,9 @@ async function createLoggedInAgent(options = {}) {
     user: userOverrides = {},
     language,
     customerRepository: customerRepositoryOverrides = {},
-    contactRepository: contactRepositoryOverrides = {}
+    contactRepository: contactRepositoryOverrides = {},
+    opportunityRepository: opportunityRepositoryOverrides = {},
+    userRepository: userRepositoryOverrides = {}
   } = options;
   const user = {
     id: 7,
@@ -34,7 +36,11 @@ async function createLoggedInAgent(options = {}) {
       },
       async findByUsernameWithRoles(username) {
         return username === user.username ? user : null;
-      }
+      },
+      async listUsersByRole() {
+        return [];
+      },
+      ...userRepositoryOverrides
     },
     customerRepository: {
       async listCustomers() {
@@ -147,6 +153,12 @@ async function createLoggedInAgent(options = {}) {
         };
       },
       ...contactRepositoryOverrides
+    },
+    opportunityRepository: {
+      async listOpportunities() {
+        return [];
+      },
+      ...opportunityRepositoryOverrides
     }
   });
   const agent = request.agent(app);
@@ -294,7 +306,78 @@ test('logged in salesperson can view customer list and detail', async () => {
   assert.doesNotMatch(detail.text, /Delete customer/);
 });
 
-test('customer list search preserves owner scope and displays the retained query', async () => {
+test('shared customer detail shows multiple permission-visible opportunities without granting edit control', async () => {
+  const filters = [];
+  const { agent } = await createLoggedInAgent({
+    customerRepository: {
+      async getCustomerDetail(id) {
+        return {
+          id: Number(id),
+          customerCode: 'C000010',
+          name: 'Acme Co',
+          coordinatorUserId: 8,
+          coordinatorDisplayName: 'Sales Two',
+          contacts: []
+        };
+      }
+    },
+    opportunityRepository: {
+      async listOpportunities(filter) {
+        filters.push(filter);
+        return [
+          { id: 30, opportunityNo: 'OPP-000030', title: 'Standard mixer', salespersonDisplayName: 'Sales One', status: 'draft' },
+          { id: 31, opportunityNo: 'OPP-000031', title: 'Custom process line', salespersonDisplayName: 'Sales One', status: 'initiated' }
+        ];
+      }
+    }
+  });
+
+  const detail = await agent.get('/customers/10');
+
+  assert.equal(detail.status, 200);
+  assert.deepEqual(filters, [{ customerId: 10, archiveScope: 'active', visibleToUserId: 7 }]);
+  assert.match(detail.text, /The customer is company-shared/);
+  assert.match(detail.text, /Standard mixer/);
+  assert.match(detail.text, /Custom process line/);
+  assert.doesNotMatch(detail.text, /href="\/customers\/10\/edit"/);
+});
+
+test('sales manager assigns a new customer coordinator with an audit reason', async () => {
+  const changes = [];
+  const { agent } = await createLoggedInAgent({
+    user: { id: 2, username: 'manager', displayName: 'Sales Manager', roles: [ROLES.SALES_MANAGER] },
+    userRepository: {
+      async listUsersByRole(role) {
+        assert.equal(role, ROLES.SALESPERSON);
+        return [{ id: 8, displayName: 'Sales Two', isActive: true, roles: [ROLES.SALESPERSON] }];
+      }
+    },
+    customerRepository: {
+      async getCustomerDetail(id) {
+        return { id: Number(id), name: 'Acme Co', coordinatorUserId: 7, contacts: [] };
+      },
+      async updateCoordinator(id, input) {
+        changes.push([Number(id), input]);
+        return { id: Number(id), coordinatorUserId: input.coordinatorUserId };
+      }
+    }
+  });
+
+  const response = await agent
+    .post('/customers/10/coordinator')
+    .type('form')
+    .send({ coordinatorUserId: '8', note: 'Assign for regional coordination' });
+
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/customers/10');
+  assert.deepEqual(changes, [[10, {
+    coordinatorUserId: 8,
+    actorUserId: 2,
+    note: 'Assign for regional coordination'
+  }]]);
+});
+
+test('customer list search uses company-shared scope and displays the retained query', async () => {
   const filters = [];
   const { agent } = await createLoggedInAgent({
     customerRepository: {
@@ -308,7 +391,7 @@ test('customer list search preserves owner scope and displays the retained query
   const response = await agent.get('/customers').query({ q: '  C000010  ' });
 
   assert.equal(response.status, 200);
-  assert.deepEqual(filters, [{ ownerUserId: 7, searchTerm: 'C000010', archiveScope: 'active' }]);
+  assert.deepEqual(filters, [{ searchTerm: 'C000010', archiveScope: 'active' }]);
   assert.match(response.text, /name="q"[^>]*value="C000010"/);
   assert.match(response.text, /Search by customer code, name, or website/);
 });
@@ -349,10 +432,10 @@ test('administrator can combine customer and contact list filters without wideni
   assert.equal(customers.status, 200);
   assert.equal(contacts.status, 200);
   assert.deepEqual(customerFilters, [{
-    ownerUserId: 9, customerId: 11, country: 'India', searchTerm: 'Beta', archiveScope: 'archived'
+    coordinatorUserId: 9, customerId: 11, country: 'India', searchTerm: 'Beta', archiveScope: 'archived'
   }]);
   assert.deepEqual(contactFilters, [{
-    ownerUserId: 9, customerId: 11, country: 'India', searchTerm: 'Beta', archiveScope: 'archived'
+    coordinatorUserId: 9, customerId: 11, country: 'India', searchTerm: 'Beta', archiveScope: 'archived'
   }]);
   assert.deepEqual(optionFilters, [{ archiveScope: 'archived' }, { archiveScope: 'all' }]);
   for (const response of [customers, contacts]) {
@@ -363,7 +446,7 @@ test('administrator can combine customer and contact list filters without wideni
   }
 });
 
-test('salesperson cannot expand customer or contact search with another owner id', async () => {
+test('salesperson sees shared customers and contacts but cannot apply another coordinator filter', async () => {
   const customerFilters = [];
   const contactFilters = [];
   const optionFilters = [];
@@ -391,11 +474,11 @@ test('salesperson cannot expand customer or contact search with another owner id
 
   assert.equal(customers.status, 200);
   assert.equal(contacts.status, 200);
-  assert.deepEqual(customerFilters, [{ ownerUserId: 7, searchTerm: '', archiveScope: 'active', country: 'China' }]);
-  assert.deepEqual(contactFilters, [{ ownerUserId: 7, searchTerm: '', archiveScope: 'active', country: 'China' }]);
+  assert.deepEqual(customerFilters, [{ searchTerm: '', archiveScope: 'active', country: 'China' }]);
+  assert.deepEqual(contactFilters, [{ searchTerm: '', archiveScope: 'active', country: 'China' }]);
   assert.deepEqual(optionFilters, [
-    { ownerUserId: 7, archiveScope: 'active' },
-    { ownerUserId: 7, archiveScope: 'all' }
+    { archiveScope: 'active' },
+    { archiveScope: 'all' }
   ]);
   assert.doesNotMatch(customers.text, /name="salespersonId"/);
   assert.doesNotMatch(contacts.text, /name="salespersonId"/);
@@ -475,7 +558,7 @@ test('logged in salesperson can view contact list and detail', async () => {
   assert.equal((editForm.text.match(/<label class="contact-form-row(?: contact-form-row-textarea)?">/g) || []).length, 11);
 });
 
-test('contact list search preserves owner scope and displays the retained query', async () => {
+test('contact list search uses company-shared scope and displays the retained query', async () => {
   const filters = [];
   const { agent } = await createLoggedInAgent({
     contactRepository: {
@@ -489,7 +572,7 @@ test('contact list search preserves owner scope and displays the retained query'
   const response = await agent.get('/contacts').query({ q: '  CT000020  ' });
 
   assert.equal(response.status, 200);
-  assert.deepEqual(filters, [{ ownerUserId: 7, searchTerm: 'CT000020', archiveScope: 'active' }]);
+  assert.deepEqual(filters, [{ searchTerm: 'CT000020', archiveScope: 'active' }]);
   assert.match(response.text, /name="q"[^>]*value="CT000020"/);
   assert.match(response.text, /Search by contact code, name, customer, email, phone, or WeChat/);
 });
@@ -547,7 +630,7 @@ test('customer and contact framework text uses selected Chinese language', async
   assert.match(contactDetail.text, />\u5907\u6ce8<\/th>/);
 });
 
-test('customer creation shows duplicate owner coordination warning', async () => {
+test('customer creation shows the shared-customer duplicate warning and coordinator', async () => {
   let createCalled = false;
   const { agent } = await createLoggedInAgent({
     customerRepository: {
@@ -582,7 +665,8 @@ test('customer creation shows duplicate owner coordination warning', async () =>
 
   assert.equal(response.status, 409);
   assert.match(response.text, /Duplicate customer found/);
-  assert.match(response.text, /Coordinate with the responsible person/);
+  assert.match(response.text, /Select the shared customer/);
+  assert.match(response.text, /href="\/customers\/11"/);
   assert.match(response.text, /Other Sales/);
   assert.match(response.text, /value="Acme Co"/);
   assert.equal(createCalled, false);
@@ -626,7 +710,7 @@ test('customer update shows duplicate warning and preserves the edited values', 
 
   assert.equal(response.status, 409);
   assert.match(response.text, /Duplicate customer found/);
-  assert.match(response.text, /creating or renaming another record to the same name/);
+  assert.match(response.text, /Select the shared customer/);
   assert.match(response.text, /Other Sales/);
   assert.match(response.text, /action="\/customers\/10"/);
   assert.match(response.text, /value="Another Acme"/);
@@ -860,7 +944,7 @@ test('non administrators cannot archive customers or contacts directly', async (
   assert.deepEqual(archivedContacts, []);
 });
 
-test('non owners receive forbidden when directly updating customers or contacts', async () => {
+test('non coordinators receive forbidden when directly updating customers or contacts', async () => {
   let customerUpdateCalled = false;
   let contactUpdateCalled = false;
   const { agent } = await createLoggedInAgent({

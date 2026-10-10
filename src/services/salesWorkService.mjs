@@ -1,5 +1,4 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
-import { canMaintainContact, canMaintainCustomer } from './customerService.mjs';
 import { canViewOpportunity } from './opportunityService.mjs';
 
 function forbidden() {
@@ -98,8 +97,8 @@ async function validateSalesWorkLinks(repositories, actor, normalized) {
     if (!customer) {
       throw new Error('Customer not found');
     }
-    if (!canMaintainCustomer(actor, customer)) {
-      forbidden();
+    if (customer.archivedAt) {
+      throw new Error('Customer is archived');
     }
   }
 
@@ -111,8 +110,8 @@ async function validateSalesWorkLinks(repositories, actor, normalized) {
     if (normalized.customerId && Number(contact.customerId) !== Number(normalized.customerId)) {
       throw new Error('Contact does not belong to customer');
     }
-    if (!canMaintainContact(actor, contact)) {
-      forbidden();
+    if (contact.archivedAt) {
+      throw new Error('Contact is archived');
     }
   }
 

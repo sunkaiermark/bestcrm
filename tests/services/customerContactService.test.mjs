@@ -4,6 +4,7 @@ import {
   canMaintainContact,
   canMaintainCustomer,
   archiveCustomer,
+  changeCustomerCoordinator,
   createCustomer,
   DuplicateCustomerError,
   normalizeCustomerWebsite,
@@ -19,9 +20,10 @@ import {
 } from '../../src/services/contactService.mjs';
 import { ROLES } from '../../src/domain/roles.mjs';
 
-test('salesperson maintains only owned customer records', () => {
-  assert.equal(canMaintainCustomer({ id: 7, roles: [ROLES.SALESPERSON] }, { ownerUserId: 7 }), true);
-  assert.equal(canMaintainCustomer({ id: 8, roles: [ROLES.SALESPERSON] }, { ownerUserId: 7 }), false);
+test('salesperson maintains coordinated customer records while sales managers maintain shared customers', () => {
+  assert.equal(canMaintainCustomer({ id: 7, roles: [ROLES.SALESPERSON] }, { coordinatorUserId: 7 }), true);
+  assert.equal(canMaintainCustomer({ id: 8, roles: [ROLES.SALESPERSON] }, { coordinatorUserId: 7 }), false);
+  assert.equal(canMaintainCustomer({ id: 2, roles: [ROLES.SALES_MANAGER] }, { coordinatorUserId: 7 }), true);
 });
 
 test('administrator maintains all customer and contact records', () => {
@@ -30,7 +32,7 @@ test('administrator maintains all customer and contact records', () => {
   assert.equal(canMaintainContact(admin, { customerOwnerUserId: 7 }), true);
 });
 
-test('createCustomer defaults ownership to current salesperson', async () => {
+test('createCustomer defaults coordination to current salesperson and records the actor', async () => {
   const calls = [];
   const customerRepository = {
     async createCustomer(input) {
@@ -53,7 +55,7 @@ test('createCustomer defaults ownership to current salesperson', async () => {
     companyHighlights: 'Regional leader'
   });
 
-  assert.equal(customer.ownerUserId, 7);
+  assert.equal(customer.coordinatorUserId, 7);
   assert.deepEqual(calls, [{
     name: 'Acme Co',
     website: 'https://www.acme.example',
@@ -64,9 +66,44 @@ test('createCustomer defaults ownership to current salesperson', async () => {
     enterpriseNature: 'Private',
     companyHighlights: 'Regional leader',
     address: '',
+    coordinatorUserId: 7,
     ownerUserId: 7,
-    notes: ''
+    notes: '',
+    actorUserId: 7
   }]);
+});
+
+test('sales manager changes the customer coordinator with an audited reason', async () => {
+  const calls = [];
+  const customerRepository = {
+    async getCustomerDetail(id) {
+      return { id: Number(id), coordinatorUserId: 7 };
+    },
+    async updateCoordinator(id, input) {
+      calls.push([id, input]);
+      return { id, coordinatorUserId: input.coordinatorUserId };
+    }
+  };
+  const userRepository = {
+    async listUsersByRole(role) {
+      assert.equal(role, ROLES.SALESPERSON);
+      return [{ id: 8, isActive: true, roles: [ROLES.SALESPERSON] }];
+    }
+  };
+
+  const customer = await changeCustomerCoordinator(
+    { customerRepository, userRepository },
+    { id: 2, roles: [ROLES.SALES_MANAGER] },
+    10,
+    { coordinatorUserId: '8', note: 'Project coverage changed' }
+  );
+
+  assert.equal(customer.coordinatorUserId, 8);
+  assert.deepEqual(calls, [[10, {
+    coordinatorUserId: 8,
+    actorUserId: 2,
+    note: 'Project coverage changed'
+  }]]);
 });
 
 test('normalizeCustomerWebsite accepts full URLs and adds HTTPS to bare domains', () => {
@@ -125,7 +162,7 @@ test('createCustomer maps a concurrent database uniqueness conflict to the domai
   assert.equal(lookupCount, 2);
 });
 
-test('updateCustomer rejects non-owner salesperson', async () => {
+test('updateCustomer rejects a salesperson who is not the customer coordinator', async () => {
   const customerRepository = {
     async getCustomerDetail() {
       return { id: 10, ownerUserId: 7 };
@@ -204,11 +241,11 @@ test('archive and reopen customer require an administrator, actor identity, and 
   assert.equal(calls.length, 2);
 });
 
-test('createContact checks customer ownership before insert', async () => {
+test('createContact lets a salesperson add a contact to a shared customer', async () => {
   const calls = [];
   const customerRepository = {
     async getCustomerDetail(customerId) {
-      return { id: customerId, ownerUserId: 7 };
+      return { id: customerId, coordinatorUserId: 8 };
     }
   };
   const contactRepository = {
@@ -305,7 +342,7 @@ test('createContact maps a concurrent database uniqueness conflict to the domain
   assert.equal(lookupCount, 2);
 });
 
-test('updateContact rejects non-owner salesperson', async () => {
+test('updateContact rejects a salesperson who is not the customer coordinator', async () => {
   const contactRepository = {
     async getContactDetail() {
       return { id: 20, customerOwnerUserId: 7 };

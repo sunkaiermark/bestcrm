@@ -885,7 +885,7 @@ export function opportunityRoutes({
             primaryContactId: matchedCustomer ? emailContext.draft.primaryContactId : null,
             productInterest: emailContext.draft.productInterest,
             productCategoryCode: emailContext.draft.productCategoryCode,
-            salespersonId: matchedCustomer?.ownerUserId || emailContext.draft.salespersonId || salespeople[0]?.id || null
+            salespersonId: emailContext.draft.salespersonId || salespeople[0]?.id || null
           }
         : { salespersonId: salespeople[0]?.id || null };
       res.render('opportunities/form', {
@@ -973,10 +973,9 @@ export function opportunityRoutes({
         res.status(403).send('Forbidden');
         return;
       }
-      const filter = hasRole(req.currentUser, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: req.currentUser.id };
       const [customers, contacts] = await Promise.all([
-        customerRepository.listCustomers(filter),
-        contactRepository.listContacts(filter)
+        customerRepository.listCustomers({}),
+        contactRepository.listContacts({})
       ]);
       res.render('opportunities/form', {
         pageTitle: 'Edit Opportunity',

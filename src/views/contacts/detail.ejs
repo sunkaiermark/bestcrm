@@ -4,7 +4,7 @@
           <h1><%= [contact.contactCode, contact.name].filter(Boolean).join(' · ') %></h1>
           <div class="page-actions">
             <a class="secondary-action" href="/contacts"><%= t('backToList') %></a>
-            <% if (!contact.archivedAt) { %><a class="quick-action" href="/contacts/<%= contact.id %>/edit"><%= t('editContact') %></a><% } %>
+            <% if (typeof canEditContact !== 'undefined' && canEditContact) { %><a class="quick-action" href="/contacts/<%= contact.id %>/edit"><%= t('editContact') %></a><% } %>
             <% if (typeof canArchiveContact !== 'undefined' && canArchiveContact) { %>
               <form method="post" action="/contacts/<%= contact.id %>/archive">
                 <%- csrfField() %>

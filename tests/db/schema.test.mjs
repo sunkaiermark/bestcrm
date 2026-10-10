@@ -87,6 +87,7 @@ const technicalDocumentCustomerReleaseMigrationPath = new URL('../../src/db/migr
 const salesCommercialQuotationDraftMigrationPath = new URL('../../src/db/migrations/100_sales_commercial_quotation_drafts.sql', import.meta.url);
 const quotationSellerEntityMigrationPath = new URL('../../src/db/migrations/102_quotation_draft_seller_entity.sql', import.meta.url);
 const userRepresentedCompanyMigrationPath = new URL('../../src/db/migrations/108_user_represented_company.sql', import.meta.url);
+const sharedCustomersMigrationPath = new URL('../../src/db/migrations/109_shared_customers_and_opportunity_links.sql', import.meta.url);
 const quotationStandardTermsMigrationPath = new URL('../../src/db/migrations/103_quotation_draft_standard_terms.sql', import.meta.url);
 const uploadedTechnicalFileWithdrawalEventMigrationPath = new URL('../../src/db/migrations/101_uploaded_technical_file_withdrawal_event.sql', import.meta.url);
 
@@ -120,6 +121,23 @@ test('users have one constrained represented company with a safe existing-user d
   const sql = await readFile(userRepresentedCompanyMigrationPath, 'utf8');
   assert.match(sql, /represented_company_code text NOT NULL DEFAULT 'sunkaier_apac'/);
   assert.match(sql, /represented_company_code IN \('sunkaier_apac', 'sunkaier_china'\)/);
+});
+
+test('shared customer migration separates coordination from opportunity ownership and audits inquiry links', async () => {
+  const sql = await readFile(sharedCustomersMigrationPath, 'utf8');
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS coordinator_user_id bigint/);
+  assert.match(sql, /SET coordinator_user_id = owner_user_id/);
+  assert.match(sql, /bestcrm_sync_customer_coordinator/);
+  assert.match(sql, /It is not customer ownership or an opportunity access boundary/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS customer_coordination_events/);
+  assert.match(sql, /'coordinator_assigned'/);
+  assert.match(sql, /'coordinator_changed'/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_opportunity_link_events/);
+  assert.match(sql, /link_kind text NOT NULL CHECK \(link_kind IN \('created', 'existing'\)\)/);
+  assert.match(sql, /status IN \('pending', 'approved', 'rejected', 'superseded'\)/);
+  assert.match(sql, /status = 'superseded'/);
+  assert.match(sql, /events are append-only/);
+  assert.doesNotMatch(sql, /DELETE FROM customers|DELETE FROM opportunities|DELETE FROM inquiries/);
 });
 
 test('technical-file customer release defaults old files to internal and guards exact-version external use', async () => {

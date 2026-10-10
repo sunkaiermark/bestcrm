@@ -12,11 +12,11 @@
             </label>
             <% if (showSalesOwnerFilter) { %>
               <label>
-                <%= t('salesOwner') %>
+                <%= t('customerCoordinator') %>
                 <select name="salespersonId">
-                  <option value=""><%= t('allSalesOwners') %></option>
-                  <% for (const owner of filterOptions.salesOwners) { %>
-                    <option value="<%= owner.id %>"<%= filters.salespersonId === owner.id ? ' selected' : '' %>><%= owner.displayName %></option>
+                  <option value=""><%= t('allCustomerCoordinators') %></option>
+                  <% for (const coordinator of (filterOptions.salesCoordinators || filterOptions.salesOwners || [])) { %>
+                    <option value="<%= coordinator.id %>"<%= filters.salespersonId === coordinator.id ? ' selected' : '' %>><%= coordinator.displayName %></option>
                   <% } %>
                 </select>
               </label>
@@ -59,6 +59,7 @@
                   <th scope="col"><%= t('industry') %></th>
                   <th scope="col"><%= t('country') %></th>
                   <th scope="col"><%= t('region') %></th>
+                  <th scope="col"><%= t('customerCoordinator') %></th>
                   <th scope="col"><%= t('contacts') %></th>
                 </tr>
               </thead>
@@ -70,6 +71,7 @@
                     <td data-label="<%= t('industry') %>"><%= customer.industry %></td>
                     <td data-label="<%= t('country') %>"><%= customer.country %></td>
                     <td data-label="<%= t('region') %>"><%= customer.region %></td>
+                    <td data-label="<%= t('customerCoordinator') %>"><%= customer.coordinatorDisplayName || customer.coordinatorUsername || '-' %></td>
                     <td data-label="<%= t('contacts') %>"><%= customer.contactCount %></td>
                   </tr>
                 <% } %>

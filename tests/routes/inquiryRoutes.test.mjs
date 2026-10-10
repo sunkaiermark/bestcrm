@@ -61,6 +61,8 @@ async function createLoggedInAgent(options = {}) {
     contactRepository: contactRepositoryOverrides = {},
     approvalSettingRepository: approvalSettingRepositoryOverrides = {},
     attachmentRepository: attachmentRepositoryOverrides = {},
+    opportunityRepository: opportunityRepositoryOverrides = {},
+    emailArchiveTransaction = null,
     additionalUsers = [],
     uploadDir = './var/uploads'
   } = options;
@@ -200,10 +202,15 @@ async function createLoggedInAgent(options = {}) {
       ...approvalSettingRepositoryOverrides
     },
     opportunityRepository: {
+      async listOpportunities(filter) {
+        calls.push(['listOpportunities', filter]);
+        return [];
+      },
       async createOpportunity(input) {
         calls.push(['createOpportunity', input]);
         return { id: 40, ...input };
-      }
+      },
+      ...opportunityRepositoryOverrides
     },
     attachmentRepository: {
       async createAttachment(input) {
@@ -219,7 +226,8 @@ async function createLoggedInAgent(options = {}) {
       },
       ...attachmentIntegrityRepositoryOverrides
     },
-    uploadDir
+    uploadDir,
+    emailArchiveTransaction
   });
   const agent = request.agent(app);
   if (language) {
@@ -511,7 +519,7 @@ test('website forms page does not expose a manual inquiry form', async () => {
 });
 
 test('inquiry detail supports review and conversion forms', async () => {
-  const { agent } = await createLoggedInAgent();
+  const { agent, calls } = await createLoggedInAgent();
 
   const response = await agent.get('/inquiries/11');
 
@@ -529,6 +537,37 @@ test('inquiry detail supports review and conversion forms', async () => {
   assert.doesNotMatch(response.text, /action="\/inquiries\/11\/save-customer"/);
   assert.doesNotMatch(response.text, /action="\/inquiries\/11\/save-contact"/);
   assert.match(response.text, /name="opportunityType" value="Expansion"/);
+  assert.deepEqual(calls.find((call) => call[0] === 'listOpportunities'), [
+    'listOpportunities',
+    { archiveScope: 'active', visibleToUserId: 7 }
+  ]);
+});
+
+test('inquiry detail offers permission-visible existing opportunities for same-project classification', async () => {
+  const filters = [];
+  const { agent } = await createLoggedInAgent({
+    opportunityRepository: {
+      async listOpportunities(filter) {
+        filters.push(filter);
+        return [{
+          id: 41,
+          opportunityNo: 'OPP-000041',
+          title: 'Acme evaporation line',
+          customerId: 20,
+          salespersonId: 8,
+          salespersonDisplayName: 'Sales Two',
+          status: 'draft'
+        }];
+      }
+    }
+  });
+
+  const response = await agent.get('/inquiries/11');
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(filters, [{ archiveScope: 'active', visibleToUserId: 7 }]);
+  assert.match(response.text, /<option value="41" data-customer-id="20" data-salesperson-id="8">OPP-000041 · Acme evaporation line · Sales Two<\/option>/);
+  assert.match(response.text, /Different project — create an independent opportunity/);
 });
 
 test('generic inquiry routes do not expose sales leads or their legacy actions', async () => {
@@ -633,12 +672,12 @@ test('inquiry detail shows imported email attachments with preview and download 
   }
 });
 
-test('cross-sales duplicate customer is shown without a customer link and can be sent for manager approval', async () => {
+test('duplicate customer can be selected as shared and the retired approval route returns gone', async () => {
   const foreignCustomer = {
     id: 22,
     name: 'Acme Co',
-    ownerUserId: 9,
-    ownerDisplayName: 'Sales Two',
+    coordinatorUserId: 9,
+    coordinatorDisplayName: 'Sales Two',
     contactCount: 2
   };
   const { agent, calls } = await createLoggedInAgent({
@@ -663,8 +702,11 @@ test('cross-sales duplicate customer is shown without a customer link and can be
   assert.equal(detail.status, 200);
   assert.match(detail.text, /Existing customer matches/);
   assert.match(detail.text, /Sales Two/);
-  assert.match(detail.text, /formaction="\/inquiries\/11\/customer-approval"/);
-  assert.doesNotMatch(detail.text, /href="\/customers\/22"/);
+  assert.match(detail.text, /href="\/customers\/22"/);
+  assert.match(detail.text, /data-select-customer-id="22"/);
+  assert.match(detail.text, /Existing opportunity for the same project/);
+  assert.match(detail.text, /For the same project, link this inquiry to the existing opportunity/);
+  assert.doesNotMatch(detail.text, /formaction="\/inquiries\/11\/customer-approval"/);
 
   const requested = await agent
     .post('/inquiries/11/customer-approval')
@@ -680,21 +722,15 @@ test('cross-sales duplicate customer is shown without a customer link and can be
       opportunityType: 'Expansion'
     });
 
-  assert.equal(requested.status, 302);
-  assert.equal(requested.headers.location, '/inquiries/11');
-  const approvalCall = calls.find((call) => call[0] === 'createCustomerApproval');
-  assert.equal(approvalCall[1].customerId, 22);
-  assert.equal(approvalCall[1].reviewerUserId, 2);
-  assert.equal(approvalCall[1].matchedContactId, null);
-  assert.equal(approvalCall[1].requestPayload.primaryContactId, null);
-  assert.equal(approvalCall[1].requestPayload.salespersonId, 8);
+  assert.equal(requested.status, 410);
+  assert.match(requested.text, /workflow is retired/);
+  assert.equal(calls.some((call) => call[0] === 'createCustomerApproval'), false);
 });
 
-test('assigned sales manager sees a pending collaboration request and approves its opportunity', async () => {
-  const approvalCalls = [];
+test('sales manager sees a superseded collaboration request as read-only history', async () => {
   const pendingInquiry = {
     ...inquiry,
-    status: 'customer_approval_pending',
+    status: 'reviewing',
     assignedUserId: 2,
     matchedCustomerId: 22,
     matchedContactId: null
@@ -710,7 +746,7 @@ test('assigned sales manager sees a pending collaboration request and approves i
     customerOwnerDisplayName: 'Sales Two',
     reviewerUserId: 2,
     reviewerDisplayName: 'Sales Manager',
-    status: 'pending',
+    status: 'superseded',
     requestPayload: {
       salespersonId: 8,
       primaryContactId: null,
@@ -718,7 +754,7 @@ test('assigned sales manager sees a pending collaboration request and approves i
       title: 'Acme project',
       requirement: 'Need quote'
     },
-    decisionNote: ''
+    decisionNote: 'Superseded by the shared-customer policy.'
   };
   const { agent } = await createLoggedInAgent({
     user: {
@@ -735,14 +771,6 @@ test('assigned sales manager sees a pending collaboration request and approves i
     inquiryCustomerApprovalRepository: {
       async findLatestByInquiry() {
         return pendingApproval;
-      },
-      async findById(id) {
-        approvalCalls.push(['findApproval', Number(id)]);
-        return pendingApproval;
-      },
-      async completeApproval(id, input) {
-        approvalCalls.push(['complete', id, input]);
-        return { id: 40, title: input.title, customerId: 22, salespersonId: 7 };
       }
     }
   });
@@ -750,22 +778,10 @@ test('assigned sales manager sees a pending collaboration request and approves i
   const detail = await agent.get('/inquiries/11');
   assert.equal(detail.status, 200);
   assert.match(detail.text, /Customer collaboration approval/);
-  assert.match(detail.text, /action="\/inquiries\/11\/customer-approval\/80\/approve"/);
-  assert.match(detail.text, /Approve and create opportunity/);
-  assert.doesNotMatch(detail.text, /href="\/customers\/22"/);
-
-  const approved = await agent
-    .post('/inquiries/11/customer-approval/80/approve')
-    .type('form')
-    .send({ decisionNote: 'Approved' });
-
-  assert.equal(approved.status, 302);
-  assert.equal(approved.headers.location, '/opportunities/40');
-  assert.deepEqual(approvalCalls[0], ['findApproval', 80]);
-  assert.equal(approvalCalls[1][0], 'complete');
-  assert.equal(approvalCalls[1][2].decidedBy, 2);
-  assert.equal(approvalCalls[1][2].decisionNote, 'Approved');
-  assert.equal(approvalCalls[1][2].inquiryId, 11);
+  assert.match(detail.text, /Superseded/);
+  assert.match(detail.text, /Superseded by the shared-customer policy/);
+  assert.doesNotMatch(detail.text, /customer-approval\/80\/approve/);
+  assert.doesNotMatch(detail.text, /Approve and create opportunity/);
 });
 
 test('sales manager reviews inquiry and converts it to opportunity', async () => {
@@ -849,6 +865,105 @@ test('sales manager reviews inquiry and converts it to opportunity', async () =>
       reviewedBy: 7
     }]
   ]);
+});
+
+test('existing-opportunity conversion updates inquiry link and email state inside the configured transaction', async () => {
+  const transactionCalls = [];
+  const txInquiry = { ...inquiry, matchedContactId: 30 };
+  const emailArchiveTransaction = async (callback) => {
+    transactionCalls.push(['begin']);
+    const result = await callback({
+      inquiryRepository: {
+        async findById(id) {
+          transactionCalls.push(['findInquiry', Number(id)]);
+          return Number(id) === txInquiry.id ? txInquiry : null;
+        },
+        async markConverted(id, input) {
+          transactionCalls.push(['markConverted', Number(id), input]);
+          return { ...txInquiry, status: 'converted', ...input };
+        },
+        async recordOpportunityLink(input) {
+          transactionCalls.push(['recordOpportunityLink', input]);
+          return { id: 91, ...input };
+        }
+      },
+      opportunityRepository: {
+        async getOpportunityDetail(id) {
+          transactionCalls.push(['getOpportunity', Number(id)]);
+          return {
+            id: 41,
+            opportunityNo: 'OPP-000041',
+            customerId: 20,
+            salespersonId: 8,
+            salesManagerId: 7,
+            status: 'draft'
+          };
+        }
+      },
+      customerRepository: {
+        async getCustomerDetail(id) {
+          transactionCalls.push(['getCustomer', Number(id)]);
+          return { id: Number(id), coordinatorUserId: 9 };
+        }
+      },
+      contactRepository: {
+        async getContactDetail(id) {
+          transactionCalls.push(['getContact', Number(id)]);
+          return { id: Number(id), customerId: 20 };
+        }
+      },
+      inquiryAttachmentRepository: {
+        async listByInquiry(id) {
+          transactionCalls.push(['listInquiryAttachments', Number(id)]);
+          return [];
+        }
+      },
+      attachmentRepository: {},
+      emailArchiveRepository: {
+        async findLatestThreadByInquiry(id) {
+          transactionCalls.push(['findThread', Number(id)]);
+          return null;
+        }
+      }
+    });
+    transactionCalls.push(['commit']);
+    return result;
+  };
+  const { agent, calls } = await createLoggedInAgent({
+    emailArchiveTransaction,
+    opportunityRepository: {
+      async createOpportunity() {
+        assert.fail('the outer repository must not create a duplicate opportunity');
+      }
+    }
+  });
+
+  const converted = await agent
+    .post('/inquiries/11/convert')
+    .type('form')
+    .send({
+      existingOpportunityId: '41',
+      customerId: '20',
+      primaryContactId: '30',
+      salespersonId: '',
+      createMissingRecords: '1'
+    });
+
+  assert.equal(converted.status, 302);
+  assert.equal(converted.headers.location, '/opportunities/41');
+  assert.deepEqual(transactionCalls.map((call) => call[0]), [
+    'begin',
+    'findInquiry',
+    'getOpportunity',
+    'getCustomer',
+    'getContact',
+    'markConverted',
+    'recordOpportunityLink',
+    'findThread',
+    'commit'
+  ]);
+  assert.equal(transactionCalls.find((call) => call[0] === 'recordOpportunityLink')[1].linkKind, 'existing');
+  assert.equal(calls.some((call) => call[0] === 'createOpportunity'), false);
 });
 
 test('converting an inquiry copies imported email attachments to opportunity requirement files', async () => {

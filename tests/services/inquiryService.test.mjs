@@ -2,7 +2,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
-  CustomerApprovalRequiredError,
   approveInquiryCustomerApproval,
   canAccessInquiryInbox,
   canDeleteInquiry,
@@ -310,6 +309,121 @@ test('convertInquiryToOpportunity creates draft opportunity and marks inquiry co
   ]);
 });
 
+test('conversion classifies the same project into an existing opportunity and synchronizes the email thread audit', async () => {
+  const calls = [];
+  const existingOpportunity = {
+    id: 41,
+    opportunityNo: 'OPP-000041',
+    customerId: 20,
+    salespersonId: 8,
+    salesManagerId: 7,
+    status: 'draft'
+  };
+  const repositories = {
+    inquiryRepository: {
+      async markConverted(id, input) {
+        calls.push(['markConverted', id, input]);
+        return { id, ...input, status: 'converted' };
+      },
+      async recordOpportunityLink(input) {
+        calls.push(['recordOpportunityLink', input]);
+        return { id: 91, ...input };
+      }
+    },
+    customerRepository: {
+      async getCustomerDetail(id) {
+        calls.push(['getCustomer', id]);
+        return { id, coordinatorUserId: 9 };
+      }
+    },
+    contactRepository: {},
+    opportunityRepository: {
+      async getOpportunityDetail(id) {
+        calls.push(['getOpportunity', id]);
+        return existingOpportunity;
+      },
+      async createOpportunity() {
+        assert.fail('an existing opportunity must not be duplicated');
+      }
+    },
+    emailArchiveRepository: {
+      async findLatestThreadByInquiry(inquiryId) {
+        calls.push(['findThread', inquiryId]);
+        return {
+          id: 70,
+          triageStatus: 'converted_inquiry',
+          archiveDisposition: 'active',
+          triageAssignedUserId: 7,
+          opportunityId: 41
+        };
+      },
+      async linkConvertedInquiryThreadToOpportunity(input) {
+        calls.push(['linkThread', input]);
+        return true;
+      },
+      async transitionThreadTriage(input) {
+        calls.push(['transitionThread', input]);
+        return true;
+      },
+      async createTriageEvent(input) {
+        calls.push(['createTriageEvent', input]);
+        return { id: 92, ...input };
+      }
+    }
+  };
+
+  const opportunity = await convertInquiryToOpportunity(repositories, inquiryManager, {
+    id: 11,
+    status: 'reviewing',
+    subject: 'Existing project follow-up',
+    requirementText: 'Additional specification',
+    matchedCustomerId: 20,
+    matchedContactId: null
+  }, {
+    existingOpportunityId: '41',
+    customerId: '20'
+  }, { copyAttachments: false });
+
+  assert.equal(opportunity, existingOpportunity);
+  assert.equal(calls.some((call) => call[0] === 'createOpportunity'), false);
+  assert.deepEqual(calls.find((call) => call[0] === 'recordOpportunityLink')[1], {
+    inquiryId: 11,
+    customerId: 20,
+    opportunityId: 41,
+    linkKind: 'existing',
+    actorUserId: 7,
+    source: 'inquiry_conversion',
+    note: 'Inquiry classified into an existing opportunity for the same project.'
+  });
+  assert.deepEqual(calls.find((call) => call[0] === 'linkThread')[1], {
+    threadId: 70,
+    inquiryId: 11,
+    opportunityId: 41,
+    customerId: 20,
+    contactId: null
+  });
+  assert.equal(calls.find((call) => call[0] === 'transitionThread')[1].triageStatus, 'linked_opportunity');
+  assert.equal(calls.find((call) => call[0] === 'createTriageEvent')[1].eventType, 'linked_opportunity');
+});
+
+test('existing-opportunity conversion rejects an opportunity outside the inquiry manager visibility scope', async () => {
+  await assert.rejects(() => convertInquiryToOpportunity({
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return { id: 41, customerId: 20, salespersonId: 8, salesManagerId: 2, status: 'draft' };
+      }
+    }
+  }, inquiryManager, {
+    id: 11,
+    status: 'reviewing',
+    matchedCustomerId: 20,
+    requirementText: 'Need quote'
+  }, {
+    existingOpportunityId: '41',
+    customerId: '20'
+  }, { copyAttachments: false }), /Forbidden/);
+});
+
 test('conversion can create missing customer and contact from extracted inquiry fields', async () => {
   const calls = [];
   const repositories = {
@@ -381,118 +495,57 @@ test('conversion can create missing customer and contact from extracted inquiry 
   assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].projectType, 'Expansion');
 });
 
-test('conversion requires approval instead of duplicating another salesperson customer', async () => {
+test('conversion creates an independent opportunity under a shared customer coordinated by another salesperson', async () => {
+  const calls = [];
   const repositories = {
     userRepository: {
       async listUsersWithRoles() {
         return [salesOwner];
       }
     },
-    inquiryRepository: {},
+    inquiryRepository: {
+      async markConverted(id, input) {
+        calls.push(['markConverted', id, input]);
+        return { id, ...input, status: 'converted' };
+      }
+    },
     customerRepository: {
       async getCustomerDetail(id) {
-        return { id, name: 'Acme', ownerUserId: 8 };
+        return { id, name: 'Acme', coordinatorUserId: 8 };
       }
     },
     contactRepository: {},
     opportunityRepository: {
-      async createOpportunity() {
-        assert.fail('opportunity must not be created before approval');
+      async createOpportunity(input) {
+        calls.push(['createOpportunity', input]);
+        return { id: 40, ...input };
       }
     }
   };
 
-  await assert.rejects(
-    () => convertInquiryToOpportunity(repositories, inquiryManager, {
-      id: 11,
-      status: 'reviewing',
-      assignedUserId: 7,
-      subject: 'Acme project',
-      requirementText: 'Need quote',
-      matchedCustomerId: 20,
-      matchedContactId: null
-    }, { salespersonId: '9' }),
-    (error) => error instanceof CustomerApprovalRequiredError
-      && error.customer.ownerUserId === 8
-  );
-});
-
-test('cross-sales customer request is assigned to a sales manager with proposed contact and opportunity data', async () => {
-  const calls = [];
-  const repositories = {
-    customerRepository: {
-      async getCustomerDetail(id) {
-        return { id, name: 'Acme', ownerUserId: 8 };
-      }
-    },
-    contactRepository: {},
-    approvalSettingRepository: {
-      async findActiveByKey(key) {
-        calls.push(['findSetting', key]);
-        return null;
-      }
-    },
-    userRepository: {
-      async listUsersWithRoles() {
-        return [salesOwner, { id: 2, displayName: 'Sales Manager', isActive: true, roles: [ROLES.SALES_MANAGER] }];
-      }
-    },
-    inquiryCustomerApprovalRepository: {
-      async createPending(input) {
-        calls.push(['createPending', input]);
-        return { id: 80, status: 'pending', ...input };
-      }
-    }
-  };
-
-  const approval = await requestInquiryCustomerApproval(repositories, inquiryManager, {
+  const opportunity = await convertInquiryToOpportunity(repositories, inquiryManager, {
     id: 11,
     status: 'reviewing',
     assignedUserId: 7,
-    companyName: 'Acme',
-    contactName: 'Alice',
-    contactEmail: 'alice@example.com',
-    productInterest: 'Evaporator',
-    opportunityType: 'Expansion',
+    subject: 'Acme project',
     requirementText: 'Need quote',
-    subject: 'Acme project'
-  }, {
-    approvalCustomerId: '20',
-    salespersonId: '9',
-    contactName: 'Alice Ahmed',
-    contactEmail: 'alice.ahmed@example.com',
-    requirementText: 'Updated requirement',
-    opportunityType: 'New project'
-  });
+    matchedCustomerId: 20,
+    matchedContactId: null
+  }, { salespersonId: '9' });
 
-  assert.equal(approval.reviewerUserId, 2);
-  assert.deepEqual(calls[0], ['findSetting', 'inquiry_customer_access']);
-  assert.deepEqual(calls[1][1], {
-    inquiryId: 11,
-    customerId: 20,
-    requestedBy: 7,
-    customerOwnerUserId: 8,
-    reviewerUserId: 2,
-    matchedContactId: null,
-    requestPayload: {
-      salespersonId: 9,
-      primaryContactId: null,
-      newContactName: 'Alice Ahmed',
-      newContactTitle: '',
-      newContactPhone: '',
-      newContactEmail: 'alice.ahmed@example.com',
-      newContactNotes: 'Updated requirement',
-      title: 'Acme project',
-      requirement: 'Updated requirement',
-      estimatedAmount: null,
-      productInterest: 'Evaporator',
-      productCategoryCode: '',
-      confirmedProductCategoryCodes: [],
-      projectType: 'New project',
-      deliveryCycle: '',
-      expectedBidDate: null
-    }
-  });
+  assert.equal(opportunity.customerId, 20);
+  assert.equal(opportunity.salespersonId, 9);
+  assert.equal(calls.filter((call) => call[0] === 'createOpportunity').length, 1);
+  assert.equal(calls.filter((call) => call[0] === 'markConverted').length, 1);
+});
+
+test('legacy cross-sales customer approval requests are retired for shared customers', async () => {
+  await assert.rejects(() => requestInquiryCustomerApproval({}, inquiryManager, {
+    id: 11,
+    status: 'reviewing',
+    assignedUserId: 7,
+    requirementText: 'Need quote'
+  }, { approvalCustomerId: '20' }), /workflow is retired/);
 });
 
 test('sales manager approval creates the opportunity for the requesting inquiry manager', async () => {

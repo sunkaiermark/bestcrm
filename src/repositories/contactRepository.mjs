@@ -8,7 +8,12 @@ function mapContactRow(row) {
     customerId: Number(row.customer_id),
     customerCode: row.customer_code || '',
     customerName: row.customer_name || '',
-    customerOwnerUserId: Number(row.customer_owner_user_id),
+    customerCoordinatorUserId: Number(
+      row.customer_coordinator_user_id ?? row.customer_owner_user_id
+    ),
+    customerOwnerUserId: Number(
+      row.customer_coordinator_user_id ?? row.customer_owner_user_id
+    ),
     name: row.name,
     title: row.title || '',
     phone: row.phone || '',
@@ -33,7 +38,7 @@ const contactSelect = `
     ct.customer_id,
     c.customer_code,
     c.name AS customer_name,
-    c.owner_user_id AS customer_owner_user_id,
+    COALESCE(c.coordinator_user_id, c.owner_user_id) AS customer_coordinator_user_id,
     ct.name,
     ct.title,
     ct.phone,
@@ -94,9 +99,10 @@ export function createContactRepository(queryTarget) {
         where.push('ct.archived_at IS NULL');
         where.push('c.archived_at IS NULL');
       }
-      if (filter.ownerUserId) {
-        params.push(filter.ownerUserId);
-        where.push(`c.owner_user_id = $${params.length}`);
+      const coordinatorUserId = filter.coordinatorUserId || filter.ownerUserId;
+      if (coordinatorUserId) {
+        params.push(coordinatorUserId);
+        where.push(`COALESCE(c.coordinator_user_id, c.owner_user_id) = $${params.length}`);
       }
       if (filter.customerId) {
         params.push(filter.customerId);
@@ -160,7 +166,7 @@ export function createContactRepository(queryTarget) {
           inserted.customer_id,
           c.customer_code,
           c.name AS customer_name,
-          c.owner_user_id AS customer_owner_user_id,
+          COALESCE(c.coordinator_user_id, c.owner_user_id) AS customer_coordinator_user_id,
           inserted.name,
           inserted.title,
           inserted.phone,
@@ -211,7 +217,7 @@ export function createContactRepository(queryTarget) {
           updated.customer_id,
           c.customer_code,
           c.name AS customer_name,
-          c.owner_user_id AS customer_owner_user_id,
+          COALESCE(c.coordinator_user_id, c.owner_user_id) AS customer_coordinator_user_id,
           updated.name,
           updated.title,
           updated.phone,

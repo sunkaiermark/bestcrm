@@ -12,11 +12,11 @@
             </label>
             <% if (showSalesOwnerFilter) { %>
               <label>
-                <%= t('salesOwner') %>
+                <%= t('customerCoordinator') %>
                 <select name="salespersonId">
-                  <option value=""><%= t('allSalesOwners') %></option>
-                  <% for (const owner of filterOptions.salesOwners) { %>
-                    <option value="<%= owner.id %>"<%= filters.salespersonId === owner.id ? ' selected' : '' %>><%= owner.displayName %></option>
+                  <option value=""><%= t('allCustomerCoordinators') %></option>
+                  <% for (const coordinator of (filterOptions.salesCoordinators || filterOptions.salesOwners || [])) { %>
+                    <option value="<%= coordinator.id %>"<%= filters.salespersonId === coordinator.id ? ' selected' : '' %>><%= coordinator.displayName %></option>
                   <% } %>
                 </select>
               </label>

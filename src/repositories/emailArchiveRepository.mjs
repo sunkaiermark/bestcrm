@@ -1264,7 +1264,7 @@ export function createEmailArchiveRepository(queryTarget) {
           updated_at = now()
         WHERE id = $1
           AND inquiry_id = $2
-          AND opportunity_id IS NULL
+          AND (opportunity_id IS NULL OR opportunity_id = $3)
           AND triage_status = 'converted_inquiry'
         RETURNING *
       `, [

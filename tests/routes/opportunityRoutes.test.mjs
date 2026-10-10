@@ -946,8 +946,9 @@ test('sales manager can create an opportunity directly for an existing customer'
   assert.match(form.text, /name="salespersonId"/);
   assert.match(form.text, /Team Member/);
   assert.match(form.text, /id="opportunity-customer"/);
-  assert.match(form.text, /data-owner-user-id="8"/);
-  assert.match(form.text, /option\.dataset\.ownerUserId !== salespersonId/);
+  assert.doesNotMatch(form.text, /data-owner-user-id/);
+  assert.doesNotMatch(form.text, /option\.dataset\.ownerUserId !== salespersonId/);
+  assert.match(form.text, /<option value="10"\s*>C000010 · Acme Co<\/option>/);
   assert.match(form.text, /Create an opportunity directly for an existing customer/);
 
   const response = await agent.post('/opportunities').type('form').send({

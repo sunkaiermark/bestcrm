@@ -1,7 +1,6 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { confirmedProductCategoriesFromInput, resolveProductCategoryCode } from '../domain/productCategories.mjs';
 import { ARCHIVED_STATUSES, STATUSES } from '../domain/statuses.mjs';
-import { canMaintainCustomer } from './customerService.mjs';
 
 function forbidden() {
   throw new Error('Forbidden');
@@ -170,14 +169,6 @@ async function validateOpportunityReferences(repositories, actor, normalized, op
   if (customer.archivedAt) {
     throw new Error('Archived customer cannot be linked to an opportunity');
   }
-  const managedAssignment = options.inquiryConversion === true || options.manualEntry === true;
-  if (managedAssignment && Number(customer.ownerUserId) !== Number(normalized.salespersonId)) {
-    forbidden();
-  }
-  if (!managedAssignment && !canMaintainCustomer(actor, customer)) {
-    forbidden();
-  }
-
   if (normalized.primaryContactId) {
     const contact = await repositories.contactRepository.getContactDetail(normalized.primaryContactId);
     if (!contact) {
@@ -188,12 +179,6 @@ async function validateOpportunityReferences(repositories, actor, normalized, op
     }
     if (contact.customerId !== normalized.customerId) {
       throw new Error('Contact does not belong to customer');
-    }
-    if (managedAssignment && Number(contact.customerOwnerUserId) !== Number(normalized.salespersonId)) {
-      forbidden();
-    }
-    if (!managedAssignment && !hasRole(actor, ROLES.ADMINISTRATOR) && contact.customerOwnerUserId !== actor.id) {
-      forbidden();
     }
   }
 }

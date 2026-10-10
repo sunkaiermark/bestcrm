@@ -966,7 +966,7 @@ test('email archive repository synchronizes a converted inquiry thread to an exi
   assert.equal(linked.customerId, 10);
   assert.equal(linked.contactId, 30);
   assert.match(calls[0].sql, /inquiry_id = \$2/);
-  assert.match(calls[0].sql, /opportunity_id IS NULL/);
+  assert.match(calls[0].sql, /opportunity_id IS NULL OR opportunity_id = \$3/);
   assert.match(calls[0].sql, /triage_status = 'converted_inquiry'/);
   assert.deepEqual(calls[0].params, [157, 444, 20, 10, 30]);
 });

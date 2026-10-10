@@ -959,7 +959,7 @@ export function createApp(options = {}) {
     authenticatorMfaEnabled
   }));
   app.use(technicalTemplateRoutes({ technicalTemplateRepository }));
-  app.use(customerRoutes({ customerRepository }));
+  app.use(customerRoutes({ customerRepository, opportunityRepository, userRepository }));
   if (config.developmentWorkspace?.enabled && developmentRepository) {
     app.use(developmentTopicRoutes({
       repository: developmentRepository, conceptRepository: developmentConceptRepository,
@@ -1019,9 +1019,11 @@ export function createApp(options = {}) {
     customerRepository,
     contactRepository,
     opportunityRepository,
+    emailArchiveRepository,
     attachmentRepository,
     approvalSettingRepository,
     userRepository,
+    emailArchiveTransaction,
     uploadDir: config.uploadDir
   }));
   app.use(emailCenterRoutes({

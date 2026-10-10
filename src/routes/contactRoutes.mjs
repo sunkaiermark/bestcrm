@@ -12,10 +12,6 @@ import {
   updateContact
 } from '../services/contactService.mjs';
 
-function contactFilter(user) {
-  return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
-}
-
 function normalizedReturnTo(value) {
   return value === 'opportunity-initiation' ? value : '';
 }
@@ -48,25 +44,30 @@ export function contactRoutes({ customerRepository, contactRepository }) {
 
   router.get('/contacts', async (req, res, next) => {
     try {
-      const isAdministrator = hasRole(req.currentUser, ROLES.ADMINISTRATOR);
+      const mayFilterByCoordinator = hasRole(req.currentUser, ROLES.ADMINISTRATOR)
+        || hasRole(req.currentUser, ROLES.SALES_MANAGER);
       const filters = normalizeCustomerContactListQuery(req.query);
-      if (!isAdministrator) filters.salespersonId = null;
-      const visibleFilter = contactFilter(req.currentUser);
+      if (!mayFilterByCoordinator) filters.salespersonId = null;
       const listFilter = {
-        ...visibleFilter,
         searchTerm: filters.searchTerm,
         archiveScope: filters.archiveScope
       };
-      if (filters.salespersonId) listFilter.ownerUserId = filters.salespersonId;
+      if (filters.salespersonId) listFilter.coordinatorUserId = filters.salespersonId;
       if (filters.customerId) listFilter.customerId = filters.customerId;
       if (filters.country) listFilter.country = filters.country;
       const [contacts, filterOptions] = await Promise.all([
         contactRepository.listContacts(listFilter),
         typeof customerRepository.listCustomerFilterOptions === 'function'
-          ? customerRepository.listCustomerFilterOptions({ ...visibleFilter, archiveScope: 'all' })
+          ? customerRepository.listCustomerFilterOptions({ archiveScope: 'all' })
           : { salesOwners: [], customers: [], countries: [] }
       ]);
-      res.render('contacts/index', { contacts, filters, filterOptions, showSalesOwnerFilter: isAdministrator });
+      res.render('contacts/index', {
+        contacts,
+        filters,
+        filterOptions,
+        showSalesOwnerFilter: mayFilterByCoordinator,
+        showCoordinatorFilter: mayFilterByCoordinator
+      });
     } catch (error) {
       next(error);
     }
@@ -74,7 +75,7 @@ export function contactRoutes({ customerRepository, contactRepository }) {
 
   router.get('/contacts/new', async (req, res, next) => {
     try {
-      const customers = await customerRepository.listCustomers(contactFilter(req.currentUser));
+      const customers = await customerRepository.listCustomers();
       res.render('contacts/form', contactFormLocals({
         contact: {
           customerId: req.query.customerId || customers[0]?.id || ''
@@ -94,7 +95,7 @@ export function contactRoutes({ customerRepository, contactRepository }) {
       res.redirect(contactCreateRedirect(contact, normalizedReturnTo(req.body.returnTo)));
     } catch (error) {
       if (error instanceof DuplicateContactError) {
-        const customers = await customerRepository.listCustomers(contactFilter(req.currentUser));
+        const customers = await customerRepository.listCustomers();
         res.status(409).render('contacts/form', contactFormLocals({
           contact: req.body,
           customers,
@@ -114,12 +115,9 @@ export function contactRoutes({ customerRepository, contactRepository }) {
         res.status(404).send('Contact not found');
         return;
       }
-      if (!canMaintainContact(req.currentUser, contact)) {
-        res.status(403).send('Forbidden');
-        return;
-      }
       res.render('contacts/detail', {
         contact,
+        canEditContact: canMaintainContact(req.currentUser, contact) && !contact.archivedAt,
         canArchiveContact: canArchiveContact(req.currentUser) && !contact.archivedAt,
         canReopenContact: canArchiveContact(req.currentUser) && Boolean(contact.archivedAt) && !contact.mergedIntoId
       });
@@ -143,7 +141,7 @@ export function contactRoutes({ customerRepository, contactRepository }) {
         res.status(409).send('Contact is archived');
         return;
       }
-      const customers = await customerRepository.listCustomers(contactFilter(req.currentUser));
+      const customers = await customerRepository.listCustomers();
       res.render('contacts/form', contactFormLocals({ contact, customers, action: `/contacts/${contact.id}` }));
     } catch (error) {
       next(error);
@@ -158,7 +156,7 @@ export function contactRoutes({ customerRepository, contactRepository }) {
       if (error instanceof DuplicateContactError) {
         const [existing, customers] = await Promise.all([
           contactRepository.getContactDetail(req.params.id),
-          customerRepository.listCustomers(contactFilter(req.currentUser))
+          customerRepository.listCustomers()
         ]);
         res.status(409).render('contacts/form', contactFormLocals({
           contact: {

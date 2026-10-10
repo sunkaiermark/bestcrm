@@ -270,6 +270,45 @@ test('inquiry repository creates review and conversion updates', async () => {
   assert.match(queryTarget.queries[4].sql, /DELETE FROM inquiries/);
 });
 
+test('inquiry repository records the immutable opportunity classification event', async () => {
+  const queryTarget = createFakeQueryTarget([[{
+    id: '91',
+    inquiry_id: '12',
+    customer_id: '20',
+    opportunity_id: '40',
+    link_kind: 'existing',
+    actor_user_id: '7',
+    source: 'inquiry_conversion',
+    note: 'Same project',
+    created_at: '2026-10-10T01:00:00.000Z'
+  }]]);
+  const repository = createInquiryRepository(queryTarget);
+
+  const event = await repository.recordOpportunityLink({
+    inquiryId: 12,
+    customerId: 20,
+    opportunityId: 40,
+    linkKind: 'existing',
+    actorUserId: 7,
+    source: 'inquiry_conversion',
+    note: 'Same project'
+  });
+
+  assert.deepEqual(event, {
+    id: 91,
+    inquiryId: 12,
+    customerId: 20,
+    opportunityId: 40,
+    linkKind: 'existing',
+    actorUserId: 7,
+    source: 'inquiry_conversion',
+    note: 'Same project',
+    createdAt: '2026-10-10T01:00:00.000Z'
+  });
+  assert.match(queryTarget.queries[0].sql, /INSERT INTO inquiry_opportunity_link_events/);
+  assert.deepEqual(queryTarget.queries[0].params, [12, 20, 40, 'existing', 7, 'inquiry_conversion', 'Same project']);
+});
+
 test('inquiry repository returns an existing inquiry for duplicate source reference', async () => {
   const queryTarget = createFakeQueryTarget([
     [],

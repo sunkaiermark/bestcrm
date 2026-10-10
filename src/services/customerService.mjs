@@ -25,11 +25,19 @@ export function normalizeCustomerWebsite(value) {
 }
 
 export function canMaintainCustomer(user, customer) {
-  return hasRole(user, ROLES.ADMINISTRATOR) || customer.ownerUserId === user.id;
+  return hasRole(user, ROLES.ADMINISTRATOR)
+    || hasRole(user, ROLES.SALES_MANAGER)
+    || Number(customer.coordinatorUserId ?? customer.ownerUserId) === Number(user?.id);
 }
 
 export function canMaintainContact(user, contact) {
-  return hasRole(user, ROLES.ADMINISTRATOR) || contact.customerOwnerUserId === user.id;
+  return hasRole(user, ROLES.ADMINISTRATOR)
+    || hasRole(user, ROLES.SALES_MANAGER)
+    || Number(contact.customerCoordinatorUserId ?? contact.customerOwnerUserId) === Number(user?.id);
+}
+
+export function canViewCustomer(user, customer) {
+  return Boolean(user && customer);
 }
 
 export function canArchiveCustomer(user) {
@@ -44,7 +52,7 @@ function lifecycleReason(value, action) {
   return reason;
 }
 
-export function normalizeCustomerInput(input, ownerUserId) {
+export function normalizeCustomerInput(input, coordinatorUserId) {
   return {
     name: text(input.name),
     website: normalizeCustomerWebsite(input.website),
@@ -55,7 +63,8 @@ export function normalizeCustomerInput(input, ownerUserId) {
     enterpriseNature: text(input.enterpriseNature),
     companyHighlights: text(input.companyHighlights),
     address: text(input.address),
-    ownerUserId,
+    coordinatorUserId,
+    ownerUserId: coordinatorUserId,
     notes: text(input.notes)
   };
 }
@@ -87,10 +96,15 @@ async function persistWithoutDuplicateCustomer(customerRepository, input, operat
 export async function createCustomer(customerRepository, actor, input, options = {}) {
   const managedInquiry = options.managedInquiry === true
     && (hasRole(actor, ROLES.ADMINISTRATOR) || hasRole(actor, ROLES.SALES_MANAGER));
-  const ownerUserId = (hasRole(actor, ROLES.ADMINISTRATOR) || managedInquiry) && input.ownerUserId
-    ? Number(input.ownerUserId)
+  const canAssignCoordinator = hasRole(actor, ROLES.ADMINISTRATOR)
+    || hasRole(actor, ROLES.SALES_MANAGER)
+    || managedInquiry;
+  const requestedCoordinatorId = input.coordinatorUserId || input.ownerUserId;
+  const coordinatorUserId = canAssignCoordinator && requestedCoordinatorId
+    ? Number(requestedCoordinatorId)
     : actor.id;
-  const normalized = normalizeCustomerInput(input, ownerUserId);
+  const normalized = normalizeCustomerInput(input, coordinatorUserId);
+  normalized.actorUserId = Number(actor.id);
   await assertNoDuplicateCustomer(customerRepository, normalized);
   return persistWithoutDuplicateCustomer(
     customerRepository,
@@ -110,7 +124,10 @@ export async function updateCustomer(customerRepository, actor, customerId, inpu
   if (existing.archivedAt) {
     throw new Error('Customer is archived');
   }
-  const normalized = normalizeCustomerInput(input, existing.ownerUserId);
+  const normalized = normalizeCustomerInput(
+    input,
+    existing.coordinatorUserId ?? existing.ownerUserId
+  );
   const options = { excludeId: Number(customerId) };
   await assertNoDuplicateCustomer(customerRepository, normalized, options);
   return persistWithoutDuplicateCustomer(
@@ -119,6 +136,50 @@ export async function updateCustomer(customerRepository, actor, customerId, inpu
     () => customerRepository.updateCustomer(customerId, normalized),
     options
   );
+}
+
+export async function changeCustomerCoordinator(
+  { customerRepository, userRepository },
+  actor,
+  customerId,
+  input = {}
+) {
+  if (!hasRole(actor, ROLES.ADMINISTRATOR) && !hasRole(actor, ROLES.SALES_MANAGER)) {
+    forbidden();
+  }
+  const customer = await customerRepository.getCustomerDetail(customerId);
+  if (!customer) {
+    throw new Error('Customer not found');
+  }
+  if (customer.archivedAt) {
+    throw new Error('Customer is archived');
+  }
+  const coordinatorUserId = Number(input.coordinatorUserId);
+  if (!Number.isSafeInteger(coordinatorUserId) || coordinatorUserId <= 0) {
+    throw new Error('Customer coordinator is required');
+  }
+  const note = text(input.note);
+  if (!note) {
+    throw new Error('Coordinator change reason is required');
+  }
+  if (Number(customer.coordinatorUserId ?? customer.ownerUserId) === coordinatorUserId) {
+    throw new Error('New coordinator must be different from current coordinator');
+  }
+  const salespeople = typeof userRepository?.listUsersByRole === 'function'
+    ? await userRepository.listUsersByRole(ROLES.SALESPERSON)
+    : [];
+  if (!salespeople.some((user) => Number(user.id) === coordinatorUserId)) {
+    throw new Error('Customer coordinator must be an active salesperson');
+  }
+  const updated = await customerRepository.updateCoordinator(Number(customerId), {
+    coordinatorUserId,
+    actorUserId: Number(actor.id),
+    note
+  });
+  if (!updated) {
+    throw new Error('Customer not found');
+  }
+  return updated;
 }
 
 export async function archiveCustomer(customerRepository, actor, customerId, reason) {

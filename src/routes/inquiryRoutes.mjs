@@ -22,7 +22,6 @@ import {
   inquiryListFilterFor,
   markInquiryAsSpam,
   rejectInquiryCustomerApproval,
-  requestInquiryCustomerApproval,
   saveInquiryRecords,
   saveInquiryAsContact,
   saveInquiryAsCustomer,
@@ -122,22 +121,25 @@ async function loadInquiryOrSend(inquiryRepository, req, res) {
   return inquiry;
 }
 
-async function loadCrmOptions({ customerRepository, contactRepository, userRepository }, user) {
-  const customerFilter = hasRole(user, ROLES.ADMINISTRATOR) || hasRole(user, ROLES.SALES_MANAGER)
-    ? {}
-    : { ownerUserId: user.id };
+async function loadCrmOptions({ customerRepository, contactRepository, opportunityRepository, userRepository }, user) {
   const customers = typeof customerRepository?.listCustomers === 'function'
-    ? await customerRepository.listCustomers(customerFilter)
+    ? await customerRepository.listCustomers({})
     : [];
   const contacts = typeof contactRepository?.listContacts === 'function'
-    ? await contactRepository.listContacts(customerFilter)
+    ? await contactRepository.listContacts({})
+    : [];
+  const existingOpportunities = typeof opportunityRepository?.listOpportunities === 'function'
+    ? await opportunityRepository.listOpportunities({
+        archiveScope: 'active',
+        ...(hasRole(user, ROLES.ADMINISTRATOR) ? {} : { visibleToUserId: user.id })
+      })
     : [];
   const users = typeof userRepository?.listUsersWithRoles === 'function'
     ? await userRepository.listUsersWithRoles()
     : [user];
   const assignableUsers = inquiryAssignableUsers(user, users);
   const salespeople = inquirySalespersonUsers(user, users);
-  return { customers, contacts, assignableUsers, salespeople };
+  return { customers, contacts, existingOpportunities, assignableUsers, salespeople };
 }
 
 function renderInquiryDetail(res, data = {}) {
@@ -180,12 +182,15 @@ function handleInquiryError(error, res, next) {
     forbidden(res);
     return;
   }
-  if (['Inquiry not found', 'Customer not found', 'Contact not found'].includes(error.message)) {
+  if (['Inquiry not found', 'Customer not found', 'Contact not found', 'Active opportunity not found'].includes(error.message)) {
     res.status(404).send(error.message);
     return;
   }
   if ([
     'Contact does not belong to customer',
+    'Opportunity does not belong to customer',
+    'Customer is archived',
+    'Contact is archived',
     'Requirement is required',
     'Invalid product category',
     'Customer is required',
@@ -197,6 +202,10 @@ function handleInquiryError(error, res, next) {
     return;
   }
   if (error.message === 'Inquiry already processed') {
+    res.status(409).send(error.message);
+    return;
+  }
+  if (/Email thread .*changed|already linked to another opportunity/.test(error.message)) {
     res.status(409).send(error.message);
     return;
   }
@@ -250,9 +259,11 @@ export function inquiryRoutes({
   customerRepository,
   contactRepository,
   opportunityRepository,
+  emailArchiveRepository,
   attachmentRepository,
   approvalSettingRepository,
   userRepository,
+  emailArchiveTransaction = null,
   uploadDir = './var/uploads'
 }) {
   const router = Router();
@@ -264,9 +275,11 @@ export function inquiryRoutes({
     customerRepository,
     contactRepository,
     opportunityRepository,
+    emailArchiveRepository,
     attachmentRepository,
     approvalSettingRepository,
     userRepository,
+    emailArchiveTransaction,
     uploadDir
   };
 
@@ -371,7 +384,19 @@ export function inquiryRoutes({
       if (!inquiry) {
         return;
       }
-      const opportunity = await convertInquiryToOpportunity(dependencies, req.currentUser, inquiry, req.body);
+      const opportunity = typeof emailArchiveTransaction === 'function'
+        ? await emailArchiveTransaction(async (transactionDependencies) => {
+            const currentInquiry = await transactionDependencies.inquiryRepository.findById(inquiry.id);
+            if (!currentInquiry || currentInquiry.submissionType === 'sales_lead') {
+              throw new Error('Inquiry not found');
+            }
+            return convertInquiryToOpportunity({
+              ...dependencies,
+              ...transactionDependencies,
+              uploadDir
+            }, req.currentUser, currentInquiry, req.body);
+          })
+        : await convertInquiryToOpportunity(dependencies, req.currentUser, inquiry, req.body);
       res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
       await handleInquiryActionError(error, dependencies, req, res, next, inquiry);
@@ -379,16 +404,14 @@ export function inquiryRoutes({
   });
 
   router.post('/inquiries/:id/customer-approval', async (req, res, next) => {
-    let inquiry;
     try {
-      inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
+      const inquiry = await loadInquiryOrSend(inquiryRepository, req, res);
       if (!inquiry) {
         return;
       }
-      await requestInquiryCustomerApproval(dependencies, req.currentUser, inquiry, req.body);
-      res.redirect(`/inquiries/${inquiry.id}`);
+      res.status(410).send('Customer approval workflow is retired; select the shared customer and continue');
     } catch (error) {
-      await handleInquiryActionError(error, dependencies, req, res, next, inquiry);
+      handleInquiryError(error, res, next);
     }
   });
 

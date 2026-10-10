@@ -16,10 +16,6 @@ function forbidden(res) {
   res.status(403).send('Forbidden');
 }
 
-function customerFilter(user) {
-  return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { ownerUserId: user.id };
-}
-
 function opportunityFilter(user) {
   return hasRole(user, ROLES.ADMINISTRATOR) || hasRole(user, ROLES.SALES_MANAGER)
     ? {}
@@ -50,10 +46,9 @@ async function loadPlanOrRespond(repository, req, res) {
 }
 
 async function loadFormOptions({ customerRepository, contactRepository, opportunityRepository }, user) {
-  const filter = customerFilter(user);
   const [customers, contacts, opportunities] = await Promise.all([
-    customerRepository.listCustomers(filter),
-    contactRepository.listContacts(filter),
+    customerRepository.listCustomers({}),
+    contactRepository.listContacts({}),
     opportunityRepository.listOpportunities(opportunityFilter(user))
   ]);
   return { customers, contacts, opportunities };

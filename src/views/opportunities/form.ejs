@@ -31,7 +31,7 @@
                 <option value=""><%= t('selectCustomer') %></option>
               <% } %>
               <% for (const customer of customers) { %>
-                <option value="<%= customer.id %>" data-owner-user-id="<%= customer.ownerUserId || '' %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
+                <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
               <% } %>
             </select>
           </label>
@@ -175,43 +175,26 @@
           </label>
           <button type="submit" form="opportunity-form"><%= typeof submitLabel === 'undefined' ? t('saveDraft') : submitLabel %></button>
         </section>
-        <% if (typeof allowSalesOwnerChoice !== 'undefined' && allowSalesOwnerChoice) { %>
-          <script>
-            (() => {
-              const salespersonSelect = document.getElementById('opportunity-salesperson');
-              const customerSelect = document.getElementById('opportunity-customer');
-              const contactSelect = document.getElementById('opportunity-contact');
-              if (!salespersonSelect || !customerSelect || !contactSelect) return;
+        <script>
+          (() => {
+            const customerSelect = document.getElementById('opportunity-customer');
+            const contactSelect = document.getElementById('opportunity-contact');
+            if (!customerSelect || !contactSelect) return;
 
-              const updateContacts = (resetSelection) => {
-                const customerId = customerSelect.value;
-                for (const option of contactSelect.options) {
-                  const unavailable = Boolean(option.value) && option.dataset.customerId !== customerId;
-                  option.hidden = unavailable;
-                  option.disabled = unavailable;
-                }
-                if (resetSelection || contactSelect.selectedOptions[0]?.disabled) {
-                  contactSelect.value = '';
-                }
-              };
+            const updateContacts = (resetSelection) => {
+              const customerId = customerSelect.value;
+              for (const option of contactSelect.options) {
+                const unavailable = Boolean(option.value) && option.dataset.customerId !== customerId;
+                option.hidden = unavailable;
+                option.disabled = unavailable;
+              }
+              if (resetSelection || contactSelect.selectedOptions[0]?.disabled) {
+                contactSelect.value = '';
+              }
+            };
 
-              const updateCustomers = (resetSelection) => {
-                const salespersonId = salespersonSelect.value;
-                for (const option of customerSelect.options) {
-                  const unavailable = Boolean(option.value) && option.dataset.ownerUserId !== salespersonId;
-                  option.hidden = unavailable;
-                  option.disabled = unavailable;
-                }
-                if (resetSelection || customerSelect.selectedOptions[0]?.disabled) {
-                  customerSelect.value = '';
-                }
-                updateContacts(true);
-              };
-
-              salespersonSelect.addEventListener('change', () => updateCustomers(true));
-              customerSelect.addEventListener('change', () => updateContacts(true));
-              updateCustomers(false);
-            })();
-          </script>
-        <% } %>
+            customerSelect.addEventListener('change', () => updateContacts(true));
+            updateContacts(false);
+          })();
+        </script>
 <%- include('../partials/app-end') %>

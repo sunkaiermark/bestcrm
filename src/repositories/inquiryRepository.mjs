@@ -426,6 +426,43 @@ export function createInquiryRepository(queryTarget) {
       return mapInquiryRow(result.rows[0]);
     },
 
+    async recordOpportunityLink(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO inquiry_opportunity_link_events (
+          inquiry_id,
+          customer_id,
+          opportunity_id,
+          link_kind,
+          actor_user_id,
+          source,
+          note
+        )
+        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        RETURNING id, inquiry_id, customer_id, opportunity_id, link_kind,
+          actor_user_id, source, note, created_at
+      `, [
+        input.inquiryId,
+        input.customerId,
+        input.opportunityId,
+        input.linkKind,
+        input.actorUserId || null,
+        input.source || 'inquiry_conversion',
+        input.note || ''
+      ]);
+      const row = result.rows[0];
+      return row ? {
+        id: Number(row.id),
+        inquiryId: Number(row.inquiry_id),
+        customerId: Number(row.customer_id),
+        opportunityId: Number(row.opportunity_id),
+        linkKind: row.link_kind,
+        actorUserId: numberOrNull(row.actor_user_id),
+        source: row.source,
+        note: row.note || '',
+        createdAt: row.created_at
+      } : null;
+    },
+
     async returnLead(id, input) {
       const result = await queryTarget.query(`
         UPDATE inquiries
