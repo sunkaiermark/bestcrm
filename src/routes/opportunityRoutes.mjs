@@ -980,6 +980,7 @@ export function opportunityRoutes({
       res.render('opportunities/form', {
         pageTitle: 'Edit Opportunity',
         submitLabel: 'Save changes',
+        isEditMode: true,
         allowInlineCreate: false,
         opportunity,
         customers,

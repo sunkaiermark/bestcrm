@@ -950,6 +950,7 @@ test('sales manager can create an opportunity directly for an existing customer'
   assert.doesNotMatch(form.text, /option\.dataset\.ownerUserId !== salespersonId/);
   assert.match(form.text, /<option value="10"\s*>C000010 · Acme Co<\/option>/);
   assert.match(form.text, /Create an opportunity directly for an existing customer/);
+  assert.doesNotMatch(form.text, /class="form-panel opportunity-edit-form-panel"/);
 
   const response = await agent.post('/opportunities').type('form').send({
     salespersonId: '8',
@@ -1323,6 +1324,11 @@ test('salesperson edits opportunity fields from the detail action', async () => 
   assert.match(editForm.text, /Save changes/);
   assert.match(editForm.text, /name="confirmedProductCategoryCodes" value="kneaders"/);
   assert.match(editForm.text, /name="confirmedProductCategoryCodes" value="process-line"/);
+  assert.match(editForm.text, /class="form-panel opportunity-edit-form-panel"/);
+  assert.match(
+    editForm.text,
+    /\.form-panel\.opportunity-edit-form-panel\s*\{[^}]*max-width:\s*none;[^}]*width:\s*100%;/
+  );
 
   const response = await agent
     .post('/opportunities/30')
