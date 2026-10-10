@@ -29,6 +29,7 @@ import {
   canReviewLeadSubmission,
   canSubmitNewLead,
   canViewLeadSubmission,
+  leadContactMatchesSubmission,
   leadSubmissionListFilterFor,
   listEligibleQuotationEngineers,
   listEligibleReviewManagers,
@@ -237,7 +238,7 @@ async function renderLeadDetailPage(dependencies, req, res, submission, {
     );
   }
   if (!Array.isArray(resolvedDuplicateCustomers)) resolvedDuplicateCustomers = [];
-  const [customers, contacts] = canReview
+  const [customers, availableContacts] = canReview
     ? await Promise.all([
         typeof dependencies.customerRepository?.listCustomers === 'function'
           ? dependencies.customerRepository.listCustomers({})
@@ -247,6 +248,9 @@ async function renderLeadDetailPage(dependencies, req, res, submission, {
           : []
       ])
     : [[], []];
+  const contacts = availableContacts.filter((contact) => (
+    !contact?.archivedAt && leadContactMatchesSubmission(contact, submission)
+  ));
   res.status(statusCode).render('lead-submissions/detail', {
     submission,
     attachments,

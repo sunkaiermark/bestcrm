@@ -218,7 +218,7 @@ function normalizedLeadContactPhone(value) {
   return text(value).replace(/\D/g, '');
 }
 
-function contactMatchesLead(contact, lead) {
+export function leadContactMatchesSubmission(contact, lead) {
   const leadEmail = normalizedLeadContactEmail(lead?.contactEmail);
   const contactEmail = normalizedLeadContactEmail(contact?.email);
   const leadPhone = normalizedLeadContactPhone(lead?.contactPhone);
@@ -241,7 +241,9 @@ async function leadApprovalContactInput(contactRepository, lead, input = {}) {
   const activeCustomerContacts = customerContacts.filter((contact) => (
     !contact.archivedAt && Number(contact.customerId) === Number(customerId)
   ));
-  const matchingContacts = activeCustomerContacts.filter((contact) => contactMatchesLead(contact, lead));
+  const matchingContacts = activeCustomerContacts.filter((contact) => (
+    leadContactMatchesSubmission(contact, lead)
+  ));
 
   if (primaryContactId) {
     let selectedContact = activeCustomerContacts.find(
@@ -259,7 +261,7 @@ async function leadApprovalContactInput(contactRepository, lead, input = {}) {
     if (Number(selectedContact.customerId) !== Number(customerId)) {
       throw new Error('Contact does not belong to customer');
     }
-    if (!contactMatchesLead(selectedContact, lead)) {
+    if (!leadContactMatchesSubmission(selectedContact, lead)) {
       throw new Error('Selected contact does not match lead');
     }
     return input;

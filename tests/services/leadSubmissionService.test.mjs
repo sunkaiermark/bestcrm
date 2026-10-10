@@ -10,6 +10,7 @@ import {
   canReviewLeadSubmission,
   canSubmitNewLead,
   canViewLeadSubmission,
+  leadContactMatchesSubmission,
   leadSubmissionListFilterFor,
   listEligibleQuotationEngineers,
   listEligibleReviewManagers,
@@ -26,6 +27,29 @@ const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
 const manager = { id: 2, displayName: 'Sales Manager', isActive: true, roles: [ROLES.SALES_MANAGER] };
 const engineer = { id: 3, displayName: 'Engineer One', isActive: true, roles: [ROLES.QUOTATION_ENGINEER] };
 const supportingEngineer = { id: 9, displayName: 'Engineer Two', isActive: true, roles: [ROLES.QUOTATION_ENGINEER] };
+
+test('lead contact matching requires an exact normalized email or phone', () => {
+  const lead = {
+    contactEmail: ' Alice@Example.com ',
+    contactPhone: '+65 6123 4567'
+  };
+  assert.equal(leadContactMatchesSubmission({
+    email: 'alice@example.com',
+    phone: ''
+  }, lead), true);
+  assert.equal(leadContactMatchesSubmission({
+    email: '',
+    phone: '65 6123-4567'
+  }, lead), true);
+  assert.equal(leadContactMatchesSubmission({
+    email: 'someone-else@example.com',
+    phone: '+65 6999 9999'
+  }, lead), false);
+  assert.equal(leadContactMatchesSubmission({ email: '', phone: '' }, {
+    contactEmail: '',
+    contactPhone: ''
+  }), false);
+});
 
 test('salespeople see their own leads while managers can use the shared lead list', () => {
   assert.equal(canSubmitNewLead(salesperson), true);

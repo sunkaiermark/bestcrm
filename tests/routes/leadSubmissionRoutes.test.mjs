@@ -463,6 +463,24 @@ test('duplicate customer approval returns to the lead review page with actionabl
     email: 'alice@example.com',
     phone: '+65 6123 4567'
   };
+  const unrelatedSameCustomerContact = {
+    id: 121,
+    contactCode: 'L000121',
+    customerId: duplicate.id,
+    customerName: duplicate.name,
+    name: 'Unrelated Same Customer',
+    email: 'someone-else@example.com',
+    phone: '+65 6999 9999'
+  };
+  const unrelatedOtherCustomerContact = {
+    id: 120,
+    contactCode: 'L000120',
+    customerId: 45,
+    customerName: 'Another customer',
+    name: 'Unrelated Other Customer',
+    email: 'other@example.com',
+    phone: '+65 6888 8888'
+  };
   try {
     const manager = await buildApp({
       uploadDir,
@@ -474,7 +492,13 @@ test('duplicate customer approval returns to the lead review page with actionabl
         async createCustomer() { throw new Error('should not create a duplicate customer'); }
       },
       contactRepository: {
-        async listContacts() { return [matchingContact]; },
+        async listContacts() {
+          return [
+            matchingContact,
+            unrelatedSameCustomerContact,
+            unrelatedOtherCustomerContact
+          ];
+        },
         async getContactDetail() { return matchingContact; }
       }
     });
@@ -498,6 +522,14 @@ test('duplicate customer approval returns to the lead review page with actionabl
     assert.match(initialPage.text, /data-select-existing-contact-id="122"/);
     assert.match(initialPage.text, />Select this contact<\/button>/);
     assert.match(initialPage.text, /Matching contact found/);
+    assert.doesNotMatch(initialPage.text, /L000121/);
+    assert.doesNotMatch(initialPage.text, /Unrelated Same Customer/);
+    assert.doesNotMatch(initialPage.text, /L000120/);
+    assert.doesNotMatch(initialPage.text, /Unrelated Other Customer/);
+    assert.match(
+      initialPage.text,
+      /\.lead-contact-match-row\[hidden\]\s*\{\s*display:\s*none;/
+    );
     assert.doesNotMatch(initialPage.text, /Existing contact \(optional\)/);
 
     const response = await manager.agent.post('/lead-submissions/11/approve')
