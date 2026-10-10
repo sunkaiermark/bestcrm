@@ -30,6 +30,16 @@
             : fallback;
           const selectedCustomerId = leadApprovalValue('customerId', submission.matchedCustomerId);
           const selectedContactId = leadApprovalValue('primaryContactId', submission.matchedContactId);
+          const requestedCustomerResolution = leadApprovalValue('customerResolution', '');
+          const hasMatchingCustomer = duplicateCustomers.length > 0;
+          const selectedCustomerResolution = hasMatchingCustomer
+            ? 'existing'
+            : ['new', 'existing'].includes(requestedCustomerResolution)
+              ? requestedCustomerResolution
+              : submission.matchedCustomerId ? 'existing' : '';
+          const confirmedNewCustomerDetails = !hasMatchingCustomer
+            && leadApprovalValue('confirmNewCustomerDetails', '') === '1';
+          const confirmedNewContactDetails = leadApprovalValue('confirmNewContactDetails', '') === '1';
           const selectedSalespersonId = leadApprovalValue('salespersonId', submission.recommendedSalespersonId);
           const rawSelectedQuotationEngineerIds = leadApprovalValue('quotationEngineerIds', []);
           const selectedQuotationEngineerIds = [...new Set(
@@ -93,161 +103,197 @@
           <section class="content-section business-section business-section-project-approval lead-sales-manager-review">
             <h2><%= t('leadSalesManagerReview') %></h2>
             <div class="section-body">
-              <form class="inquiry-workflow-form lead-conversion-review-form" method="post" action="/lead-submissions/<%= submission.id %>/approve">
+              <form id="lead-approval-form" class="inquiry-workflow-form lead-conversion-review-form" method="post" action="/lead-submissions/<%= submission.id %>/approve">
                 <%- csrfField() %>
                 <input type="hidden" name="createMissingRecords" value="1">
-                <% if (duplicateCustomers.length) { %>
-                  <section class="duplicate-warning lead-duplicate-customer-warning" role="alert">
-                    <strong><%= t('duplicateCustomerFound') %></strong>
-                    <p><%= t('duplicateCustomerCoordinationHint') %></p>
-                    <p class="muted"><%= t('selectExistingCustomerHint') %></p>
-                    <table class="duplicate-table">
-                      <thead>
-                        <tr>
-                          <th><%= t('customerCode') %></th>
-                          <th><%= t('customerName') %></th>
-                          <th><%= t('responsiblePerson') %></th>
-                          <th><%= t('contacts') %></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <% for (const duplicate of duplicateCustomers) { %>
-                          <tr>
-                            <td><%= duplicate.customerCode %></td>
-                            <td><%= duplicate.name %></td>
-                            <td><%= duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></td>
-                            <td><%= duplicate.contactCount %></td>
-                          </tr>
+                <div class="lead-customer-resolution">
+                  <% if (hasMatchingCustomer) { %>
+                    <input type="hidden" name="customerResolution" id="lead-customer-resolution" value="existing">
+                    <div class="lead-customer-match-note" role="alert">
+                      <strong><%= t('matchingCustomerFound') %>：</strong>
+                      <div class="lead-customer-match-list">
+                        <% for (const customer of duplicateCustomers) { %>
+                          <div class="lead-customer-match-row">
+                            <span class="lead-customer-match-name"><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></span>
+                            <button
+                              type="button"
+                              class="secondary-action lead-select-existing-customer<%= Number(selectedCustomerId) === Number(customer.id) ? ' is-selected' : '' %>"
+                              data-select-existing-customer-id="<%= customer.id %>"
+                              aria-pressed="<%= Number(selectedCustomerId) === Number(customer.id) ? 'true' : 'false' %>"
+                            ><%= t('selectThisCustomer') %></button>
+                          </div>
                         <% } %>
-                      </tbody>
-                    </table>
-                  </section>
-                <% } %>
+                      </div>
+                    </div>
+                  <% } else { %>
+                    <label class="lead-customer-mode-field">
+                      <%= t('leadCustomerDecision') %>
+                      <select name="customerResolution" id="lead-customer-resolution" required>
+                        <option value=""><%= t('selectCustomerResolution') %></option>
+                        <option value="existing"<%= selectedCustomerResolution === 'existing' ? ' selected' : '' %>><%= t('leadCustomerExistingOption') %></option>
+                        <option value="new"<%= selectedCustomerResolution === 'new' ? ' selected' : '' %>><%= t('leadCustomerNewOption') %></option>
+                      </select>
+                    </label>
+                  <% } %>
+                  <div class="lead-existing-customer-fields" data-existing-customer-fields<%= selectedCustomerResolution === 'existing' ? '' : ' hidden' %>>
+                    <% if (hasMatchingCustomer) { %>
+                      <input type="hidden" name="customerId" id="lead-customer-select" value="<%= selectedCustomerId || '' %>">
+                    <% } else { %>
+                      <label class="inquiry-field-wide">
+                        <%= t('selectExistingCustomer') %>
+                        <select name="customerId" id="lead-customer-select"<%= selectedCustomerResolution === 'existing' ? ' required' : '' %>>
+                          <option value=""><%= t('selectExistingCustomer') %></option>
+                          <% for (const customer of customers) { %>
+                            <option value="<%= customer.id %>"<%= Number(selectedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
+                          <% } %>
+                        </select>
+                      </label>
+                    <% } %>
+                    <input type="hidden" name="primaryContactId" id="lead-contact-select" value="<%= selectedContactId || '' %>">
+                    <div
+                      class="lead-contact-resolution inquiry-field-wide"
+                      data-contact-resolution
+                      data-lead-contact-email="<%= submission.contactEmail || '' %>"
+                      data-lead-contact-phone="<%= submission.contactPhone || '' %>"
+                    >
+                      <div class="lead-contact-match-note" data-contact-match-note hidden>
+                        <strong><%= t('matchingContactFound') %>：</strong>
+                        <div class="lead-contact-match-list">
+                          <% for (const contact of contacts) { %>
+                            <div
+                              class="lead-contact-match-row"
+                              data-contact-match-row
+                              data-customer-id="<%= contact.customerId %>"
+                              data-contact-email="<%= contact.email || '' %>"
+                              data-contact-phone="<%= contact.phone || '' %>"
+                              hidden
+                            >
+                              <span class="lead-contact-match-name">
+                                <span><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %></span>
+                                <small><%= [contact.email, contact.phone].filter(Boolean).join(' · ') %></small>
+                              </span>
+                              <button
+                                type="button"
+                                class="secondary-action lead-select-existing-contact<%= Number(selectedContactId) === Number(contact.id) ? ' is-selected' : '' %>"
+                                data-select-existing-contact-id="<%= contact.id %>"
+                                aria-pressed="<%= Number(selectedContactId) === Number(contact.id) ? 'true' : 'false' %>"
+                              ><%= t('selectThisContact') %></button>
+                            </div>
+                          <% } %>
+                        </div>
+                      </div>
+                      <div class="lead-new-contact-fields" data-new-contact-fields hidden>
+                        <div class="lead-new-contact-heading">
+                          <strong><%= t('newContactDetailsReview') %></strong>
+                          <p class="muted"><%= t('newContactDetailsAutoFilled') %></p>
+                        </div>
+                        <dl class="lead-new-contact-summary">
+                          <div><dt><%= t('contactName') %></dt><dd><%= submission.contactName || '-' %></dd></div>
+                          <div><dt><%= t('email') %></dt><dd><%= submission.contactEmail || '-' %></dd></div>
+                          <div><dt><%= t('phone') %></dt><dd><%= submission.contactPhone || '-' %></dd></div>
+                        </dl>
+                        <label class="lead-new-contact-confirmation">
+                          <input type="checkbox" name="confirmNewContactDetails" value="1"<%= confirmedNewContactDetails ? ' checked' : '' %>>
+                          <span><%= t('confirmNewContactDetails') %></span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <% if (!hasMatchingCustomer) { %>
+                    <div class="lead-new-customer-fields" data-new-customer-fields<%= selectedCustomerResolution === 'new' ? '' : ' hidden' %>>
+                      <div class="lead-new-customer-heading">
+                        <strong><%= t('newCustomerDetailsReview') %></strong>
+                        <p class="muted"><%= t('newCustomerDetailsAutoFilled') %></p>
+                      </div>
+                      <dl class="lead-new-customer-summary">
+                        <div><dt><%= t('customerName') %></dt><dd><%= submission.companyName || '-' %></dd></div>
+                        <div><dt><%= t('website') %></dt><dd><%= submission.companyWebsite || '-' %></dd></div>
+                        <div><dt><%= t('country') %></dt><dd><%= submission.country || '-' %></dd></div>
+                        <div><dt><%= t('contactName') %></dt><dd><%= submission.contactName || '-' %></dd></div>
+                        <div><dt><%= t('email') %></dt><dd><%= submission.contactEmail || '-' %></dd></div>
+                        <div><dt><%= t('phone') %></dt><dd><%= submission.contactPhone || '-' %></dd></div>
+                      </dl>
+                      <label class="lead-new-customer-confirmation">
+                        <input type="checkbox" name="confirmNewCustomerDetails" value="1"<%= confirmedNewCustomerDetails ? ' checked' : '' %><%= selectedCustomerResolution === 'new' ? ' required' : '' %>>
+                        <span><%= t('confirmNewCustomerDetails') %></span>
+                      </label>
+                    </div>
+                  <% } %>
+                </div>
                 <div class="inquiry-form-grid">
-                <label class="inquiry-field-wide">
-                  <%= t('customer') %>
-                  <select name="customerId" id="lead-customer-select">
-                    <option value=""<%= selectedCustomerId ? '' : ' selected' %>><%= t('createNewCustomerFromInquiry') %></option>
-                    <% for (const customer of customers) { %>
-                      <option value="<%= customer.id %>"<%= Number(selectedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
-                    <% } %>
-                  </select>
-                </label>
-                <label><%= t('customerName') %><input name="companyName" value="<%= leadApprovalValue('companyName', submission.companyName) || '' %>"></label>
-                <label><%= t('website') %><input name="companyWebsite" type="text" inputmode="url" placeholder="https://www.example.com" value="<%= leadApprovalValue('companyWebsite', submission.companyWebsite) || '' %>"></label>
-                <label>
-                  <%= t('country') %>
-                  <select name="country">
-                    <option value=""><%= t('selectCountry') %></option>
-                    <% for (const country of countryOptions) { %><option value="<%= country %>"<%= leadApprovalValue('country', submission.country) === country ? ' selected' : '' %>><%= country %></option><% } %>
-                  </select>
-                </label>
-                <label class="inquiry-field-wide">
-                  <%= t('primaryContact') %>
-                  <select name="primaryContactId" id="lead-contact-select">
-                    <option value=""><%= t('createNewContactFromInquiry') %></option>
-                    <% for (const contact of contacts) { %>
-                      <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>"<%= Number(selectedContactId) === Number(contact.id) ? ' selected' : '' %>><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %><%= contact.customerName ? ` (${contact.customerName})` : '' %></option>
-                    <% } %>
-                  </select>
-                </label>
-                <label><%= t('contactName') %><input name="contactName" value="<%= leadApprovalValue('contactName', submission.contactName) || '' %>"></label>
-                <label><%= t('email') %><input type="email" name="contactEmail" value="<%= leadApprovalValue('contactEmail', submission.contactEmail) || '' %>"></label>
-                <label><%= t('phone') %><input name="contactPhone" value="<%= leadApprovalValue('contactPhone', submission.contactPhone) || '' %>"></label>
-                <label>
-                  <%= t('salesOwner') %>
-                  <select name="salespersonId" required>
+                  <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" value="<%= leadApprovalValue('title', submission.subject || submission.productInterest || submission.companyName) || '' %>" required></label>
+                  <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount" value="<%= leadApprovalValue('estimatedAmount') || '' %>"></label>
+                  <label><%= t('deliveryPeriod') %><input name="deliveryCycle" value="<%= leadApprovalValue('deliveryCycle') || '' %>"></label>
+                  <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate" value="<%= leadApprovalValue('expectedBidDate') || '' %>"></label>
+                  <label>
+                    <%= t('workflowField.technicalPlanSubmitDate') %>
+                    <input type="date" name="technicalPlanSubmitDate" value="<%= leadApprovalValue('technicalPlanSubmitDate') || '' %>" required>
+                  </label>
+                </div>
+              </form>
+
+              <div class="lead-review-decision-grid">
+                <label class="lead-review-decision-cell lead-review-sales-owner">
+                  <span class="lead-review-decision-name"><%= t('salesOwner') %></span>
+                  <select name="salespersonId" form="lead-approval-form" required>
                     <option value=""><%= t('selectSalesOwner') %></option>
                     <% for (const salesperson of salespeople) { %>
                       <option value="<%= salesperson.id %>"<%= Number(selectedSalespersonId) === Number(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
                     <% } %>
                   </select>
                 </label>
-                <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" value="<%= leadApprovalValue('title', submission.subject || submission.productInterest || submission.companyName) || '' %>" required></label>
-                <%- include('../partials/product-category-picker', { record: submission, subjectInput: 'title', requirementInput: 'requirementText', formId: '', className: '' }) %>
-                <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount" value="<%= leadApprovalValue('estimatedAmount') || '' %>"></label>
-                <label><%= t('deliveryPeriod') %><input name="deliveryCycle" value="<%= leadApprovalValue('deliveryCycle') || '' %>"></label>
-                <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate" value="<%= leadApprovalValue('expectedBidDate') || '' %>"></label>
-                  <label>
-                    <%= t('workflowField.technicalPlanSubmitDate') %>
-                    <input type="date" name="technicalPlanSubmitDate" value="<%= leadApprovalValue('technicalPlanSubmitDate') || '' %>" required>
-                  </label>
-                  <label class="inquiry-field-full"><%= t('requirement') %><textarea name="requirementText" required><%= leadApprovalValue('requirementText', submission.requirementText) || '' %></textarea></label>
-                </div>
-                <div class="workflow-action-list lead-review-action-list">
-                  <div class="lead-review-engineer-row">
-                    <div class="workflow-inline-field workflow-engineer-field">
-                      <span><%= t('workflowField.quotationEngineerIds') %></span>
-                      <details class="workflow-engineer-picker" data-engineer-picker data-selected-order="<%= orderedQuotationEngineerIds.join(',') %>">
-                        <summary data-engineer-summary><%= orderedQuotationEngineerIds.length > 0
-                          ? orderedQuotationEngineerIds
-                              .map((id) => quotationEngineers.find((user) => Number(user.id) === id))
-                              .filter(Boolean)
-                              .map((user) => user.displayName || user.username)
-                              .join(', ')
-                          : t('workflowField.quotationEngineerIds') %></summary>
-                        <input type="hidden" name="quotationEngineerLeadId" value="<%= selectedQuotationEngineerLeadId || '' %>" data-engineer-lead>
-                        <div class="workflow-engineer-options">
-                          <% for (const engineer of quotationEngineers) { %>
-                            <label>
-                              <input
-                                type="checkbox"
-                                name="quotationEngineerIds"
-                                value="<%= engineer.id %>"
-                                data-engineer-option
-                                data-engineer-name="<%= engineer.displayName || engineer.username %>"
-                                <%= selectedQuotationEngineerIds.includes(Number(engineer.id)) ? 'checked' : '' %>
-                              >
-                              <span><%= engineer.displayName || engineer.username %></span>
-                            </label>
-                          <% } %>
-                        </div>
-                      </details>
-                    </div>
-                  </div>
-                  <div class="workflow-compact-row workflow-approve-row">
-                    <button class="workflow-action-button workflow-approve-button" type="submit"><%= t('approveLeadAndCreateOpportunity') %></button>
-                    <div class="lead-review-action-fields lead-review-action-fields-single">
-                      <label class="workflow-inline-field">
-                        <span><%= t('reviewNote') %></span>
-                        <input name="reviewNote" type="text" maxlength="1000" value="<%= leadApprovalValue('reviewNote') || '' %>">
-                      </label>
-                    </div>
-                  </div>
-                </div>
-              </form>
 
-              <div class="workflow-action-list lead-review-action-list lead-secondary-decision-list">
-                <form class="workflow-compact-row workflow-reject-row" method="post" action="/lead-submissions/<%= submission.id %>/reject" onsubmit="return confirm('<%= t('rejectLeadConfirm') %>')">
+                <div class="lead-review-decision-cell lead-review-engineer">
+                  <span class="lead-review-decision-name"><%= t('workflowField.quotationEngineerIds') %></span>
+                  <details
+                    class="workflow-engineer-picker"
+                    data-engineer-picker
+                    data-approval-form-id="lead-approval-form"
+                    data-selected-order="<%= orderedQuotationEngineerIds.join(',') %>"
+                  >
+                    <summary data-engineer-summary><%= orderedQuotationEngineerIds.length > 0
+                      ? orderedQuotationEngineerIds
+                          .map((id) => quotationEngineers.find((user) => Number(user.id) === id))
+                          .filter(Boolean)
+                          .map((user) => user.displayName || user.username)
+                          .join(', ')
+                      : t('workflowField.quotationEngineerIds') %></summary>
+                    <input form="lead-approval-form" type="hidden" name="quotationEngineerLeadId" value="<%= selectedQuotationEngineerLeadId || '' %>" data-engineer-lead>
+                    <div class="workflow-engineer-options">
+                      <% for (const engineer of quotationEngineers) { %>
+                        <label>
+                          <input
+                            form="lead-approval-form"
+                            type="checkbox"
+                            name="quotationEngineerIds"
+                            value="<%= engineer.id %>"
+                            data-engineer-option
+                            data-engineer-name="<%= engineer.displayName || engineer.username %>"
+                            <%= selectedQuotationEngineerIds.includes(Number(engineer.id)) ? 'checked' : '' %>
+                          >
+                          <span><%= engineer.displayName || engineer.username %></span>
+                        </label>
+                      <% } %>
+                    </div>
+                  </details>
+                </div>
+
+                <form class="lead-review-decision-cell lead-review-return" method="post" action="/lead-submissions/<%= submission.id %>/return">
                   <%- csrfField() %>
-                  <button class="workflow-action-button workflow-reject-button" type="submit"><%= t('rejectLead') %></button>
-                  <div class="lead-review-action-fields">
-                    <label class="workflow-inline-field">
-                      <span><%= t('rejectReason') %></span>
-                      <input name="reason" type="text" required maxlength="1000">
-                    </label>
-                    <% if (isEmailLead) { %>
-                      <label class="workflow-inline-field">
-                        <span><%= t('sourceEmailDisposition') %></span>
-                        <select name="emailDisposition" required>
-                          <option value="pending"><%= t('emailDisposition.pending') %></option>
-                          <option value="non_business"><%= t('emailDisposition.non_business') %></option>
-                          <option value="spam"><%= t('emailDisposition.spam') %></option>
-                        </select>
-                      </label>
-                    <% } %>
-                  </div>
+                  <button class="workflow-action-button workflow-reject-button" type="submit"><%= t('rejectForModification') %></button>
+                  <label class="lead-review-decision-option">
+                    <span class="visually-hidden"><%= t('modificationRequest') %></span>
+                    <input name="reason" type="text" required maxlength="1000" placeholder="<%= t('modificationRequest') %>">
+                  </label>
                 </form>
-                <form class="workflow-compact-row workflow-neutral-row" method="post" action="/lead-submissions/<%= submission.id %>/return">
-                  <%- csrfField() %>
-                  <button class="workflow-action-button" type="submit"><%= t('returnForModification') %></button>
-                  <div class="lead-review-action-fields lead-review-action-fields-single">
-                    <label class="workflow-inline-field">
-                      <span><%= t('returnReason') %></span>
-                      <input name="reason" type="text" required maxlength="1000">
-                    </label>
-                  </div>
-                </form>
+
+                <div class="lead-review-decision-cell lead-review-approve">
+                  <button form="lead-approval-form" class="workflow-action-button workflow-approve-button" type="submit" disabled><%= t('approveLeadAndCreateOpportunity') %></button>
+                  <label class="lead-review-decision-option">
+                    <span class="visually-hidden"><%= t('reviewNote') %></span>
+                    <input form="lead-approval-form" name="reviewNote" type="text" maxlength="1000" value="<%= leadApprovalValue('reviewNote') || '' %>" placeholder="<%= t('reviewNote') %>">
+                  </label>
+                </div>
               </div>
             </div>
           </section>
@@ -298,19 +344,123 @@
         <% if (canReview) { %>
           <script>
             (() => {
+              const resolutionSelect = document.getElementById('lead-customer-resolution');
+              const existingFields = document.querySelector('[data-existing-customer-fields]');
+              const newFields = document.querySelector('[data-new-customer-fields]');
               const customerSelect = document.getElementById('lead-customer-select');
-              const contactSelect = document.getElementById('lead-contact-select');
-              if (!customerSelect || !contactSelect) return;
-              const filterContacts = () => {
+              const contactInput = document.getElementById('lead-contact-select');
+              const contactResolution = document.querySelector('[data-contact-resolution]');
+              const contactMatchNote = document.querySelector('[data-contact-match-note]');
+              const contactMatchRows = [...document.querySelectorAll('[data-contact-match-row]')];
+              const newContactFields = document.querySelector('[data-new-contact-fields]');
+              const newContactConfirmation = document.querySelector('input[name="confirmNewContactDetails"]');
+              const newCustomerConfirmation = document.querySelector('input[name="confirmNewCustomerDetails"]');
+              const matchingCustomerButtons = [...document.querySelectorAll('[data-select-existing-customer-id]')];
+              const matchingContactButtons = [...document.querySelectorAll('[data-select-existing-contact-id]')];
+              const approveButton = document.querySelector('.workflow-approve-button[form="lead-approval-form"]');
+              if (!resolutionSelect || !existingFields || !customerSelect || !contactInput || !contactResolution) return;
+              const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+              const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
+              const leadEmail = normalizeEmail(contactResolution.dataset.leadContactEmail);
+              const leadPhone = normalizePhone(contactResolution.dataset.leadContactPhone);
+              const rowMatchesLead = (row) => (
+                (leadEmail && normalizeEmail(row.dataset.contactEmail) === leadEmail)
+                || (leadPhone && normalizePhone(row.dataset.contactPhone) === leadPhone)
+              );
+              const refreshCustomerButtons = () => {
                 const customerId = customerSelect.value;
-                for (const option of contactSelect.options) {
-                  if (!option.value) continue;
-                  option.hidden = Boolean(customerId) && option.dataset.customerId !== customerId;
+                for (const button of matchingCustomerButtons) {
+                  const selected = button.dataset.selectExistingCustomerId === customerId;
+                  button.classList.toggle('is-selected', selected);
+                  button.setAttribute('aria-pressed', String(selected));
                 }
-                if (contactSelect.selectedOptions[0]?.hidden) contactSelect.value = '';
               };
-              customerSelect.addEventListener('change', filterContacts);
-              filterContacts();
+              const refreshContactDecision = () => {
+                const customerId = customerSelect.value;
+                const matchingRows = [];
+                for (const row of contactMatchRows) {
+                  const matches = Boolean(customerId)
+                    && row.dataset.customerId === customerId
+                    && rowMatchesLead(row);
+                  row.hidden = !matches;
+                  if (matches) matchingRows.push(row);
+                }
+                const selectedContactIsVisible = matchingRows.some((row) => (
+                  row.querySelector('[data-select-existing-contact-id]')?.dataset.selectExistingContactId
+                    === contactInput.value
+                ));
+                if (!selectedContactIsVisible) contactInput.value = '';
+                for (const button of matchingContactButtons) {
+                  const selected = button.dataset.selectExistingContactId === contactInput.value;
+                  button.classList.toggle('is-selected', selected);
+                  button.setAttribute('aria-pressed', String(selected));
+                }
+                const hasMatches = matchingRows.length > 0;
+                if (contactMatchNote) contactMatchNote.hidden = !customerId || !hasMatches;
+                if (newContactFields) newContactFields.hidden = !customerId || hasMatches;
+                if (newContactConfirmation) {
+                  newContactConfirmation.required = Boolean(customerId) && !hasMatches;
+                  if (hasMatches) newContactConfirmation.checked = false;
+                }
+                return Boolean(customerId) && (hasMatches
+                  ? Boolean(contactInput.value)
+                  : Boolean(newContactConfirmation?.checked));
+              };
+              const refreshApproveButton = () => {
+                if (!approveButton) return;
+                if (resolutionSelect.value === 'new') {
+                  approveButton.disabled = !newCustomerConfirmation?.checked;
+                  return;
+                }
+                approveButton.disabled = resolutionSelect.value !== 'existing'
+                  || !refreshContactDecision();
+              };
+              const refreshCustomerResolution = () => {
+                const isExisting = resolutionSelect.value === 'existing';
+                const isNew = resolutionSelect.value === 'new' && Boolean(newFields);
+                existingFields.hidden = !isExisting;
+                if (newFields) newFields.hidden = !isNew;
+                if (customerSelect.tagName === 'SELECT') customerSelect.required = isExisting;
+                if (newCustomerConfirmation) newCustomerConfirmation.required = isNew;
+                if (!isExisting) {
+                  customerSelect.value = '';
+                  contactInput.value = '';
+                  if (newContactConfirmation) newContactConfirmation.checked = false;
+                }
+                if (!isNew && newCustomerConfirmation) newCustomerConfirmation.checked = false;
+                refreshCustomerButtons();
+                refreshContactDecision();
+                refreshApproveButton();
+              };
+              resolutionSelect.addEventListener('change', () => {
+                customerSelect.value = '';
+                contactInput.value = '';
+                if (newContactConfirmation) newContactConfirmation.checked = false;
+                refreshCustomerResolution();
+              });
+              customerSelect.addEventListener('change', () => {
+                contactInput.value = '';
+                if (newContactConfirmation) newContactConfirmation.checked = false;
+                refreshCustomerButtons();
+                refreshContactDecision();
+                refreshApproveButton();
+              });
+              for (const button of matchingCustomerButtons) {
+                button.addEventListener('click', () => {
+                  customerSelect.value = button.dataset.selectExistingCustomerId || '';
+                  customerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+              }
+              for (const button of matchingContactButtons) {
+                button.addEventListener('click', () => {
+                  contactInput.value = button.dataset.selectExistingContactId || '';
+                  refreshContactDecision();
+                  refreshApproveButton();
+                });
+              }
+              newContactConfirmation?.addEventListener('change', refreshApproveButton);
+              newCustomerConfirmation?.addEventListener('change', refreshApproveButton);
+              refreshCustomerResolution();
             })();
             document.querySelectorAll('[data-engineer-picker]').forEach((picker) => {
               const options = [...picker.querySelectorAll('[data-engineer-option]')];
@@ -333,7 +483,8 @@
                   .join(', ') || <%- JSON.stringify(t('workflowField.quotationEngineerIds')) %>;
               };
               for (const option of options) option.addEventListener('change', refresh);
-              picker.closest('form').addEventListener('submit', (event) => {
+              const approvalForm = document.getElementById(picker.dataset.approvalFormId || 'lead-approval-form');
+              approvalForm?.addEventListener('submit', (event) => {
                 refresh();
                 if (!leadInput.value) {
                   event.preventDefault();

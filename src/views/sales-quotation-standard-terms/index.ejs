@@ -1,7 +1,7 @@
-<%- include('../partials/app-start', { title: `${language === 'zh' ? '商务报价标准文案' : 'Quotation standard wording'} - BESTCRM`, activeNav: 'quotation-standard-terms' }) %>
+<%- include('../partials/app-start', { title: `${language === 'zh' ? '标准文案' : 'Quotation standard wording'} - BESTCRM`, activeNav: 'quotation-standard-terms' }) %>
 <% const zh = language === 'zh'; %>
 <header class="page-header">
-  <div><h1><%= zh ? '商务报价标准文案' : 'Quotation standard wording' %></h1>
+  <div><h1><%= zh ? '标准文案' : 'Quotation standard wording' %></h1>
     <p class="muted"><%= zh ? '只有已发布的同语种文案可进入报价下拉。修改已发布文案须新建修订；已引用的报价保留原文快照。' : 'Only published wording in the quotation language appears in the selector. Create a new revision to change published text; existing quotations keep their snapshot.' %></p></div>
   <% if (canAuthor) { %><a class="quick-action" href="/quotation-standard-terms/new"><%= zh ? '新建文案草稿' : 'New wording draft' %></a><% } %>
 </header>

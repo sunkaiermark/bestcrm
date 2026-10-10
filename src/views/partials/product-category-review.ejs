@@ -1,45 +1,39 @@
 <%
   const confirmed = Array.isArray(record?.confirmedProductCategoryCodes)
     ? record.confirmedProductCategoryCodes : [];
-  const proposed = (typeof suggestions !== 'undefined' && Array.isArray(suggestions)
+  const suggested = (typeof suggestions !== 'undefined' && Array.isArray(suggestions)
     ? suggestions
     : suggestProductCategoryCodes({
         productInterest: record?.productInterest,
         subject: record?.subject || record?.title,
         requirementText: record?.requirementText || record?.requirement
-      })).filter((code) => !confirmed.includes(code));
+      }));
+  const selectedCategoryCode = confirmed[0] || suggested[0] || '';
 %>
 <section class="content-section product-category-review">
-  <h2><%= t('productCategories') %></h2>
-  <p class="muted"><%= record?.productCategoryReviewedAt
-    ? (confirmed.length ? t('categoryReviewStatusReviewed') : t('categoryReviewStatusUnassigned'))
-    : t('categoryReviewStatusPending') %></p>
-  <div class="product-category-confirmed">
-    <strong><%= t('confirmedCategories') %>:</strong>
-    <% if (confirmed.length) { %>
-      <% for (const code of confirmed) { %><span class="status"><%= productCategoryLabel(code) %></span><% } %>
-    <% } else { %><span class="muted">—</span><% } %>
+  <div class="product-category-review-row">
+    <h2><%= t('productCategories') %></h2>
+    <% if (canEditCategories) { %>
+      <form class="product-category-review-form" method="post" action="<%= action %>">
+        <%- csrfField() %>
+        <input type="hidden" name="productCategoriesSubmitted" value="1">
+        <label>
+          <span class="visually-hidden"><%= t('selectProductCategory') %></span>
+          <select name="confirmedProductCategoryCodes" required>
+            <option value="" disabled<%= selectedCategoryCode ? '' : ' selected' %>><%= t('selectProductCategory') %></option>
+            <% for (const category of productCategories) { %>
+              <option value="<%= category.code %>"<%= category.code === selectedCategoryCode ? ' selected' : '' %>><%= category.label %></option>
+            <% } %>
+          </select>
+        </label>
+        <button class="product-category-confirm-button" type="submit"><%= t('confirmProductCategory') %></button>
+      </form>
+    <% } %>
+    <div class="product-category-confirmed" aria-live="polite">
+      <strong><%= t('categoryReviewStatusReviewed') %>:</strong>
+      <% if (confirmed.length) { %>
+        <% for (const code of confirmed) { %><span class="status"><%= productCategoryLabel(code) %></span><% } %>
+      <% } else { %><span class="muted">—</span><% } %>
+    </div>
   </div>
-  <div class="product-category-suggestions">
-    <strong><%= t('suggestedCategories') %>:</strong>
-    <% if (proposed.length) { %>
-      <% for (const code of proposed) { %><span class="status"><%= productCategoryLabel(code) %></span><% } %>
-    <% } else { %><span class="muted"><%= t('noCategorySuggestions') %></span><% } %>
-  </div>
-  <% if (canEditCategories) { %>
-    <p class="muted"><%= t('productCategoryReviewHint') %></p>
-    <form method="post" action="<%= action %>">
-      <%- csrfField() %>
-      <input type="hidden" name="productCategoriesSubmitted" value="1">
-      <details class="product-category-choices">
-        <summary><%= t('chooseProductCategories') %></summary>
-        <div class="product-category-options">
-          <% for (const category of productCategories) { %>
-            <label><input type="checkbox" name="confirmedProductCategoryCodes" value="<%= category.code %>"<% if (confirmed.includes(category.code)) { %> checked<% } %>> <%= category.label %></label>
-          <% } %>
-        </div>
-      </details>
-      <button type="submit"><%= t('saveProductCategories') %></button>
-    </form>
-  <% } %>
 </section>

@@ -34,6 +34,11 @@ test('standard wording management blocks direct salesperson access and preserves
   assert.equal(page.status, 200);
   assert.match(page.text, /No wording yet/);
   assert.match(page.text, /New wording draft/);
+  await author.get('/language?lang=zh&returnTo=/quotation-standard-terms');
+  const zhPage = await author.get('/quotation-standard-terms');
+  assert.equal(zhPage.status, 200);
+  assert.match(zhPage.text, />标准文案</);
+  assert.doesNotMatch(zhPage.text, /商务报价标准文案/);
 });
 
 test('reviewer sees complete text and publishes only the matching reviewed version', async () => {

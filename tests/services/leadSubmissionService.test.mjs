@@ -335,7 +335,26 @@ test('lead approval creates one active technical opportunity with assignments, t
       async getCustomerDetail() { return { id: 20, name: 'Acme', ownerUserId: 7 }; }
     },
     contactRepository: {
-      async getContactDetail() { return { id: 30, customerId: 20, customerOwnerUserId: 7 }; }
+      async listContacts() {
+        return [{
+          id: 30,
+          customerId: 20,
+          customerOwnerUserId: 7,
+          name: 'Alice',
+          email: 'alice@example.com',
+          phone: '+65 6123 4567'
+        }];
+      },
+      async getContactDetail() {
+        return {
+          id: 30,
+          customerId: 20,
+          customerOwnerUserId: 7,
+          name: 'Alice',
+          email: 'alice@example.com',
+          phone: '+65 6123 4567'
+        };
+      }
     },
     opportunityRepository: {
       async createOpportunity(input) {
@@ -379,6 +398,7 @@ test('lead approval creates one active technical opportunity with assignments, t
   };
 
   const approved = await approveSalesLead(dependencies, manager, 11, {
+    customerResolution: 'existing',
     customerId: '20',
     primaryContactId: '30',
     salespersonId: '7',
@@ -451,6 +471,93 @@ test('lead approval validates quotation engineers and plan date before creating 
       technicalPlanSubmitDate: '2026-02-30'
     }),
     /Plan to Submit must be a valid date/
+  );
+  const validAssignment = {
+    ...base,
+    quotationEngineerIds: '3',
+    quotationEngineerLeadId: '3'
+  };
+  await assert.rejects(
+    () => approveSalesLead(dependencies, manager, 11, {
+      ...validAssignment,
+      customerResolution: 'existing',
+      customerId: ''
+    }),
+    /Existing customer is required/
+  );
+  await assert.rejects(
+    () => approveSalesLead(dependencies, manager, 11, {
+      ...validAssignment,
+      customerResolution: 'new'
+    }),
+    /New customer details confirmation is required/
+  );
+  await assert.rejects(
+    () => approveSalesLead(dependencies, manager, 11, {
+      ...validAssignment,
+      customerResolution: 'unexpected'
+    }),
+    /Customer decision is required/
+  );
+});
+
+test('lead approval reuses a matching customer contact and confirms creation only when none matches', async () => {
+  const lead = workflowLead({ matchedContactId: null });
+  let contacts = [{
+    id: 30,
+    customerId: 20,
+    name: 'Alice Existing',
+    email: 'ALICE@example.com',
+    phone: ''
+  }];
+  const dependencies = {
+    inquiryRepository: {
+      async findLeadByIdForUpdate() { return lead; }
+    },
+    userRepository: {
+      async listUsersWithRoles() { return [manager, salesperson, engineer]; }
+    },
+    contactRepository: {
+      async listContacts() { return contacts; },
+      async getContactDetail(id) {
+        return contacts.find((contact) => Number(contact.id) === Number(id)) || null;
+      }
+    },
+    opportunityRepository: {
+      async createOpportunity() { assert.fail('invalid contact decision must not create an opportunity'); }
+    }
+  };
+  const input = {
+    customerResolution: 'existing',
+    customerId: '20',
+    salespersonId: '7',
+    title: 'Acme dryer',
+    quotationEngineerIds: '3',
+    quotationEngineerLeadId: '3',
+    technicalPlanSubmitDate: '2026-10-06'
+  };
+
+  await assert.rejects(
+    () => approveSalesLead(dependencies, manager, 11, input),
+    /Matching contact must be selected/
+  );
+
+  contacts = [{
+    id: 31,
+    customerId: 20,
+    name: 'Another person',
+    email: 'another@example.com',
+    phone: '+65 6999 9999'
+  }];
+  await assert.rejects(
+    () => approveSalesLead(dependencies, manager, 11, { ...input, primaryContactId: '31' }),
+    /Selected contact does not match lead/
+  );
+
+  contacts = [];
+  await assert.rejects(
+    () => approveSalesLead(dependencies, manager, 11, input),
+    /New contact details confirmation is required/
   );
 });
 

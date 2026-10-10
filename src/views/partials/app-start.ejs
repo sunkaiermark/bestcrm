@@ -3577,50 +3577,289 @@
         padding-right: 0;
       }
 
-      .lead-review-action-list {
-        border-top: 1px solid var(--line);
+      .lead-customer-resolution {
+        background: #f8fbfd;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        margin: 0 0 14px;
+        padding: 14px;
       }
 
-      .lead-review-engineer-row {
+      .lead-customer-mode-field {
+        display: block;
+        margin: 0;
+      }
+
+      .lead-customer-mode-field select {
+        margin-top: 6px;
+      }
+
+      .lead-customer-match-note {
+        background: #fff7ed;
+        border: 1px solid #fdba74;
+        border-radius: 6px;
+        color: #9a3412;
+        margin: 10px 0 0;
+        padding: 9px 11px;
+      }
+
+      .lead-customer-match-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .lead-customer-match-row {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+      }
+
+      .lead-customer-match-name {
+        color: var(--ink);
+        font-weight: 600;
+      }
+
+      .lead-select-existing-customer {
+        border: 1px solid #fdba74;
+        cursor: pointer;
+        flex: 0 0 150px;
+        text-align: center;
+        width: 150px;
+      }
+
+      .lead-select-existing-customer.is-selected {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      .lead-contact-resolution {
+        grid-column: 1 / -1;
+      }
+
+      .lead-contact-match-note {
+        background: #f0fdfa;
+        border: 1px solid #5eead4;
+        border-radius: 6px;
+        color: #115e59;
+        padding: 9px 11px;
+      }
+
+      .lead-contact-match-list {
+        display: grid;
+        gap: 8px;
+        margin-top: 8px;
+      }
+
+      .lead-contact-match-row {
+        align-items: center;
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+      }
+
+      .lead-contact-match-name {
+        color: var(--ink);
+        display: grid;
+        font-weight: 600;
+        gap: 2px;
+      }
+
+      .lead-contact-match-name small {
+        color: var(--muted);
+        font-weight: 400;
+      }
+
+      .lead-select-existing-contact {
+        border: 1px solid #5eead4;
+        cursor: pointer;
+        flex: 0 0 150px;
+        text-align: center;
+        width: 150px;
+      }
+
+      .lead-select-existing-contact.is-selected {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: #fff;
+      }
+
+      .lead-existing-customer-fields,
+      .lead-new-customer-fields {
+        display: grid;
+        gap: 10px 14px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 14px;
+      }
+
+      .lead-existing-customer-fields[hidden],
+      .lead-new-customer-fields[hidden] {
+        display: none;
+      }
+
+      .lead-new-customer-heading,
+      .lead-new-customer-summary,
+      .lead-new-customer-confirmation {
+        grid-column: 1 / -1;
+      }
+
+      .lead-new-customer-heading > .muted {
+        margin: 4px 0 0;
+      }
+
+      .lead-new-customer-summary {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin: 0;
+      }
+
+      .lead-new-customer-summary > div {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        min-width: 0;
+        padding: 9px 10px;
+      }
+
+      .lead-new-customer-summary dt {
+        color: var(--muted);
+        font-size: .82rem;
+        font-weight: 600;
+        margin-bottom: 3px;
+      }
+
+      .lead-new-customer-summary dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .lead-new-customer-confirmation {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+        margin: 0;
+      }
+
+      .lead-new-customer-confirmation input {
+        margin: 0;
+        width: auto;
+      }
+
+      .lead-new-contact-fields {
+        display: grid;
+        gap: 10px;
+      }
+
+      .lead-new-contact-fields[hidden] {
+        display: none;
+      }
+
+      .lead-new-contact-heading > .muted {
+        margin: 4px 0 0;
+      }
+
+      .lead-new-contact-summary {
+        display: grid;
+        gap: 8px;
+        grid-template-columns: repeat(3, minmax(0, 1fr));
+        margin: 0;
+      }
+
+      .lead-new-contact-summary > div {
+        background: #fff;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        min-width: 0;
+        padding: 9px 10px;
+      }
+
+      .lead-new-contact-summary dt {
+        color: var(--muted);
+        font-size: .82rem;
+        font-weight: 600;
+        margin-bottom: 3px;
+      }
+
+      .lead-new-contact-summary dd {
+        margin: 0;
+        overflow-wrap: anywhere;
+      }
+
+      .lead-new-contact-confirmation {
+        align-items: center;
+        display: flex;
+        gap: 8px;
+        margin: 0;
+      }
+
+      .lead-new-contact-confirmation input {
+        margin: 0;
+        width: auto;
+      }
+
+      .lead-review-decision-grid {
+        border-top: 1px solid var(--line);
+        display: grid;
+        gap: 10px 16px;
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+        margin-top: 14px;
         padding-top: 10px;
       }
 
-      .lead-review-action-list .workflow-approve-row {
-        padding-top: 6px;
-      }
-
-      .lead-review-action-list .workflow-compact-row {
+      .lead-review-decision-cell {
         align-items: center;
         display: grid;
-        grid-template-columns: minmax(230px, 280px) minmax(0, 1fr);
+        gap: 10px;
+        grid-template-columns: minmax(150px, 210px) minmax(0, 1fr);
+        margin: 0;
+        min-width: 0;
       }
 
-      .lead-review-action-list .workflow-action-button {
+      .lead-review-decision-name {
+        align-items: center;
+        border: 1px solid transparent;
+        border-radius: 6px;
+        display: flex;
+        font-weight: 700;
+        justify-content: center;
+        min-height: 38px;
+        padding: 6px 10px;
+        white-space: nowrap;
+      }
+
+      .lead-review-sales-owner .lead-review-decision-name {
+        background: #dcecff;
+        border-color: #7da9d8;
+        color: #214f7c;
+      }
+
+      .lead-review-engineer .lead-review-decision-name {
+        background: #dff4f0;
+        border-color: #69b7aa;
+        color: #175f58;
+      }
+
+      .lead-review-decision-cell .workflow-action-button {
         min-width: 0;
         overflow-wrap: anywhere;
         white-space: normal;
         width: 100%;
       }
 
-      .lead-review-action-fields {
-        display: grid;
-        gap: 10px 14px;
-        grid-template-columns: repeat(2, minmax(0, 1fr));
-        min-width: 0;
-      }
-
-      .lead-review-action-fields-single {
-        grid-template-columns: minmax(0, 1fr);
-      }
-
-      .lead-review-action-list .workflow-inline-field {
-        flex-basis: auto;
+      .lead-review-decision-cell select,
+      .lead-review-decision-cell input,
+      .lead-review-decision-cell details {
         min-width: 0;
         width: 100%;
       }
 
-      .lead-secondary-decision-list {
-        margin-top: 0;
+      .lead-review-decision-option {
+        margin: 0;
+        min-width: 0;
+        width: 100%;
       }
 
       .lead-attachment-list .inquiry-attachment-row {
@@ -5248,9 +5487,23 @@
         .inquiry-form-grid,
         .inquiry-summary-grid,
         .approval-decision-grid,
+        .lead-existing-customer-fields,
+        .lead-new-customer-fields,
+        .lead-new-customer-summary,
+        .lead-new-contact-summary,
         .customer-match-card,
         .inquiry-attachment-row {
           grid-template-columns: 1fr;
+        }
+
+        .lead-customer-match-row {
+          align-items: stretch;
+          flex-direction: column;
+        }
+
+        .lead-contact-match-row {
+          align-items: stretch;
+          flex-direction: column;
         }
 
         .lead-attachment-list .inquiry-attachment-row {
@@ -5274,14 +5527,12 @@
           width: 100%;
         }
 
-        .lead-review-action-list .workflow-compact-row,
-        .lead-review-action-fields {
+        .lead-review-decision-grid {
           grid-template-columns: minmax(0, 1fr);
         }
 
-        .lead-review-action-list .workflow-inline-field {
-          grid-template-columns: minmax(0, 1fr);
-          gap: 6px;
+        .lead-review-decision-cell {
+          grid-template-columns: minmax(130px, 180px) minmax(0, 1fr);
         }
 
         .account-security-grid,
@@ -5299,17 +5550,54 @@
       .product-category-picker {
         grid-column: 1 / -1;
       }
-      .product-category-picker p,
-      .product-category-review p {
+      .product-category-picker p {
         margin: 0.3rem 0 0.55rem;
       }
-      .product-category-suggestions,
-      .product-category-confirmed {
+      .product-category-suggestions {
         display: flex;
         gap: 0.45rem;
         align-items: center;
         flex-wrap: wrap;
         margin-bottom: 0.55rem;
+      }
+      .product-category-review-row {
+        align-items: center;
+        display: grid;
+        gap: 10px 14px;
+        grid-template-columns: max-content minmax(320px, 520px) minmax(180px, 1fr);
+      }
+      .product-category-review-row > h2 {
+        border-bottom: 0;
+        padding: 0;
+        white-space: nowrap;
+      }
+      .product-category-review-form {
+        align-items: center;
+        display: grid;
+        gap: 10px;
+        grid-template-columns: minmax(0, 1fr) auto;
+        margin: 0;
+      }
+      .product-category-review-form label {
+        margin: 0;
+        min-width: 0;
+      }
+      .product-category-review-form select {
+        min-width: 0;
+        width: 100%;
+      }
+      .product-category-confirm-button {
+        min-width: 90px;
+        white-space: nowrap;
+      }
+      .product-category-review .product-category-confirmed {
+        align-items: center;
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+        justify-content: flex-end;
+        margin: 0;
+        min-width: 0;
       }
       .product-category-suggestion {
         padding: 0.3rem 0.55rem;
@@ -5335,6 +5623,14 @@
       .product-category-options input[type="checkbox"] {
         width: auto;
         min-height: auto;
+      }
+      @media (max-width: 860px) {
+        .product-category-review-row {
+          grid-template-columns: 1fr;
+        }
+        .product-category-review .product-category-confirmed {
+          justify-content: flex-start;
+        }
       }
     </style>
   </head>
@@ -5410,7 +5706,7 @@
           <% } %>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%- navIcon('briefcase') %><span><%= sidebarLabel('opportunities', t('opportunities')) %></span></a>
           <% if (currentUser?.roles?.some((role) => ['commercial_manager', 'general_manager'].includes(role))) { %>
-            <a class="<%= navClass('quotation-standard-terms') %>" href="/quotation-standard-terms"><%- navIcon('bookmark') %><span><%= language === 'zh' ? '商务报价标准文案' : 'Quotation wording' %></span></a>
+            <a class="<%= navClass('quotation-standard-terms') %>" href="/quotation-standard-terms"><%- navIcon('bookmark') %><span><%= language === 'zh' ? '标准文案' : 'Quotation wording' %></span></a>
           <% } %>
           <% if (typeof developmentWorkspaceEnabled !== 'undefined' && developmentWorkspaceEnabled) { %>
             <a class="<%= navClass('development') %>" href="/development/topics"><%- navIcon('bulb') %><span><%= sidebarLabel('development', 'New Product Development') %></span></a>

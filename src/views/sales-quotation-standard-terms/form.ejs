@@ -1,6 +1,6 @@
-<%- include('../partials/app-start', { title: `${language === 'zh' ? '商务报价标准文案' : 'Quotation standard wording'} - BESTCRM`, activeNav: 'quotation-standard-terms' }) %>
+<%- include('../partials/app-start', { title: `${language === 'zh' ? '标准文案' : 'Quotation standard wording'} - BESTCRM`, activeNav: 'quotation-standard-terms' }) %>
 <% const zh = language === 'zh'; const section = sections.find((item) => item.key === term.key); %>
-<p class="breadcrumb"><a href="/quotation-standard-terms"><%= zh ? '商务报价标准文案' : 'Quotation standard wording' %></a></p>
+<p class="breadcrumb"><a href="/quotation-standard-terms"><%= zh ? '标准文案' : 'Quotation standard wording' %></a></p>
 <header class="page-header"><h1><%= mode === 'new' ? (zh ? '新建文案草稿' : 'New wording draft') : `${term.title} · R${term.revisionNo}` %></h1></header>
 <section class="form-panel">
   <% if (mode === 'detail') { %><p class="muted"><%= zh ? '状态' : 'Status' %>: <%= term.status %> · <%= zh ? '语言' : 'Language' %>: <%= term.language %> · <%= zh ? '编写人' : 'Author' %>: <%= term.createdByDisplayName || term.createdBy %><% if (term.approvedBy) { %> · <%= zh ? '审核人' : 'Approver' %>: <%= term.approvedByDisplayName || term.approvedBy %><% } %></p><% } %>

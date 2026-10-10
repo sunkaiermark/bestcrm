@@ -184,6 +184,96 @@ function selectedQuotationEngineerIds(value) {
     .filter((userId) => Number.isSafeInteger(userId) && userId > 0))];
 }
 
+function leadApprovalCustomerInput(input = {}) {
+  const resolution = text(input.customerResolution);
+  if (!resolution) {
+    // Preserve compatibility with existing integrations that predate the
+    // explicit two-path customer decision on the review page.
+    return input;
+  }
+  if (!['new', 'existing'].includes(resolution)) {
+    throw new Error('Customer decision is required');
+  }
+  if (resolution === 'existing') {
+    if (!numberOrNull(input.customerId)) {
+      throw new Error('Existing customer is required');
+    }
+    return input;
+  }
+  if (text(input.confirmNewCustomerDetails) !== '1') {
+    throw new Error('New customer details confirmation is required');
+  }
+  return {
+    ...input,
+    customerId: '',
+    primaryContactId: ''
+  };
+}
+
+function normalizedLeadContactEmail(value) {
+  return text(value).toLowerCase();
+}
+
+function normalizedLeadContactPhone(value) {
+  return text(value).replace(/\D/g, '');
+}
+
+function contactMatchesLead(contact, lead) {
+  const leadEmail = normalizedLeadContactEmail(lead?.contactEmail);
+  const contactEmail = normalizedLeadContactEmail(contact?.email);
+  const leadPhone = normalizedLeadContactPhone(lead?.contactPhone);
+  const contactPhone = normalizedLeadContactPhone(contact?.phone);
+  return Boolean(
+    (leadEmail && contactEmail && leadEmail === contactEmail)
+    || (leadPhone && contactPhone && leadPhone === contactPhone)
+  );
+}
+
+async function leadApprovalContactInput(contactRepository, lead, input = {}) {
+  if (text(input.customerResolution) !== 'existing') {
+    return input;
+  }
+  const customerId = numberOrNull(input.customerId);
+  const primaryContactId = numberOrNull(input.primaryContactId);
+  const customerContacts = typeof contactRepository?.listContacts === 'function'
+    ? await contactRepository.listContacts({ customerId })
+    : [];
+  const activeCustomerContacts = customerContacts.filter((contact) => (
+    !contact.archivedAt && Number(contact.customerId) === Number(customerId)
+  ));
+  const matchingContacts = activeCustomerContacts.filter((contact) => contactMatchesLead(contact, lead));
+
+  if (primaryContactId) {
+    let selectedContact = activeCustomerContacts.find(
+      (contact) => Number(contact.id) === Number(primaryContactId)
+    );
+    if (!selectedContact && typeof contactRepository?.getContactDetail === 'function') {
+      selectedContact = await contactRepository.getContactDetail(primaryContactId);
+    }
+    if (!selectedContact) {
+      throw new Error('Contact not found');
+    }
+    if (selectedContact.archivedAt) {
+      throw new Error('Contact is archived');
+    }
+    if (Number(selectedContact.customerId) !== Number(customerId)) {
+      throw new Error('Contact does not belong to customer');
+    }
+    if (!contactMatchesLead(selectedContact, lead)) {
+      throw new Error('Selected contact does not match lead');
+    }
+    return input;
+  }
+
+  if (matchingContacts.length > 0) {
+    throw new Error('Matching contact must be selected');
+  }
+  if (text(input.confirmNewContactDetails) !== '1') {
+    throw new Error('New contact details confirmation is required');
+  }
+  return input;
+}
+
 function assertValidTechnicalPlanSubmitDate(value) {
   if (!text(value)) {
     throw new Error('Plan to Submit is required');
@@ -392,7 +482,13 @@ export async function approveSalesLead(dependencies, actor, leadId, input = {}) 
     const lead = await lockLead(repositories.inquiryRepository, leadId);
     assertLeadReviewable(actor, lead);
     const initiation = await validateLeadInitiationAssignment(repositories.userRepository, input);
-    const opportunity = await convertInquiryToOpportunity(repositories, actor, lead, input, {
+    const customerApprovalInput = leadApprovalCustomerInput(input);
+    const approvalInput = await leadApprovalContactInput(
+      repositories.contactRepository,
+      lead,
+      customerApprovalInput
+    );
+    const opportunity = await convertInquiryToOpportunity(repositories, actor, lead, approvalInput, {
       copyAttachments: false
     });
     const referencedAttachments = await referenceInquiryAttachmentsToOpportunity({

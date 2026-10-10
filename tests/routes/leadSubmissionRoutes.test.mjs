@@ -371,7 +371,7 @@ test('another salesperson cannot open someone else lead while managers can use t
   }
 });
 
-test('assigned sales manager sees approve return and reject controls on lead detail', async () => {
+test('assigned sales manager sees the compact two-by-two approval controls on lead detail', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-lead-review-ui-'));
   try {
     const manager = await buildApp({
@@ -388,23 +388,57 @@ test('assigned sales manager sees approve return and reject controls on lead det
     assert.match(page.text, /<dl class="lead-summary-narrative">[\s\S]*<dt>Requirement<\/dt><dd class="detail-text-cell">Need a dryer<\/dd>/);
     assert.match(page.text, /action="\/lead-submissions\/11\/approve"/);
     assert.match(page.text, /action="\/lead-submissions\/11\/return"/);
-    assert.match(page.text, /action="\/lead-submissions\/11\/reject"/);
+    assert.doesNotMatch(page.text, /action="\/lead-submissions\/11\/reject"/);
     assert.match(page.text, />Approve &amp; Assign</);
+    assert.match(page.text, />Reject for modification</);
+    assert.doesNotMatch(page.text, />Reject lead</);
+    assert.doesNotMatch(page.text, />Return for modification</);
     assert.match(page.text, />Sales manager approval and initiation</);
     assert.match(page.text, /name="quotationEngineerIds"[^>]*value="3"/);
     assert.match(page.text, /name="quotationEngineerIds"[^>]*value="9"/);
     assert.match(page.text, /name="quotationEngineerLeadId"/);
     assert.match(page.text, /name="technicalPlanSubmitDate"[^>]*required/);
-    const requirementIndex = page.text.indexOf('name="requirementText"');
-    const engineerIndex = page.text.indexOf('class="lead-review-engineer-row"');
-    const approveIndex = page.text.indexOf('class="workflow-action-button workflow-approve-button"');
-    assert.ok(requirementIndex >= 0 && requirementIndex < engineerIndex && engineerIndex < approveIndex);
-    assert.match(page.text, /name="companyWebsite"[^>]*value="https:\/\/acme\.example"/);
-    assert.match(page.text, /workflow-compact-row workflow-approve-row/);
-    assert.match(page.text, /workflow-compact-row workflow-reject-row/);
-    assert.equal((page.text.match(/class="lead-review-action-fields/g) || []).length, 3);
-    assert.match(page.text, /lead-review-action-fields lead-review-action-fields-single/);
-    assert.match(page.text, /name="reason" type="text" required maxlength="1000"/);
+    const customerDecisionIndex = page.text.indexOf('name="customerResolution"');
+    const decisionGridIndex = page.text.indexOf('class="lead-review-decision-grid"');
+    const salesOwnerIndex = page.text.indexOf('class="lead-review-decision-cell lead-review-sales-owner"');
+    const engineerIndex = page.text.indexOf('class="lead-review-decision-cell lead-review-engineer"');
+    const returnIndex = page.text.indexOf('class="lead-review-decision-cell lead-review-return"');
+    const approveIndex = page.text.indexOf('class="lead-review-decision-cell lead-review-approve"');
+    assert.ok(
+      customerDecisionIndex >= 0
+      && customerDecisionIndex < decisionGridIndex
+      && decisionGridIndex < salesOwnerIndex
+      && salesOwnerIndex < engineerIndex
+      && engineerIndex < returnIndex
+      && returnIndex < approveIndex
+    );
+    assert.match(page.text, /<select name="customerResolution" id="lead-customer-resolution" required>/);
+    assert.match(page.text, /<option value="existing">Existing customer<\/option>/);
+    assert.match(page.text, /<option value="new">New customer<\/option>/);
+    assert.match(page.text, /data-existing-customer-fields hidden/);
+    assert.match(page.text, /data-new-customer-fields hidden/);
+    assert.match(page.text, /Confirm new customer details/);
+    assert.match(page.text, /name="confirmNewCustomerDetails" value="1"/);
+    assert.match(page.text, /<dt>Company Name<\/dt><dd>Acme<\/dd>/);
+    assert.match(page.text, /<dt>Email<\/dt><dd>alice@example\.com<\/dd>/);
+    assert.match(page.text, /class="product-category-review-row"/);
+    assert.match(page.text, /<select name="confirmedProductCategoryCodes" required>/);
+    assert.match(page.text, /class="product-category-confirm-button" type="submit">Confirm<\/button>/);
+    assert.doesNotMatch(page.text, /class="product-category-choices"/);
+    assert.doesNotMatch(page.text, /type="checkbox" name="confirmedProductCategoryCodes"/);
+    const approvalForm = page.text.match(/<form id="lead-approval-form" class="inquiry-workflow-form lead-conversion-review-form"[\s\S]*?<\/form>/)?.[0] || '';
+    assert.doesNotMatch(approvalForm, /name="companyName"/);
+    assert.doesNotMatch(approvalForm, /name="companyWebsite"/);
+    assert.doesNotMatch(approvalForm, /name="contactName"/);
+    assert.doesNotMatch(approvalForm, /name="contactEmail"/);
+    assert.doesNotMatch(approvalForm, /name="contactPhone"/);
+    assert.doesNotMatch(approvalForm, /name="requirementText"/);
+    assert.doesNotMatch(approvalForm, /data-product-category-picker/);
+    assert.equal((page.text.match(/class="lead-review-decision-cell/g) || []).length, 4);
+    assert.match(page.text, /name="salespersonId" form="lead-approval-form" required/);
+    assert.match(page.text, /form="lead-approval-form"[\s\S]*?type="checkbox"[\s\S]*?name="quotationEngineerIds"/);
+    assert.match(page.text, /form="lead-approval-form" class="workflow-action-button workflow-approve-button"/);
+    assert.match(page.text, /name="reason" type="text" required maxlength="1000" placeholder="Modification request"/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
@@ -420,6 +454,15 @@ test('duplicate customer approval returns to the lead review page with actionabl
     ownerDisplayName: 'Sales Two',
     contactCount: 3
   };
+  const matchingContact = {
+    id: 122,
+    contactCode: 'L000122',
+    customerId: duplicate.id,
+    customerName: duplicate.name,
+    name: 'Alice',
+    email: 'alice@example.com',
+    phone: '+65 6123 4567'
+  };
   try {
     const manager = await buildApp({
       uploadDir,
@@ -431,16 +474,39 @@ test('duplicate customer approval returns to the lead review page with actionabl
         async createCustomer() { throw new Error('should not create a duplicate customer'); }
       },
       contactRepository: {
-        async listContacts() { return []; }
+        async listContacts() { return [matchingContact]; },
+        async getContactDetail() { return matchingContact; }
       }
     });
+
+    const initialPage = await manager.agent.get('/lead-submissions/11');
+    assert.equal(initialPage.status, 200);
+    assert.match(initialPage.text, /Matching customer found/);
+    assert.match(initialPage.text, /C000044 · Acme/);
+    assert.match(initialPage.text, /name="customerResolution" id="lead-customer-resolution" value="existing"/);
+    assert.match(initialPage.text, /data-select-existing-customer-id="44"/);
+    assert.match(initialPage.text, />Select this customer<\/button>/);
+    assert.match(initialPage.text, /type="hidden" name="customerId" id="lead-customer-select" value=""/);
+    assert.doesNotMatch(initialPage.text, /<select name="customerId"/);
+    assert.match(initialPage.text, /workflow-approve-button" type="submit" disabled/);
+    assert.doesNotMatch(initialPage.text, /<option value="new"/);
+    assert.doesNotMatch(initialPage.text, /Select existing or new customer/);
+    assert.doesNotMatch(initialPage.text, /Confirm new customer details/);
+    assert.match(initialPage.text, /data-existing-customer-fields>/);
+    assert.match(initialPage.text, /type="hidden" name="primaryContactId" id="lead-contact-select" value=""/);
+    assert.doesNotMatch(initialPage.text, /<select name="primaryContactId"/);
+    assert.match(initialPage.text, /data-select-existing-contact-id="122"/);
+    assert.match(initialPage.text, />Select this contact<\/button>/);
+    assert.match(initialPage.text, /Matching contact found/);
+    assert.doesNotMatch(initialPage.text, /Existing contact \(optional\)/);
 
     const response = await manager.agent.post('/lead-submissions/11/approve')
       .type('form')
       .send({
         createMissingRecords: '1',
+        customerResolution: 'new',
+        confirmNewCustomerDetails: '1',
         customerId: '',
-        companyName: 'Acme',
         salespersonId: '8',
         title: 'Preserved opportunity title',
         estimatedAmount: '125000',
@@ -449,16 +515,23 @@ test('duplicate customer approval returns to the lead review page with actionabl
         quotationEngineerIds: ['3', '9'],
         quotationEngineerLeadId: '3',
         technicalPlanSubmitDate: '2026-10-06',
-        requirementText: 'Preserved requirement',
         reviewNote: 'Preserved review note'
       });
 
     assert.equal(response.status, 409);
-    assert.match(response.text, /Duplicate customer found/);
-    assert.match(response.text, /Select this existing customer above; do not create a duplicate/);
-    assert.match(response.text, /C000044/);
-    assert.match(response.text, /Sales Two/);
-    assert.match(response.text, />3<\/td>/);
+    assert.match(response.text, /Matching customer found/);
+    assert.match(response.text, /C000044 · Acme/);
+    assert.match(response.text, /name="customerResolution" id="lead-customer-resolution" value="existing"/);
+    assert.match(response.text, /data-select-existing-customer-id="44"/);
+    assert.doesNotMatch(response.text, /<option value="new"/);
+    assert.match(response.text, /type="hidden" name="customerId" id="lead-customer-select" value=""/);
+    assert.doesNotMatch(response.text, /<select name="customerId"/);
+    assert.match(response.text, /data-select-existing-contact-id="122"/);
+    assert.doesNotMatch(response.text, /<select name="primaryContactId"/);
+    const returnedApprovalForm = response.text.match(
+      /<form id="lead-approval-form" class="inquiry-workflow-form lead-conversion-review-form"[\s\S]*?<\/form>/
+    )?.[0] || '';
+    assert.doesNotMatch(returnedApprovalForm, /name="confirmNewCustomerDetails"/);
     assert.match(response.text, /action="\/lead-submissions\/11\/approve"/);
     assert.match(response.text, /name="title" value="Preserved opportunity title"/);
     assert.match(response.text, /name="estimatedAmount" value="125000"/);
@@ -468,9 +541,12 @@ test('duplicate customer approval returns to the lead review page with actionabl
     assert.match(response.text, /name="quotationEngineerIds"[^>]*value="9"[^>]*checked/);
     assert.match(response.text, /name="quotationEngineerLeadId" value="3"/);
     assert.match(response.text, /name="technicalPlanSubmitDate" value="2026-10-06" required/);
-    assert.match(response.text, />Preserved requirement<\/textarea>/);
+    assert.doesNotMatch(
+      response.text.match(/<form id="lead-approval-form" class="inquiry-workflow-form lead-conversion-review-form"[\s\S]*?<\/form>/)?.[0] || '',
+      /name="requirementText"/
+    );
     assert.match(response.text, /name="reviewNote"[^>]*value="Preserved review note"/);
-    assert.doesNotMatch(response.text, /^Duplicate customer$/);
+    assert.doesNotMatch(response.text, /class="duplicate-warning/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

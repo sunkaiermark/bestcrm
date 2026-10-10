@@ -217,7 +217,7 @@ async function loadLeadFormOptions(dependencies, actor) {
 
 async function renderLeadDetailPage(dependencies, req, res, submission, {
   statusCode = 200,
-  duplicateCustomers = [],
+  duplicateCustomers,
   approvalInput = {}
 } = {}) {
   const [attachments, reviewEvents, formOptions] = await Promise.all([
@@ -228,6 +228,15 @@ async function renderLeadDetailPage(dependencies, req, res, submission, {
     loadLeadFormOptions(dependencies, req.currentUser)
   ]);
   const canReview = canReviewLeadSubmission(req.currentUser, submission);
+  let resolvedDuplicateCustomers = duplicateCustomers;
+  if (canReview && !Array.isArray(resolvedDuplicateCustomers)
+      && submission.companyName
+      && typeof dependencies.customerRepository?.findDuplicatesByName === 'function') {
+    resolvedDuplicateCustomers = await dependencies.customerRepository.findDuplicatesByName(
+      submission.companyName
+    );
+  }
+  if (!Array.isArray(resolvedDuplicateCustomers)) resolvedDuplicateCustomers = [];
   const [customers, contacts] = canReview
     ? await Promise.all([
         typeof dependencies.customerRepository?.listCustomers === 'function'
@@ -244,7 +253,7 @@ async function renderLeadDetailPage(dependencies, req, res, submission, {
     reviewEvents,
     customers,
     contacts,
-    duplicateCustomers,
+    duplicateCustomers: resolvedDuplicateCustomers,
     approvalInput,
     countryOptions: CUSTOMER_COUNTRIES,
     ...formOptions,
@@ -286,7 +295,14 @@ function handleLeadError(error, res, next) {
     'Email disposition is required',
     'Customer is required',
     'Customer name is required',
+    'Customer decision is required',
+    'Existing customer is required',
+    'New customer details confirmation is required',
+    'Matching contact must be selected',
+    'New contact details confirmation is required',
+    'Selected contact does not match lead',
     'Contact does not belong to customer',
+    'Contact is archived',
     'Attachment upload expired'
   ].includes(error.message)) {
     res.status(400).send(error.message);
