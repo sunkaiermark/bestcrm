@@ -47,6 +47,10 @@ test('technical solution repository creates a pending version', async () => {
   assert.equal(version.submitterDisplayName, 'Quote Engineer');
   assert.match(queryTarget.queries[0].sql, /INSERT INTO technical_solutions/);
   assert.match(queryTarget.queries[0].sql, /COALESCE\(MAX\(version_no\), 0\) \+ 1/);
+  assert.match(queryTarget.queries[0].sql, /ON CONFLICT \(opportunity_technical_draft_id\)/);
+  assert.match(queryTarget.queries[0].sql, /WHERE opportunity_technical_draft_id IS NOT NULL/);
+  assert.match(queryTarget.queries[0].sql, /DO UPDATE SET[\s\S]*status = 'pending'/);
+  assert.match(queryTarget.queries[0].sql, /WHERE technical_solutions\.status = 'withdrawn'/);
   assert.deepEqual(queryTarget.queries[0].params, [
     10,
     'Updated motor control solution',

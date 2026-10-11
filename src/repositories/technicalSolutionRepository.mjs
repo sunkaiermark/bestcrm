@@ -50,6 +50,19 @@ export function createTechnicalSolutionRepository(queryTarget) {
           $6
         FROM technical_solutions
         WHERE opportunity_id = $1
+        ON CONFLICT (opportunity_technical_draft_id)
+          WHERE opportunity_technical_draft_id IS NOT NULL
+        DO UPDATE SET
+          summary = EXCLUDED.summary,
+          parameters = EXCLUDED.parameters,
+          implementation_plan = EXCLUDED.implementation_plan,
+          status = 'pending',
+          submitted_by = EXCLUDED.submitted_by,
+          submitted_at = now(),
+          reviewed_by = NULL,
+          reviewed_at = NULL,
+          review_comment = NULL
+        WHERE technical_solutions.status = 'withdrawn'
         RETURNING *
       `, [
         input.opportunityId,

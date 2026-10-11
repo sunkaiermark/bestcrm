@@ -2750,6 +2750,8 @@ test('opportunity detail allows removing a file only from a withdrawn technical 
   assert.match(section, /audit record will be retained/);
   assert.match(detail.text, /\.technical-uploaded-files-table \.technical-file-actions-column\s*\{[^}]*width:\s*360px;/);
   assert.match(detail.text, /\.technical-uploaded-file-actions\s*\{[^}]*flex-wrap:\s*nowrap;/);
+  assert.match(detail.text, /\.technical-version-actions\.technical-uploaded-file-actions\s*\{[^}]*flex-wrap:\s*nowrap;[^}]*gap:\s*6px 8px;/);
+  assert.match(detail.text, /\.technical-version-actions\.technical-uploaded-file-actions > \*\s*\{[^}]*flex:\s*0 0 auto;/);
   assert.match(detail.text, /\.technical-file-action\s*\{[^}]*white-space:\s*nowrap;/);
 });
 
