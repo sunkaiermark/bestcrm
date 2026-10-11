@@ -9,7 +9,9 @@ import { simpleParser } from 'mailparser';
 import { requireLogin } from '../middleware/auth.mjs';
 import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
 import {
+  applyDirectAttachmentPreviewHeaders,
   attachmentPreviewKind,
+  directAttachmentPreviewMimeType,
   extractDocxPlainText,
   extractXlsxPreview,
   renderDxfPreview
@@ -57,27 +59,6 @@ function emailFolder(value) {
 
 function emailSearchTerm(value) {
   return String(value || '').trim().slice(0, 200);
-}
-
-const directEmailPreviewMimeByExtension = new Map([
-  ['.pdf', 'application/pdf'],
-  ['.txt', 'text/plain'],
-  ['.png', 'image/png'],
-  ['.jpg', 'image/jpeg'],
-  ['.jpeg', 'image/jpeg'],
-  ['.gif', 'image/gif'],
-  ['.webp', 'image/webp']
-]);
-const directEmailPreviewMimeTypes = new Set(directEmailPreviewMimeByExtension.values());
-
-function directEmailPreviewMimeType(attachment) {
-  const extension = path.extname(String(attachment.originalName || attachment.storedPath || '')).toLowerCase();
-  if (directEmailPreviewMimeByExtension.has(extension)) {
-    return directEmailPreviewMimeByExtension.get(extension);
-  }
-  if (extension) return null;
-  const declaredMimeType = String(attachment.mimeType || '').split(';', 1)[0].trim().toLowerCase();
-  return directEmailPreviewMimeTypes.has(declaredMimeType) ? declaredMimeType : null;
 }
 
 function emailFolderFilter(folder, mailboxKey, searchTerm = '') {
@@ -626,7 +607,7 @@ export function emailCenterRoutes({
         });
         return;
       }
-      const previewMimeType = directEmailPreviewMimeType(attachment);
+      const previewMimeType = directAttachmentPreviewMimeType(attachment);
       if (!previewMimeType) {
         res.status(200).render('attachments/unsupported-preview', {
           ...previewContext,
@@ -634,7 +615,7 @@ export function emailCenterRoutes({
         });
         return;
       }
-      res.setHeader('Content-Type', previewMimeType);
+      applyDirectAttachmentPreviewHeaders(res, attachment);
       res.setHeader('Content-Disposition', inlineContentDisposition(attachment.originalName));
       res.setHeader('X-Archive-SHA256', attachment.sha256);
       res.sendFile(filePath, (error) => {
@@ -657,11 +638,11 @@ export function emailCenterRoutes({
         res.status(404).send('Email attachment file not found');
         return;
       }
-      res.setHeader('Content-Type', attachment.mimeType || 'application/octet-stream');
+      if (!applyDirectAttachmentPreviewHeaders(res, attachment)) {
+        res.status(415).send('Email attachment type is not allowed for inline display');
+        return;
+      }
       res.setHeader('Content-Disposition', inlineContentDisposition(attachment.originalName));
-      res.setHeader('Cache-Control', 'private, no-store');
-      res.setHeader('X-Content-Type-Options', 'nosniff');
-      res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
       res.setHeader('X-Archive-SHA256', attachment.sha256);
       res.sendFile(filePath, (error) => {
         if (error && !res.headersSent) next(error);
@@ -682,11 +663,12 @@ export function emailCenterRoutes({
       res.setHeader('Content-Type', 'text/html; charset=utf-8');
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('X-Content-Type-Options', 'nosniff');
+      res.setHeader('X-Frame-Options', 'SAMEORIGIN');
       res.setHeader('Referrer-Policy', 'no-referrer');
       res.setHeader('X-Email-Content-Source', completeBody.source);
       res.setHeader(
         'Content-Security-Policy',
-        "sandbox allow-same-origin; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; form-action 'none'; base-uri 'none'"
+        "sandbox allow-same-origin; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'self'; form-action 'none'; base-uri 'none'"
       );
       const htmlBody = resolveInlineEmailContent(completeBody.htmlBody, message.attachments);
       res.send(emailHtmlDocument(htmlBody, completeBody.textBody));

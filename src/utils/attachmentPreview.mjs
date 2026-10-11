@@ -1,13 +1,40 @@
 import path from 'node:path';
 import { inflateRawSync } from 'node:zlib';
 
-const directPreviewMimeTypes = new Set([
-  'application/pdf',
-  'text/plain'
+const directPreviewMimeByExtension = new Map([
+  ['.pdf', 'application/pdf'],
+  ['.txt', 'text/plain'],
+  ['.png', 'image/png'],
+  ['.jpg', 'image/jpeg'],
+  ['.jpeg', 'image/jpeg'],
+  ['.gif', 'image/gif'],
+  ['.webp', 'image/webp']
 ]);
+const directPreviewMimeTypes = new Set(directPreviewMimeByExtension.values());
 
 function extensionFromAttachment(attachment) {
   return path.extname(String(attachment?.originalName || attachment?.storedPath || '')).toLowerCase();
+}
+
+export function directAttachmentPreviewMimeType(attachment) {
+  const extension = extensionFromAttachment(attachment);
+  if (directPreviewMimeByExtension.has(extension)) {
+    return directPreviewMimeByExtension.get(extension);
+  }
+  if (extension) return null;
+  const declaredMimeType = String(attachment?.mimeType || '').split(';', 1)[0].trim().toLowerCase();
+  return directPreviewMimeTypes.has(declaredMimeType) ? declaredMimeType : null;
+}
+
+export function applyDirectAttachmentPreviewHeaders(res, attachment) {
+  const mimeType = directAttachmentPreviewMimeType(attachment);
+  if (!mimeType) return null;
+  res.setHeader('Content-Type', mimeType === 'text/plain' ? 'text/plain; charset=utf-8' : mimeType);
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('Cross-Origin-Resource-Policy', 'same-origin');
+  res.setHeader('Referrer-Policy', 'no-referrer');
+  return mimeType;
 }
 
 export function attachmentPreviewKind(attachment) {
@@ -27,7 +54,7 @@ export function attachmentPreviewKind(attachment) {
   if (extension === '.doc') {
     return 'unsupported-doc';
   }
-  if (directPreviewMimeTypes.has(attachment?.mimeType) || attachment?.mimeType?.startsWith('image/')) {
+  if (directAttachmentPreviewMimeType(attachment)) {
     return 'direct';
   }
   return 'download-only';

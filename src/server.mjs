@@ -15,6 +15,7 @@ import { createWorkflowTransaction } from './db/workflowTransaction.mjs';
 import { createEmailArchiveTransaction } from './db/emailArchiveTransaction.mjs';
 import { attachCurrentUser } from './middleware/auth.mjs';
 import { csrfProtection } from './middleware/csrf.mjs';
+import { securityHeaders } from './middleware/securityHeaders.mjs';
 import { writeMaintenance } from './middleware/writeMaintenance.mjs';
 import { submissionGuard } from './middleware/submissionGuard.mjs';
 import { createTrustedDeviceIntegration } from './middleware/trustedDevice.mjs';
@@ -840,6 +841,9 @@ export function createApp(options = {}) {
     : '';
 
   app.disable('x-powered-by');
+  app.use(securityHeaders({
+    enableHsts: config.nodeEnv === 'production' && config.baseUrl.startsWith('https://')
+  }));
   app.set('view engine', 'ejs');
   app.set('views', path.join(dirname, 'views'));
   app.get('/assets/email-purify.js', (req, res) => {

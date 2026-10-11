@@ -3889,6 +3889,20 @@ test('attachment download and preview return stored files through opportunity pe
     assert.equal(preview.text, 'preview me');
     assert.match(preview.headers['content-type'], /text\/plain/);
     assert.match(preview.headers['content-disposition'], /inline/);
+    assert.equal(preview.headers['cache-control'], 'private, no-store');
+    assert.equal(preview.headers['x-content-type-options'], 'nosniff');
+    assert.equal(preview.headers['cross-origin-resource-policy'], 'same-origin');
+
+    await writeFile(path.join(uploadDir, 'interactive.svg'), '<svg onload="alert(1)"/>', 'utf8');
+    Object.assign(attachment, {
+      originalName: 'interactive.svg',
+      storedPath: 'interactive.svg',
+      mimeType: 'image/svg+xml'
+    });
+    const svgPreview = await agent.get('/opportunities/30/attachments/55/preview');
+    assert.equal(svgPreview.status, 200);
+    assert.match(svgPreview.text, /This file type cannot be previewed online/);
+    assert.doesNotMatch(svgPreview.text, /onload="alert\(1\)"/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

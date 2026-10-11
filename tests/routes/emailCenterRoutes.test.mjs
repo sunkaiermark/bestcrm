@@ -400,8 +400,10 @@ test('sales manager sees shared mailbox pending threads without a rule-category 
 
   const htmlContent = await agent.get('/email-center/messages/11/content');
   assert.equal(htmlContent.status, 200);
+  assert.equal(htmlContent.headers['x-frame-options'], 'SAMEORIGIN');
   assert.match(htmlContent.headers['content-security-policy'], /sandbox allow-same-origin; default-src 'none'; img-src 'self' data:/);
   assert.match(htmlContent.headers['content-security-policy'], /script-src 'none'/);
+  assert.match(htmlContent.headers['content-security-policy'], /frame-ancestors 'self'/);
   assert.equal(htmlContent.headers['referrer-policy'], 'no-referrer');
   assert.match(htmlContent.text, /src="\/email-center\/attachments\/21\/inline"/);
   assert.match(htmlContent.text, /src="\/assets\/sunkaier-logo-email\.png"/);
@@ -939,6 +941,7 @@ test('email attachment preview and download enforce the same thread permission',
 
     const inline = await manager.get('/email-center/attachments/21/inline');
     assert.equal(inline.status, 200);
+    assert.match(inline.headers['content-type'], /^application\/pdf/);
     assert.match(inline.headers['content-disposition'], /^inline;.*spec\.pdf/);
     assert.equal(inline.headers['cross-origin-resource-policy'], 'same-origin');
     assert.equal(inline.headers['x-archive-sha256'], 'a'.repeat(64));
@@ -950,6 +953,43 @@ test('email attachment preview and download enforce the same thread permission',
 
     await rm(path.join(uploadDir, 'email-archive', 'spec.pdf'));
     assert.equal((await manager.get('/email-center/attachments/21/preview')).status, 404);
+  } finally {
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});
+
+test('email inline attachment route refuses SVG even when the archive declares an image MIME', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-email-inline-svg-'));
+  try {
+    await mkdir(path.join(uploadDir, 'email-archive'));
+    await writeFile(
+      path.join(uploadDir, 'email-archive', 'interactive.svg'),
+      '<svg xmlns="http://www.w3.org/2000/svg" onload="alert(1)"/>'
+    );
+    const originalMessage = thread().messages[0];
+    const originalAttachment = originalMessage.attachments[0];
+    const manager = await createAgent({
+      userId: 2,
+      roles: [ROLES.SALES_MANAGER],
+      uploadDir,
+      unlinkedOverrides: {
+        messages: [{
+          ...originalMessage,
+          attachments: [{
+            ...originalAttachment,
+            originalName: 'interactive.svg',
+            storedPath: 'email-archive/interactive.svg',
+            mimeType: 'image/svg+xml'
+          }]
+        }]
+      }
+    });
+
+    const response = await manager.get('/email-center/attachments/21/inline');
+
+    assert.equal(response.status, 415);
+    assert.match(response.text, /not allowed for inline display/);
+    assert.doesNotMatch(response.headers['content-type'], /^image\/svg\+xml/);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }

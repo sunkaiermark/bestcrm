@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 
 import {
   attachmentPreviewKind,
+  directAttachmentPreviewMimeType,
   extractDocxPlainText,
   extractXlsxPreview,
   renderDxfPreview
@@ -85,6 +86,32 @@ test('attachment preview kind separates direct, dxf, docx, spreadsheet, and unsu
   assert.equal(attachmentPreviewKind({ originalName: 'equipment.xlsx', mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' }), 'spreadsheet');
   assert.equal(attachmentPreviewKind({ originalName: 'old.doc', mimeType: 'application/msword' }), 'unsupported-doc');
   assert.equal(attachmentPreviewKind({ originalName: 'drawing.pdf', mimeType: 'application/pdf' }), 'direct');
+  assert.equal(attachmentPreviewKind({ originalName: 'photo.png', mimeType: 'image/png' }), 'direct');
+  assert.equal(attachmentPreviewKind({ originalName: 'interactive.svg', mimeType: 'image/svg+xml' }), 'download-only');
+  assert.equal(attachmentPreviewKind({ originalName: 'webpage.html', mimeType: 'text/html' }), 'download-only');
+});
+
+test('direct preview MIME is derived from a safe extension allowlist', () => {
+  assert.equal(
+    directAttachmentPreviewMimeType({ originalName: 'drawing.pdf', mimeType: 'application/octet-stream' }),
+    'application/pdf'
+  );
+  assert.equal(
+    directAttachmentPreviewMimeType({ originalName: 'photo.jpeg', mimeType: 'text/html' }),
+    'image/jpeg'
+  );
+  assert.equal(
+    directAttachmentPreviewMimeType({ originalName: '', storedPath: '', mimeType: 'image/webp; charset=binary' }),
+    'image/webp'
+  );
+  assert.equal(
+    directAttachmentPreviewMimeType({ originalName: 'interactive.svg', mimeType: 'image/svg+xml' }),
+    null
+  );
+  assert.equal(
+    directAttachmentPreviewMimeType({ originalName: 'webpage.html', mimeType: 'image/png' }),
+    null
+  );
 });
 
 test('dxf preview renders line entities into svg', () => {

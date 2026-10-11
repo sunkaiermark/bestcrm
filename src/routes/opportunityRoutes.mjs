@@ -46,6 +46,7 @@ import {
 } from '../services/opportunityTechnicalDraftService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import {
+  applyDirectAttachmentPreviewHeaders,
   attachmentPreviewKind,
   extractDocxPlainText,
   extractXlsxPreview,
@@ -644,13 +645,6 @@ function uploadAttachmentOrSendLimitError(upload, maxUploadMb) {
 
 function normalizeAttachmentCategory(category) {
   return attachmentCategories.has(category) ? category : 'other';
-}
-
-function previewMimeType(mimeType) {
-  if (mimeType === 'application/pdf' || mimeType === 'text/plain' || mimeType?.startsWith('image/')) {
-    return mimeType;
-  }
-  return 'application/octet-stream';
 }
 
 function canDeleteAttachment(user, opportunity, attachment) {
@@ -1685,7 +1679,7 @@ export function opportunityRoutes({
         });
         return;
       }
-      res.type(previewMimeType(attachment.mimeType));
+      applyDirectAttachmentPreviewHeaders(res, attachment);
       res.setHeader('Content-Disposition', inlineContentDisposition(attachment.originalName));
       res.sendFile(filePath);
     } catch (error) {

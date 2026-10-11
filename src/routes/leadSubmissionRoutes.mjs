@@ -42,6 +42,7 @@ import {
   updatePendingSalesLead
 } from '../services/leadSubmissionService.mjs';
 import {
+  applyDirectAttachmentPreviewHeaders,
   attachmentPreviewKind,
   extractDocxPlainText,
   extractXlsxPreview,
@@ -882,7 +883,7 @@ export function leadSubmissionRoutes({
       });
       return;
     }
-    res.type(attachment.mimeType || 'application/octet-stream');
+    applyDirectAttachmentPreviewHeaders(res, attachment);
     res.setHeader('Content-Disposition', inlineContentDisposition(attachment.originalName));
     res.sendFile(filePath);
   }

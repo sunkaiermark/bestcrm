@@ -55,6 +55,33 @@ test('GET /health returns ok', async () => {
   assert.deepEqual(response.body, { ok: true, app: 'BESTCRM' });
 });
 
+test('responses include baseline browser security headers without HSTS in local development', async () => {
+  const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
+
+  const response = await request(app).get('/health');
+
+  assert.equal(response.headers['x-content-type-options'], 'nosniff');
+  assert.equal(response.headers['x-frame-options'], 'DENY');
+  assert.equal(response.headers['referrer-policy'], 'strict-origin-when-cross-origin');
+  assert.match(response.headers['permissions-policy'], /camera=\(\)/);
+  assert.match(response.headers['content-security-policy'], /frame-ancestors 'none'/);
+  assert.match(response.headers['content-security-policy'], /object-src 'none'/);
+  assert.equal(response.headers['strict-transport-security'], undefined);
+});
+
+test('production HTTPS responses include HSTS without claiming subdomain or preload scope', async () => {
+  const app = createApp({
+    databaseUrl: '',
+    sessionSecret: 'test-secret',
+    nodeEnv: 'production',
+    baseUrl: 'https://crm.sunkaier.com'
+  });
+
+  const response = await request(app).get('/health');
+
+  assert.equal(response.headers['strict-transport-security'], 'max-age=31536000');
+});
+
 test('GET / redirects to the workbench entry', async () => {
   const app = createApp({ databaseUrl: '', sessionSecret: 'test-secret' });
 
