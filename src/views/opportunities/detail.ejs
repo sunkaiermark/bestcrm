@@ -550,7 +550,6 @@
                       </div>
                 <% } %>
                 <% if (activeTechnicalDraft?.sourceKind === 'uploaded_file' && !canReviewTechnicalDraft) { const draft = activeTechnicalDraft; %>
-                      <% if (uploadedFilesForTechnicalDraft(draft).some((file) => file.materialVersionId) && canManageUploadedTechnicalDraft) { %><p class="muted"><%= t('replaceWithdrawnTechnicalFile') %></p><% } %>
                       <% if (canSubmitUploadedTechnicalDraft && uploadedFilesForTechnicalDraft(draft).length) { %>
                         <form class="technical-proposal-submit-form technical-proposal-footer-action" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/submit">
                           <%- csrfField() %>
@@ -568,13 +567,13 @@
                       <a href="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>"><%= t('openTechnicalDraft') %></a>
                     </div>
                   <% } %>
-                  <% if (canWithdrawTechnicalDraft) { %>
+                  <% if (canWithdrawTechnicalDraft && !canReviewTechnicalDraft) { %>
                     <form class="technical-proposal-withdraw-form technical-proposal-footer-action" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/withdraw">
                       <%- csrfField() %><input type="hidden" name="returnTo" value="opportunity">
                       <button class="secondary-action" type="submit"><%= t('withdrawTechnicalSubmission') %></button>
                     </form>
                   <% } %>
-                  <% if (canReviewTechnicalDraft) { %><%- include('../partials/_technical-manager-review', { draft, opportunity, returnTo: 'opportunity' }) %><% } %>
+                  <% if (canReviewTechnicalDraft) { %><%- include('../partials/_technical-manager-review', { draft, opportunity, returnTo: 'opportunity', canWithdraw: canWithdrawTechnicalDraft }) %><% } %>
                 <% } %>
                 <% if (inactiveTemplateTechnicalDrafts.length) { %>
                   <div class="technical-version-history">

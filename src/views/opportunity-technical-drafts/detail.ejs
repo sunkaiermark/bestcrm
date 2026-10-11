@@ -57,7 +57,6 @@
                   <% } %>
                 </p>
               <% } %>
-              <% if (uploadedFiles.some((file) => file.materialVersionId) && canManageDraft) { %><p class="muted"><%= t('replaceWithdrawnTechnicalFile') %></p><% } %>
             <% } else { %><p class="muted"><%= t('technicalFileNotUploaded') %></p><% } %>
           </section>
         <% } else { %>

@@ -29,6 +29,7 @@
         </div>
       <% } %>
       <div class="inline-actions technical-review-actions">
+        <% if (typeof canWithdraw !== 'undefined' && canWithdraw) { %><button class="secondary-action" type="submit" formaction="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/withdraw" formmethod="post" formenctype="application/x-www-form-urlencoded" formnovalidate><%= t('withdrawTechnicalSubmission') %></button><% } %>
         <button type="submit" name="decision" value="approve"><%= t('technicalReviewApprove') %></button>
         <% if (!isTestSelfApproval) { %><button class="danger-action" type="submit" name="decision" value="reject"><%= t('technicalReviewReject') %></button><% } %>
       </div>

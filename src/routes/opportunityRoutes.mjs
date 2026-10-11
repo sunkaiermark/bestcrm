@@ -1225,8 +1225,7 @@ export function opportunityRoutes({
         canSubmitUploadedTechnicalDraft: isTechnicalPreparationStage
           && activeTechnicalDraft?.sourceKind === 'uploaded_file'
           && activeTechnicalDraft.status === 'ready'
-          && activeTechnicalDraftFiles.length > 0
-          && activeTechnicalDraftFiles.every((file) => !file.materialVersionId)
+          && activeTechnicalDraftFiles.some((file) => !file.materialVersionId)
           && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
         canWithdrawTechnicalDraft: activeTechnicalDraft?.status === 'pending'
           && opportunity.status === 'technical_solution_pending'

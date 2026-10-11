@@ -2745,7 +2745,62 @@ test('opportunity detail allows removing a file only from a withdrawn technical 
   const section = extractBusinessSection(detail.text, 'technical', 'quote');
   assert.match(section, /files\/82\/withdraw/);
   assert.doesNotMatch(section, /files\/83\/withdraw/);
+  assert.match(section, />Withdraw<\/button>/);
+  assert.doesNotMatch(section, />Withdraw File<\/button>/);
   assert.match(section, /audit record will be retained/);
+  assert.match(detail.text, /\.technical-uploaded-files-table \.technical-file-actions-column\s*\{[^}]*width:\s*360px;/);
+  assert.match(detail.text, /\.technical-uploaded-file-actions\s*\{[^}]*flex-wrap:\s*nowrap;/);
+  assert.match(detail.text, /\.technical-file-action\s*\{[^}]*white-space:\s*nowrap;/);
+});
+
+test('withdrawn technical submission shows Submit again after a new file is uploaded', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'quote01',
+      displayName: 'Quote Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7,
+      quotationEngineerId: 3
+    },
+    opportunityTechnicalDraftRepository: {
+      supportsVersionedTechnicalApproval: true,
+      async listByOpportunity() {
+        return [{
+          id: 42, opportunityId: 30, draftLabel: 'TS-D2', status: 'ready',
+          sourceKind: 'uploaded_file', templateNameSnapshot: 'Technical Agreement',
+          uploadedAttachmentId: 82,
+          uploadedFile: {
+            id: 82,
+            originalName: 'Earlier.pdf',
+            materialVersionId: 301,
+            materialVersionStatus: 'withdrawn'
+          },
+          uploadedFiles: [{
+            id: 82,
+            originalName: 'Earlier.pdf',
+            materialVersionId: 301,
+            materialVersionStatus: 'withdrawn'
+          }, {
+            id: 83,
+            originalName: 'Replacement.pdf',
+            materialVersionId: null,
+            materialVersionStatus: null
+          }]
+        }];
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  const section = extractBusinessSection(detail.text, 'technical', 'quote');
+  assert.match(section, /class="technical-proposal-submit-form technical-proposal-footer-action"/);
+  assert.match(section, />Submit for Technical Approval<\/button>/);
+  assert.doesNotMatch(section, /This file belongs to an earlier withdrawn submission/);
 });
 
 test('technical manager reviews the uploaded file with one unified uploaded files list', async () => {
@@ -2823,7 +2878,8 @@ test('dual-role assigned technical approver sees withdraw approve and reject con
   assert.equal(detail.status, 200);
   const section = extractBusinessSection(detail.text, 'technical', 'quote');
   assert.doesNotMatch(section, /authorized technical approver/);
-  assert.match(section, /class="technical-proposal-withdraw-form technical-proposal-footer-action"/);
+  assert.doesNotMatch(section, /class="technical-proposal-withdraw-form technical-proposal-footer-action"/);
+  assert.match(section, /class="inline-actions technical-review-actions"[\s\S]*?formaction="\/opportunities\/30\/technical-drafts\/41\/withdraw"[\s\S]*?Withdraw Submission[\s\S]*?name="decision" value="approve">Approve[\s\S]*?name="decision" value="reject">Reject/);
   assert.match(section, /name="decision" value="approve">Approve/);
   assert.match(section, /name="decision" value="reject">Reject/);
   assert.match(section, /class="technical-review-input-grid"/);

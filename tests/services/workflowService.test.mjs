@@ -1079,6 +1079,73 @@ test('uploaded TS-D submission binds every selected file to the same pending mat
   assert.equal(repositories.calls.some(([name]) => name === 'bindAttachmentsToMaterialVersion'), false);
 });
 
+test('resubmitted uploaded TS-D binds only new files and leaves withdrawn-version files as history', async () => {
+  const before = {
+    id: 10, opportunityNo: 'OPP-10', title: 'Mixer Project',
+    status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+    salespersonId: 1, salesManagerId: 2, quotationEngineerId: 3, technicalManagerId: null
+  };
+  const earlierFile = {
+    id: 81, opportunityId: 10, category: 'technical_solution',
+    originalName: 'Earlier.pdf', sha256: 'a'.repeat(64),
+    opportunityMaterialVersionId: 299, retiredAt: null
+  };
+  const replacementFile = {
+    id: 82, opportunityId: 10, category: 'technical_solution',
+    originalName: 'Replacement.pdf', sha256: 'b'.repeat(64),
+    opportunityMaterialVersionId: null, retiredAt: null
+  };
+  const repositories = createMaterialRepositories(before, [earlierFile, replacementFile]);
+  repositories.attachmentRepository.findById = async (id) => (
+    [earlierFile, replacementFile].find((item) => item.id === Number(id)) || null
+  );
+  repositories.attachmentRepository.bindSelectedManyToMaterialVersion = async (input) => {
+    repositories.calls.push(['bindSelectedTechnicalFiles', input]);
+    return [82];
+  };
+  repositories.opportunityTechnicalDraftRepository = {
+    supportsVersionedTechnicalApproval: true,
+    async findSubmissionCandidate() {
+      return {
+        id: 41, opportunityId: 10, status: 'ready', sourceKind: 'uploaded_file',
+        draftRevisionNo: 1, templateNameSnapshot: 'Technical Agreement',
+        uploadedAttachmentId: 81,
+        uploadedFile: {
+          id: 81, originalName: 'Earlier.pdf', materialVersionId: 299,
+          materialVersionStatus: 'withdrawn'
+        },
+        uploadedFiles: [{
+          id: 81, originalName: 'Earlier.pdf', materialVersionId: 299,
+          materialVersionStatus: 'withdrawn'
+        }, {
+          id: 82, originalName: 'Replacement.pdf', materialVersionId: null,
+          materialVersionStatus: null
+        }],
+        validationIssues: []
+      };
+    },
+    async submitForApproval(input) {
+      repositories.calls.push(['submitTechnicalDraft', input]);
+      return { id: 41, status: 'pending' };
+    }
+  };
+
+  await applyWorkflowAction({
+    actor: { id: 3, roles: [ROLES.QUOTATION_ENGINEER] },
+    opportunityId: 10,
+    action: ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+    payload: { technicalDraftId: 41 },
+    repositories
+  });
+
+  assert.deepEqual(repositories.calls.find(([name]) => name === 'bindSelectedTechnicalFiles')[1], {
+    attachmentIds: [82], opportunityId: 10, opportunityMaterialVersionId: 300
+  });
+  const createVersionCall = repositories.calls.find(([name]) => name === 'createTechnicalSolutionVersion');
+  assert.match(createVersionCall[1].summary, /Replacement\.pdf/);
+  assert.doesNotMatch(createVersionCall[1].summary, /Earlier\.pdf/);
+});
+
 test('technical approval creates immutable TS-V documents while rejection clones the next TS-D draft', async () => {
   const approvedBefore = {
     id: 10,

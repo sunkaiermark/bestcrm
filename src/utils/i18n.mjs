@@ -1190,7 +1190,7 @@ const dictionaries = {
     duplicateTechnicalFileInVersion: 'A file with the same name or content already exists in this TS version.',
     technicalFileVersion: 'Version',
     technicalFileUploadedAt: 'Uploaded at',
-    withdrawUploadedTechnicalFile: 'Withdraw File',
+    withdrawUploadedTechnicalFile: 'Withdraw',
     withdrawUploadedTechnicalFileConfirm: 'Withdraw this file? The audit record will be retained.',
     technicalVersionHistory: 'Technical Version History',
     returnTechnicalVersion: 'Return for Revision',

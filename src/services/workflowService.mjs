@@ -378,10 +378,31 @@ function materialVersionRepository(repositories) {
   return repositories.opportunityMaterialVersionRepository;
 }
 
+function uploadedTechnicalFiles(draft) {
+  if (Array.isArray(draft?.uploadedFiles) && draft.uploadedFiles.length) {
+    return draft.uploadedFiles;
+  }
+  if (draft?.uploadedFile) {
+    return [draft.uploadedFile];
+  }
+  return draft?.uploadedAttachmentId ? [{ id: draft.uploadedAttachmentId }] : [];
+}
+
+function currentTechnicalSubmissionFiles(draft) {
+  const files = uploadedTechnicalFiles(draft);
+  if (['draft', 'ready'].includes(draft?.status)) {
+    return files.filter((file) => !file.materialVersionId);
+  }
+  const matchingVersionFiles = files.filter((file) => file.materialVersionStatus === draft?.status);
+  if (matchingVersionFiles.length) {
+    return matchingVersionFiles;
+  }
+  const activeVersionFiles = files.filter((file) => file.materialVersionStatus !== 'withdrawn');
+  return activeVersionFiles.length ? activeVersionFiles : files;
+}
+
 function uploadedTechnicalFileIds(draft) {
-  const ids = Array.isArray(draft?.uploadedFiles) && draft.uploadedFiles.length
-    ? draft.uploadedFiles.map((file) => Number(file.id))
-    : [Number(draft?.uploadedAttachmentId || draft?.uploadedFile?.id)];
+  const ids = currentTechnicalSubmissionFiles(draft).map((file) => Number(file.id));
   return [...new Set(ids.filter(Number.isInteger))];
 }
 
@@ -502,8 +523,10 @@ async function payloadWithTechnicalDraft({ action, opportunityId, payload, repos
   if (!draft || draft.status !== 'ready' || (draft.validationIssues || []).length) {
     throw new WorkflowValidationError('A validated ready project technical draft is required');
   }
+  let submissionDraft = draft;
   if (draft.sourceKind === 'uploaded_file') {
-    const attachmentIds = uploadedTechnicalFileIds(draft);
+    const submissionFiles = currentTechnicalSubmissionFiles(draft);
+    const attachmentIds = submissionFiles.map((file) => Number(file.id)).filter(Number.isInteger);
     const files = await Promise.all(attachmentIds.map((attachmentId) => (
       repositories.attachmentRepository?.findById?.(attachmentId)
     )));
@@ -512,14 +535,20 @@ async function payloadWithTechnicalDraft({ action, opportunityId, payload, repos
         || file.opportunityMaterialVersionId || !file.sha256)) {
       throw new WorkflowValidationError('Upload valid technical files before submitting this draft');
     }
+    submissionDraft = {
+      ...draft,
+      uploadedAttachmentId: submissionFiles[0]?.id || null,
+      uploadedFile: submissionFiles[0] || null,
+      uploadedFiles: submissionFiles
+    };
   }
   return {
     ...payload,
     technicalDraftId: draft.id,
     solutionSummary: hasNonBlankValue(payload.solutionSummary)
       ? payload.solutionSummary
-      : technicalDraftSubmissionSummary(draft),
-    technicalDraft: draft
+      : technicalDraftSubmissionSummary(submissionDraft),
+    technicalDraft: submissionDraft
   };
 }
 

@@ -1062,7 +1062,7 @@
 
       .technical-uploaded-files-table .technical-file-version-column { width: 160px; }
       .technical-uploaded-files-table .technical-file-time-column { width: 165px; }
-      .technical-uploaded-files-table .technical-file-actions-column { width: 330px; }
+      .technical-uploaded-files-table .technical-file-actions-column { width: 360px; }
 
       .technical-uploaded-files-table th,
       .technical-uploaded-files-table td {
@@ -1083,6 +1083,7 @@
       }
 
       .technical-uploaded-file-actions {
+        flex-wrap: nowrap;
         justify-content: flex-start;
       }
 
@@ -1108,6 +1109,7 @@
         display: inline-block;
         font-weight: 700;
         padding: 5px 10px;
+        white-space: nowrap;
       }
 
       .technical-file-preview-action {
