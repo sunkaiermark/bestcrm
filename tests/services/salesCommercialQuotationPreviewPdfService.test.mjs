@@ -20,7 +20,10 @@ test('A4 quotation PDF is a visibly internal unsigned preview and paginates many
     lineItems: Array.from({ length: 35 }, (_, index) => ({
       description: `Product ${index + 1}`, quantity: '2', unit: 'set', unitPrice: '100', includeInTotal: 'included'
     }))
-  }, opportunity });
+  }, opportunity, sellerProfile: {
+    phone: '+65 6000 0000', email: 'sales@sunkaier.com',
+    address: '2 Venture Drive, Singapore', website: 'https://www.sunkaier.com'
+  } });
   assert.equal(pdf.subarray(0, 5).toString(), '%PDF-');
   assert.ok(pdf.length > 3000);
   assert.ok((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length >= 2);

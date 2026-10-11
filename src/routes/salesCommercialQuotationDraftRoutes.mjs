@@ -10,6 +10,7 @@ import {
   canReviewSalesCommercialQuotation,
   canSignSalesCommercialQuotation,
   canSubmitSalesCommercialQuotation,
+  loadSalesCommercialQuotationSellerProfiles,
   readSignedSalesCommercialQuotationPdf,
   reviewSalesCommercialQuotation,
   signSalesCommercialQuotation,
@@ -25,6 +26,7 @@ import {
 export function salesCommercialQuotationDraftRoutes({
   opportunityRepository,
   opportunityResponsibilityRepository,
+  userRepository,
   salesCommercialQuotationDraftRepository,
   quotationPreviewPdfRenderer = renderSalesCommercialQuotationPreviewPdf,
   quotationPreviewPdfFontPath = '',
@@ -43,7 +45,15 @@ export function salesCommercialQuotationDraftRoutes({
     }
     const teamMembers = typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
       ? await opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id) : [];
-    return { ...opportunity, teamMembers };
+    const salesperson = typeof userRepository?.findByIdWithRoles === 'function' && opportunity.salespersonId
+      ? await userRepository.findByIdWithRoles(opportunity.salespersonId) : null;
+    return {
+      ...opportunity,
+      teamMembers,
+      salespersonPhone: salesperson?.phone || '',
+      salespersonRepresentedCompanyCode: salesperson?.representedCompanyCode || '',
+      salespersonQuotationContactName: salesperson?.emailSignatureName || opportunity.salespersonDisplayName || ''
+    };
   }
 
   function handleError(error, res, next) {
@@ -65,10 +75,16 @@ export function salesCommercialQuotationDraftRoutes({
       );
       const formalVersions = typeof salesCommercialQuotationDraftRepository.listFormalVersions === 'function'
         ? await salesCommercialQuotationDraftRepository.listFormalVersions(opportunity.id) : [];
+      const sellerProfiles = await loadSalesCommercialQuotationSellerProfiles(quotationSigning, opportunity);
+      const defaultSellerEntityCode = QUOTATION_SELLER_ENTITIES.some(
+        (entity) => entity.code === opportunity.salespersonRepresentedCompanyCode
+      ) ? opportunity.salespersonRepresentedCompanyCode : '';
       res.render('sales-commercial-quotation-drafts/form', {
         opportunity,
         ...context,
         sellerEntities: QUOTATION_SELLER_ENTITIES,
+        sellerProfiles,
+        defaultSellerEntityCode,
         sellerEmail: QUOTATION_SELLER_EMAIL,
         termSections: QUOTATION_COMMERCIAL_TERM_SECTIONS,
         canEdit: canEditSalesCommercialQuotationDraft(req.currentUser, opportunity),
@@ -106,8 +122,12 @@ export function salesCommercialQuotationDraftRoutes({
         salesCommercialQuotationDraftRepository, req.currentUser, opportunity, req.language
       );
       if (!context.draft) return res.status(404).send('Quotation draft not found');
+      const sellerProfiles = await loadSalesCommercialQuotationSellerProfiles(quotationSigning, opportunity);
       const pdf = await quotationPreviewPdfRenderer({
-        draft: context.draft, opportunity, fontPath: quotationPreviewPdfFontPath
+        draft: context.draft,
+        opportunity,
+        sellerProfile: sellerProfiles[context.draft.sellerEntityCode] || null,
+        fontPath: quotationPreviewPdfFontPath
       });
       res.set('Content-Type', 'application/pdf');
       res.set('Content-Disposition', `inline; filename="quotation-draft-preview-${opportunity.id}.pdf"`);

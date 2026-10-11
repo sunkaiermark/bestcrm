@@ -2316,6 +2316,52 @@
         width: 100%;
       }
 
+      .form-panel.quotation-standard-term-form-panel {
+        box-sizing: border-box;
+        max-width: none;
+        width: 100%;
+      }
+
+      .typical-terms-grid {
+        display: grid;
+        gap: 16px;
+        grid-template-columns: repeat(auto-fit, minmax(min(100%, 520px), 1fr));
+      }
+
+      .typical-term-section {
+        background: var(--panel);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        min-width: 0;
+        overflow: hidden;
+      }
+
+      .typical-term-section-header {
+        align-items: center;
+        background: var(--soft);
+        display: flex;
+        gap: 12px;
+        justify-content: space-between;
+        padding: 12px 14px;
+      }
+
+      .typical-term-section-header h2 {
+        font-size: 18px;
+        margin: 0;
+      }
+
+      .typical-term-section .list-table {
+        margin: 0;
+      }
+
+      .typical-term-summary {
+        -webkit-box-orient: vertical;
+        -webkit-line-clamp: 3;
+        display: -webkit-box;
+        overflow: hidden;
+        overflow-wrap: anywhere;
+      }
+
       .form-panel.customer-form {
         max-width: none;
         width: 100%;
@@ -5764,7 +5810,7 @@
           <% } %>
           <a class="<%= navClass('opportunities') %>" href="/opportunities"><%- navIcon('briefcase') %><span><%= sidebarLabel('opportunities', t('opportunities')) %></span></a>
           <% if (currentUser?.roles?.some((role) => ['commercial_manager', 'general_manager'].includes(role))) { %>
-            <a class="<%= navClass('quotation-standard-terms') %>" href="/quotation-standard-terms"><%- navIcon('bookmark') %><span><%= language === 'zh' ? '标准文案' : 'Quotation wording' %></span></a>
+            <a class="<%= navClass('quotation-standard-terms') %>" href="/quotation-standard-terms"><%- navIcon('bookmark') %><span><%= language === 'zh' ? '常用条款' : 'Typical Terms' %></span></a>
           <% } %>
           <% if (typeof developmentWorkspaceEnabled !== 'undefined' && developmentWorkspaceEnabled) { %>
             <a class="<%= navClass('development') %>" href="/development/topics"><%- navIcon('bulb') %><span><%= sidebarLabel('development', 'New Product Development') %></span></a>

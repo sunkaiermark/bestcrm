@@ -49,8 +49,14 @@ export function salesQuotationStandardTermRoutes({ salesQuotationStandardTermRep
 
   router.get('/quotation-standard-terms/new', (req, res) => {
     if (!canAuthorSalesQuotationStandardTerms(req.currentUser)) return forbidden(res);
+    const requestedSection = String(req.query.section || '');
+    const requestedLanguage = String(req.query.language || '');
+    const termKey = QUOTATION_COMMERCIAL_TERM_SECTIONS.some((item) => item.key === requestedSection)
+      ? requestedSection : '';
+    const termLanguage = ['en', 'zh'].includes(requestedLanguage)
+      ? requestedLanguage : (req.language === 'zh' ? 'zh' : 'en');
     res.render('sales-quotation-standard-terms/form', {
-      term: { language: req.language === 'zh' ? 'zh' : 'en', key: '', title: '', body: '', status: 'draft' },
+      term: { language: termLanguage, key: termKey, title: '', body: '', status: 'draft' },
       sections: QUOTATION_COMMERCIAL_TERM_SECTIONS, mode: 'new', canEdit: true, canApprove: false
     });
   });

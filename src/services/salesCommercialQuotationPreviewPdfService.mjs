@@ -41,7 +41,9 @@ function pdfFont(explicitPath) {
   return [explicitPath, ...FONT_CANDIDATES].filter(Boolean).find(existsSync) || null;
 }
 
-export async function renderSalesCommercialQuotationPreviewPdf({ draft, opportunity, fontPath = '' }) {
+export async function renderSalesCommercialQuotationPreviewPdf({
+  draft, opportunity, sellerProfile = null, fontPath = ''
+}) {
   if (!draft || !opportunity || Number(draft.opportunityId) !== Number(opportunity.id)) {
     const error = new Error('An existing quotation draft for this opportunity is required');
     error.statusCode = 404;
@@ -205,8 +207,11 @@ export async function renderSalesCommercialQuotationPreviewPdf({ draft, opportun
     kv(zh ? '项目' : 'Project', opportunity.title);
     heading(zh ? '供应商' : 'SUPPLIER');
     kv(zh ? '卖方主体' : 'Seller entity', draft.sellerEntityName);
-    kv(zh ? '联系人' : 'Contact', opportunity.salespersonDisplayName);
-    kv(zh ? '邮箱' : 'Email', 'sales@sunkaier.com');
+    kv(zh ? '联系人' : 'Contact', opportunity.salespersonQuotationContactName || opportunity.salespersonDisplayName);
+    kv(zh ? '电话' : 'Telephone', sellerProfile?.phone);
+    kv(zh ? '邮箱' : 'Email', sellerProfile?.email || 'sales@sunkaier.com');
+    kv(zh ? '地址' : 'Address', sellerProfile?.address);
+    kv(zh ? '网站' : 'Website', sellerProfile?.website);
     heading(zh ? '报价明细' : 'QUOTED ITEMS');
     const widths = lineTableHeader();
     let subtotal = 0n;

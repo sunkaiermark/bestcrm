@@ -8,7 +8,9 @@ import { createApp } from '../../src/server.mjs';
 async function createAgent({ userId = 7, username = `user${userId}`, roles = [ROLES.SALESPERSON], archivedAt = null, sourceAvailable = true, existingDraft = null, standardTerms = [], formalVersions = [], quotationPreviewPdfRenderer, quotationSigning } = {}) {
   const user = {
     id: userId, username, displayName: 'Test User',
-    passwordHash: await hashPassword('ChangeMe123!'), isActive: true, roles
+    passwordHash: await hashPassword('ChangeMe123!'), isActive: true, roles,
+    phone: '+65 6000 0000', emailSignatureName: 'Test Sales',
+    representedCompanyCode: 'sunkaier_apac'
   };
   const opportunity = {
     id: 20, opportunityNo: '800020', title: 'Mixer Project', customerName: 'Acme',
@@ -52,7 +54,8 @@ async function createAgent({ userId = 7, username = `user${userId}`, roles = [RO
 
 test('sales owner sees the early draft form and saves two lines without technical approval', async () => {
   const paymentTerm = { id: 91, key: 'payment', language: 'en', revisionNo: 1, title: 'Approved payment', body: 'Approved example text' };
-  const { agent, calls } = await createAgent({ standardTerms: [paymentTerm] });
+  const balancePaymentTerm = { id: 92, key: 'payment', language: 'en', revisionNo: 2, title: 'Deposit and balance', body: 'Approved staged payment text' };
+  const { agent, calls } = await createAgent({ standardTerms: [paymentTerm, balancePaymentTerm] });
   const page = await agent.get('/opportunities/20/commercial-quotation-draft');
   assert.equal(page.status, 200);
   assert.match(page.text, /<title>QUOTATION - BESTCRM<\/title>/);
@@ -74,8 +77,12 @@ test('sales owner sees the early draft form and saves two lines without technica
   assert.match(page.text, /name="sellerEntityCode" form="sales-quote-draft-form"/);
   assert.match(page.text, /江苏胜开尔工业技术有限公司/);
   assert.match(page.text, /SUNKAIER ASIA PACIFIC PTE\. LTD\./);
-  assert.match(page.text, /<th scope="row">Contact<\/th><td class="">Sales Owner<\/td>/);
+  assert.match(page.text, /value="sunkaier_apac"[^>]*selected/);
+  assert.match(page.text, /<th scope="row">Contact<\/th><td class="">Test Sales<\/td>/);
+  assert.match(page.text, /<th scope="row">Telephone<\/th><td[^>]*>\+65 6000 0000<\/td>/);
   assert.match(page.text, /<th scope="row">Email<\/th><td>sales@sunkaier\.com<\/td>/);
+  assert.match(page.text, /2 Venture Drive, #10-30, Vision Exchange, Singapore 608526/);
+  assert.match(page.text, /https:\/\/www\.sunkaier\.com/);
   assert.doesNotMatch(page.text.split('<div class="draft-parties">')[1].split('</section>')[0], /<th scope="row">Project<\/th>/);
   assert.match(page.text, /<h2 class="draft-section-title">SUPPLIER<\/h2>[\s\S]*<div class="draft-project-info">[\s\S]*<tr class="draft-project-row"><th scope="row">Project<\/th><td>Mixer Project<\/td>[\s\S]*<h2 class="draft-section-title">Quoted items<\/h2>/);
   assert.match(page.text, /<th scope="row">Currency<\/th><td>[\s\S]*<input name="currency" form="sales-quote-draft-form"/);
@@ -94,7 +101,8 @@ test('sales owner sees the early draft form and saves two lines without technica
   assert.match(page.text, /<table class="draft-detail-table draft-commercial-terms">/);
   assert.match(page.text, /name="term_payment" form="sales-quote-draft-form" data-standard-term-select/);
   assert.match(page.text, /Approved payment · R1/);
-  assert.match(page.text, /No published standard wording/);
+  assert.match(page.text, /Deposit and balance · R2/);
+  assert.match(page.text, /No published typical terms/);
   assert.doesNotMatch(page.text, /Internal preparation source/);
   assert.match(page.text, /<table class="draft-lines-table">[\s\S]*<thead><tr><th scope="col">No\.<\/th><th scope="col">Description<\/th><th scope="col">Qty<\/th><th scope="col">Unit<\/th><th scope="col">Unit price<\/th><th scope="col">Amount<\/th><th scope="col">Include in total<\/th><th scope="col">Actions<\/th>/);
   assert.match(page.text, /data-draft-subtotal/);
@@ -117,11 +125,23 @@ test('sales owner sees the early draft form and saves two lines without technica
   assert.deepEqual(calls[0].lineItems.map((line) => line.includeInTotal), ['included', 'excluded']);
 });
 
+test('assigned Mark-style user with every role gets an enabled two-company seller dropdown', async () => {
+  const { agent } = await createAgent({ username: 'MarkYang', roles: Object.values(ROLES) });
+  const page = await agent.get('/opportunities/20/commercial-quotation-draft');
+  assert.equal(page.status, 200);
+  const select = page.text.match(/<select name="sellerEntityCode"[^>]*>[\s\S]*?<\/select>/)?.[0];
+  assert.ok(select);
+  assert.doesNotMatch(select.match(/^<select[^>]*>/)[0], /disabled/);
+  assert.match(select, /value="sunkaier_china"/);
+  assert.match(select, /value="sunkaier_apac"/);
+});
+
 test('internal A4 PDF preview requires a visible saved draft and never issues a formal quote', async () => {
   const pdf = Buffer.from('%PDF-1.7\ninternal-preview');
   const rendererCalls = [];
   const saved = await createAgent({
-    existingDraft: { opportunityId: 20, draftRevisionNo: 2, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64), language: 'en', lineItems: [] },
+    existingDraft: { opportunityId: 20, draftRevisionNo: 2, sourceAttachmentId: 51,
+      sourceSha256: 'a'.repeat(64), language: 'en', sellerEntityCode: 'sunkaier_apac', lineItems: [] },
     quotationPreviewPdfRenderer: async (input) => { rendererCalls.push(input); return pdf; }
   });
   const page = await saved.agent.get('/opportunities/20/commercial-quotation-draft');
@@ -131,6 +151,8 @@ test('internal A4 PDF preview requires a visible saved draft and never issues a 
   assert.match(preview.headers['content-type'], /application\/pdf/);
   assert.match(preview.headers['cache-control'], /no-store/);
   assert.equal(rendererCalls[0].draft.draftRevisionNo, 2);
+  assert.equal(rendererCalls[0].sellerProfile.phone, '+65 6000 0000');
+  assert.equal(rendererCalls[0].sellerProfile.address, '2 Venture Drive, #10-30, Vision Exchange, Singapore 608526');
   const absent = await createAgent({ quotationPreviewPdfRenderer: async () => pdf });
   assert.equal((await absent.agent.get('/opportunities/20/commercial-quotation-draft/preview.pdf')).status, 404);
   const unauthorized = await createAgent({ userId: 8, existingDraft: { opportunityId: 20 }, quotationPreviewPdfRenderer: async () => pdf });

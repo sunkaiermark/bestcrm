@@ -92,7 +92,7 @@
     .sales-quote-draft .draft-parties, .sales-quote-draft .draft-signature { grid-template-columns: 1fr; }
   }
 </style>
-<% const zh = language === 'zh'; const selectedSourceId = draft?.sourceAttachmentId || sources[0]?.attachmentId; const rows = draft?.lineItems?.length ? draft.lineItems : [{ description: '', quantity: '', unit: '', unitPrice: '' }]; const pending = zh ? '待配置' : 'Pending setup'; const notIssued = zh ? '未签发' : 'Not issued'; const missingFieldName = (key) => { const term = termSections.find((section) => `term.${section.key}` === key); if (term) return zh ? term.zh : term.en; return ({ 'seller.address': zh ? '卖方地址' : 'Seller address', 'seller.phone': zh ? '卖方电话' : 'Seller telephone', 'seller.website': zh ? '卖方网站' : 'Seller website' })[key] || key; }; %>
+<% const zh = language === 'zh'; const selectedSourceId = draft?.sourceAttachmentId || sources[0]?.attachmentId; const rows = draft?.lineItems?.length ? draft.lineItems : [{ description: '', quantity: '', unit: '', unitPrice: '' }]; const pending = zh ? '待配置' : 'Pending setup'; const notIssued = zh ? '未签发' : 'Not issued'; const selectedSellerEntityCode = draft?.sellerEntityCode || defaultSellerEntityCode || ''; const selectedSellerProfile = sellerProfiles?.[selectedSellerEntityCode] || {}; const sellerContactName = opportunity.salespersonQuotationContactName || opportunity.salespersonDisplayName || ''; const missingFieldName = (key) => { const term = termSections.find((section) => `term.${section.key}` === key); if (term) return zh ? term.zh : term.en; return ({ 'seller.address': zh ? '卖方地址' : 'Seller address', 'seller.phone': zh ? '卖方电话' : 'Seller telephone', 'seller.website': zh ? '卖方网站' : 'Seller website' })[key] || key; }; %>
 <div class="sales-quote-draft">
   <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %> · <%= opportunity.title %></a></p>
   <header class="page-header"><div><h1>QUOTATION</h1><span class="draft-status-tag"><%= zh ? '草稿 · 未签发' : 'Draft · Not issued' %></span></div></header>
@@ -125,12 +125,12 @@
       <div>
         <h2 class="draft-section-title"><%= zh ? '供应商' : 'SUPPLIER' %></h2>
         <table class="draft-detail-table"><tbody>
-          <tr><th scope="row"><%= zh ? '公司' : 'Company' %></th><td><label><span class="visually-hidden"><%= zh ? '选择供应商主体' : 'Select seller entity' %></span><select name="sellerEntityCode" form="sales-quote-draft-form" <%= canEdit && sources.length ? '' : 'disabled' %>><option value=""><%= zh ? '请选择供应商' : 'Select seller entity' %></option><% for (const entity of sellerEntities) { %><option value="<%= entity.code %>" <%= draft?.sellerEntityCode === entity.code ? 'selected' : '' %>><%= entity.legalName %></option><% } %></select></label></td></tr>
-          <tr><th scope="row"><%= zh ? '联系人' : 'Contact' %></th><td class="<%= opportunity.salespersonDisplayName ? '' : 'draft-pending' %>"><%= opportunity.salespersonDisplayName || pending %></td></tr>
-          <tr><th scope="row"><%= zh ? '电话' : 'Telephone' %></th><td class="draft-pending"><%= pending %></td></tr>
+          <tr><th scope="row"><%= zh ? '公司' : 'Company' %></th><td><label><span class="visually-hidden"><%= zh ? '选择供应商主体' : 'Select seller entity' %></span><select name="sellerEntityCode" form="sales-quote-draft-form" data-seller-entity-select <%= canEdit && sources.length ? '' : 'disabled' %>><option value=""><%= zh ? '请选择供应商' : 'Select seller entity' %></option><% for (const entity of sellerEntities) { const profile = sellerProfiles?.[entity.code] || {}; %><option value="<%= entity.code %>" data-phone="<%= profile.phone || '' %>" data-address="<%= profile.address || '' %>" data-website="<%= profile.website || '' %>" <%= selectedSellerEntityCode === entity.code ? 'selected' : '' %>><%= entity.legalName %></option><% } %></select></label></td></tr>
+          <tr><th scope="row"><%= zh ? '联系人' : 'Contact' %></th><td class="<%= sellerContactName ? '' : 'draft-pending' %>"><%= sellerContactName || pending %></td></tr>
+          <tr><th scope="row"><%= zh ? '电话' : 'Telephone' %></th><td data-seller-profile-field="phone" data-pending-label="<%= pending %>" class="<%= selectedSellerProfile.phone ? '' : 'draft-pending' %>"><%= selectedSellerProfile.phone || pending %></td></tr>
           <tr><th scope="row"><%= zh ? '邮箱' : 'Email' %></th><td><%= sellerEmail %></td></tr>
-          <tr><th scope="row"><%= zh ? '地址' : 'Address' %></th><td class="draft-pending"><%= pending %></td></tr>
-          <tr><th scope="row"><%= zh ? '网站' : 'Website' %></th><td class="draft-pending"><%= pending %></td></tr>
+          <tr><th scope="row"><%= zh ? '地址' : 'Address' %></th><td data-seller-profile-field="address" data-pending-label="<%= pending %>" class="<%= selectedSellerProfile.address ? '' : 'draft-pending' %>"><%= selectedSellerProfile.address || pending %></td></tr>
+          <tr><th scope="row"><%= zh ? '网站' : 'Website' %></th><td data-seller-profile-field="website" data-pending-label="<%= pending %>" class="<%= selectedSellerProfile.website ? '' : 'draft-pending' %>"><%= selectedSellerProfile.website || pending %></td></tr>
         </tbody></table>
       </div>
     </div>
@@ -183,9 +183,9 @@
     <div class="draft-terms-scroll"><table class="draft-detail-table draft-commercial-terms"><tbody>
       <% for (const section of termSections) { const options = standardTerms.filter((term) => term.key === section.key); const selected = draft?.termSelections?.[section.key]; const selectedAvailable = options.some((term) => term.id === selected?.id); %>
         <tr><th scope="row"><%= zh ? section.zh : section.en %></th><td>
-          <label><span class="visually-hidden"><%= zh ? `选择${section.zh}标准文案` : `Select standard wording for ${section.en}` %></span>
+          <label><span class="visually-hidden"><%= zh ? `选择${section.zh}常用条款` : `Select a typical term for ${section.en}` %></span>
             <select name="term_<%= section.key %>" form="sales-quote-draft-form" data-standard-term-select <%= canEdit && sources.length && (options.length || selected) ? '' : 'disabled' %>>
-              <option value=""><%= options.length ? (zh ? '请选择已发布标准文案' : 'Select published standard wording') : (zh ? '暂无已发布标准文案' : 'No published standard wording') %></option>
+              <option value=""><%= options.length ? (zh ? '请选择常用条款' : 'Select a typical term') : (zh ? '暂无已发布常用条款' : 'No published typical terms') %></option>
               <% if (selected && !selectedAvailable) { %><option value="<%= selected.id %>" selected><%= zh ? '先前选择已停用，请重新选择' : 'Previous selection retired; choose again' %></option><% } %>
               <% for (const term of options) { %><option value="<%= term.id %>" data-body="<%= term.body %>" <%= term.id === selected?.id ? 'selected' : '' %>><%= term.title %> · R<%= term.revisionNo %></option><% } %>
             </select>

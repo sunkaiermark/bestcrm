@@ -21,7 +21,7 @@ async function session(userId, roles, repository) {
   return agent;
 }
 
-test('standard wording management blocks direct salesperson access and preserves empty catalog', async () => {
+test('typical terms management blocks direct salesperson access and groups an empty catalog by section', async () => {
   const repository = { async listAll() { return []; } };
   const salesperson = await session(2, [ROLES.SALESPERSON], repository);
   assert.equal((await salesperson.get('/quotation-standard-terms')).status, 403);
@@ -32,12 +32,25 @@ test('standard wording management blocks direct salesperson access and preserves
   const author = await session(7, [ROLES.COMMERCIAL_MANAGER], repository);
   const page = await author.get('/quotation-standard-terms');
   assert.equal(page.status, 200);
-  assert.match(page.text, /No wording yet/);
-  assert.match(page.text, /New wording draft/);
+  assert.match(page.text, /Typical Terms/);
+  assert.match(page.text, /New typical term/);
+  assert.match(page.text, /Currency, price and tax basis/);
+  assert.match(page.text, /Payment terms/);
+  assert.equal((page.text.match(/No term options yet/g) || []).length, 8);
+  const newPage = await author.get('/quotation-standard-terms/new?section=payment&language=en');
+  assert.equal(newPage.status, 200);
+  assert.match(newPage.text, /form-panel quotation-standard-term-form-panel/);
+  const sectionSelect = newPage.text.match(/<select name="termKey"[^>]*>[\s\S]*?<\/select>/)?.[0];
+  assert.ok(sectionSelect);
+  assert.doesNotMatch(sectionSelect.match(/^<select[^>]*>/)[0], /disabled/);
+  for (const key of ['price_tax', 'payment', 'delivery', 'delivery_period', 'packing', 'warranty', 'validity', 'scope']) {
+    assert.match(sectionSelect, new RegExp(`value="${key}"`));
+  }
+  assert.match(sectionSelect, /value="payment" selected/);
   await author.get('/language?lang=zh&returnTo=/quotation-standard-terms');
   const zhPage = await author.get('/quotation-standard-terms');
   assert.equal(zhPage.status, 200);
-  assert.match(zhPage.text, />标准文案</);
+  assert.match(zhPage.text, />常用条款</);
   assert.doesNotMatch(zhPage.text, /商务报价标准文案/);
 });
 

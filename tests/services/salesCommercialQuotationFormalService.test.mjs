@@ -28,6 +28,7 @@ const opportunity = {
   primaryContactName: 'Buyer', salespersonId: 7, salespersonDisplayName: 'Sales Owner',
   commercialManagerId: 8, archivedAt: null
 };
+
 const terms = QUOTATION_COMMERCIAL_TERM_SECTIONS.map((section, index) => ({
   id: index + 1, key: section.key, language: 'en', revisionNo: 1,
   title: `Approved ${section.en}`, body: `Published wording ${section.en}`
@@ -82,6 +83,23 @@ test('formal submit freezes only an approved exact source and eight published te
     await assert.rejects(() => submitSalesCommercialQuotation(repo, sales, opportunity, 2,
       { sellerProfilesFile: profilesFile }), /current published standard wording/);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('formal submit automatically freezes represented-company details and the sales owner phone', async () => {
+  const repo = repository(draft('sunkaier_apac'));
+  const submitted = await submitSalesCommercialQuotation(repo, sales, {
+    ...opportunity,
+    salespersonPhone: '+65 6000 0000',
+    salespersonQuotationContactName: 'Sales Owner Signature'
+  }, 2);
+  assert.deepEqual(submitted.snapshot.seller, {
+    code: 'sunkaier_apac', legalName: 'SUNKAIER ASIA PACIFIC PTE. LTD.',
+    address: '2 Venture Drive, #10-30, Vision Exchange, Singapore 608526',
+    phone: '+65 6000 0000', website: 'https://www.sunkaier.com',
+    email: 'sales@sunkaier.com'
+  });
+  assert.equal(submitted.snapshot.sellerContact, 'Sales Owner Signature');
+  assert.deepEqual(submitted.snapshot.missingFields, []);
 });
 
 test('review is assigned-commercial-manager only, separate from submitter, and approval does not sign', async () => {
@@ -189,9 +207,11 @@ test('explicit test-phase policy permits omitted contact fields and terms but ke
       { allowIncompleteFormal: true });
     assert.deepEqual(submitted.snapshot.seller, {
       code: 'sunkaier_china', legalName: '江苏胜开尔工业技术有限公司',
-      address: '', phone: '', website: '', email: 'sales@sunkaier.com'
+      address: 'Yixing, Jiangsu Province, China', phone: '',
+      website: 'https://www.sunkaier.com', email: 'sales@sunkaier.com'
     });
-    assert.equal(submitted.snapshot.missingFields.length, 11);
+    assert.equal(submitted.snapshot.missingFields.length, 9);
+    assert.deepEqual(submitted.snapshot.missingFields.slice(0, 1), ['seller.phone']);
     assert.ok(submitted.snapshot.missingFields.includes('term.price_tax'));
     const version = {
       ...submitted, opportunityId: 20, quotationNo: 'Q-800020-V4', versionNo: 4,

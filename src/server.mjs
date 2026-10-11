@@ -1102,6 +1102,7 @@ export function createApp(options = {}) {
   app.use(salesCommercialQuotationDraftRoutes({
     opportunityRepository,
     opportunityResponsibilityRepository,
+    userRepository,
     salesCommercialQuotationDraftRepository,
     quotationPreviewPdfRenderer: options.quotationPreviewPdfRenderer,
     quotationPreviewPdfFontPath: config.technicalDocumentFontPath,

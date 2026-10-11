@@ -3,7 +3,12 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
-import { getQuotationSellerEntity, QUOTATION_SELLER_EMAIL } from '../domain/quotationSellerEntities.mjs';
+import {
+  getQuotationSellerEntity,
+  QUOTATION_SELLER_EMAIL,
+  QUOTATION_SELLER_ENTITIES
+} from '../domain/quotationSellerEntities.mjs';
+import { getRepresentedCompany } from '../domain/representedCompanies.mjs';
 import { inspectStoredAttachmentFile, removeStoredAttachmentFile, storeAttachmentBuffer } from './attachmentFileService.mjs';
 import { canViewOpportunity } from './opportunityService.mjs';
 
@@ -92,10 +97,7 @@ function validatePublishedSelections(draft, publishedTerms, allowIncomplete = fa
   }
 }
 
-async function sellerProfile(settings, entity) {
-  if (!settings.sellerProfilesFile && !settings.allowIncompleteFormal) {
-    fail('Approved seller contact details are not configured');
-  }
+export async function loadSalesCommercialQuotationSellerProfiles(settings = {}, opportunity = {}) {
   let profiles = {};
   if (settings.sellerProfilesFile) {
     try {
@@ -104,10 +106,24 @@ async function sellerProfile(settings, entity) {
       fail('Approved seller contact details are unavailable');
     }
   }
-  const profile = profiles?.[entity.code] || {};
-  return validatedSeller({ code: entity.code, legalName: entity.legalName,
-    address: profile.address, phone: profile.phone, website: profile.website,
-    email: QUOTATION_SELLER_EMAIL }, settings.allowIncompleteFormal);
+  return Object.fromEntries(QUOTATION_SELLER_ENTITIES.map((entity) => {
+    const company = getRepresentedCompany(entity.code);
+    const override = profiles?.[entity.code] || {};
+    const configured = (key, fallback = '') => Object.hasOwn(override, key) ? override[key] : fallback;
+    return [entity.code, {
+      code: entity.code,
+      legalName: entity.legalName,
+      address: configured('address', company?.emailSignatureAddress),
+      phone: configured('phone', opportunity.salespersonPhone),
+      website: configured('website', company?.website),
+      email: QUOTATION_SELLER_EMAIL
+    }];
+  }));
+}
+
+async function sellerProfile(settings, entity, opportunity) {
+  const profiles = await loadSalesCommercialQuotationSellerProfiles(settings, opportunity);
+  return validatedSeller(profiles[entity.code], settings.allowIncompleteFormal);
 }
 
 function validatedSeller(seller, allowIncomplete = false) {
@@ -159,14 +175,17 @@ export async function submitSalesCommercialQuotation(repository, user, opportuni
   await currentApprovedSource(repository, draft, opportunity.id);
   const publishedTerms = await repository.listPublishedStandardTerms(draft.language);
   validatePublishedSelections(draft, publishedTerms, settings.allowIncompleteFormal);
-  const profile = await sellerProfile(settings, entity);
+  const profile = await sellerProfile(settings, entity, opportunity);
   const snapshot = {
     opportunityNo: requiredText(opportunity.opportunityNo, 'Opportunity reference', 100),
     project: requiredText(opportunity.title, 'Project', 2000),
     customerName: requiredText(opportunity.customerName, 'Customer', 500),
     attention: requiredText(opportunity.primaryContactName, 'Customer contact', 500),
     seller: profile,
-    sellerContact: requiredText(opportunity.salespersonDisplayName, 'Seller contact', 500),
+    sellerContact: requiredText(
+      opportunity.salespersonQuotationContactName || opportunity.salespersonDisplayName,
+      'Seller contact', 500
+    ),
     language: draft.language, currency: draft.currency,
     sourceFileName: draft.sourceFileName,
     lineItems: structuredClone(draft.lineItems),

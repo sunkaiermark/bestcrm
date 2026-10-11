@@ -1,4 +1,16 @@
 (() => {
+  const sellerEntitySelect = document.querySelector('[data-seller-entity-select]');
+  function updateSellerProfile() {
+    const option = sellerEntitySelect?.selectedOptions[0];
+    for (const field of document.querySelectorAll('[data-seller-profile-field]')) {
+      const value = option?.dataset[field.dataset.sellerProfileField] || '';
+      field.textContent = value || field.dataset.pendingLabel || '—';
+      field.classList.toggle('draft-pending', !value);
+    }
+  }
+  sellerEntitySelect?.addEventListener('change', updateSellerProfile);
+  updateSellerProfile();
+
   const container = document.getElementById('sales-quote-draft-rows');
   const addButton = document.querySelector('[data-add-quote-row]');
   if (!container) return;
