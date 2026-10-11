@@ -6,6 +6,7 @@ import {
   canCreateOpportunityTechnicalDraft,
   canEditOpportunityTechnicalDraftSection,
   canReviewOpportunityTechnicalDraft,
+  isAuthorizedTechnicalSelfReview,
   createUploadedOpportunityTechnicalDraft,
   generateOpportunityTechnicalDraft,
   markOpportunityTechnicalDraftReady,
@@ -143,6 +144,26 @@ test('only the assigned Technical Manager can review a pending technical draft',
   assert.equal(canReviewOpportunityTechnicalDraft(technicalManager, assignedOpportunity, pending), true);
   assert.equal(canReviewOpportunityTechnicalDraft(otherManager, assignedOpportunity, pending), false);
   assert.equal(canReviewOpportunityTechnicalDraft(technicalManager, assignedOpportunity, draft()), false);
+});
+
+test('assigned administrator Technical Manager may review their own pending technical submission', () => {
+  const pending = draft({ status: 'pending', submittedBy: 3 });
+  const assignedOpportunity = { ...opportunity(), technicalManagerId: 3 };
+  const authorized = {
+    id: 3,
+    roles: [ROLES.ADMINISTRATOR, ROLES.TECHNICAL_MANAGER, ROLES.QUOTATION_ENGINEER]
+  };
+  assert.equal(isAuthorizedTechnicalSelfReview(authorized, assignedOpportunity, pending), true);
+  assert.equal(canReviewOpportunityTechnicalDraft(authorized, assignedOpportunity, pending), true);
+  assert.equal(isAuthorizedTechnicalSelfReview(
+    { ...authorized, roles: [ROLES.TECHNICAL_MANAGER, ROLES.QUOTATION_ENGINEER] },
+    assignedOpportunity,
+    pending
+  ), false);
+  assert.equal(isAuthorizedTechnicalSelfReview(authorized, {
+    ...assignedOpportunity,
+    technicalManagerId: 6
+  }, pending), false);
 });
 
 test('temporary administrator self-review is limited to the submitter and expires', () => {

@@ -523,7 +523,7 @@
                               <% for (const draft of uploadedTechnicalDrafts) { const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; const draftFiles = uploadedFilesForTechnicalDraft(draft); %>
                                 <% for (const [fileIndex, uploadedFile] of draftFiles.entries()) { %>
                                   <tr class="technical-uploaded-file-row" data-technical-draft-id="<%= draft.id %>" data-technical-attachment-id="<%= uploadedFile.id %>">
-                                    <td class="technical-version-summary"><%= draft.draftLabel %><% if (draft.formalVersionLabel) { %> · <%= draft.formalVersionLabel %><% } %><% if (draft.selfApprovalTest) { %><span class="muted"> · <%= t('technicalTestSelfApprovalBadge') %></span><% } %></td>
+                                    <td class="technical-version-summary"><%= draft.draftLabel %><% if (draft.formalVersionLabel) { %> · <%= draft.formalVersionLabel %><% } %><% if (draft.selfApprovalTest) { %><span class="muted"> · <%= t('technicalTestSelfApprovalBadge') %></span><% } %><% if (draft.authorizedSelfReview) { %><span class="muted"> · <%= t('technicalAuthorizedSelfReviewBadge') %></span><% } %></td>
                                     <td class="technical-uploaded-file-name"><span title="<%= uploadedFile.originalName %>"><%= uploadedFile.originalName %></span>
                                       <% if (draft.status === 'rejected' && draft.reviewComment) { %><span class="muted"> · <%= draft.reviewComment %></span><% } %>
                                       <% if (fileIndex === 0 && reviewFiles.length) { %><span class="technical-review-file-links"><%= t('reviewAttachments') %>:
@@ -552,7 +552,7 @@
                 <% if (activeTechnicalDraft?.sourceKind === 'uploaded_file' && !canReviewTechnicalDraft) { const draft = activeTechnicalDraft; %>
                       <% if (uploadedFilesForTechnicalDraft(draft).some((file) => file.materialVersionId) && canManageUploadedTechnicalDraft) { %><p class="muted"><%= t('replaceWithdrawnTechnicalFile') %></p><% } %>
                       <% if (canSubmitUploadedTechnicalDraft && uploadedFilesForTechnicalDraft(draft).length) { %>
-                        <form class="technical-proposal-submit-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/submit">
+                        <form class="technical-proposal-submit-form technical-proposal-footer-action" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/submit">
                           <%- csrfField() %>
                           <input type="hidden" name="returnTo" value="opportunity">
                           <button type="submit"><%= t('submitForTechnicalApproval') %></button>
@@ -569,7 +569,7 @@
                     </div>
                   <% } %>
                   <% if (canWithdrawTechnicalDraft) { %>
-                    <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/withdraw">
+                    <form class="technical-proposal-withdraw-form technical-proposal-footer-action" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/withdraw">
                       <%- csrfField() %><input type="hidden" name="returnTo" value="opportunity">
                       <button class="secondary-action" type="submit"><%= t('withdrawTechnicalSubmission') %></button>
                     </form>
@@ -581,7 +581,7 @@
                     <strong><%= t('technicalVersionHistory') %></strong>
                     <% for (const draft of inactiveTemplateTechnicalDrafts) { const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; %>
                       <div class="technical-version-row">
-                        <span class="technical-version-summary"><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %> · <%= t(`technicalDraftStatus.${draft.status}`) %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %>
+                        <span class="technical-version-summary"><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %> · <%= t(`technicalDraftStatus.${draft.status}`) %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %><% if (draft.authorizedSelfReview) { %> · <%= t('technicalAuthorizedSelfReviewBadge') %><% } %>
                           <% if (draft.status === 'rejected' && draft.reviewComment) { %><span class="muted">· <%= draft.reviewComment %></span><% } %>
                           <% if (reviewFiles.length) { %><span class="technical-review-file-links"><%= t('reviewAttachments') %>:
                             <% for (const file of reviewFiles) { %><span><%= file.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/download"><%= t('download') %></a></span><% } %>

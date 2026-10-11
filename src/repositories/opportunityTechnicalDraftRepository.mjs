@@ -86,6 +86,7 @@ function mapDraftRow(row) {
     reviewComment: row.review_comment,
     selfApprovalTest: row.self_approval_test === true,
     selfApprovalTestUntil: row.self_approval_test_until || null,
+    authorizedSelfReview: row.authorized_self_review === true,
     createdBy: Number(row.created_by),
     createdByDisplayName: row.created_by_display_name || '',
     updatedBy: Number(row.updated_by),
@@ -763,13 +764,16 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
               review_comment = $3,
               self_approval_test = d.submitted_by = $2 AND $4::boolean,
               self_approval_test_until = CASE WHEN d.submitted_by = $2 THEN $5::timestamptz ELSE NULL END,
+              authorized_self_review = d.submitted_by = $2 AND $7::boolean,
               updated_by = $2,
               updated_at = now()
           FROM next_version
           WHERE d.id = (
             SELECT id FROM opportunity_technical_drafts
             WHERE opportunity_id = $1 AND status = 'pending'
-              AND (submitted_by <> $2 OR ($4::boolean AND submitted_by = $2 AND now() < $5::timestamptz))
+              AND (submitted_by <> $2
+                OR ($4::boolean AND submitted_by = $2 AND now() < $5::timestamptz)
+                OR ($7::boolean AND submitted_by = $2))
               AND ($6::bigint IS NULL OR id = $6)
             ORDER BY submitted_at DESC, id DESC
             LIMIT 1
@@ -781,13 +785,14 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
           )
           SELECT id, 'approved', $2,
             jsonb_build_object('formalVersionNo', formal_version_no, 'comment', $3::text,
-              'selfApprovalTest', self_approval_test, 'selfApprovalTestUntil', self_approval_test_until)
+              'selfApprovalTest', self_approval_test, 'selfApprovalTestUntil', self_approval_test_until,
+              'authorizedSelfReview', authorized_self_review)
           FROM updated
         )
         SELECT * FROM updated
       `, [input.opportunityId, input.actorUserId, input.reviewComment || null,
         input.allowSelfApprovalTest === true, input.selfApprovalTestUntil || null,
-        input.draftId || null]);
+        input.draftId || null, input.allowAuthorizedSelfReview === true]);
       return mapDraftRow(result.rows[0]);
     },
 
@@ -799,11 +804,13 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
               reviewed_by = $2,
               reviewed_at = now(),
               review_comment = $3,
+              authorized_self_review = submitted_by = $2 AND $4::boolean,
               updated_by = $2,
               updated_at = now()
           WHERE id = (
             SELECT id FROM opportunity_technical_drafts
-            WHERE opportunity_id = $1 AND status = 'pending' AND submitted_by <> $2
+            WHERE opportunity_id = $1 AND status = 'pending'
+              AND (submitted_by <> $2 OR ($4::boolean AND submitted_by = $2))
             ORDER BY submitted_at DESC, id DESC
             LIMIT 1
           )
@@ -813,11 +820,13 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
             technical_draft_id, event_type, actor_user_id, details
           )
           SELECT id, 'rejected', $2,
-            jsonb_build_object('comment', $3::text)
+            jsonb_build_object('comment', $3::text,
+              'authorizedSelfReview', authorized_self_review)
           FROM updated
         )
         SELECT * FROM updated
-      `, [input.opportunityId, input.actorUserId, input.reviewComment || null]);
+      `, [input.opportunityId, input.actorUserId, input.reviewComment || null,
+        input.allowAuthorizedSelfReview === true]);
       return mapDraftRow(result.rows[0]);
     },
 

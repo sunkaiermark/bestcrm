@@ -105,8 +105,19 @@ export function isTechnicalAdminSelfApprovalTest(actor, draft, policy = {}, now 
     && hasRole(actor, ROLES.ADMINISTRATOR);
 }
 
+export function isAuthorizedTechnicalSelfReview(actor, opportunity, draft) {
+  return draft?.status === 'pending'
+    && Number.isSafeInteger(Number(draft.submittedBy))
+    && Number(draft.submittedBy) > 0
+    && Number(draft.submittedBy) === Number(actor?.id)
+    && Number(opportunity?.technicalManagerId) === Number(actor?.id)
+    && hasRole(actor, ROLES.ADMINISTRATOR)
+    && hasRole(actor, ROLES.TECHNICAL_MANAGER);
+}
+
 export function canReviewOpportunityTechnicalDraft(actor, opportunity, draft, selfApprovalPolicy = {}) {
   if (opportunity?.archivedAt || draft?.status !== 'pending') return false;
+  if (isAuthorizedTechnicalSelfReview(actor, opportunity, draft)) return true;
   if (isTechnicalAdminSelfApprovalTest(actor, draft, selfApprovalPolicy)) return true;
   return hasRole(actor, ROLES.TECHNICAL_MANAGER)
     && Number(opportunity.technicalManagerId) === Number(actor.id)

@@ -2656,7 +2656,7 @@ test('all uploaded technical proposal drafts are listed between upload and appro
   const section = extractBusinessSection(detail.text, 'technical', 'quote');
   const uploadAt = section.indexOf('class="technical-proposal-upload-form"');
   const listAt = section.indexOf('class="technical-uploaded-files"');
-  const submitAt = section.indexOf('class="technical-proposal-submit-form"');
+  const submitAt = section.indexOf('technical-proposal-submit-form');
   assert.ok(uploadAt !== -1 && listAt > uploadAt && submitAt > listAt);
   assert.match(section, /Upload TS-D2/);
   assert.match(section, /Uploaded Files[\s\S]*Bidding_Document_V2\.pdf[\s\S]*Equipment_List_V2\.xlsx[\s\S]*Technical_Agreement_V1\.pdf/);
@@ -2682,8 +2682,8 @@ test('all uploaded technical proposal drafts are listed between upload and appro
   assert.match(detail.text, /\.technical-uploaded-files-scroll\s*\{[^}]*overflow-x:\s*auto;/);
   assert.match(detail.text, /--technical-proposal-layout-width:\s*1580px;/);
   assert.match(detail.text, /\.technical-uploaded-file-name\s*\{[^}]*overflow-wrap:\s*anywhere;/);
-  assert.match(detail.text, /\.technical-proposal-submit-form\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*minmax\(320px, 360px\);[^}]*margin-left:\s*-14px;/);
-  assert.match(detail.text, /\.technical-proposal-submit-form > button\s*\{[^}]*text-align:\s*left;/);
+  assert.match(detail.text, /\.technical-proposal-submit-form\s*\{[^}]*display:\s*flex;[^}]*justify-content:\s*flex-end;[^}]*width:\s*100%;/);
+  assert.match(detail.text, /\.technical-proposal-submit-form > button\s*\{[^}]*min-width:\s*160px;/);
   assert.match(detail.text, /\.business-section-technical \.technical-proposal-upload-panel\s*\{[^}]*background:\s*transparent;[^}]*border:\s*0;/);
   assert.match(detail.text, /\.business-section-technical \.stage-workflow-actions\s*\{[^}]*margin-top:\s*28px;/);
   assert.match(detail.text, /\.business-section-technical \.stage-workflow-actions \.workflow-compact-row\s*\{[^}]*display:\s*grid;[^}]*grid-template-columns:\s*var\(--technical-proposal-action-columns\);[^}]*max-width:\s*1050px;/);
@@ -2738,9 +2738,48 @@ test('technical manager reviews the uploaded file with one unified uploaded file
   assert.match(section, /Upload Files/);
   assert.match(section, /name="decision" value="approve">Approve</);
   assert.match(section, /name="decision" value="reject">Reject</);
-  assert.ok(section.indexOf('name="decision" value="reject"') < section.indexOf('Reject Reason'));
+  assert.ok(section.indexOf('name="decision" value="reject"') > section.indexOf('Reject Reason'));
   assert.doesNotMatch(section, /name="action" value="approve_technical_solution"/);
   assert.doesNotMatch(section, /name="action" value="reject_technical_solution"/);
+});
+
+test('dual-role assigned technical approver sees withdraw approve and reject controls at the technical footer', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'MarkYang',
+      displayName: 'Mark Yang',
+      roles: [ROLES.ADMINISTRATOR, ROLES.TECHNICAL_MANAGER, ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_PENDING,
+      salespersonId: 7,
+      quotationEngineerId: 3,
+      technicalManagerId: 3
+    },
+    opportunityTechnicalDraftRepository: {
+      supportsVersionedTechnicalApproval: true,
+      async listByOpportunity() {
+        return [{
+          id: 41, opportunityId: 30, draftLabel: 'TS-D1', status: 'pending',
+          sourceKind: 'uploaded_file', templateNameSnapshot: 'Technical Agreement',
+          submittedBy: 3, uploadedAttachmentId: 81,
+          uploadedFile: { id: 81, originalName: 'Agreement.pdf' }
+        }];
+      }
+    }
+  });
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  const section = extractBusinessSection(detail.text, 'technical', 'quote');
+  assert.doesNotMatch(section, /authorized technical approver/);
+  assert.match(section, /class="technical-proposal-withdraw-form technical-proposal-footer-action"/);
+  assert.match(section, /name="decision" value="approve">Approve/);
+  assert.match(section, /name="decision" value="reject">Reject/);
+  assert.match(section, /class="technical-review-input-grid"/);
+  assert.match(detail.text, /\.technical-proposal-withdraw-form\s*\{[^}]*justify-content:\s*flex-end;[^}]*width:\s*100%;/);
+  assert.match(detail.text, /\.technical-review-actions\s*\{[^}]*justify-content:\s*flex-end;[^}]*margin-top:\s*14px;/);
+  assert.match(detail.text, /\.technical-review-input-cell\s*>\s*textarea,[\s\S]*?\.technical-review-input-cell\s*>\s*\.technical-review-file-picker\s*\{[^}]*height:\s*72px;[^}]*min-height:\s*72px;/);
 });
 
 test('rejected technical proposal keeps review files visible in Uploaded Files', async () => {

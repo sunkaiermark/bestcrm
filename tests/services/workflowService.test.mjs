@@ -1206,6 +1206,65 @@ test('temporary technical self-approval is limited to administrators with confir
   assert.equal(approved.selfApprovalTestUntil, deadline);
 });
 
+test('assigned dual-role technical approver can approve or reject their own submitted version with an audit flag', async () => {
+  const before = {
+    id: 10, status: STATUSES.TECHNICAL_SOLUTION_PENDING,
+    salespersonId: 1, quotationEngineerId: 3, technicalManagerId: 3
+  };
+  const pending = { id: 41, opportunityId: 10, status: 'pending', submittedBy: 3 };
+  const actor = {
+    id: 3,
+    username: 'MarkYang',
+    roles: [ROLES.ADMINISTRATOR, ROLES.TECHNICAL_MANAGER, ROLES.QUOTATION_ENGINEER]
+  };
+  function repositories() {
+    const result = createMaterialRepositories(before);
+    result.opportunityTechnicalDraftRepository = {
+      supportsVersionedTechnicalApproval: true,
+      async findLatestPendingByOpportunity() { return pending; },
+      async approveLatestPending(input) {
+        result.calls.push(['approveTechnicalDraft', input]);
+        return { ...pending, status: 'approved', formalVersionNo: 1,
+          renderedContent: { sections: [], variables: [] } };
+      },
+      async rejectLatestPending(input) {
+        result.calls.push(['rejectTechnicalDraft', input]);
+        return { ...pending, status: 'rejected' };
+      },
+      async cloneRejectedDraft(input) {
+        result.calls.push(['cloneRejectedDraft', input]);
+        return { id: 42, status: 'draft' };
+      },
+      async getDraftDetail() {
+        return { ...pending, status: 'approved', formalVersionNo: 1,
+          renderedContent: { sections: [], variables: [] } };
+      },
+      async saveApprovedDocuments() { return []; }
+    };
+    result.technicalDocumentService = { async generateApprovedDocuments() { return []; } };
+    return result;
+  }
+
+  const approval = repositories();
+  const approved = await applyWorkflowAction({
+    actor, opportunityId: 10, action: ACTIONS.APPROVE_TECHNICAL_SOLUTION,
+    payload: { reviewDraftId: 41 }, repositories: approval
+  });
+  assert.equal(approved.status, STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS);
+  const approvalInput = approval.calls.find(([method]) => method === 'approveTechnicalDraft')[1];
+  assert.equal(approvalInput.allowAuthorizedSelfReview, true);
+  assert.equal(approvalInput.allowSelfApprovalTest, false);
+
+  const rejection = repositories();
+  const rejected = await applyWorkflowAction({
+    actor, opportunityId: 10, action: ACTIONS.REJECT_TECHNICAL_SOLUTION,
+    payload: { reviewDraftId: 41, comment: 'Revise the calculation' }, repositories: rejection
+  });
+  assert.equal(rejected.status, STATUSES.TECHNICAL_SOLUTION_REJECTED);
+  const rejectionInput = rejection.calls.find(([method]) => method === 'rejectTechnicalDraft')[1];
+  assert.equal(rejectionInput.allowAuthorizedSelfReview, true);
+});
+
 test('submit commercial quote stores attachment based quote version without line item details', async () => {
   const repositories = createMaterialRepositories({
     id: 10,

@@ -27,7 +27,7 @@
             <h1><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %></h1>
             <div class="muted"><%= draft.sourceKind === 'uploaded_file' ? draft.templateNameSnapshot : `${draft.templateCodeSnapshot} · TPL-R${draft.templateRevisionNoSnapshot}` %></div>
           </div>
-          <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %></span>
+          <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %><% if (draft.authorizedSelfReview) { %> · <%= t('technicalAuthorizedSelfReviewBadge') %><% } %></span>
         </header>
 
         <% if (draft.sourceKind === 'uploaded_file') { %>
@@ -87,7 +87,7 @@
           <section class="detail-section form-panel">
             <h2><%= t('submitTechnicalDraftApproval') %></h2>
             <p class="muted"><%= t('submitTechnicalDraftNotice') %></p>
-            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/submit">
+            <form class="technical-proposal-footer-action" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/submit">
               <%- csrfField() %>
               <label><%= t('submissionComment') %><textarea name="comment" maxlength="2000"></textarea></label>
               <button type="submit"><%= t('submitForTechnicalApproval') %></button>
@@ -98,7 +98,7 @@
         <% if (canWithdrawDraft) { %>
           <section class="detail-section form-panel">
             <h2><%= t('pendingTechnicalApproval') %></h2>
-            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/withdraw">
+            <form class="technical-proposal-withdraw-form technical-proposal-footer-action" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/withdraw">
               <%- csrfField() %><button class="secondary-action" type="submit"><%= t('withdrawTechnicalSubmission') %></button>
             </form>
           </section>

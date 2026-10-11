@@ -37,8 +37,8 @@ async function createDraftAgent(options = {}) {
     primaryContactId: 9,
     salespersonId: 7,
     quotationEngineerId: 3,
-    technicalManagerId: 6,
-    status: 'technical_solution_in_progress',
+    technicalManagerId: options.technicalManagerId ?? 6,
+    status: options.opportunityStatus || 'technical_solution_in_progress',
     archivedAt: options.archivedAt || null,
     archiveReason: options.archiveReason || null
   };
@@ -654,6 +654,42 @@ test('assigned Technical Manager can approve or return a pending TS-D snapshot',
   const response = await agent.post('/opportunities/20/technical-drafts/41/review').type('form').send({ decision: 'approve', comment: 'Approved' });
   assert.equal(response.status, 302);
   assert.equal(workflowCalls[0].action, 'approve_technical_solution');
+});
+
+test('assigned administrator Technical Manager can review their own pending submission and still withdraw it', async () => {
+  const workflowCalls = [];
+  const { agent } = await createDraftAgent({
+    userId: 3,
+    username: 'MarkYang',
+    displayName: 'Mark Yang',
+    roles: [ROLES.ADMINISTRATOR, ROLES.TECHNICAL_MANAGER, ROLES.QUOTATION_ENGINEER],
+    technicalManagerId: 3,
+    opportunityStatus: 'technical_solution_pending',
+    sourceKind: 'uploaded_file',
+    draftStatus: 'pending',
+    submittedBy: 3,
+    uploadedAttachmentId: 81,
+    uploadedFile: { id: 81, originalName: 'Technical Proposal.pdf' },
+    workflowAction: async (input) => { workflowCalls.push(input); return {}; }
+  });
+  const detail = await agent.get('/opportunities/20/technical-drafts/41');
+  assert.equal(detail.status, 200);
+  assert.doesNotMatch(detail.text, /authorized technical approver/);
+  assert.match(detail.text, /class="technical-proposal-withdraw-form technical-proposal-footer-action"/);
+  assert.match(detail.text, /name="decision" value="approve">Approve/);
+  assert.match(detail.text, /name="decision" value="reject">Reject/);
+  assert.match(detail.text, /class="technical-review-input-grid"/);
+  assert.doesNotMatch(detail.text, /Temporary administrator self-approval for testing only/);
+
+  const approved = await agent.post('/opportunities/20/technical-drafts/41/review')
+    .type('form').send({ decision: 'approve' });
+  assert.equal(approved.status, 302);
+  assert.equal(workflowCalls.at(-1).action, 'approve_technical_solution');
+
+  const rejected = await agent.post('/opportunities/20/technical-drafts/41/review')
+    .type('form').send({ decision: 'reject', comment: 'Revise the calculation' });
+  assert.equal(rejected.status, 302);
+  assert.equal(workflowCalls.at(-1).action, 'reject_technical_solution');
 });
 
 test('administrator self-review shows a test warning and requires confirmation plus reason', async () => {

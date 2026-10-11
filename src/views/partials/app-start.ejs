@@ -981,7 +981,7 @@
         background: transparent;
         border: 0;
         border-radius: 0;
-        padding: 14px 14px 0;
+        padding: 10px 14px 0;
       }
 
       .technical-draft-create-form {
@@ -1067,7 +1067,7 @@
       .technical-uploaded-files-table th,
       .technical-uploaded-files-table td {
         border-bottom: 1px solid var(--line);
-        padding: 10px 12px;
+        padding: 7px 10px;
         text-align: left;
         vertical-align: middle;
       }
@@ -1107,7 +1107,7 @@
         border-radius: 6px;
         display: inline-block;
         font-weight: 700;
-        padding: 7px 12px;
+        padding: 5px 10px;
       }
 
       .technical-file-preview-action {
@@ -1125,17 +1125,27 @@
       }
 
       .technical-proposal-submit-form {
-        display: grid;
-        grid-template-columns: minmax(320px, 360px);
-        margin-left: -14px;
+        display: flex;
+        justify-content: flex-end;
         margin-top: 14px;
         max-width: var(--technical-proposal-layout-width);
+        width: 100%;
       }
 
       .technical-proposal-submit-form > button {
-        grid-column: 1;
-        text-align: left;
+        min-width: 160px;
+      }
+
+      .technical-proposal-withdraw-form {
+        display: flex;
+        justify-content: flex-end;
+        margin-top: 14px;
+        max-width: var(--technical-proposal-layout-width);
         width: 100%;
+      }
+
+      .technical-proposal-withdraw-form > button {
+        min-width: 160px;
       }
 
       .business-section-technical .stage-workflow-actions {
@@ -1189,7 +1199,6 @@
         }
 
         .technical-proposal-submit-form {
-          grid-template-columns: minmax(0, 1fr);
           margin-left: 0;
         }
 
@@ -1239,14 +1248,42 @@
 
       .technical-review-actions {
         justify-content: flex-end;
+        margin-top: 14px;
       }
 
-      .technical-review-actions-first {
-        margin-bottom: 14px;
+      .technical-review-input-grid {
+        align-items: stretch;
+        display: grid;
+        gap: 16px;
+        grid-template-columns: minmax(0, 1fr) minmax(260px, 0.7fr);
+      }
+
+      .technical-review-input-cell {
+        display: grid;
+        grid-template-rows: auto 72px;
+        margin-bottom: 0;
+        min-width: 0;
+      }
+
+      .technical-review-input-cell > textarea,
+      .technical-review-input-cell > .technical-review-file-picker {
+        height: 72px;
+        min-height: 72px;
+      }
+
+      .technical-review-input-cell > textarea {
+        resize: none;
       }
 
       .technical-review-file-picker {
-        margin-bottom: 14px;
+        margin-bottom: 0;
+        overflow-y: auto;
+      }
+
+      @media (max-width: 760px) {
+        .technical-review-input-grid {
+          grid-template-columns: 1fr;
+        }
       }
 
       .technical-version-history {

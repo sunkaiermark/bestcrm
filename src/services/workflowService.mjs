@@ -1,6 +1,7 @@
 import { ACTIONS, transition } from '../domain/workflow.mjs';
 import { ROLES } from '../domain/roles.mjs';
 import {
+  isAuthorizedTechnicalSelfReview,
   isTechnicalAdminSelfApprovalTest,
   technicalDraftSubmissionSummary
 } from './opportunityTechnicalDraftService.mjs';
@@ -620,7 +621,7 @@ async function persistSubmissionData({ action, actor, opportunityId, payload, re
   }
 }
 
-async function technicalReviewSelfApprovalContext({ action, actor, opportunityId, payload, repositories }) {
+async function technicalReviewSelfApprovalContext({ action, actor, opportunity, opportunityId, payload, repositories }) {
   if (![ACTIONS.APPROVE_TECHNICAL_SOLUTION, ACTIONS.REJECT_TECHNICAL_SOLUTION].includes(action)) return null;
   const draftRepository = repositories.opportunityTechnicalDraftRepository;
   if (draftRepository?.supportsVersionedTechnicalApproval !== true) return null;
@@ -632,6 +633,9 @@ async function technicalReviewSelfApprovalContext({ action, actor, opportunityId
     throw new WorkflowValidationError('The technical draft awaiting review has changed', 409);
   }
   if (Number(pending.submittedBy) !== Number(actor.id)) return null;
+  if (isAuthorizedTechnicalSelfReview(actor, opportunity, pending)) {
+    return { mode: 'authorized', draftId: pending.id, submittedBy: pending.submittedBy, until: null };
+  }
   if (action !== ACTIONS.APPROVE_TECHNICAL_SOLUTION
       || !isTechnicalAdminSelfApprovalTest(actor, pending, repositories.technicalAdminSelfApprovalTest)) {
     throw new Error('Action not allowed');
@@ -639,7 +643,7 @@ async function technicalReviewSelfApprovalContext({ action, actor, opportunityId
   if (payload.testSelfApprovalConfirmed !== 'on' || !String(payload.comment || '').trim()) {
     throw new WorkflowValidationError('Test self-approval requires confirmation and a recorded reason');
   }
-  return { draftId: pending.id, submittedBy: pending.submittedBy,
+  return { mode: 'test', draftId: pending.id, submittedBy: pending.submittedBy,
     until: repositories.technicalAdminSelfApprovalTest.until };
 }
 
@@ -666,7 +670,8 @@ async function persistTechnicalSolutionReviewData({ action, actor, opportunity, 
       opportunityId: Number(opportunityId),
       actorUserId: actor.id,
       reviewComment: commentFromPayload(payload),
-      allowSelfApprovalTest: Boolean(selfApprovalContext),
+      allowSelfApprovalTest: selfApprovalContext?.mode === 'test',
+      allowAuthorizedSelfReview: selfApprovalContext?.mode === 'authorized',
       selfApprovalTestUntil: selfApprovalContext?.until || null,
       draftId: selfApprovalContext?.draftId || null
     });
@@ -712,7 +717,8 @@ async function persistTechnicalSolutionReviewData({ action, actor, opportunity, 
     const rejectedDraft = await draftRepository.rejectLatestPending({
       opportunityId: Number(opportunityId),
       actorUserId: actor.id,
-      reviewComment: commentFromPayload(payload)
+      reviewComment: commentFromPayload(payload),
+      allowAuthorizedSelfReview: selfApprovalContext?.mode === 'authorized'
     });
     if (rejectedDraft && typeof draftRepository.cloneRejectedDraft === 'function') {
       await draftRepository.cloneRejectedDraft({
@@ -915,7 +921,8 @@ export async function applyWorkflowAction({
     repositories
   });
   const selfApprovalContext = await technicalReviewSelfApprovalContext({
-    action, actor, opportunityId, payload: effectivePayload, repositories
+    action, actor, opportunity: transitionOpportunity, opportunityId,
+    payload: effectivePayload, repositories
   });
   if (action === ACTIONS.REJECT_TECHNICAL_SOLUTION
       && !String(effectivePayload.reason || effectivePayload.comment || '').trim()) {

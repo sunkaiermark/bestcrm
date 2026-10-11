@@ -88,6 +88,7 @@ const salesCommercialQuotationDraftMigrationPath = new URL('../../src/db/migrati
 const quotationSellerEntityMigrationPath = new URL('../../src/db/migrations/102_quotation_draft_seller_entity.sql', import.meta.url);
 const userRepresentedCompanyMigrationPath = new URL('../../src/db/migrations/108_user_represented_company.sql', import.meta.url);
 const sharedCustomersMigrationPath = new URL('../../src/db/migrations/109_shared_customers_and_opportunity_links.sql', import.meta.url);
+const authorizedTechnicalSelfReviewMigrationPath = new URL('../../src/db/migrations/110_authorized_technical_self_review.sql', import.meta.url);
 const quotationStandardTermsMigrationPath = new URL('../../src/db/migrations/103_quotation_draft_standard_terms.sql', import.meta.url);
 const uploadedTechnicalFileWithdrawalEventMigrationPath = new URL('../../src/db/migrations/101_uploaded_technical_file_withdrawal_event.sql', import.meta.url);
 
@@ -161,6 +162,16 @@ test('temporary administrator technical self-approval remains explicit and audit
   assert.match(sql, /status = 'approved' AND self_approval_test/);
   assert.match(sql, /reviewed_at <= self_approval_test_until/);
   assert.match(sql, /NOT self_approval_test/);
+});
+
+test('authorized technical self-review is explicit, role-gated in application code, and auditable in PostgreSQL', async () => {
+  const sql = await readFile(authorizedTechnicalSelfReviewMigrationPath, 'utf8');
+  assert.match(sql, /authorized_self_review boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /reviewed_by <> submitted_by[\s\S]*OR authorized_self_review/);
+  assert.match(sql, /status IN \('approved', 'rejected'\)/);
+  assert.match(sql, /reviewed_by = submitted_by/);
+  assert.match(sql, /NOT self_approval_test/);
+  assert.match(sql, /administrator and technical-manager roles/);
 });
 
 test('reviewed product classifications are fixed, multi-valued, auditable, and separate from email content', async () => {

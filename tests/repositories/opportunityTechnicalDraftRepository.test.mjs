@@ -27,6 +27,7 @@ function draftRow(overrides = {}) {
     reviewed_by: null,
     reviewed_at: null,
     review_comment: null,
+    authorized_self_review: false,
     created_by: '3',
     created_by_display_name: 'Lead Engineer',
     updated_by: '3',
@@ -242,8 +243,8 @@ test('approval allocates the next TS-V number under an opportunity lock', async 
   assert.match(calls[0].sql, /pg_advisory_xact_lock/);
   assert.match(calls[0].sql, /MAX\(formal_version_no\)/);
   assert.match(calls[0].sql, /'approved'/);
-  assert.match(calls[0].sql, /submitted_by <> \$2 OR \(\$4::boolean AND submitted_by = \$2/);
-  assert.deepEqual(calls[0].params, [20, 6, 'Approved', false, null, null]);
+  assert.match(calls[0].sql, /submitted_by <> \$2\s+OR \(\$4::boolean AND submitted_by = \$2/);
+  assert.deepEqual(calls[0].params, [20, 6, 'Approved', false, null, null, false]);
 });
 
 test('temporary self-approval is explicitly tagged with a deadline and audit event', async () => {
@@ -261,7 +262,36 @@ test('temporary self-approval is explicitly tagged with a deadline and audit eve
     selfApprovalTestUntil: '2026-10-02T10:00:00Z', draftId: 41 });
   assert.equal(approved.selfApprovalTest, true);
   assert.match(calls[0].sql, /'selfApprovalTest', self_approval_test/);
-  assert.deepEqual(calls[0].params, [20, 3, 'Test only', true, '2026-10-02T10:00:00Z', 41]);
+  assert.deepEqual(calls[0].params, [20, 3, 'Test only', true, '2026-10-02T10:00:00Z', 41, false]);
+});
+
+test('authorized self-review is tagged for either approval or rejection', async () => {
+  const calls = [];
+  const repository = createOpportunityTechnicalDraftRepository({
+    async query(sql, params) {
+      calls.push({ sql, params });
+      return { rows: [draftRow({
+        status: sql.includes("SET status = 'approved'") ? 'approved' : 'rejected',
+        submitted_by: '3', reviewed_by: '3', authorized_self_review: true,
+        formal_version_no: sql.includes("SET status = 'approved'") ? '4' : null
+      })] };
+    }
+  });
+  const approved = await repository.approveLatestPending({
+    opportunityId: 20, actorUserId: 3, reviewComment: 'Approved',
+    allowAuthorizedSelfReview: true, draftId: 41
+  });
+  assert.equal(approved.authorizedSelfReview, true);
+  assert.match(calls[0].sql, /authorized_self_review = d\.submitted_by = \$2 AND \$7::boolean/);
+  assert.deepEqual(calls[0].params, [20, 3, 'Approved', false, null, 41, true]);
+
+  const rejected = await repository.rejectLatestPending({
+    opportunityId: 20, actorUserId: 3, reviewComment: 'Revise',
+    allowAuthorizedSelfReview: true
+  });
+  assert.equal(rejected.authorizedSelfReview, true);
+  assert.match(calls[1].sql, /submitted_by <> \$2 OR \(\$4::boolean AND submitted_by = \$2\)/);
+  assert.deepEqual(calls[1].params, [20, 3, 'Revise', true]);
 });
 
 test('rejected snapshot is cloned to the next editable TS-D revision with assignments', async () => {
