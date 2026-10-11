@@ -29,7 +29,8 @@ function mapUploadedFile(file) {
     fileSize: Number(file.fileSize || file.file_size || 0),
     sha256: file.sha256 || null,
     uploadedAt: file.uploadedAt || file.uploaded_at || null,
-    materialVersionId: numberOrNull(file.materialVersionId ?? file.material_version_id)
+    materialVersionId: numberOrNull(file.materialVersionId ?? file.material_version_id),
+    materialVersionStatus: file.materialVersionStatus || file.material_version_status || null
   };
 }
 
@@ -46,7 +47,8 @@ function mapDraftRow(row) {
     fileSize: row.uploaded_attachment_file_size,
     sha256: row.uploaded_attachment_sha256,
     uploadedAt: row.uploaded_attachment_uploaded_at,
-    materialVersionId: row.uploaded_attachment_material_version_id
+    materialVersionId: row.uploaded_attachment_material_version_id,
+    materialVersionStatus: row.uploaded_attachment_material_version_status
   }) : null;
   const uploadedFiles = linkedUploadedFiles.length
     ? linkedUploadedFiles
@@ -173,6 +175,7 @@ const draftSelect = `
     file_attachment.sha256 AS uploaded_attachment_sha256,
     file_attachment.uploaded_at AS uploaded_attachment_uploaded_at,
     file_attachment.opportunity_material_version_id AS uploaded_attachment_material_version_id,
+    file_material_version.status AS uploaded_attachment_material_version_status,
     uploaded_attachments.files AS uploaded_attachments
   FROM opportunity_technical_drafts d
   JOIN users creator ON creator.id = d.created_by
@@ -180,6 +183,8 @@ const draftSelect = `
   LEFT JOIN users submitter ON submitter.id = d.submitted_by
   LEFT JOIN users reviewer ON reviewer.id = d.reviewed_by
   LEFT JOIN attachments file_attachment ON file_attachment.id = d.uploaded_attachment_id
+  LEFT JOIN opportunity_material_versions file_material_version
+    ON file_material_version.id = file_attachment.opportunity_material_version_id
   LEFT JOIN LATERAL (
     SELECT jsonb_agg(
       jsonb_build_object(
@@ -189,11 +194,14 @@ const draftSelect = `
         'fileSize', attachment.file_size,
         'sha256', attachment.sha256,
         'uploadedAt', attachment.uploaded_at,
-        'materialVersionId', attachment.opportunity_material_version_id
+        'materialVersionId', attachment.opportunity_material_version_id,
+        'materialVersionStatus', material_version.status
       ) ORDER BY link.sort_order ASC, link.id ASC
     ) AS files
     FROM opportunity_technical_draft_attachments link
     JOIN attachments attachment ON attachment.id = link.attachment_id
+    LEFT JOIN opportunity_material_versions material_version
+      ON material_version.id = attachment.opportunity_material_version_id
     WHERE link.technical_draft_id = d.id
       AND attachment.retired_at IS NULL
   ) uploaded_attachments ON true
@@ -367,11 +375,15 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
       const result = await queryTarget.query(`
         WITH target AS MATERIALIZED (
           SELECT draft.id AS draft_id, attachment.id AS attachment_id,
-            attachment.original_name
+            attachment.original_name,
+            attachment.opportunity_material_version_id,
+            material_version.status AS material_version_status
           FROM opportunity_technical_drafts draft
           JOIN opportunity_technical_draft_attachments link
             ON link.technical_draft_id = draft.id
           JOIN attachments attachment ON attachment.id = link.attachment_id
+          LEFT JOIN opportunity_material_versions material_version
+            ON material_version.id = attachment.opportunity_material_version_id
           WHERE draft.id = $1
             AND draft.opportunity_id = $2
             AND draft.source_kind = 'uploaded_file'
@@ -379,14 +391,21 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
             AND attachment.id = $3
             AND attachment.opportunity_id = $2
             AND attachment.category = 'technical_solution'
-            AND attachment.opportunity_material_version_id IS NULL
+            AND (
+              attachment.opportunity_material_version_id IS NULL
+              OR material_version.status = 'withdrawn'
+            )
             AND attachment.retired_at IS NULL
           FOR UPDATE OF draft, attachment
         ), retired AS (
           UPDATE attachments attachment
           SET retired_at = now(),
               retired_by = $4,
-              retirement_reason = 'Withdrawn from editable technical draft before approval'
+              retirement_reason = CASE
+                WHEN target.opportunity_material_version_id IS NULL
+                  THEN 'Withdrawn from editable technical draft before approval'
+                ELSE 'Withdrawn from an earlier withdrawn technical submission'
+              END
           FROM target
           WHERE attachment.id = target.attachment_id
           RETURNING attachment.id
@@ -416,7 +435,9 @@ export function createOpportunityTechnicalDraftRepository(queryTarget) {
           SELECT updated.id, 'file_withdrawn', $4,
             jsonb_build_object(
               'attachmentId', target.attachment_id,
-              'originalName', target.original_name
+              'originalName', target.original_name,
+              'materialVersionId', target.opportunity_material_version_id,
+              'materialVersionStatus', target.material_version_status
             )
           FROM updated
           JOIN target ON target.draft_id = updated.id

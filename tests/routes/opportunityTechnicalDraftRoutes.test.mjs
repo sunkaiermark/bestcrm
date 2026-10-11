@@ -442,6 +442,45 @@ test('project lead can withdraw an unapproved uploaded file from an editable TS-
   assert.deepEqual(draft.uploadedFiles.map((file) => file.id), [82]);
 });
 
+test('project lead can withdraw a duplicate file retained from a withdrawn submission', async () => {
+  const { agent, calls, draft } = await createDraftAgent({
+    sourceKind: 'uploaded_file', deliverableType: 'datasheet', draftStatus: 'ready',
+    uploadedAttachmentId: 81,
+    uploadedFile: {
+      id: 81,
+      originalName: 'Datasheet duplicate.pdf',
+      materialVersionId: 91,
+      materialVersionStatus: 'withdrawn'
+    }
+  });
+  const detail = await agent.get('/opportunities/20/technical-drafts/41');
+  assert.equal(detail.status, 200);
+  assert.match(detail.text, /files\/81\/withdraw/);
+  assert.match(detail.text, /audit record will be retained/);
+
+  const withdrawn = await agent.post('/opportunities/20/technical-drafts/41/files/81/withdraw');
+  assert.equal(withdrawn.status, 302);
+  assert.ok(calls.some(([method, input]) => method === 'withdrawUploadedFile'
+    && input.draftId === 41 && Number(input.attachmentId) === 81));
+  assert.equal(draft.uploadedFiles.length, 0);
+});
+
+test('project lead cannot see a per-file withdrawal action for an approved technical version', async () => {
+  const { agent } = await createDraftAgent({
+    sourceKind: 'uploaded_file', deliverableType: 'datasheet', draftStatus: 'ready',
+    uploadedAttachmentId: 81,
+    uploadedFile: {
+      id: 81,
+      originalName: 'Approved Datasheet.pdf',
+      materialVersionId: 91,
+      materialVersionStatus: 'approved'
+    }
+  });
+  const detail = await agent.get('/opportunities/20/technical-drafts/41');
+  assert.equal(detail.status, 200);
+  assert.doesNotMatch(detail.text, /files\/81\/withdraw/);
+});
+
 test('individual technical files cannot be withdrawn while approval is pending', async () => {
   const { agent, calls } = await createDraftAgent({
     sourceKind: 'uploaded_file', deliverableType: 'datasheet', draftStatus: 'pending',

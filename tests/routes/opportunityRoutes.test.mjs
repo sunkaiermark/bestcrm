@@ -2698,6 +2698,56 @@ test('all uploaded technical proposal drafts are listed between upload and appro
   assert.doesNotMatch(section, /class="opportunity-technical-links opportunity-technical-secondary-links"/);
 });
 
+test('opportunity detail allows removing a file only from a withdrawn technical submission', async () => {
+  const { agent } = await createWorkflowAgent({
+    user: {
+      id: 3,
+      username: 'quote01',
+      displayName: 'Quote Engineer',
+      roles: [ROLES.QUOTATION_ENGINEER]
+    },
+    opportunity: {
+      status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+      salespersonId: 7,
+      quotationEngineerId: 3
+    },
+    opportunityTechnicalDraftRepository: {
+      supportsVersionedTechnicalApproval: true,
+      async listByOpportunity() {
+        return [{
+          id: 42, opportunityId: 30, draftLabel: 'TS-D2', status: 'ready',
+          sourceKind: 'uploaded_file', templateNameSnapshot: 'Datasheet',
+          uploadedAttachmentId: 82,
+          uploadedFile: {
+            id: 82,
+            originalName: 'Duplicate.pdf',
+            materialVersionId: 301,
+            materialVersionStatus: 'withdrawn'
+          },
+          uploadedFiles: [{
+            id: 82,
+            originalName: 'Duplicate.pdf',
+            materialVersionId: 301,
+            materialVersionStatus: 'withdrawn'
+          }, {
+            id: 83,
+            originalName: 'Approved.pdf',
+            materialVersionId: 300,
+            materialVersionStatus: 'approved'
+          }]
+        }];
+      }
+    }
+  });
+
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  const section = extractBusinessSection(detail.text, 'technical', 'quote');
+  assert.match(section, /files\/82\/withdraw/);
+  assert.doesNotMatch(section, /files\/83\/withdraw/);
+  assert.match(section, /audit record will be retained/);
+});
+
 test('technical manager reviews the uploaded file with one unified uploaded files list', async () => {
   const { agent } = await createWorkflowAgent({
     user: {

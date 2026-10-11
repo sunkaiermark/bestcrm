@@ -169,7 +169,14 @@ test('one uploaded batch appends every file to one TS-D and keeps the first file
         uploaded_attachment_id: '81',
         uploaded_attachments: JSON.stringify([
           { id: 81, originalName: 'Agreement.pdf', sha256: 'a'.repeat(64) },
-          { id: 82, originalName: 'Datasheet.xlsx', sha256: 'b'.repeat(64), uploadedAt: '2026-09-24T02:05:00.000Z' }
+          {
+            id: 82,
+            originalName: 'Datasheet.xlsx',
+            sha256: 'b'.repeat(64),
+            uploadedAt: '2026-09-24T02:05:00.000Z',
+            materialVersionId: 91,
+            materialVersionStatus: 'withdrawn'
+          }
         ])
       })] };
     }
@@ -184,6 +191,8 @@ test('one uploaded batch appends every file to one TS-D and keeps the first file
   assert.equal(draft.uploadedAttachmentId, 81);
   assert.deepEqual(draft.uploadedFiles.map((file) => file.originalName), ['Agreement.pdf', 'Datasheet.xlsx']);
   assert.equal(draft.uploadedFiles[1].uploadedAt, '2026-09-24T02:05:00.000Z');
+  assert.equal(draft.uploadedFiles[1].materialVersionId, 91);
+  assert.equal(draft.uploadedFiles[1].materialVersionStatus, 'withdrawn');
   assert.match(calls[0].sql, /pg_advisory_xact_lock/);
   assert.match(calls[0].sql, /uploaded_attachment_id = COALESCE\(uploaded_attachment_id, \(\$2::bigint\[\]\)\[1\]\)/);
   assert.match(calls[0].sql, /unnest\(\$2::bigint\[\]\) WITH ORDINALITY/);
@@ -209,9 +218,13 @@ test('unapproved uploaded technical file withdrawal retires the attachment and r
   });
   assert.equal(draft.status, 'ready');
   assert.match(calls[0].sql, /draft\.status IN \('draft', 'ready'\)/);
-  assert.match(calls[0].sql, /retirement_reason = 'Withdrawn from editable technical draft before approval'/);
+  assert.match(calls[0].sql, /LEFT JOIN opportunity_material_versions material_version/);
+  assert.match(calls[0].sql, /attachment\.opportunity_material_version_id IS NULL\s+OR material_version\.status = 'withdrawn'/);
+  assert.match(calls[0].sql, /THEN 'Withdrawn from editable technical draft before approval'/);
+  assert.match(calls[0].sql, /'Withdrawn from an earlier withdrawn technical submission'/);
   assert.match(calls[0].sql, /status = CASE WHEN EXISTS \(SELECT 1 FROM next_file\) THEN 'ready' ELSE 'draft' END/);
   assert.match(calls[0].sql, /'file_withdrawn'/);
+  assert.match(calls[0].sql, /'materialVersionStatus', target\.material_version_status/);
   assert.deepEqual(calls[0].params, [41, 20, 81, 3]);
 });
 

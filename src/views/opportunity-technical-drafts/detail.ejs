@@ -50,7 +50,7 @@
                   <% if (uploadedFile.uploadedAt) { %><span class="muted">· <%= t('technicalFileUploadedAt') %> <%= formatUploadedAt(uploadedFile.uploadedAt) %></span><% } %>
                   <a href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/preview"><%= t('preview') %></a>
                   <a href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/download"><%= t('download') %></a>
-                  <% if (canManageDraft && !uploadedFile.materialVersionId) { %>
+                  <% if (canManageDraft && (!uploadedFile.materialVersionId || uploadedFile.materialVersionStatus === 'withdrawn')) { %>
                     <form class="inline-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/files/<%= uploadedFile.id %>/withdraw" onsubmit="return confirm('<%= t('withdrawUploadedTechnicalFileConfirm') %>')">
                       <%- csrfField() %><button class="danger-action" type="submit"><%= t('withdrawUploadedTechnicalFile') %></button>
                     </form>
