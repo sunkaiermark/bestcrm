@@ -43,3 +43,49 @@ test('every retained quotation row contributes to draft subtotal, tax, and total
     dom.window.close();
   }
 });
+
+test('a selected typical term can be edited for one quotation without keeping a second row open', () => {
+  const dom = new JSDOM(`<!doctype html>
+    <form id="sales-quote-draft-form"></form>
+    <div data-term-control data-term-invalid-message="Complete the wording.">
+      <div class="draft-term-row">
+        <select data-standard-term-select>
+          <option value="">Select a typical term</option>
+          <option value="fca" data-term-template-body="FCA [Named Place], Incoterms® 2020.">FCA [Named Place], Incoterms® 2020.</option>
+        </select>
+        <button type="button" data-term-edit-button disabled>Edit</button>
+      </div>
+      <div data-term-editor hidden>
+        <textarea data-term-body-input></textarea>
+        <button type="button" data-term-apply>Done</button>
+        <button type="button" data-term-cancel>Cancel</button>
+      </div>
+    </div>`, { runScripts: 'outside-only' });
+  try {
+    dom.window.eval(draftScript);
+    const { document, Event } = dom.window;
+    const select = document.querySelector('[data-standard-term-select]');
+    const editor = document.querySelector('[data-term-editor]');
+    const textarea = document.querySelector('[data-term-body-input]');
+    const editButton = document.querySelector('[data-term-edit-button]');
+
+    assert.equal(editor.hidden, true);
+    select.value = 'fca';
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+    assert.equal(editButton.disabled, false);
+    assert.equal(editor.hidden, false);
+    assert.equal(textarea.value, 'FCA [Named Place], Incoterms® 2020.');
+
+    textarea.value = 'FCA Busan, Korea, Incoterms® 2020.';
+    textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    document.querySelector('[data-term-apply]').click();
+    assert.equal(editor.hidden, true);
+    assert.equal(select.selectedOptions[0].textContent, 'FCA Busan, Korea, Incoterms® 2020.');
+    assert.equal(textarea.value, 'FCA Busan, Korea, Incoterms® 2020.');
+
+    editButton.click();
+    assert.equal(editor.hidden, false);
+  } finally {
+    dom.window.close();
+  }
+});

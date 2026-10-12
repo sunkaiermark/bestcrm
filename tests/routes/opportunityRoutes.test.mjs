@@ -2989,7 +2989,7 @@ test('approved uploaded TS-V remains visible with preview and download in Upload
   assert.equal(detail.status, 200);
   assert.match(detail.text, /Uploaded Files/);
   assert.match(detail.text, /TS-D1[\s\S]*TS-V1/);
-  assert.match(detail.text, /TS-V1/);
+  assert.match(detail.text, /TS-V1[\s\S]*Approved Version/);
   assert.match(detail.text, /attachments\/81\/preview/);
   assert.match(detail.text, /attachments\/81\/download/);
   assert.doesNotMatch(detail.text, /attachments\/81\/delete/);

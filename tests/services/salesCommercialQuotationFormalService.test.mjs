@@ -262,7 +262,7 @@ test('issued Singapore quotation with three rows and all commercial terms stays 
       opportunityNo: '800020',
       project: 'Production Line Equipment Package',
       customerName: 'META BIOMED CO., LTD.',
-      attention: 'Selected Buyer',
+      attention: '이승환',
       customerContactPhone: '+82 2 555 0101',
       customerContactEmail: 'buyer@example.com',
       seller: {

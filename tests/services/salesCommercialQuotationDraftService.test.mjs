@@ -106,7 +106,7 @@ test('built-in typical wording can be selected without a database-published dupl
   assert.equal(calls[0].termSelections.payment.body, '30% advance, 70% before shipment');
 });
 
-test('an unchanged typical-term selection preserves the saved snapshot and ignores posted wording', async () => {
+test('an unchanged typical-term selection saves edited quotation wording without changing its template', async () => {
   const calls = [];
   const existingDraft = { language: 'en', termSelections: {
     delivery: {
@@ -126,18 +126,38 @@ test('an unchanged typical-term selection preserves the saved snapshot and ignor
     term_delivery: 'builtin:price:price_basis_incoterms_2020:14'
   };
   await saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
-    ...base, term_delivery_body: '  FOB Shanghai Port, China, Incoterms® 2020.  '
+    ...base, term_delivery_body: '  FOB Busan Port, Korea, Incoterms® 2020.  '
   });
   assert.deepEqual(calls[0].termSelections.delivery, {
     id: 'builtin:price:price_basis_incoterms_2020:14', revisionNo: 1, language: 'en',
     title: 'FOB',
     templateBody: 'FOB [Named Port of Shipment], Incoterms® 2020.',
-    body: 'FOB Shanghai Port, China, Incoterms® 2020.'
+    body: 'FOB Busan Port, Korea, Incoterms® 2020.'
   });
   assert.equal(calls.length, 1);
 });
 
-test('posted wording cannot bypass an incomplete dropdown template', async () => {
+test('quotation-specific wording may complete a dropdown template with placeholders', async () => {
+  const calls = [];
+  const repository = {
+    async getTechnicalSource() { return source; },
+    async getByOpportunity() { return null; },
+    async listPublishedStandardTerms() { return []; },
+    async saveDraft(input) { calls.push(input); return input; }
+  };
+  await saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
+    sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on',
+    term_delivery_period: 'builtin:delivery:delivery_period_start:1',
+    term_delivery_period_body: 'Delivery shall be made within sixteen (16) weeks after receipt of the advance payment and approval of the technical documents.'
+  });
+  assert.equal(
+    calls[0].termSelections.delivery_period.body,
+    'Delivery shall be made within sixteen (16) weeks after receipt of the advance payment and approval of the technical documents.'
+  );
+  assert.match(calls[0].termSelections.delivery_period.templateBody, /\[Delivery Period\]/);
+});
+
+test('quotation-specific wording still rejects unresolved template placeholders', async () => {
   const repository = {
     async getTechnicalSource() { return source; },
     async getByOpportunity() { return null; },
@@ -147,7 +167,7 @@ test('posted wording cannot bypass an incomplete dropdown template', async () =>
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
     sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on',
     term_delivery_period: 'builtin:delivery:delivery_period_start:1',
-    term_delivery_period_body: 'Delivery shall be made within sixteen (16) weeks after receipt of the advance payment and approval of the technical documents.'
+    term_delivery_period_body: 'Delivery shall be made within [Delivery Period] after receipt of the purchase order.'
   }), /Replace all bracketed placeholders/);
 });
 

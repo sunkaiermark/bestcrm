@@ -116,7 +116,9 @@ test('sales owner sees the early draft form and saves two lines without technica
   assert.match(page.text, /<div class="draft-terms-scroll"><table class="draft-detail-table draft-commercial-terms">/);
   assert.match(page.text, /<table class="draft-detail-table draft-commercial-terms">/);
   assert.match(page.text, /name="term_payment" form="sales-quote-draft-form" data-standard-term-select/);
-  assert.doesNotMatch(page.text, /name="term_[^"]+_body"|data-term-body-input|draft-term-wording/);
+  assert.match(page.text, /data-term-edit-button[^>]*>Edit<\/button>/);
+  assert.match(page.text, /name="term_payment_body" form="sales-quote-draft-form" data-term-body-input/);
+  assert.match(page.text, /data-term-editor hidden/);
   assert.match(page.text, />Approved example text<\/option>/);
   assert.match(page.text, />Approved staged payment text<\/option>/);
   assert.match(page.text, />Delivery shall be made within \[Delivery Period\] after receipt of the advance payment and approval of the technical documents\.<\/option>/);
@@ -159,7 +161,7 @@ test('sales owner sees the early draft form and saves two lines without technica
   assert.deepEqual(calls[0].lineItems.map((line) => line.includeInTotal), ['included', 'included']);
 });
 
-test('commercial terms render as one dropdown and preserve an existing saved quotation snapshot', async () => {
+test('commercial terms stay compact while allowing quotation-specific wording to be edited and saved', async () => {
   const existingDraft = {
     draftRevisionNo: 2, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64), language: 'en',
     currency: 'USD', sellerEntityCode: 'sunkaier_apac', customerContactId: 501,
@@ -177,8 +179,10 @@ test('commercial terms render as one dropdown and preserve an existing saved quo
   assert.equal(page.status, 200);
   const deliverySelect = page.text.match(/<select name="term_delivery"[^>]*>[\s\S]*?<\/select>/)?.[0];
   assert.ok(deliverySelect);
-  assert.match(deliverySelect, /value="builtin:price:price_basis_incoterms_2020:14" selected/);
-  assert.doesNotMatch(page.text, /term_delivery_body|FOB Shanghai Port, China/);
+  assert.match(deliverySelect, /value="builtin:price:price_basis_incoterms_2020:14"[^>]* selected/);
+  assert.match(deliverySelect, />FOB Shanghai Port, China, Incoterms® 2020\.<\/option>/);
+  assert.match(page.text, /name="term_delivery_body"[^>]*>FOB Shanghai Port, China, Incoterms® 2020\.<\/textarea>/);
+  assert.match(page.text, /data-term-edit-button[^>]*>Edit<\/button>/);
   const save = await agent.post('/opportunities/20/commercial-quotation-draft').type('form').send({
     sourceAttachmentId: '51', expectedRevisionNo: '2', confirmSourceVersion: 'on',
     currency: 'USD', taxRate: '0', sellerEntityCode: 'sunkaier_apac', customerContactId: '501',
@@ -186,7 +190,7 @@ test('commercial terms render as one dropdown and preserve an existing saved quo
     term_delivery_body: 'FOB Busan Port, Korea, Incoterms® 2020.'
   });
   assert.equal(save.status, 302);
-  assert.equal(calls[0].termSelections.delivery.body, 'FOB Shanghai Port, China, Incoterms® 2020.');
+  assert.equal(calls[0].termSelections.delivery.body, 'FOB Busan Port, Korea, Incoterms® 2020.');
   assert.equal(calls[0].termSelections.delivery.templateBody, 'FOB [Named Port of Shipment], Incoterms® 2020.');
 });
 

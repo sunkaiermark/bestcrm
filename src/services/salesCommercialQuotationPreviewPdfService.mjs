@@ -1,21 +1,11 @@
-import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import PDFDocument from 'pdfkit';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
 import { calculateQuotationTotals } from '../domain/quotationMoney.mjs';
-
-const FONT_CANDIDATES = [
-  'C:\\Windows\\Fonts\\NotoSansSC-VF.ttf',
-  'C:\\Windows\\Fonts\\Deng.ttf',
-  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-  '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc'
-];
-const KOREAN_FONT_CANDIDATES = [
-  'C:\\Windows\\Fonts\\malgun.ttf',
-  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-  '/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf',
-  '/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf'
-];
+import {
+  registerSalesCommercialQuotationPdfFonts,
+  resolveSalesCommercialQuotationPdfFonts
+} from './salesCommercialQuotationPdfFonts.mjs';
 const NAVY = '#244C7C';
 const TEXT = '#23313F';
 const MUTED = '#627486';
@@ -48,10 +38,6 @@ function money(value) {
   return `${digits}.${(value % 100n).toString().padStart(2, '0')}`;
 }
 
-function pdfFont(explicitPath) {
-  return [explicitPath, ...FONT_CANDIDATES].filter(Boolean).find(existsSync) || null;
-}
-
 export async function renderSalesCommercialQuotationPreviewPdf({
   draft, opportunity, sellerProfile = null, fontPath = ''
 }) {
@@ -60,8 +46,8 @@ export async function renderSalesCommercialQuotationPreviewPdf({
     error.statusCode = 404;
     throw error;
   }
-  const font = pdfFont(fontPath);
-  if (!font) {
+  const fonts = resolveSalesCommercialQuotationPdfFonts(fontPath);
+  if (!fonts) {
     const error = new Error('A CJK-capable PDF font is required for quotation preview');
     error.statusCode = 503;
     throw error;
@@ -72,8 +58,7 @@ export async function renderSalesCommercialQuotationPreviewPdf({
     bufferPages: true, autoFirstPage: false,
     info: { Title: `INTERNAL DRAFT QUOTATION ${printable(opportunity.opportunityNo)}`, Author: 'SUNKAIER' }
   });
-  document.registerFont('quotation', font);
-  document.registerFont('quotation-korean', KOREAN_FONT_CANDIDATES.find(existsSync) || font);
+  registerSalesCommercialQuotationPdfFonts(document, fonts);
   document.font('quotation');
   const chunks = [];
   const completed = new Promise((resolve, reject) => {

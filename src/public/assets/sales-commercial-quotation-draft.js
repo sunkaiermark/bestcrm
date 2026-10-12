@@ -29,6 +29,107 @@
   }
   customerContactSelect?.addEventListener('change', updateCustomerContact);
 
+  const unresolvedTermPlaceholders = [
+    '[Location]', '[Named Place]', '[Named Port of Shipment]',
+    '[Named Port of Destination]', '[Named Place of Destination]', '[Delivery Period]'
+  ];
+  const quotationForm = document.getElementById('sales-quote-draft-form');
+  const termControls = [...document.querySelectorAll('[data-term-control]')];
+
+  function hasUnresolvedTermPlaceholder(value) {
+    return unresolvedTermPlaceholders.some((placeholder) => value.includes(placeholder));
+  }
+
+  function initializeTermControl(control) {
+    const select = control.querySelector('[data-standard-term-select]');
+    const editButton = control.querySelector('[data-term-edit-button]');
+    const editor = control.querySelector('[data-term-editor]');
+    const bodyInput = control.querySelector('[data-term-body-input]');
+    const applyButton = control.querySelector('[data-term-apply]');
+    const cancelButton = control.querySelector('[data-term-cancel]');
+    if (!select || !editButton || !editor || !bodyInput) return;
+    let originalBody = bodyInput.value;
+
+    function selectedOption() {
+      return select.selectedOptions[0] || null;
+    }
+
+    function validateBody() {
+      const body = bodyInput.value.trim();
+      const invalid = Boolean(select.value) && (!body || hasUnresolvedTermPlaceholder(body));
+      bodyInput.setCustomValidity(invalid ? control.dataset.termInvalidMessage : '');
+      return !invalid;
+    }
+
+    function openEditor() {
+      if (editButton.disabled) return;
+      originalBody = bodyInput.value;
+      editor.hidden = false;
+      bodyInput.focus();
+      bodyInput.select();
+    }
+
+    function closeEditor() {
+      editor.hidden = true;
+    }
+
+    select.addEventListener('change', () => {
+      const option = selectedOption();
+      const templateBody = option?.dataset.termTemplateBody || '';
+      bodyInput.value = templateBody;
+      originalBody = templateBody;
+      editButton.disabled = !select.value || !templateBody;
+      validateBody();
+      if (templateBody && hasUnresolvedTermPlaceholder(templateBody)) {
+        editor.hidden = false;
+        bodyInput.focus();
+        bodyInput.select();
+      } else {
+        closeEditor();
+      }
+    });
+
+    editButton.addEventListener('click', openEditor);
+    bodyInput.addEventListener('input', validateBody);
+    applyButton?.addEventListener('click', () => {
+      if (!validateBody()) {
+        bodyInput.reportValidity();
+        return;
+      }
+      const body = bodyInput.value.trim();
+      bodyInput.value = body;
+      const option = selectedOption();
+      if (option && body) option.textContent = body;
+      originalBody = body;
+      closeEditor();
+      select.focus();
+    });
+    cancelButton?.addEventListener('click', () => {
+      bodyInput.value = originalBody;
+      validateBody();
+      closeEditor();
+      select.focus();
+    });
+    validateBody();
+
+    control.openTermEditor = () => {
+      editor.hidden = false;
+      bodyInput.focus();
+    };
+    control.validateTermBody = validateBody;
+  }
+
+  termControls.forEach(initializeTermControl);
+  quotationForm?.addEventListener('submit', (event) => {
+    for (const control of termControls) {
+      if (!control.validateTermBody || control.validateTermBody()) continue;
+      event.preventDefault();
+      control.openTermEditor?.();
+      control.querySelector('[data-term-body-input]')?.reportValidity();
+      break;
+    }
+  });
+
   const container = document.getElementById('sales-quote-draft-rows');
   const addButton = document.querySelector('[data-add-quote-row]');
   if (!container) return;

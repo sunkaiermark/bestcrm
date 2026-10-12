@@ -34,6 +34,13 @@
   .sales-quote-draft .draft-commercial-terms th { overflow-wrap: normal; white-space: nowrap; width: 1%; }
   .sales-quote-draft .draft-commercial-terms td { width: 99%; }
   .sales-quote-draft .draft-commercial-terms select { margin: 0; width: 100%; }
+  .sales-quote-draft .draft-term-row { align-items: center; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) auto; }
+  .sales-quote-draft .draft-term-row label { margin: 0; min-width: 0; }
+  .sales-quote-draft .draft-term-edit-button { height: 46px; margin: 0; min-width: 64px; padding: 0 12px; white-space: nowrap; }
+  .sales-quote-draft .draft-term-editor { margin-top: 8px; }
+  .sales-quote-draft .draft-term-editor textarea { box-sizing: border-box; margin: 0; min-height: 76px; resize: vertical; width: 100%; }
+  .sales-quote-draft .draft-term-editor-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 6px; }
+  .sales-quote-draft .draft-term-editor-actions button { margin: 0; }
   .sales-quote-draft .draft-project-info label { margin: 0; }
   .sales-quote-draft .draft-project-info select { margin: 0; width: 100%; }
   .sales-quote-draft .draft-parties select[name="currency"] { margin: 0; max-width: 100%; width: 150px; }
@@ -191,13 +198,24 @@
     <div class="draft-terms-scroll"><table class="draft-detail-table draft-commercial-terms"><tbody>
       <% for (const section of termSections) { const options = standardTerms.filter((term) => term.key === section.key); const selected = draft?.termSelections?.[section.key]; const selectedTerm = options.find((term) => term.id === selected?.id); const selectedAvailable = Boolean(selectedTerm); %>
         <tr><th scope="row"><%= zh ? section.zh : section.en %></th><td>
-          <label><span class="visually-hidden"><%= zh ? `选择${section.zh}常用条款` : `Select a typical term for ${section.en}` %></span>
-            <select name="term_<%= section.key %>" form="sales-quote-draft-form" data-standard-term-select <%= canEdit && sources.length && (options.length || selected) ? '' : 'disabled' %>>
-              <option value=""><%= options.length ? (zh ? '请选择常用条款' : 'Select a typical term') : (zh ? '暂无已发布常用条款' : 'No published typical terms') %></option>
-              <% if (selected && !selectedAvailable) { %><option value="<%= selected.id %>" selected><%= zh ? '先前选择已停用，请重新选择' : 'Previous selection retired; choose again' %></option><% } %>
-              <% for (const term of options) { %><option value="<%= term.id %>" <%= term.id === selected?.id ? 'selected' : '' %>><%= term.body || term.title %></option><% } %>
-            </select>
-          </label>
+          <div class="draft-term-control" data-term-control data-term-invalid-message="<%= zh ? '请填写完整条款，并替换方括号中的内容。' : 'Complete the quotation wording and replace every bracketed placeholder.' %>">
+            <div class="draft-term-row">
+              <label><span class="visually-hidden"><%= zh ? `选择${section.zh}常用条款` : `Select a typical term for ${section.en}` %></span>
+                <select name="term_<%= section.key %>" form="sales-quote-draft-form" data-standard-term-select <%= canEdit && sources.length && (options.length || selected) ? '' : 'disabled' %>>
+                  <option value=""><%= options.length ? (zh ? '请选择常用条款' : 'Select a typical term') : (zh ? '暂无已发布常用条款' : 'No published typical terms') %></option>
+                  <% if (selected && !selectedAvailable) { %><option value="<%= selected.id %>" selected><%= zh ? '先前选择已停用，请重新选择' : 'Previous selection retired; choose again' %></option><% } %>
+                  <% for (const term of options) { const optionBody = term.id === selected?.id && selected?.body ? selected.body : (term.body || term.title); %><option value="<%= term.id %>" data-term-template-body="<%= term.body || '' %>" <%= term.id === selected?.id ? 'selected' : '' %>><%= optionBody %></option><% } %>
+                </select>
+              </label>
+              <% if (canEdit) { %><button type="button" class="secondary-action draft-term-edit-button" data-term-edit-button <%= selectedAvailable ? '' : 'disabled' %>><%= zh ? '修改' : 'Edit' %></button><% } %>
+            </div>
+            <% if (canEdit) { %>
+              <div class="draft-term-editor" data-term-editor hidden>
+                <label><span class="visually-hidden"><%= zh ? `修改本报价的${section.zh}` : `Edit ${section.en} wording for this quotation` %></span><textarea name="term_<%= section.key %>_body" form="sales-quote-draft-form" data-term-body-input maxlength="4000" rows="3"><%= selected?.body || '' %></textarea></label>
+                <div class="draft-term-editor-actions"><button type="button" data-term-apply><%= zh ? '完成' : 'Done' %></button><button type="button" class="secondary-action" data-term-cancel><%= zh ? '取消' : 'Cancel' %></button></div>
+              </div>
+            <% } %>
+          </div>
         </td></tr>
       <% } %>
     </tbody></table></div>

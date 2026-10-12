@@ -85,7 +85,10 @@ function termSelectionsFromInput(input, publishedTerms, language, existingSelect
     const samePublishedRevision = String(existing?.id ?? '') === String(term.id)
       && Number(existing?.revisionNo) === Number(term.revisionNo)
       && existing?.language === term.language;
-    const body = normalizeQuotationTermWording(samePublishedRevision ? existing.body : term.body);
+    const submittedBody = normalizeQuotationTermWording(input[`term_${section.key}_body`]);
+    const body = submittedBody || normalizeQuotationTermWording(
+      samePublishedRevision ? existing.body : term.body
+    );
     if (!isValidQuotationTermWording(body)) {
       if (hasUnresolvedQuotationTermPlaceholder(body)) {
         throw new SalesCommercialQuotationDraftError(

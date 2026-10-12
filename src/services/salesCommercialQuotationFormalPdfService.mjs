@@ -1,21 +1,11 @@
-import { existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import PDFDocument from 'pdfkit';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
 import { calculateQuotationTotals } from '../domain/quotationMoney.mjs';
-
-const FONT_CANDIDATES = [
-  'C:\\Windows\\Fonts\\NotoSansSC-VF.ttf',
-  'C:\\Windows\\Fonts\\Deng.ttf',
-  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-  '/usr/share/fonts/truetype/noto/NotoSansCJK-Regular.ttc'
-];
-const KOREAN_FONT_CANDIDATES = [
-  'C:\\Windows\\Fonts\\malgun.ttf',
-  '/usr/share/fonts/opentype/noto/NotoSansCJK-Regular.ttc',
-  '/usr/share/fonts/opentype/noto/NotoSansCJKkr-Regular.otf',
-  '/usr/share/fonts/truetype/noto/NotoSansKR-Regular.ttf'
-];
+import {
+  registerSalesCommercialQuotationPdfFonts,
+  resolveSalesCommercialQuotationPdfFonts
+} from './salesCommercialQuotationPdfFonts.mjs';
 const NAVY = '#244C7C';
 const TEXT = '#23313F';
 const MUTED = '#627486';
@@ -59,16 +49,15 @@ export async function renderSalesCommercialQuotationFormalPdf({ version, signedA
   if (snapshot.seller?.code === 'sunkaier_china' && seal) {
     throw new Error('A Singapore seal cannot be applied to a China quotation');
   }
-  const font = [fontPath, ...FONT_CANDIDATES].filter(Boolean).find(existsSync);
-  if (!font) throw new Error('A CJK-capable quotation PDF font is required');
+  const fonts = resolveSalesCommercialQuotationPdfFonts(fontPath);
+  if (!fonts) throw new Error('A CJK-capable quotation PDF font is required');
   const zh = snapshot.language === 'zh';
   const document = new PDFDocument({
     size: 'A4', margins: { top: 84, right: 43, bottom: 30, left: 43 },
     bufferPages: true, autoFirstPage: false,
     info: { Title: `QUOTATION ${version.quotationNo}`, Author: snapshot.seller.legalName }
   });
-  document.registerFont('quotation', font);
-  document.registerFont('quotation-korean', KOREAN_FONT_CANDIDATES.find(existsSync) || font);
+  registerSalesCommercialQuotationPdfFonts(document, fonts);
   document.font('quotation');
   const chunks = [];
   const completed = new Promise((resolve, reject) => {

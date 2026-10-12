@@ -10,7 +10,7 @@ const opportunity = {
 const draft = {
   opportunityId: 20, language: 'en', draftRevisionNo: 2, currency: 'USD',
   sellerEntityName: 'SUNKAIER ASIA PACIFIC PTE. LTD.',
-  customerContactName: 'Alice', customerContactPhone: '+1 555 0101',
+  customerContactName: '이승환', customerContactPhone: '+1 555 0101',
   customerContactEmail: 'alice@example.com',
   lineItems: [{ description: 'Mixer', quantity: '2', unit: 'set', unitPrice: '100', includeInTotal: 'included' }],
   termSelections: { payment: { title: 'Payment', body: 'Published payment text' } }
