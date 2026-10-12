@@ -86,6 +86,8 @@
   .sales-quote-draft .draft-grand-total { border-top: 1px solid var(--line); color: #182e6f; font-size: 1.05rem; }
   .sales-quote-draft .draft-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 14px; }
   .sales-quote-draft .draft-actions form { margin: 0; }
+  .sales-quote-draft .formal-quotation-version { scroll-margin-top: 18px; }
+  .sales-quote-draft .formal-quotation-version:target { border-color: #0f827d; box-shadow: 0 0 0 3px rgba(15, 130, 125, .14); }
   @container (max-width: 950px) {
     .sales-quote-draft .draft-identifiers { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px 0; }
     .sales-quote-draft .draft-identifiers div:nth-child(even) { border-right: 0; }
@@ -248,7 +250,7 @@
     <% } %>
     <% if (!formalVersions.length) { %><p class="draft-pending"><%= zh ? '尚无正式提交版本。' : 'No formal version has been submitted.' %></p><% } %>
     <% for (const version of formalVersions) { %>
-      <div class="form-panel">
+      <div class="form-panel formal-quotation-version" id="quotation-version-<%= version.id %>">
         <p><strong><%= version.quotationNo %></strong> · V<%= version.versionNo %> · D<%= version.draftRevisionNo %> · <%= zh ? ({ pending: '待商务审批', approved: '待本人签发', rejected: '已退回', signed: '已签发' }[version.status] || version.status) : ({ pending: 'Pending commercial review', approved: 'Awaiting personal issue', rejected: 'Returned', signed: 'Issued' }[version.status] || version.status) %></p>
         <p class="muted"><%= zh ? '提交人' : 'Submitted by' %> <%= version.submittedByName || `#${version.submittedBy}` %> · <%= version.submittedAt %><% if (version.reviewedAt) { %> · <%= zh ? '审批人' : 'Reviewed by' %> <%= version.reviewedByName || `#${version.reviewedBy}` %> · <%= version.reviewedAt %><% } %><% if (version.signedAt) { %> · <%= zh ? '签发人' : 'Issued by' %> <%= version.signedByName || `#${version.signedBy}` %> · <%= version.signedAt %><% } %></p>
         <% if (version.snapshot?.missingFields?.length) { %><p class="muted"><%= zh ? '此版本省略' : 'Omitted from this version' %>: <%= version.snapshot.missingFields.map(missingFieldName).join(zh ? '、' : ', ') %></p><% } %>

@@ -21,6 +21,7 @@ test('todo creation also creates one unified workflow work item with a measurabl
     opportunityId: 30,
     assigneeUserId: 7,
     title: 'Prepare technical solution',
+    actionUrl: '/opportunities/30/commercial-quotation-draft#quotation-version-55',
     dueAt: '2026-09-16T23:59:59+08:00',
     estimatedHours: 12.5,
     workloadLevel: 'high'
@@ -44,6 +45,8 @@ test('todo creation also creates one unified workflow work item with a measurabl
   assert.equal(target.calls[2].params[10], 12.5);
   assert.equal(target.calls[2].params[11], 'high');
   assert.equal(target.calls[2].params[12], 'submit_technical_solution');
+  assert.equal(target.calls[2].params[14], '/opportunities/30/commercial-quotation-draft#quotation-version-55');
+  assert.equal(target.calls[0].params[4], '/opportunities/30/commercial-quotation-draft#quotation-version-55');
 });
 
 test('closing workflow todos closes their unified work items without deleting history', async () => {

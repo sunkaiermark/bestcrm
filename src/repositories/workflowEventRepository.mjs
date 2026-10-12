@@ -20,6 +20,7 @@ function mapWorkflowEventRow(row) {
     targetUserId: numberOrNull(row.target_user_id),
     targetDisplayName: row.target_display_name || '',
     comment: row.comment,
+    actionUrl: row.action_url || '',
     createdAt: row.created_at
   };
 }
@@ -35,9 +36,10 @@ export function createWorkflowEventRepository(queryTarget) {
           to_status,
           actor_user_id,
           target_user_id,
-          comment
+          comment,
+          action_url
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
         RETURNING *
       `, [
         event.opportunityId,
@@ -46,7 +48,8 @@ export function createWorkflowEventRepository(queryTarget) {
         event.toStatus,
         event.actorUserId,
         event.targetUserId,
-        event.comment
+        event.comment,
+        event.actionUrl || ''
       ]);
       return {
         id: Number(result.rows[0].id),
@@ -67,6 +70,7 @@ export function createWorkflowEventRepository(queryTarget) {
           we.target_user_id,
           target.display_name AS target_display_name,
           we.comment,
+          we.action_url,
           we.created_at
         FROM workflow_events we
         LEFT JOIN users actor ON actor.id = we.actor_user_id

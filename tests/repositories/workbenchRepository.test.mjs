@@ -37,6 +37,7 @@ test('workbench repository lists unified open work ordered by deadline for curre
       status: 'pending',
       actual_started_at: null,
       actual_completed_at: null,
+      action_url: '/opportunities/30/commercial-quotation-draft#quotation-version-81',
       created_at: '2026-06-05T10:00:00.000Z',
       updated_at: '2026-06-05T10:00:00.000Z'
     }
@@ -55,6 +56,8 @@ test('workbench repository lists unified open work ordered by deadline for curre
   assert.equal(workItems[0].workloadLevel, 'high');
   assert.equal(workItems[0].estimateUrl, '/workbench/work-items/91/estimate');
   assert.equal(workItems[0].actionUrl, '/opportunities/30');
+  assert.equal(workItems[0].directActionUrl, '/opportunities/30/commercial-quotation-draft#quotation-version-81');
+  assert.match(queryTarget.queries[0].sql, /item\.action_url/);
   assert.match(queryTarget.queries[0].sql, /FROM work_items item/);
   assert.match(queryTarget.queries[0].sql, /item\.assignee_user_id = \$1/);
   assert.match(queryTarget.queries[0].sql, /item\.status IN \('pending', 'in_progress', 'waiting', 'review_pending'\)/);

@@ -32,11 +32,15 @@ export function canSubmitSalesCommercialQuotation(user, opportunity) {
     && Number(opportunity.salespersonId) === Number(user.id);
 }
 
+function isActiveMarkYang(user) {
+  return user?.isActive === true && user?.username === 'MarkYang';
+}
+
 export function canReviewSalesCommercialQuotation(user, opportunity, version) {
-  return !opportunity.archivedAt && version?.status === 'pending'
+  return !opportunity.archivedAt && user?.isActive === true && version?.status === 'pending'
     && hasRole(user, ROLES.COMMERCIAL_MANAGER)
     && Number(opportunity.commercialManagerId) === Number(user.id)
-    && Number(version.submittedBy) !== Number(user.id);
+    && (Number(version.submittedBy) !== Number(user.id) || isActiveMarkYang(user));
 }
 
 export function canSignSalesCommercialQuotation(user, opportunity, version) {
@@ -169,6 +173,14 @@ async function currentApprovedSource(repository, versionOrDraft, opportunityId) 
 
 export async function submitSalesCommercialQuotation(repository, user, opportunity, expectedRevisionNo, settings = {}) {
   if (!canSubmitSalesCommercialQuotation(user, opportunity)) fail('Forbidden', 403);
+  if (!Number.isSafeInteger(Number(opportunity.commercialManagerId))
+    || Number(opportunity.commercialManagerId) <= 0) {
+    fail('Assign an active Commercial Manager before submitting the formal quotation');
+  }
+  if (Number(opportunity.commercialManagerId) === Number(user.id)
+    && (!isActiveMarkYang(user) || !hasRole(user, ROLES.COMMERCIAL_MANAGER))) {
+    fail('Commercial quotation self-approval is prohibited; assign another Commercial Manager');
+  }
   const draft = await repository.getByOpportunity(opportunity.id);
   if (!draft) fail('Quotation draft not found', 404);
   if (Number(expectedRevisionNo) !== draft.draftRevisionNo) fail('Draft revision changed; reload before submitting');
@@ -213,6 +225,16 @@ export async function submitSalesCommercialQuotation(repository, user, opportuni
     if (!version) fail('Draft changed before submission; reload');
     return version;
   } catch (error) {
+    if (error.code === 'BESTCRM_COMMERCIAL_MANAGER_REQUIRED'
+      || /active assigned Commercial Manager/.test(error.message || '')) {
+      fail('Assign an active Commercial Manager before submitting the formal quotation');
+    }
+    if (/self-approval is prohibited/.test(error.message || '')) {
+      fail('Commercial quotation self-approval is prohibited; assign another Commercial Manager');
+    }
+    if (error.code === 'BESTCRM_FORMAL_QUOTATION_PENDING') {
+      fail('A frozen quotation version is already pending Commercial Manager review');
+    }
     if (error.code === '23505' || error.code === 'P0001') fail('This draft revision has already been submitted or its technical source changed');
     throw error;
   }

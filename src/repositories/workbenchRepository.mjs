@@ -27,6 +27,7 @@ function mapWorkItemRow(row) {
     actualCompletedAt: row.actual_completed_at || null,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    directActionUrl: row.action_url || '',
     actionUrl: row.opportunity_id ? `/opportunities/${row.opportunity_id}` : '/workbench',
     estimateUrl: `/workbench/work-items/${row.id}/estimate`
   };
@@ -160,6 +161,7 @@ export function createWorkbenchRepository(queryTarget) {
           item.status,
           item.actual_started_at,
           item.actual_completed_at,
+          item.action_url,
           item.created_at,
           item.updated_at
         FROM work_items item
@@ -200,6 +202,7 @@ export function createWorkbenchRepository(queryTarget) {
           item.status,
           item.actual_started_at,
           item.actual_completed_at,
+          item.action_url,
           item.created_at,
           item.updated_at
         FROM work_items item

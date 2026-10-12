@@ -50,6 +50,7 @@ function mapTodoRow(row) {
     assigneeDisplayName: row.assignee_display_name || '',
     title: row.title,
     status: row.status,
+    actionUrl: row.action_url || '',
     dueAt: nullableDate(row.due_at),
     createdAt: row.created_at,
     completedAt: nullableDate(row.completed_at)
@@ -98,10 +99,11 @@ export function createTodoRepository(queryTarget) {
         workload_level,
         kpi_code,
         kpi_target,
+        action_url,
         status
       ) VALUES (
         'opportunity', $1, $1, $2, $3, 'workflow_todo', $4, $5, $6, $7, $8,
-        COALESCE($9::timestamptz, now()), $10, $11, $12, $13, $14, 'pending'
+        COALESCE($9::timestamptz, now()), $10, $11, $12, $13, $14, $15, 'pending'
       )
       ON CONFLICT (source_type, source_record_id)
         WHERE source_record_id IS NOT NULL
@@ -120,7 +122,8 @@ export function createTodoRepository(queryTarget) {
       input.estimatedHours ?? null,
       input.workloadLevel || null,
       input.kpiCode || definition.kpiCode,
-      input.kpiTarget || ''
+      input.kpiTarget || '',
+      input.actionUrl || ''
     ]);
   }
 
@@ -153,15 +156,17 @@ export function createTodoRepository(queryTarget) {
           opportunity_id,
           assignee_user_id,
           title,
-          due_at
+          due_at,
+          action_url
         )
-        VALUES ($1, $2, $3, $4)
+        VALUES ($1, $2, $3, $4, $5)
         RETURNING *
       `, [
         todo.opportunityId,
         todo.assigneeUserId,
         todo.title,
-        todo.dueAt || null
+        todo.dueAt || null,
+        todo.actionUrl || ''
       ]);
       const createdTodo = {
         id: Number(result.rows[0].id),
@@ -180,6 +185,7 @@ export function createTodoRepository(queryTarget) {
           assignee.display_name AS assignee_display_name,
           t.title,
           t.status,
+          t.action_url,
           t.due_at,
           t.created_at,
           t.completed_at
@@ -212,6 +218,19 @@ export function createTodoRepository(queryTarget) {
           AND status = 'pending'
         RETURNING id
       `, [opportunityId, assigneeUserId, status]);
+      await synchronizeClosedTodos(result.rows, status, actorUserId);
+      return result;
+    },
+
+    async closePendingForOpportunityAndTitle(opportunityId, title, status, actorUserId = null) {
+      const result = await queryTarget.query(`
+        UPDATE todos
+        SET status = $3, completed_at = now()
+        WHERE opportunity_id = $1
+          AND title = $2
+          AND status = 'pending'
+        RETURNING id
+      `, [opportunityId, title, status]);
       await synchronizeClosedTodos(result.rows, status, actorUserId);
       return result;
     },

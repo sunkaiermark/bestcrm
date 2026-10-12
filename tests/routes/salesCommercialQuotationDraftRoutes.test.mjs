@@ -5,7 +5,7 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function createAgent({ userId = 7, username = `user${userId}`, roles = [ROLES.SALESPERSON], archivedAt = null, sourceAvailable = true, existingDraft = null, standardTerms = [], formalVersions = [], customerContacts, quotationPreviewPdfRenderer, quotationSigning } = {}) {
+async function createAgent({ userId = 7, username = `user${userId}`, roles = [ROLES.SALESPERSON], archivedAt = null, commercialManagerId = null, sourceAvailable = true, existingDraft = null, standardTerms = [], formalVersions = [], customerContacts, quotationPreviewPdfRenderer, quotationSigning } = {}) {
   const user = {
     id: userId, username, displayName: 'Test User',
     passwordHash: await hashPassword('ChangeMe123!'), isActive: true, roles,
@@ -15,7 +15,7 @@ async function createAgent({ userId = 7, username = `user${userId}`, roles = [RO
   const opportunity = {
     id: 20, opportunityNo: '800020', title: 'Mixer Project', customerId: 30, customerName: 'Acme',
     primaryContactId: 501, primaryContactName: 'Alex', salespersonId: 7, status: 'technical_solution_in_progress',
-    salespersonDisplayName: 'Sales Owner', archivedAt, teamMembers: []
+    salespersonDisplayName: 'Sales Owner', commercialManagerId, archivedAt, teamMembers: []
   };
   const source = {
     technicalDraftId: 41, technicalDraftRevisionNo: 2, attachmentId: 51,
@@ -334,4 +334,24 @@ test('quotation page keeps frozen-version omissions and approval roles without t
   assert.doesNotMatch(page.text, /The issued PDF may still be sent to customers/);
   assert.match(page.text, /Omitted from this version: Seller address, Payment terms/);
   assert.doesNotMatch(page.text, /An assigned commercial manager other than the submitter reviews it/);
+});
+
+test('assigned Commercial Manager opens the exact frozen version with approval actions', async () => {
+  const formalVersions = [{
+    id: 81, opportunityId: 20, draftRevisionNo: 2, versionNo: 1,
+    quotationNo: 'Q-800020-V1', status: 'pending', submittedBy: 7,
+    submittedAt: new Date().toISOString(), snapshot: {}
+  }];
+  const { agent } = await createAgent({
+    userId: 8,
+    roles: [ROLES.COMMERCIAL_MANAGER],
+    commercialManagerId: 8,
+    formalVersions
+  });
+
+  const page = await agent.get('/opportunities/20/commercial-quotation-draft#quotation-version-81');
+  assert.equal(page.status, 200);
+  assert.match(page.text, /id="quotation-version-81"/);
+  assert.match(page.text, /value="approved">Approve frozen version/);
+  assert.match(page.text, /value="rejected"[^>]*>Return for changes/);
 });

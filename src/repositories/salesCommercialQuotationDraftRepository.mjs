@@ -1,3 +1,8 @@
+import { ACTIONS } from '../domain/workflow.mjs';
+import { STATUSES } from '../domain/statuses.mjs';
+import { createTodoRepository } from './todoRepository.mjs';
+import { createWorkflowEventRepository } from './workflowEventRepository.mjs';
+
 function mapSource(row) {
   if (!row) return null;
   return {
@@ -114,6 +119,31 @@ export function createSalesCommercialQuotationDraftRepository(queryTarget) {
       try {
         await client.query('BEGIN');
         await client.query('SELECT pg_advisory_xact_lock($1::bigint)', [input.opportunityId]);
+        const opportunityResult = await client.query(`
+          SELECT id, status, salesperson_id, commercial_manager_id
+          FROM opportunities
+          WHERE id = $1 AND archived_at IS NULL
+          FOR UPDATE
+        `, [input.opportunityId]);
+        const opportunity = opportunityResult.rows[0];
+        if (!opportunity?.commercial_manager_id) {
+          const error = new Error('An assigned Commercial Manager is required');
+          error.code = 'BESTCRM_COMMERCIAL_MANAGER_REQUIRED';
+          throw error;
+        }
+        const pendingResult = await client.query(`
+          SELECT id
+          FROM sales_commercial_quotation_versions
+          WHERE opportunity_id = $1 AND status = 'pending'
+          ORDER BY version_no DESC, id DESC
+          LIMIT 1
+          FOR UPDATE
+        `, [input.opportunityId]);
+        if (pendingResult.rowCount > 0) {
+          const error = new Error('A formal quotation is already pending commercial review');
+          error.code = 'BESTCRM_FORMAL_QUOTATION_PENDING';
+          throw error;
+        }
         const result = await client.query(`
           WITH next_version AS (
             SELECT COALESCE(MAX(version_no), 0) + 1 AS version_no
@@ -137,8 +167,44 @@ export function createSalesCommercialQuotationDraftRepository(queryTarget) {
           RETURNING *
         `, [input.opportunityId, input.expectedRevisionNo, input.actorUserId,
           JSON.stringify(input.snapshot)]);
+        if (!result.rows[0]) {
+          await client.query('COMMIT');
+          return null;
+        }
+        const version = mapFormalVersion(result.rows[0]);
+        const actionUrl = `/opportunities/${input.opportunityId}/commercial-quotation-draft#quotation-version-${version.id}`;
+        await client.query(`
+          UPDATE opportunities
+          SET status = $2, updated_at = now()
+          WHERE id = $1
+        `, [input.opportunityId, STATUSES.COMMERCIAL_QUOTE_PENDING]);
+        const todoRepository = createTodoRepository(client);
+        const eventRepository = createWorkflowEventRepository(client);
+        await todoRepository.closePendingForOpportunityAndTitle(
+          input.opportunityId,
+          'Approve commercial quote',
+          'cancelled',
+          input.actorUserId
+        );
+        await eventRepository.create({
+          opportunityId: input.opportunityId,
+          eventType: ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
+          fromStatus: opportunity.status,
+          toStatus: STATUSES.COMMERCIAL_QUOTE_PENDING,
+          actorUserId: input.actorUserId,
+          targetUserId: Number(opportunity.commercial_manager_id),
+          comment: `Formal quotation ${version.quotationNo} submitted for commercial review`,
+          actionUrl
+        });
+        await todoRepository.create({
+          opportunityId: input.opportunityId,
+          assigneeUserId: Number(opportunity.commercial_manager_id),
+          title: 'Approve commercial quote',
+          description: `Review frozen quotation ${version.quotationNo}`,
+          actionUrl
+        }, input.actorUserId);
         await client.query('COMMIT');
-        return mapFormalVersion(result.rows[0]);
+        return version;
       } catch (error) {
         await client.query('ROLLBACK');
         throw error;
@@ -148,23 +214,93 @@ export function createSalesCommercialQuotationDraftRepository(queryTarget) {
     },
 
     async reviewFormalVersion(input) {
-      const result = await queryTarget.query(`
-        UPDATE sales_commercial_quotation_versions
-        SET status = $3, reviewed_by = $4, reviewed_at = now(), review_comment = $5
-        WHERE id = $1 AND opportunity_id = $2 AND status = 'pending'
-          AND submitted_by <> $4
-          AND ($3 <> 'approved' OR NOT EXISTS (
-            SELECT 1 FROM opportunity_technical_drafts newer
-            JOIN opportunity_technical_drafts source ON source.id = sales_commercial_quotation_versions.source_technical_draft_id
-            WHERE newer.opportunity_id = sales_commercial_quotation_versions.opportunity_id
-              AND newer.source_kind = 'uploaded_file'
-              AND newer.status IN ('ready', 'pending', 'approved')
-              AND newer.draft_revision_no > source.draft_revision_no
-          ))
-        RETURNING *
-      `, [input.id, input.opportunityId, input.decision, input.actorUserId,
-        input.comment || '']);
-      return mapFormalVersion(result.rows[0]);
+      if (typeof queryTarget.connect !== 'function') {
+        throw new Error('Formal quotation review requires a database transaction');
+      }
+      const client = await queryTarget.connect();
+      try {
+        await client.query('BEGIN');
+        const locked = await client.query(`
+          SELECT version.id, version.quotation_no, version.status,
+            opportunity.status AS opportunity_status,
+            opportunity.salesperson_id,
+            opportunity.commercial_manager_id
+          FROM sales_commercial_quotation_versions version
+          JOIN opportunities opportunity ON opportunity.id = version.opportunity_id
+          WHERE version.id = $1 AND version.opportunity_id = $2
+            AND opportunity.archived_at IS NULL
+          FOR UPDATE OF version, opportunity
+        `, [input.id, input.opportunityId]);
+        const current = locked.rows[0];
+        if (!current || current.status !== 'pending') {
+          await client.query('COMMIT');
+          return null;
+        }
+        const result = await client.query(`
+          UPDATE sales_commercial_quotation_versions
+          SET status = $3, reviewed_by = $4, reviewed_at = now(), review_comment = $5
+          WHERE id = $1 AND opportunity_id = $2 AND status = 'pending'
+            AND (
+              submitted_by <> $4
+              OR EXISTS (
+                SELECT 1 FROM users reviewer
+                WHERE reviewer.id = $4
+                  AND reviewer.username = 'MarkYang'
+                  AND reviewer.is_active = true
+              )
+            )
+            AND ($3 <> 'approved' OR NOT EXISTS (
+              SELECT 1 FROM opportunity_technical_drafts newer
+              JOIN opportunity_technical_drafts source ON source.id = sales_commercial_quotation_versions.source_technical_draft_id
+              WHERE newer.opportunity_id = sales_commercial_quotation_versions.opportunity_id
+                AND newer.source_kind = 'uploaded_file'
+                AND newer.status IN ('ready', 'pending', 'approved')
+                AND newer.draft_revision_no > source.draft_revision_no
+            ))
+          RETURNING *
+        `, [input.id, input.opportunityId, input.decision, input.actorUserId,
+          input.comment || '']);
+        if (!result.rows[0]) {
+          await client.query('COMMIT');
+          return null;
+        }
+        const nextStatus = input.decision === 'approved'
+          ? STATUSES.CUSTOMER_NEGOTIATION
+          : STATUSES.COMMERCIAL_QUOTE_REJECTED;
+        await client.query(`
+          UPDATE opportunities
+          SET status = $2, updated_at = now()
+          WHERE id = $1
+        `, [input.opportunityId, nextStatus]);
+        const actionUrl = `/opportunities/${input.opportunityId}/commercial-quotation-draft#quotation-version-${input.id}`;
+        const todoRepository = createTodoRepository(client);
+        const eventRepository = createWorkflowEventRepository(client);
+        await todoRepository.closePendingForOpportunityAndTitle(
+          input.opportunityId,
+          'Approve commercial quote',
+          'completed',
+          input.actorUserId
+        );
+        await eventRepository.create({
+          opportunityId: input.opportunityId,
+          eventType: input.decision === 'approved'
+            ? ACTIONS.APPROVE_COMMERCIAL_QUOTE
+            : ACTIONS.REJECT_COMMERCIAL_QUOTE,
+          fromStatus: current.opportunity_status,
+          toStatus: nextStatus,
+          actorUserId: input.actorUserId,
+          targetUserId: Number(current.salesperson_id),
+          comment: input.comment || `Formal quotation ${current.quotation_no} ${input.decision}`,
+          actionUrl
+        });
+        await client.query('COMMIT');
+        return mapFormalVersion(result.rows[0]);
+      } catch (error) {
+        await client.query('ROLLBACK');
+        throw error;
+      } finally {
+        client.release();
+      }
     },
 
     async signFormalVersion(input) {

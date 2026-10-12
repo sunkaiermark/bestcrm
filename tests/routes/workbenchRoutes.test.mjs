@@ -41,6 +41,7 @@ async function createWorkbenchAgent(options = {}) {
           estimatedHours: 6.5,
           workloadLevel: 'high',
           estimateUrl: '/workbench/work-items/1/estimate',
+          directActionUrl: options.directActionUrl || '',
           kpiCode: 'approve_on_time',
           createdAt: '2026-06-05T10:00:00.000Z'
         }];
@@ -173,6 +174,16 @@ test('action overview links to permitted work item detail and business detail', 
   assert.match(detail.text, /href="\/workbench\/actions"/);
   assert.match(detail.text, /href="\/workbench\/work-items\/1\/estimate"/);
   assert.match(detail.text, /href="\/opportunities\/30"/);
+});
+
+test('action overview opens a frozen quotation review task directly', async () => {
+  const directActionUrl = '/opportunities/30/commercial-quotation-draft#quotation-version-81';
+  const agent = await createWorkbenchAgent({ directActionUrl });
+  const overview = await agent.get('/workbench/actions');
+
+  assert.equal(overview.status, 200);
+  assert.match(overview.text, /href="\/opportunities\/30\/commercial-quotation-draft#quotation-version-81"/);
+  assert.doesNotMatch(overview.text, /href="\/workbench\/work-items\/1"/);
 });
 
 test('assigned users can view and update their work estimate', async () => {

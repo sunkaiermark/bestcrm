@@ -8,6 +8,7 @@ import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../../src/domain/quotationCo
 import { quotationTotalsSnapshot } from '../../src/domain/quotationMoney.mjs';
 import { BUILT_IN_QUOTATION_TYPICAL_TERMS } from '../../src/domain/quotationTypicalTermTemplates.mjs';
 import {
+  canReviewSalesCommercialQuotation,
   canSignSalesCommercialQuotation,
   reviewSalesCommercialQuotation,
   signSalesCommercialQuotation,
@@ -168,6 +169,50 @@ test('review is assigned-commercial-manager only, separate from submitter, and a
   assert.equal(result.status, 'approved');
   assert.equal(result.signedBy, undefined);
   assert.equal(repo.calls[0][1].actorUserId, 8);
+});
+
+test('only the active assigned MarkYang account may self-review a frozen quotation', async () => {
+  const pending = { id: 70, opportunityId: 20, status: 'pending', submittedBy: 7,
+    sourceTechnicalDraftId: 41, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64),
+    snapshot: { ...draft(), seller: completeSeller() } };
+  const selfAssignedOpportunity = {
+    ...opportunity, salespersonId: 7, commercialManagerId: 7
+  };
+  const ordinaryDualRole = {
+    ...sales, roles: [ROLES.SALESPERSON, ROLES.COMMERCIAL_MANAGER]
+  };
+  const markReviewer = {
+    ...ordinaryDualRole, username: 'MarkYang'
+  };
+
+  assert.equal(canReviewSalesCommercialQuotation(ordinaryDualRole, selfAssignedOpportunity, pending), false);
+  assert.equal(canReviewSalesCommercialQuotation({ ...markReviewer, isActive: false }, selfAssignedOpportunity, pending), false);
+  assert.equal(canReviewSalesCommercialQuotation(markReviewer, selfAssignedOpportunity, pending), true);
+  await assert.rejects(
+    () => reviewSalesCommercialQuotation(repository(draft(), pending), ordinaryDualRole,
+      selfAssignedOpportunity, 70, 'rejected'),
+    (error) => error.statusCode === 403
+  );
+  const repo = repository(draft(), pending);
+  const result = await reviewSalesCommercialQuotation(
+    repo, markReviewer, selfAssignedOpportunity, 70, 'rejected', 'Return for revision'
+  );
+  assert.equal(result.status, 'rejected');
+  assert.equal(repo.calls[0][1].actorUserId, 7);
+});
+
+test('formal submission requires a separate Commercial Manager except for active MarkYang', async () => {
+  const repo = repository(draft());
+  await assert.rejects(
+    () => submitSalesCommercialQuotation(repo, sales, { ...opportunity, commercialManagerId: null }, 2),
+    /Assign an active Commercial Manager/
+  );
+  await assert.rejects(
+    () => submitSalesCommercialQuotation(repo, {
+      ...sales, roles: [ROLES.SALESPERSON, ROLES.COMMERCIAL_MANAGER]
+    }, { ...opportunity, commercialManagerId: 7 }, 2),
+    /self-approval is prohibited/
+  );
 });
 
 test('only MarkYang can personally issue a China PDF without any company seal', async () => {

@@ -81,8 +81,10 @@ test('workflow event repository inserts timeline events', async () => {
     STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
     2,
     3,
-    'approved'
+    'approved',
+    ''
   ]);
+  assert.match(queryTarget.queries[0].sql, /action_url/);
 });
 
 test('workflow event repository lists opportunity timeline with actor and target names', async () => {
@@ -97,6 +99,7 @@ test('workflow event repository lists opportunity timeline with actor and target
     target_user_id: '3',
     target_display_name: 'Quote Engineer',
     comment: 'approved',
+    action_url: '/opportunities/10/commercial-quotation-draft#quotation-version-77',
     created_at: '2026-06-05T10:00:00.000Z'
   }]);
   const repository = createWorkflowEventRepository(queryTarget);
@@ -114,6 +117,7 @@ test('workflow event repository lists opportunity timeline with actor and target
     targetUserId: 3,
     targetDisplayName: 'Quote Engineer',
     comment: 'approved',
+    actionUrl: '/opportunities/10/commercial-quotation-draft#quotation-version-77',
     createdAt: '2026-06-05T10:00:00.000Z'
   }]);
   assert.match(queryTarget.queries[0].sql, /FROM workflow_events we/);
@@ -136,7 +140,8 @@ test('todo repository creates and closes pending todos', async () => {
   assert.equal(todo.id, 88);
   assert.match(queryTarget.queries[0].sql, /INSERT INTO todos/);
   assert.match(queryTarget.queries[0].sql, /due_at/);
-  assert.deepEqual(queryTarget.queries[0].params, [10, 3, 'Prepare technical solution', null]);
+  assert.deepEqual(queryTarget.queries[0].params, [10, 3, 'Prepare technical solution', null, '']);
+  assert.match(queryTarget.queries[0].sql, /action_url/);
   assert.match(queryTarget.queries[1].sql, /UPDATE work_items/);
   assert.match(queryTarget.queries[2].sql, /INSERT INTO work_items/);
 
@@ -154,11 +159,17 @@ test('todo repository creates and closes pending todos', async () => {
   assert.deepEqual(queryTarget.queries[5].params, [10, 3, 'reassigned']);
   assert.match(queryTarget.queries[6].sql, /UPDATE work_items/);
 
-  await repository.closePendingForOpportunityAssigneeAndTitle(10, 3, 'Review technical package TS-D1', 'completed');
-  assert.match(queryTarget.queries[7].sql, /title = \$3/);
-  assert.match(queryTarget.queries[7].sql, /status = \$4/);
-  assert.deepEqual(queryTarget.queries[7].params, [10, 3, 'Review technical package TS-D1', 'completed']);
+  await repository.closePendingForOpportunityAndTitle(10, 'Approve commercial quote', 'completed');
+  assert.match(queryTarget.queries[7].sql, /title = \$2/);
+  assert.match(queryTarget.queries[7].sql, /status = \$3/);
+  assert.deepEqual(queryTarget.queries[7].params, [10, 'Approve commercial quote', 'completed']);
   assert.match(queryTarget.queries[8].sql, /UPDATE work_items/);
+
+  await repository.closePendingForOpportunityAssigneeAndTitle(10, 3, 'Review technical package TS-D1', 'completed');
+  assert.match(queryTarget.queries[9].sql, /title = \$3/);
+  assert.match(queryTarget.queries[9].sql, /status = \$4/);
+  assert.deepEqual(queryTarget.queries[9].params, [10, 3, 'Review technical package TS-D1', 'completed']);
+  assert.match(queryTarget.queries[10].sql, /UPDATE work_items/);
 });
 
 test('todo repository lists opportunity todos with assignee names', async () => {
@@ -169,6 +180,7 @@ test('todo repository lists opportunity todos with assignee names', async () => 
     assignee_display_name: 'Quote Engineer',
     title: 'Prepare technical solution',
     status: 'pending',
+    action_url: '/opportunities/10/commercial-quotation-draft#quotation-version-88',
     due_at: null,
     created_at: '2026-06-05T11:00:00.000Z',
     completed_at: null
@@ -184,6 +196,7 @@ test('todo repository lists opportunity todos with assignee names', async () => 
     assigneeDisplayName: 'Quote Engineer',
     title: 'Prepare technical solution',
     status: 'pending',
+    actionUrl: '/opportunities/10/commercial-quotation-draft#quotation-version-88',
     dueAt: null,
     createdAt: '2026-06-05T11:00:00.000Z',
     completedAt: null

@@ -63,3 +63,104 @@ test('only currently published standard terms in the draft language are selectab
   assert.match(calls[0].sql, /status = 'published'[\s\S]*published_at <= now\(\)[\s\S]*retired_at IS NULL/);
   assert.deepEqual(calls[0].values, ['zh']);
 });
+
+function transactionalRepository(respond) {
+  const calls = [];
+  const client = {
+    async query(sql, values = []) {
+      calls.push({ sql, values });
+      const rows = await respond(sql, values);
+      return { rows: rows || [], rowCount: (rows || []).length };
+    },
+    release() {
+      calls.push({ sql: 'RELEASE_CLIENT', values: [] });
+    }
+  };
+  return {
+    calls,
+    repository: createSalesCommercialQuotationDraftRepository({
+      async connect() { return client; }
+    })
+  };
+}
+
+test('formal submission atomically creates the frozen review event, todo and direct workbench link', async () => {
+  const versionRow = {
+    id: '81', opportunity_id: '20', draft_id: '3', draft_revision_no: 2,
+    version_no: 1, quotation_no: 'Q-800020-V1', snapshot: {}, status: 'pending',
+    source_technical_draft_id: '41', source_attachment_id: '51', source_sha256: 'a'.repeat(64),
+    submitted_by: '7', submitted_at: '2026-10-13T01:00:00.000Z'
+  };
+  const { repository, calls } = transactionalRepository(async (sql) => {
+    if (/SELECT id, status, salesperson_id, commercial_manager_id/.test(sql)) {
+      return [{ id: '20', status: 'commercial_quote_in_progress', salesperson_id: '7', commercial_manager_id: '8' }];
+    }
+    if (/SELECT id\s+FROM sales_commercial_quotation_versions/.test(sql)) return [];
+    if (/INSERT INTO sales_commercial_quotation_versions/.test(sql)) return [versionRow];
+    if (/INSERT INTO workflow_events/.test(sql)) return [{ id: '90' }];
+    if (/INSERT INTO todos/.test(sql)) return [{ id: '91' }];
+    return [];
+  });
+
+  const version = await repository.submitFormalVersion({
+    opportunityId: 20, expectedRevisionNo: 2, actorUserId: 7, snapshot: {}
+  });
+
+  const actionUrl = '/opportunities/20/commercial-quotation-draft#quotation-version-81';
+  assert.equal(version.quotationNo, 'Q-800020-V1');
+  assert.deepEqual(
+    calls.find((call) => /UPDATE opportunities/.test(call.sql)).values,
+    [20, 'commercial_quote_pending']
+  );
+  assert.deepEqual(
+    calls.find((call) => /INSERT INTO workflow_events/.test(call.sql)).values.slice(0, 8),
+    [20, 'submit_commercial_quote', 'commercial_quote_in_progress', 'commercial_quote_pending',
+      7, 8, 'Formal quotation Q-800020-V1 submitted for commercial review', actionUrl]
+  );
+  assert.equal(calls.find((call) => /INSERT INTO todos/.test(call.sql)).values[4], actionUrl);
+  assert.equal(calls.find((call) => /INSERT INTO work_items/.test(call.sql)).values[14], actionUrl);
+  assert.ok(calls.some((call) => call.sql === 'COMMIT'));
+  assert.equal(calls.at(-1).sql, 'RELEASE_CLIENT');
+});
+
+test('formal review closes the manager todo and synchronizes the opportunity and result notification', async () => {
+  const reviewedRow = {
+    id: '81', opportunity_id: '20', draft_id: '3', draft_revision_no: 2,
+    version_no: 1, quotation_no: 'Q-800020-V1', snapshot: {}, status: 'approved',
+    source_technical_draft_id: '41', source_attachment_id: '51', source_sha256: 'a'.repeat(64),
+    submitted_by: '7', submitted_at: '2026-10-13T01:00:00.000Z',
+    reviewed_by: '8', reviewed_at: '2026-10-13T02:00:00.000Z', review_comment: 'Approved'
+  };
+  const { repository, calls } = transactionalRepository(async (sql) => {
+    if (/SELECT version\.id, version\.quotation_no/.test(sql)) {
+      return [{ id: '81', quotation_no: 'Q-800020-V1', status: 'pending',
+        opportunity_status: 'commercial_quote_pending', salesperson_id: '7', commercial_manager_id: '8' }];
+    }
+    if (/UPDATE sales_commercial_quotation_versions/.test(sql)) return [reviewedRow];
+    if (/UPDATE todos/.test(sql)) return [{ id: '91' }];
+    if (/INSERT INTO workflow_events/.test(sql)) return [{ id: '92' }];
+    return [];
+  });
+
+  const version = await repository.reviewFormalVersion({
+    id: 81, opportunityId: 20, decision: 'approved', actorUserId: 8, comment: 'Approved'
+  });
+
+  const actionUrl = '/opportunities/20/commercial-quotation-draft#quotation-version-81';
+  assert.equal(version.status, 'approved');
+  assert.deepEqual(
+    calls.find((call) => /UPDATE opportunities/.test(call.sql)).values,
+    [20, 'customer_negotiation']
+  );
+  assert.deepEqual(
+    calls.find((call) => /UPDATE todos/.test(call.sql)).values,
+    [20, 'Approve commercial quote', 'completed']
+  );
+  assert.deepEqual(
+    calls.find((call) => /INSERT INTO workflow_events/.test(call.sql)).values.slice(0, 8),
+    [20, 'approve_commercial_quote', 'commercial_quote_pending', 'customer_negotiation',
+      8, 7, 'Approved', actionUrl]
+  );
+  assert.ok(calls.some((call) => /status = \$2[\s\S]*actual_completed_at = now\(\)/.test(call.sql)));
+  assert.ok(calls.some((call) => call.sql === 'COMMIT'));
+});

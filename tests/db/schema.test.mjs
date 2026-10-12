@@ -91,6 +91,7 @@ const sharedCustomersMigrationPath = new URL('../../src/db/migrations/109_shared
 const authorizedTechnicalSelfReviewMigrationPath = new URL('../../src/db/migrations/110_authorized_technical_self_review.sql', import.meta.url);
 const salesQuotationCustomerContactMigrationPath = new URL('../../src/db/migrations/111_sales_quotation_customer_contact.sql', import.meta.url);
 const salesQuotationTaxTotalsMigrationPath = new URL('../../src/db/migrations/112_sales_quotation_tax_totals.sql', import.meta.url);
+const salesCommercialQuotationWorkflowMigrationPath = new URL('../../src/db/migrations/113_sales_commercial_quotation_workflow.sql', import.meta.url);
 const quotationStandardTermsMigrationPath = new URL('../../src/db/migrations/103_quotation_draft_standard_terms.sql', import.meta.url);
 const uploadedTechnicalFileWithdrawalEventMigrationPath = new URL('../../src/db/migrations/101_uploaded_technical_file_withdrawal_event.sql', import.meta.url);
 
@@ -145,6 +146,24 @@ test('quotation tax rate is constrained and snapshotted on every draft revision'
   assert.match(sql, /sales_commercial_quotation_draft_events/);
   assert.match(sql, /NEW\.currency, NEW\.tax_rate/);
   assert.match(sql, /NEW\.customer_contact_phone, NEW\.customer_contact_email/);
+});
+
+test('formal quotation workflow creates direct manager work, synchronizes status, and restricts self-review to MarkYang', async () => {
+  const sql = await readFile(salesCommercialQuotationWorkflowMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE workflow_events[\s\S]*ADD COLUMN IF NOT EXISTS action_url/);
+  assert.match(sql, /ALTER TABLE todos[\s\S]*ADD COLUMN IF NOT EXISTS action_url/);
+  assert.match(sql, /ALTER TABLE work_items[\s\S]*ADD COLUMN IF NOT EXISTS action_url/);
+  assert.match(sql, /role\.code = 'commercial_manager'[\s\S]*role\.is_active = true/);
+  assert.match(sql, /manager_row\.username IS DISTINCT FROM 'MarkYang'/);
+  assert.match(sql, /manager_row\.is_active IS DISTINCT FROM true/);
+  assert.match(sql, /notification_action_url := COALESCE\(NULLIF\(NEW\.action_url, ''\)/);
+  assert.match(sql, /CREATE TEMP TABLE bestcrm_pending_formal_quote_backfill/);
+  assert.match(sql, /SET status = 'commercial_quote_pending'/);
+  assert.match(sql, /'Approve commercial quote'/);
+  assert.match(sql, /'review_commercial_quote'/);
+  assert.match(sql, /commercial-quotation-draft#quotation-version-/);
+  assert.doesNotMatch(sql, /DELETE FROM|TRUNCATE/);
 });
 
 test('users have one constrained represented company with a safe existing-user default', async () => {

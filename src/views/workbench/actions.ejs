@@ -23,7 +23,7 @@
           <% } %>
           <% for (const todo of actionItems) { %>
             <% const isOverdue = todo.dueAt && new Date(todo.dueAt).getTime() < Date.now(); %>
-            <% const detailUrl = typeof todo.id === 'number' ? `/workbench/work-items/${todo.id}` : (todo.actionUrl || `/opportunities/${todo.opportunityId}`); %>
+            <% const detailUrl = todo.directActionUrl || (typeof todo.id === 'number' ? `/workbench/work-items/${todo.id}` : (todo.actionUrl || `/opportunities/${todo.opportunityId}`)); %>
             <article class="workbench-task-row">
               <div class="workbench-task-main">
                 <span class="work-item-status<%= isOverdue ? ' overdue' : '' %>"><%= isOverdue ? t('overdue') : workStatusLabel(todo.status) %></span>
