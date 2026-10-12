@@ -3,7 +3,7 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
-import { quotationTotalsSnapshot } from '../domain/quotationMoney.mjs';
+import { includeAllQuotationDraftLines, quotationTotalsSnapshot } from '../domain/quotationMoney.mjs';
 import { withBuiltInQuotationTypicalTerms } from '../domain/quotationTypicalTermTemplates.mjs';
 import { isValidQuotationTermWording } from '../domain/quotationTermWording.mjs';
 import {
@@ -71,7 +71,6 @@ function requireVersion(repository, opportunityId, id) {
 
 function validateLineItems(items) {
   if (!Array.isArray(items) || items.length === 0 || items.length > 100) fail('At least one complete quoted item is required');
-  let included = 0;
   for (const item of items) {
     requiredText(item.description, 'Quoted item description', 2000);
     requiredText(item.unit, 'Quoted item unit', 40);
@@ -80,10 +79,8 @@ function validateLineItems(items) {
     if (!/^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/.test(String(item.unitPrice || ''))) {
       fail('Each quoted item requires a valid unit price');
     }
-    if (!['included', 'excluded'].includes(item.includeInTotal)) fail('Choose whether each item is included in the total');
-    if (item.includeInTotal === 'included') included += 1;
+    if (item.includeInTotal !== 'included') fail('Every quoted item must be included in the total');
   }
-  if (!included) fail('At least one quoted item must be included in the total');
 }
 
 function validatePublishedSelections(draft, publishedTerms, allowIncomplete = false) {
@@ -178,8 +175,9 @@ export async function submitSalesCommercialQuotation(repository, user, opportuni
   const entity = getQuotationSellerEntity(draft.sellerEntityCode);
   if (!entity || draft.sellerEntityName !== entity.legalName) fail('Choose a valid seller entity');
   if (!/^[A-Z]{3}$/.test(draft.currency)) fail('Currency is required');
-  validateLineItems(draft.lineItems);
-  const totals = quotationTotalsSnapshot(draft.lineItems, draft.taxRate);
+  const lineItems = includeAllQuotationDraftLines(draft.lineItems);
+  validateLineItems(lineItems);
+  const totals = quotationTotalsSnapshot(lineItems, draft.taxRate);
   if (!totals) fail('Tax rate or quotation totals are invalid');
   await currentApprovedSource(repository, draft, opportunity.id);
   const publishedTerms = withBuiltInQuotationTypicalTerms(
@@ -203,7 +201,7 @@ export async function submitSalesCommercialQuotation(repository, user, opportuni
     language: draft.language, currency: draft.currency, taxRate: totals.taxRate,
     totals,
     sourceFileName: draft.sourceFileName,
-    lineItems: structuredClone(draft.lineItems),
+    lineItems: structuredClone(lineItems),
     termSelections: structuredClone(draft.termSelections || {})
   };
   snapshot.missingFields = missingFormalFields(snapshot);

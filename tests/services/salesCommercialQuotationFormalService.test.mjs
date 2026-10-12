@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ROLES } from '../../src/domain/roles.mjs';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../../src/domain/quotationCommercialTermSections.mjs';
+import { quotationTotalsSnapshot } from '../../src/domain/quotationMoney.mjs';
 import { BUILT_IN_QUOTATION_TYPICAL_TERMS } from '../../src/domain/quotationTypicalTermTemplates.mjs';
 import {
   canSignSalesCommercialQuotation,
@@ -93,6 +94,22 @@ test('formal submit freezes only an approved exact source and eight published te
     await assert.rejects(() => submitSalesCommercialQuotation(repo, sales, opportunity, 2,
       { sellerProfilesFile: profilesFile }), /current published standard wording/);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('formal submission includes formerly excluded draft rows but leaves the stored draft unchanged', async () => {
+  const oldDraft = draft();
+  oldDraft.lineItems.push({
+    description: 'Spare seal', quantity: '2', unit: 'piece', unitPrice: '20', includeInTotal: 'excluded'
+  });
+  assert.equal(quotationTotalsSnapshot(oldDraft.lineItems, oldDraft.taxRate).total, '109.00');
+  const repo = repository(oldDraft);
+  const submitted = await submitSalesCommercialQuotation(repo, sales,
+    { ...opportunity, salespersonPhone: '+86 510 0000 0000' }, 2);
+  assert.deepEqual(submitted.snapshot.lineItems.map((line) => line.includeInTotal), ['included', 'included']);
+  assert.deepEqual(submitted.snapshot.totals, {
+    subtotal: '140.00', taxRate: '9.00', taxAmount: '12.60', total: '152.60'
+  });
+  assert.equal(oldDraft.lineItems[1].includeInTotal, 'excluded');
 });
 
 test('formal submit freezes edited quotation wording while revalidating its source template', async () => {

@@ -116,13 +116,13 @@ test('sales owner sees the early draft form and saves two lines without technica
   assert.match(page.text, /<div class="draft-terms-scroll"><table class="draft-detail-table draft-commercial-terms">/);
   assert.match(page.text, /<table class="draft-detail-table draft-commercial-terms">/);
   assert.match(page.text, /name="term_payment" form="sales-quote-draft-form" data-standard-term-select/);
-  assert.match(page.text, /name="term_delivery_body" form="sales-quote-draft-form" maxlength="4000" data-term-body-input/);
-  assert.match(page.text, /name="term_delivery_period_body" form="sales-quote-draft-form" maxlength="4000" data-term-body-input/);
+  assert.doesNotMatch(page.text, /name="term_[^"]+_body"|data-term-body-input|draft-term-wording/);
   assert.match(page.text, />Approved example text<\/option>/);
   assert.match(page.text, />Approved staged payment text<\/option>/);
   assert.match(page.text, />Delivery shall be made within \[Delivery Period\] after receipt of the advance payment and approval of the technical documents\.<\/option>/);
   assert.doesNotMatch(page.text, /Internal preparation source/);
-  assert.match(page.text, /<table class="draft-lines-table">[\s\S]*<thead><tr><th scope="col">No\.<\/th><th scope="col">Description<\/th><th scope="col">Qty<\/th><th scope="col">Unit<\/th><th scope="col">Unit price<\/th><th scope="col">Amount<\/th><th scope="col">Include in total<\/th><th scope="col"><span class="visually-hidden">Actions<\/span><\/th>/);
+  assert.match(page.text, /<table class="draft-lines-table">[\s\S]*<thead><tr><th scope="col">No\.<\/th><th scope="col">Description<\/th><th scope="col">Qty<\/th><th scope="col">Unit<\/th><th scope="col">Unit price<\/th><th scope="col">Amount<\/th><th scope="col"><span class="visually-hidden">Actions<\/span><\/th>/);
+  assert.doesNotMatch(page.text, /Include in total|name="includeInTotal"/);
   assert.match(page.text, /class="secondary-action draft-remove-row"[^>]*aria-label="Remove this row"[^>]*>&minus;<\/button>/);
   assert.match(page.text, /data-draft-subtotal/);
   assert.match(page.text, /name="taxRate"/);
@@ -141,7 +141,7 @@ test('sales owner sees the early draft form and saves two lines without technica
     sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on', currency: 'USD', taxRate: '9',
     sellerEntityCode: 'sunkaier_apac', customerContactId: '502', term_payment: '91',
     description: ['Mixer', 'Seal'], quantity: ['1', '2'],
-    unit: ['set', 'piece'], unitPrice: ['100', '20'], includeInTotal: ['included', 'excluded']
+    unit: ['set', 'piece'], unitPrice: ['100', '20']
   });
   assert.equal(save.status, 302);
   assert.match(save.headers.location, /saved=1/);
@@ -156,10 +156,10 @@ test('sales owner sees the early draft form and saves two lines without technica
     id: 91, revisionNo: 1, language: 'en', title: 'Approved payment',
     templateBody: 'Approved example text', body: 'Approved example text'
   });
-  assert.deepEqual(calls[0].lineItems.map((line) => line.includeInTotal), ['included', 'excluded']);
+  assert.deepEqual(calls[0].lineItems.map((line) => line.includeInTotal), ['included', 'included']);
 });
 
-test('FOB template exposes editable wording and persists the exact saved quotation text', async () => {
+test('commercial terms render as one dropdown and preserve an existing saved quotation snapshot', async () => {
   const existingDraft = {
     draftRevisionNo: 2, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64), language: 'en',
     currency: 'USD', sellerEntityCode: 'sunkaier_apac', customerContactId: 501,
@@ -175,8 +175,10 @@ test('FOB template exposes editable wording and persists the exact saved quotati
   const { agent, calls } = await createAgent({ existingDraft });
   const page = await agent.get('/opportunities/20/commercial-quotation-draft');
   assert.equal(page.status, 200);
-  assert.match(page.text, /<textarea class="draft-term-wording" name="term_delivery_body"[^>]*>FOB Shanghai Port, China, Incoterms® 2020\.<\/textarea>/);
-  assert.doesNotMatch(page.text, /<textarea class="draft-term-wording" name="term_delivery_body"[^>]*disabled/);
+  const deliverySelect = page.text.match(/<select name="term_delivery"[^>]*>[\s\S]*?<\/select>/)?.[0];
+  assert.ok(deliverySelect);
+  assert.match(deliverySelect, /value="builtin:price:price_basis_incoterms_2020:14" selected/);
+  assert.doesNotMatch(page.text, /term_delivery_body|FOB Shanghai Port, China/);
   const save = await agent.post('/opportunities/20/commercial-quotation-draft').type('form').send({
     sourceAttachmentId: '51', expectedRevisionNo: '2', confirmSourceVersion: 'on',
     currency: 'USD', taxRate: '0', sellerEntityCode: 'sunkaier_apac', customerContactId: '501',
@@ -184,7 +186,7 @@ test('FOB template exposes editable wording and persists the exact saved quotati
     term_delivery_body: 'FOB Busan Port, Korea, Incoterms® 2020.'
   });
   assert.equal(save.status, 302);
-  assert.equal(calls[0].termSelections.delivery.body, 'FOB Busan Port, Korea, Incoterms® 2020.');
+  assert.equal(calls[0].termSelections.delivery.body, 'FOB Shanghai Port, China, Incoterms® 2020.');
   assert.equal(calls[0].termSelections.delivery.templateBody, 'FOB [Named Port of Shipment], Incoterms® 2020.');
 });
 
@@ -227,7 +229,11 @@ test('internal A4 PDF preview requires a visible saved draft and never issues a 
 });
 
 test('Chinese quotation draft keeps QUOTATION as the title and aligns saved lines', async () => {
-  const { agent } = await createAgent({ existingDraft: {
+  const rendererCalls = [];
+  const { agent } = await createAgent({ quotationPreviewPdfRenderer: async (input) => {
+    rendererCalls.push(input);
+    return Buffer.from('%PDF-1.7\npreview');
+  }, existingDraft: {
     draftRevisionNo: 2, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64),
     language: 'zh', currency: 'USD', lineItems: [
       { description: '设备', quantity: '1', unit: '套', unitPrice: '100', includeInTotal: 'included' },
@@ -241,7 +247,10 @@ test('Chinese quotation draft keeps QUOTATION as the title and aligns saved line
   assert.doesNotMatch(page.text, /商务报价内部草稿/);
   assert.doesNotMatch(page.text, /仅供内部编制|保存不会提交审批/);
   assert.equal((page.text.match(/<tr class="draft-row">/g) || []).length, 2);
-  assert.match(page.text, /<th scope="col">序号<\/th>[\s\S]*<th scope="col">产品说明<\/th>[\s\S]*<th scope="col">数量<\/th>[\s\S]*<th scope="col">单位<\/th>[\s\S]*<th scope="col">单价<\/th>[\s\S]*<th scope="col">金额<\/th>[\s\S]*<th scope="col">计入总价<\/th>/);
+  assert.match(page.text, /<th scope="col">序号<\/th>[\s\S]*<th scope="col">产品说明<\/th>[\s\S]*<th scope="col">数量<\/th>[\s\S]*<th scope="col">单位<\/th>[\s\S]*<th scope="col">单价<\/th>[\s\S]*<th scope="col">金额<\/th>/);
+  assert.doesNotMatch(page.text, /计入总价|name="includeInTotal"/);
+  assert.equal((await agent.get('/opportunities/20/commercial-quotation-draft/preview.pdf')).status, 200);
+  assert.deepEqual(rendererCalls[0].draft.lineItems.map((line) => line.includeInTotal), ['included', 'included']);
   assert.match(page.text, /<h2 class="draft-section-title">客户<\/h2>[\s\S]*<h2 class="draft-section-title">供应商<\/h2>/);
   assert.doesNotMatch(page.text.split('<div class="draft-parties">')[1].split('</section>')[0], /<th scope="row">项目<\/th>/);
   assert.match(page.text, /<div class="draft-project-info">[\s\S]*<tr class="draft-project-row"><th scope="row">项目<\/th><td>Mixer Project<\/td>[\s\S]*<h2 class="draft-section-title">报价明细<\/h2>/);

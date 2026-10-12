@@ -29,7 +29,7 @@ test('sales owner saves an internal quote draft from a ready uploaded file befor
     sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on', currency: 'usd', taxRate: '7.50',
     sellerEntityCode: 'sunkaier_china', term_payment: '91',
     description: ['Mixer', 'Spare seal'], quantity: ['2', '1'],
-    unit: ['set', 'piece'], unitPrice: ['1000.00', '20.00'], includeInTotal: ['included', 'excluded']
+    unit: ['set', 'piece'], unitPrice: ['1000.00', '20.00']
   });
   assert.equal(result.id, 10);
   assert.equal(calls[0].language, 'zh');
@@ -43,7 +43,23 @@ test('sales owner saves an internal quote draft from a ready uploaded file befor
   });
   assert.equal(calls[0].lineItems.length, 2);
   assert.equal(calls[0].lineItems[1].description, 'Spare seal');
-  assert.deepEqual(calls[0].lineItems.map((line) => line.includeInTotal), ['included', 'excluded']);
+  assert.deepEqual(calls[0].lineItems.map((line) => line.includeInTotal), ['included', 'included']);
+});
+
+test('a legacy inclusion field cannot exclude a retained quotation row', async () => {
+  const calls = [];
+  const repository = {
+    async getTechnicalSource() { return source; },
+    async getByOpportunity() { return null; },
+    async listPublishedStandardTerms() { return []; },
+    async saveDraft(input) { calls.push(input); return input; }
+  };
+  await saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
+    sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on',
+    description: ['Mixer', 'Spare seal'], quantity: ['1', '1'],
+    unit: ['set', 'piece'], unitPrice: ['100', '20'], includeInTotal: ['excluded', 'excluded']
+  });
+  assert.deepEqual(calls[0].lineItems.map((line) => line.includeInTotal), ['included', 'included']);
 });
 
 test('non-owner and archived opportunities cannot write the internal quote', async () => {
@@ -67,7 +83,6 @@ test('invalid source, row values and stale revision fail closed', async () => {
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, sourceAttachmentId: '999' }), { statusCode: 409 });
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, quantity: '1e4' }), /Quantity/);
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, unitPrice: '10.999' }), /Unit price/);
-  await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, includeInTotal: 'yes' }), /total inclusion/);
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, sellerEntityCode: 'other' }), /seller entity/);
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, taxRate: '101' }), /Tax rate/);
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, taxRate: '7.123' }), /Tax rate/);
@@ -91,11 +106,18 @@ test('built-in typical wording can be selected without a database-published dupl
   assert.equal(calls[0].termSelections.payment.body, '30% advance, 70% before shipment');
 });
 
-test('typical Incoterm wording can be edited and the saved quotation text is authoritative', async () => {
+test('an unchanged typical-term selection preserves the saved snapshot and ignores posted wording', async () => {
   const calls = [];
+  const existingDraft = { language: 'en', termSelections: {
+    delivery: {
+      id: 'builtin:price:price_basis_incoterms_2020:14', revisionNo: 1, language: 'en', title: 'FOB',
+      templateBody: 'FOB [Named Port of Shipment], Incoterms® 2020.',
+      body: 'FOB Shanghai Port, China, Incoterms® 2020.'
+    }
+  } };
   const repository = {
     async getTechnicalSource() { return source; },
-    async getByOpportunity() { return null; },
+    async getByOpportunity() { return existingDraft; },
     async listPublishedStandardTerms() { return []; },
     async saveDraft(input) { calls.push(input); return input; }
   };
@@ -112,32 +134,21 @@ test('typical Incoterm wording can be edited and the saved quotation text is aut
     templateBody: 'FOB [Named Port of Shipment], Incoterms® 2020.',
     body: 'FOB Shanghai Port, China, Incoterms® 2020.'
   });
-  await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', base),
-    /Replace all bracketed placeholders/);
-  await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
-    ...base, term_delivery_body: 'FOB [Named Port of Shipment], Incoterms® 2020.'
-  }), /Replace all bracketed placeholders/);
+  assert.equal(calls.length, 1);
 });
 
-test('delivery period template can be completed as editable quotation wording', async () => {
-  const calls = [];
+test('posted wording cannot bypass an incomplete dropdown template', async () => {
   const repository = {
     async getTechnicalSource() { return source; },
     async getByOpportunity() { return null; },
     async listPublishedStandardTerms() { return []; },
-    async saveDraft(input) { calls.push(input); return input; }
+    async saveDraft() { throw new Error('must not save'); }
   };
-  await saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
+  await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
     sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on',
     term_delivery_period: 'builtin:delivery:delivery_period_start:1',
     term_delivery_period_body: 'Delivery shall be made within sixteen (16) weeks after receipt of the advance payment and approval of the technical documents.'
-  });
-  assert.deepEqual(calls[0].termSelections.delivery_period, {
-    id: 'builtin:delivery:delivery_period_start:1', revisionNo: 1, language: 'en',
-    title: 'After Advance Payment and Technical Approval',
-    templateBody: 'Delivery shall be made within [Delivery Period] after receipt of the advance payment and approval of the technical documents.',
-    body: 'Delivery shall be made within sixteen (16) weeks after receipt of the advance payment and approval of the technical documents.'
-  });
+  }), /Replace all bracketed placeholders/);
 });
 
 test('built-in warranty wording can be selected for a quotation', async () => {
@@ -180,6 +191,21 @@ test('newer uploaded technical revision is shown as a source reconfirmation warn
   };
   const context = await loadSalesCommercialQuotationDraft(repository, owner, opportunity);
   assert.equal(context.sourceChanged, true);
+});
+
+test('loading an old draft includes every row without mutating stored data', async () => {
+  const stored = { lineItems: [
+    { description: 'Mixer', quantity: '1', unit: 'set', unitPrice: '100', includeInTotal: 'included' },
+    { description: 'Seal', quantity: '2', unit: 'piece', unitPrice: '20', includeInTotal: 'excluded' }
+  ] };
+  const repository = {
+    async getByOpportunity() { return stored; },
+    async listTechnicalSources() { return []; },
+    async listPublishedStandardTerms() { return []; }
+  };
+  const context = await loadSalesCommercialQuotationDraft(repository, owner, opportunity);
+  assert.deepEqual(context.draft.lineItems.map((line) => line.includeInTotal), ['included', 'included']);
+  assert.equal(stored.lineItems[1].includeInTotal, 'excluded');
 });
 
 test('standard wording is selected in the saved draft language, not a later login language', async () => {

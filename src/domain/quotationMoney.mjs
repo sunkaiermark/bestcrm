@@ -18,6 +18,12 @@ export function quotationTaxRateBasisPoints(value) {
   return scaledDecimal(value ?? '0', 2, 3);
 }
 
+// Drafts now include every retained row. Keep the inclusion flag on frozen
+// historical versions so their original totals remain reproducible.
+export function includeAllQuotationDraftLines(lineItems) {
+  return (lineItems || []).map((item) => ({ ...item, includeInTotal: 'included' }));
+}
+
 export function calculateQuotationTotals(lineItems, taxRate) {
   let subtotalCents = 0n;
   for (const item of lineItems || []) {

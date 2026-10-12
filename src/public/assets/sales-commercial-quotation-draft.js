@@ -29,24 +29,6 @@
   }
   customerContactSelect?.addEventListener('change', updateCustomerContact);
 
-  function updateTermWording(control, resetForNewTerm = false) {
-    const select = control.querySelector('[data-standard-term-select]');
-    const body = control.querySelector('[data-term-body-input]');
-    const option = select?.selectedOptions[0];
-    const termId = option?.value || '';
-    if (body) {
-      if (resetForNewTerm) body.value = option?.dataset.templateBody || '';
-      body.disabled = !termId || select?.disabled;
-      body.required = Boolean(termId && !select?.disabled);
-    }
-  }
-
-  for (const control of document.querySelectorAll('[data-term-control]')) {
-    const select = control.querySelector('[data-standard-term-select]');
-    select?.addEventListener('change', () => updateTermWording(control, true));
-    updateTermWording(control);
-  }
-
   const container = document.getElementById('sales-quote-draft-rows');
   const addButton = document.querySelector('[data-add-quote-row]');
   if (!container) return;
@@ -78,9 +60,8 @@
       const quantityText = row.querySelector('[name="quantity"]').value.trim();
       const unit = row.querySelector('[name="unit"]').value.trim();
       const priceText = row.querySelector('[name="unitPrice"]').value.trim();
-      const inclusion = row.querySelector('[name="includeInTotal"]').value;
       const amountDisplay = row.querySelector('[data-line-amount]');
-      if (!description && !quantityText && !unit && !priceText && !inclusion) {
+      if (!description && !quantityText && !unit && !priceText) {
         amountDisplay.textContent = '—';
         continue;
       }
@@ -94,8 +75,7 @@
       }
       const cents = (quantity * price + 5000n) / 10000n;
       amountDisplay.textContent = formatCents(cents);
-      if (inclusion === 'included') subtotal += cents;
-      else if (inclusion !== 'excluded') complete = false;
+      subtotal += cents;
     }
     const currency = String(currencyInput?.value || '').trim().toUpperCase();
     const taxRate = scaledDecimal(taxRateInput?.value || '0', 2, 3);
@@ -120,7 +100,7 @@
     const template = container.querySelector('.draft-row');
     if (!template) return;
     const row = template.cloneNode(true);
-    row.querySelectorAll('input, textarea, select').forEach((field) => { field.value = ''; });
+    row.querySelectorAll('input, textarea').forEach((field) => { field.value = ''; });
     row.querySelector('[data-line-amount]').textContent = '—';
     container.append(row);
     renumber();
@@ -131,7 +111,7 @@
   container.addEventListener('click', (event) => {
     if (!event.target.closest('[data-remove-quote-row]')) return;
     if (container.querySelectorAll('.draft-row').length <= 1) {
-      container.querySelectorAll('input, textarea, select').forEach((field) => { field.value = ''; });
+      container.querySelectorAll('input, textarea').forEach((field) => { field.value = ''; });
       calculate();
       return;
     }

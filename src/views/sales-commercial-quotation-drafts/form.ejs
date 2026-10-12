@@ -34,9 +34,6 @@
   .sales-quote-draft .draft-commercial-terms th { overflow-wrap: normal; white-space: nowrap; width: 1%; }
   .sales-quote-draft .draft-commercial-terms td { width: 99%; }
   .sales-quote-draft .draft-commercial-terms select { margin: 0; width: 100%; }
-  .sales-quote-draft .draft-term-control { align-items: stretch; display: grid; gap: 10px; grid-template-columns: minmax(300px, 42%) minmax(0, 1fr); }
-  .sales-quote-draft .draft-term-control > label { margin: 0; }
-  .sales-quote-draft .draft-term-wording { box-sizing: border-box; height: 54px; margin: 0; min-height: 54px; overflow-y: auto; resize: vertical; width: 100%; }
   .sales-quote-draft .draft-project-info label { margin: 0; }
   .sales-quote-draft .draft-project-info select { margin: 0; width: 100%; }
   .sales-quote-draft .draft-parties select[name="currency"] { margin: 0; max-width: 100%; width: 150px; }
@@ -47,13 +44,12 @@
   .sales-quote-draft .draft-signature .draft-section-title { margin-top: 0; }
   .sales-quote-draft .draft-signature-box { border: 1px dashed #91acba; color: var(--muted); min-height: 72px; padding: 12px; }
   .sales-quote-draft .draft-lines-scroll { overflow-x: auto; width: 100%; }
-  .sales-quote-draft .draft-lines-table { border-collapse: collapse; min-width: 1060px; table-layout: fixed; width: 100%; }
+  .sales-quote-draft .draft-lines-table { border-collapse: collapse; min-width: 924px; table-layout: fixed; width: 100%; }
   .sales-quote-draft .draft-lines-table .draft-number-column { width: 54px; }
   .sales-quote-draft .draft-lines-table .draft-quantity-column,
   .sales-quote-draft .draft-lines-table .draft-unit-column { width: 110px; }
   .sales-quote-draft .draft-lines-table .draft-price-column { width: 150px; }
   .sales-quote-draft .draft-lines-table .draft-amount-column { width: 150px; }
-  .sales-quote-draft .draft-lines-table .draft-inclusion-column { width: 136px; }
   .sales-quote-draft .draft-lines-table .draft-remove-column { width: 62px; }
   .sales-quote-draft .draft-lines-table th,
   .sales-quote-draft .draft-lines-table td { border-bottom: 1px solid var(--line); padding: 9px 8px; text-align: left; vertical-align: middle; }
@@ -61,7 +57,6 @@
   .sales-quote-draft .draft-lines-table thead th,
   .sales-quote-draft .draft-lines-table input,
   .sales-quote-draft .draft-lines-table textarea,
-  .sales-quote-draft .draft-lines-table select,
   .sales-quote-draft .draft-lines-table button,
   .sales-quote-draft .draft-commercial-terms select,
   .sales-quote-draft .draft-actions button { font-weight: 400; }
@@ -69,8 +64,7 @@
   .sales-quote-draft .draft-lines-table tbody th { font-weight: 400; }
   .sales-quote-draft .draft-lines-table label { display: block; margin: 0; }
   .sales-quote-draft .draft-lines-table input,
-  .sales-quote-draft .draft-lines-table textarea,
-  .sales-quote-draft .draft-lines-table select { box-sizing: border-box; display: block; height: 46px; margin: 0; width: 100%; }
+  .sales-quote-draft .draft-lines-table textarea { box-sizing: border-box; display: block; height: 46px; margin: 0; width: 100%; }
   .sales-quote-draft .draft-lines-table textarea { min-height: 46px; max-height: 46px; overflow: auto; resize: none; scrollbar-width: none; white-space: pre; }
   .sales-quote-draft .draft-lines-table textarea::-webkit-scrollbar { display: none; }
   .sales-quote-draft .draft-lines-table button { height: 46px; white-space: nowrap; }
@@ -92,7 +86,6 @@
   }
   @container (max-width: 720px) {
     .sales-quote-draft .draft-parties, .sales-quote-draft .draft-signature { grid-template-columns: 1fr; }
-    .sales-quote-draft .draft-term-control { grid-template-columns: 1fr; }
   }
   @container (max-width: 470px) {
     .sales-quote-draft .draft-document-header { align-items: flex-start; flex-direction: column; }
@@ -167,8 +160,8 @@
       <h2 class="draft-section-title"><%= zh ? '报价明细' : 'Quoted items' %></h2>
       <div class="draft-lines-scroll">
         <table class="draft-lines-table">
-          <colgroup><col class="draft-number-column"><col><col class="draft-quantity-column"><col class="draft-unit-column"><col class="draft-price-column"><col class="draft-amount-column"><col class="draft-inclusion-column"><col class="draft-remove-column"></colgroup>
-          <thead><tr><th scope="col"><%= zh ? '序号' : 'No.' %></th><th scope="col"><%= zh ? '产品说明' : 'Description' %></th><th scope="col"><%= zh ? '数量' : 'Qty' %></th><th scope="col"><%= zh ? '单位' : 'Unit' %></th><th scope="col"><%= zh ? '单价' : 'Unit price' %></th><th scope="col"><%= zh ? '金额' : 'Amount' %></th><th scope="col"><%= zh ? '计入总价' : 'Include in total' %></th><th scope="col"><span class="visually-hidden"><%= zh ? '操作' : 'Actions' %></span></th></tr></thead>
+          <colgroup><col class="draft-number-column"><col><col class="draft-quantity-column"><col class="draft-unit-column"><col class="draft-price-column"><col class="draft-amount-column"><col class="draft-remove-column"></colgroup>
+          <thead><tr><th scope="col"><%= zh ? '序号' : 'No.' %></th><th scope="col"><%= zh ? '产品说明' : 'Description' %></th><th scope="col"><%= zh ? '数量' : 'Qty' %></th><th scope="col"><%= zh ? '单位' : 'Unit' %></th><th scope="col"><%= zh ? '单价' : 'Unit price' %></th><th scope="col"><%= zh ? '金额' : 'Amount' %></th><th scope="col"><span class="visually-hidden"><%= zh ? '操作' : 'Actions' %></span></th></tr></thead>
           <tbody id="sales-quote-draft-rows">
             <% for (const [index, row] of rows.entries()) { %>
               <tr class="draft-row">
@@ -178,7 +171,6 @@
                 <td><label><span class="visually-hidden"><%= zh ? '单位' : 'Unit' %></span><input name="unit" maxlength="40" value="<%= row.unit %>" <%= canEdit ? '' : 'readonly' %>></label></td>
                 <td><label><span class="visually-hidden"><%= zh ? '单价' : 'Unit price' %></span><input name="unitPrice" inputmode="decimal" value="<%= row.unitPrice %>" <%= canEdit ? '' : 'readonly' %>></label></td>
                 <td><span class="draft-amount" data-line-amount>—</span></td>
-                <td><label><span class="visually-hidden"><%= zh ? '计入总价' : 'Include in total' %></span><select name="includeInTotal" <%= canEdit ? '' : 'disabled' %>><option value="" <%= !row.includeInTotal ? 'selected' : '' %>><%= zh ? '请选择' : 'Select' %></option><option value="included" <%= row.includeInTotal === 'included' ? 'selected' : '' %>><%= zh ? '计入' : 'Include' %></option><option value="excluded" <%= row.includeInTotal === 'excluded' ? 'selected' : '' %>><%= zh ? '不计入' : 'Exclude' %></option></select></label></td>
                 <td><% if (canEdit) { %><button type="button" class="secondary-action draft-remove-row" data-remove-quote-row aria-label="<%= zh ? '移除此行' : 'Remove this row' %>" title="<%= zh ? '移除此行' : 'Remove this row' %>">&minus;</button><% } %></td>
               </tr>
             <% } %>
@@ -197,18 +189,15 @@
   <section class="form-panel">
     <h2 class="draft-section-title"><%= zh ? '商务条件' : 'Commercial terms' %></h2>
     <div class="draft-terms-scroll"><table class="draft-detail-table draft-commercial-terms"><tbody>
-      <% for (const section of termSections) { const options = standardTerms.filter((term) => term.key === section.key); const selected = draft?.termSelections?.[section.key]; const selectedTerm = options.find((term) => term.id === selected?.id); const selectedAvailable = Boolean(selectedTerm); const selectedBody = selected?.body || selectedTerm?.body || ''; %>
+      <% for (const section of termSections) { const options = standardTerms.filter((term) => term.key === section.key); const selected = draft?.termSelections?.[section.key]; const selectedTerm = options.find((term) => term.id === selected?.id); const selectedAvailable = Boolean(selectedTerm); %>
         <tr><th scope="row"><%= zh ? section.zh : section.en %></th><td>
-          <div class="draft-term-control" data-term-control>
           <label><span class="visually-hidden"><%= zh ? `选择${section.zh}常用条款` : `Select a typical term for ${section.en}` %></span>
             <select name="term_<%= section.key %>" form="sales-quote-draft-form" data-standard-term-select <%= canEdit && sources.length && (options.length || selected) ? '' : 'disabled' %>>
               <option value=""><%= options.length ? (zh ? '请选择常用条款' : 'Select a typical term') : (zh ? '暂无已发布常用条款' : 'No published typical terms') %></option>
               <% if (selected && !selectedAvailable) { %><option value="<%= selected.id %>" selected><%= zh ? '先前选择已停用，请重新选择' : 'Previous selection retired; choose again' %></option><% } %>
-              <% for (const term of options) { %><option value="<%= term.id %>" data-template-body="<%= term.body || '' %>" <%= term.id === selected?.id ? 'selected' : '' %>><%= term.body || term.title %></option><% } %>
+              <% for (const term of options) { %><option value="<%= term.id %>" <%= term.id === selected?.id ? 'selected' : '' %>><%= term.body || term.title %></option><% } %>
             </select>
           </label>
-          <label><span class="visually-hidden"><%= zh ? `${section.zh}报价条款正文` : `Quotation wording for ${section.en}` %></span><textarea class="draft-term-wording" name="term_<%= section.key %>_body" form="sales-quote-draft-form" maxlength="4000" data-term-body-input placeholder="<%= zh ? '选择模板后可在此修改，保存内容以本报价为准' : 'Select a template, then edit the wording for this quotation' %>" <%= selected && canEdit && sources.length ? 'required' : 'disabled' %>><%= selectedBody %></textarea></label>
-          </div>
         </td></tr>
       <% } %>
     </tbody></table></div>

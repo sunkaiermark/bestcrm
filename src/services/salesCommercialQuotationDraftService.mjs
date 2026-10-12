@@ -1,6 +1,7 @@
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { getQuotationSellerEntity } from '../domain/quotationSellerEntities.mjs';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
+import { includeAllQuotationDraftLines } from '../domain/quotationMoney.mjs';
 import { withBuiltInQuotationTypicalTerms } from '../domain/quotationTypicalTermTemplates.mjs';
 import {
   hasUnresolvedQuotationTermPlaceholder,
@@ -44,8 +45,7 @@ function lineItemsFromInput(input) {
   const quantities = values(input.quantity);
   const units = values(input.unit);
   const prices = values(input.unitPrice);
-  const inclusions = values(input.includeInTotal);
-  const rowCount = Math.max(descriptions.length, quantities.length, units.length, prices.length, inclusions.length);
+  const rowCount = Math.max(descriptions.length, quantities.length, units.length, prices.length);
   if (rowCount > 100) throw new SalesCommercialQuotationDraftError('Too many quotation rows');
   const rows = [];
   for (let index = 0; index < rowCount; index += 1) {
@@ -53,8 +53,7 @@ function lineItemsFromInput(input) {
     const quantity = String(quantities[index] ?? '').trim();
     const unit = String(units[index] ?? '').trim();
     const unitPrice = String(prices[index] ?? '').trim();
-    const includeInTotal = String(inclusions[index] ?? '').trim();
-    if (!description && !quantity && !unit && !unitPrice && !includeInTotal) continue;
+    if (!description && !quantity && !unit && !unitPrice) continue;
     if (description.length > 2000 || unit.length > 40) {
       throw new SalesCommercialQuotationDraftError('Quotation row text is too long');
     }
@@ -64,15 +63,12 @@ function lineItemsFromInput(input) {
     if (unitPrice && !/^(?:0|[1-9]\d{0,11})(?:\.\d{1,2})?$/.test(unitPrice)) {
       throw new SalesCommercialQuotationDraftError('Unit price must be a non-negative amount with at most two decimal places');
     }
-    if (includeInTotal && !['included', 'excluded'].includes(includeInTotal)) {
-      throw new SalesCommercialQuotationDraftError('Quotation row total inclusion is invalid');
-    }
-    rows.push({ description, quantity, unit, unitPrice, includeInTotal: includeInTotal || null });
+    rows.push({ description, quantity, unit, unitPrice, includeInTotal: 'included' });
   }
   return rows;
 }
 
-function termSelectionsFromInput(input, publishedTerms, language) {
+function termSelectionsFromInput(input, publishedTerms, language, existingSelections = {}) {
   const termsById = new Map(publishedTerms.map((term) => [String(term.id), term]));
   const selections = {};
   for (const section of QUOTATION_COMMERCIAL_TERM_SECTIONS) {
@@ -85,10 +81,11 @@ function termSelectionsFromInput(input, publishedTerms, language) {
     if (!term || term.key !== section.key || term.language !== language) {
       throw new SalesCommercialQuotationDraftError('Selected standard commercial term is unavailable or belongs to another section', 409);
     }
-    const wordingField = `term_${section.key}_body`;
-    const body = normalizeQuotationTermWording(
-      Object.hasOwn(input, wordingField) ? input[wordingField] : term.body
-    );
+    const existing = existingSelections?.[section.key];
+    const samePublishedRevision = String(existing?.id ?? '') === String(term.id)
+      && Number(existing?.revisionNo) === Number(term.revisionNo)
+      && existing?.language === term.language;
+    const body = normalizeQuotationTermWording(samePublishedRevision ? existing.body : term.body);
     if (!isValidQuotationTermWording(body)) {
       if (hasUnresolvedQuotationTermPlaceholder(body)) {
         throw new SalesCommercialQuotationDraftError(
@@ -170,7 +167,7 @@ export async function loadSalesCommercialQuotationDraft(repository, user, opport
   );
   const source = draft && sources.find((item) => item.attachmentId === draft.sourceAttachmentId) || null;
   return {
-    draft,
+    draft: draft ? { ...draft, lineItems: includeAllQuotationDraftLines(draft.lineItems) } : null,
     sources,
     standardTerms,
     sourceChanged: Boolean(draft && (!source || source.sha256 !== draft.sourceSha256
@@ -216,7 +213,9 @@ export async function saveSalesCommercialQuotationDraft(
   const publishedTerms = withBuiltInQuotationTypicalTerms(
     await repository.listPublishedStandardTerms(draftLanguage), draftLanguage
   );
-  const termSelections = termSelectionsFromInput(input, publishedTerms, draftLanguage);
+  const termSelections = termSelectionsFromInput(
+    input, publishedTerms, draftLanguage, existingDraft?.termSelections
+  );
   const lineItems = lineItemsFromInput(input);
   const saved = await repository.saveDraft({
     opportunityId: opportunity.id,
