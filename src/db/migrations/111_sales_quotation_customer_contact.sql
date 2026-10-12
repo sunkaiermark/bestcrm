@@ -24,18 +24,6 @@ ALTER TABLE sales_commercial_quotation_draft_events
   ADD COLUMN customer_contact_phone text NOT NULL DEFAULT '',
   ADD COLUMN customer_contact_email text NOT NULL DEFAULT '';
 
-UPDATE sales_commercial_quotation_drafts draft
-SET customer_contact_id = opportunity.primary_contact_id,
-    customer_contact_name = contact.name,
-    customer_contact_phone = COALESCE(contact.phone, ''),
-    customer_contact_email = COALESCE(contact.email, '')
-FROM opportunities opportunity
-JOIN contacts contact
-  ON contact.id = opportunity.primary_contact_id
- AND contact.customer_id = opportunity.customer_id
- AND contact.archived_at IS NULL
-WHERE draft.opportunity_id = opportunity.id;
-
 CREATE OR REPLACE FUNCTION bestcrm_guard_sales_commercial_quotation_draft()
 RETURNS trigger LANGUAGE plpgsql AS $$
 DECLARE
@@ -118,3 +106,38 @@ BEGIN
   RETURN NEW;
 END;
 $$;
+
+-- Backfilling an existing draft is a real draft revision. Install the updated
+-- guard and audit functions first, then advance the revision so the immutable
+-- event history records the same contact snapshot as the current draft. Only
+-- drafts whose technical source is still valid are eligible; archived/frozen
+-- drafts retain the safe empty snapshot instead of bypassing the guard.
+UPDATE sales_commercial_quotation_drafts draft
+SET customer_contact_id = opportunity.primary_contact_id,
+    customer_contact_name = contact.name,
+    customer_contact_phone = COALESCE(contact.phone, ''),
+    customer_contact_email = COALESCE(contact.email, ''),
+    draft_revision_no = draft.draft_revision_no + 1
+FROM opportunities opportunity
+JOIN contacts contact
+  ON contact.id = opportunity.primary_contact_id
+ AND contact.customer_id = opportunity.customer_id
+ AND contact.archived_at IS NULL
+WHERE draft.opportunity_id = opportunity.id
+  AND opportunity.archived_at IS NULL
+  AND EXISTS (
+    SELECT 1
+    FROM opportunity_technical_draft_attachments link
+    JOIN opportunity_technical_drafts technical_draft
+      ON technical_draft.id = link.technical_draft_id
+    JOIN attachments attachment
+      ON attachment.id = link.attachment_id
+    WHERE link.technical_draft_id = draft.source_technical_draft_id
+      AND link.attachment_id = draft.source_attachment_id
+      AND technical_draft.opportunity_id = draft.opportunity_id
+      AND technical_draft.source_kind = 'uploaded_file'
+      AND technical_draft.status IN ('ready', 'pending', 'approved')
+      AND attachment.sha256 = draft.source_sha256
+      AND attachment.original_name = draft.source_file_name
+      AND attachment.retired_at IS NULL
+  );

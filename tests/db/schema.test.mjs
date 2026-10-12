@@ -131,6 +131,11 @@ test('quotation attention is selected from the opportunity customer and snapshot
   assert.match(sql, /customer_contact_name/);
   assert.match(sql, /contact_record\.phone IS DISTINCT FROM NEW\.customer_contact_phone/);
   assert.match(sql, /contact_record\.email IS DISTINCT FROM NEW\.customer_contact_email/);
+  assert.match(sql, /draft_revision_no = draft\.draft_revision_no \+ 1/);
+  assert.match(sql, /technical_draft\.status IN \('ready', 'pending', 'approved'\)/);
+  const auditFunction = sql.indexOf('CREATE OR REPLACE FUNCTION bestcrm_log_sales_commercial_quotation_draft');
+  const backfill = sql.indexOf('UPDATE sales_commercial_quotation_drafts draft');
+  assert.ok(auditFunction >= 0 && auditFunction < backfill);
 });
 
 test('quotation tax rate is constrained and snapshotted on every draft revision', async () => {
