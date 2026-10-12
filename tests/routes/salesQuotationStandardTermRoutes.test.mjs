@@ -34,7 +34,11 @@ test('typical terms management blocks direct salesperson access and groups an em
   assert.equal(page.status, 200);
   assert.match(page.text, /Typical Terms/);
   assert.match(page.text, /New typical term/);
-  assert.match(page.text, /Currency, price and tax basis/);
+  assert.match(page.text, /Built-in typical wording/);
+  assert.match(page.text, /Price Basis – Incoterms® 2020/);
+  assert.match(page.text, /T\/T – Telegraphic Transfer/);
+  assert.match(page.text, /Standard Delivery Methods/);
+  assert.match(page.text, /Tax basis/);
   assert.match(page.text, /Payment terms/);
   assert.equal((page.text.match(/No term options yet/g) || []).length, 8);
   const newPage = await author.get('/quotation-standard-terms/new?section=payment&language=en');

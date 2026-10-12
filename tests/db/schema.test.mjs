@@ -89,6 +89,8 @@ const quotationSellerEntityMigrationPath = new URL('../../src/db/migrations/102_
 const userRepresentedCompanyMigrationPath = new URL('../../src/db/migrations/108_user_represented_company.sql', import.meta.url);
 const sharedCustomersMigrationPath = new URL('../../src/db/migrations/109_shared_customers_and_opportunity_links.sql', import.meta.url);
 const authorizedTechnicalSelfReviewMigrationPath = new URL('../../src/db/migrations/110_authorized_technical_self_review.sql', import.meta.url);
+const salesQuotationCustomerContactMigrationPath = new URL('../../src/db/migrations/111_sales_quotation_customer_contact.sql', import.meta.url);
+const salesQuotationTaxTotalsMigrationPath = new URL('../../src/db/migrations/112_sales_quotation_tax_totals.sql', import.meta.url);
 const quotationStandardTermsMigrationPath = new URL('../../src/db/migrations/103_quotation_draft_standard_terms.sql', import.meta.url);
 const uploadedTechnicalFileWithdrawalEventMigrationPath = new URL('../../src/db/migrations/101_uploaded_technical_file_withdrawal_event.sql', import.meta.url);
 
@@ -116,6 +118,28 @@ test('quotation draft records the selected seller identity and only approved sta
   assert.match(termsSql, /Published standard commercial term content is immutable/);
   assert.match(termsSql, /ADD COLUMN term_selections jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
   assert.doesNotMatch(termsSql, /INSERT INTO sales_quotation_standard_terms/);
+});
+
+test('quotation attention is selected from the opportunity customer and snapshotted per revision', async () => {
+  const sql = await readFile(salesQuotationCustomerContactMigrationPath, 'utf8');
+  assert.match(sql, /ADD COLUMN customer_contact_id bigint REFERENCES contacts\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /ADD COLUMN customer_contact_name text NOT NULL DEFAULT ''/);
+  assert.match(sql, /ADD COLUMN customer_contact_phone text NOT NULL DEFAULT ''/);
+  assert.match(sql, /ADD COLUMN customer_contact_email text NOT NULL DEFAULT ''/);
+  assert.match(sql, /contact\.customer_id = opportunity\.customer_id/);
+  assert.match(sql, /contact\.archived_at IS NULL/);
+  assert.match(sql, /customer_contact_name/);
+  assert.match(sql, /contact_record\.phone IS DISTINCT FROM NEW\.customer_contact_phone/);
+  assert.match(sql, /contact_record\.email IS DISTINCT FROM NEW\.customer_contact_email/);
+});
+
+test('quotation tax rate is constrained and snapshotted on every draft revision', async () => {
+  const sql = await readFile(salesQuotationTaxTotalsMigrationPath, 'utf8');
+  assert.match(sql, /ADD COLUMN tax_rate numeric\(5,2\) NOT NULL DEFAULT 0/);
+  assert.match(sql, /tax_rate >= 0 AND tax_rate <= 100/);
+  assert.match(sql, /sales_commercial_quotation_draft_events/);
+  assert.match(sql, /NEW\.currency, NEW\.tax_rate/);
+  assert.match(sql, /NEW\.customer_contact_phone, NEW\.customer_contact_email/);
 });
 
 test('users have one constrained represented company with a safe existing-user default', async () => {

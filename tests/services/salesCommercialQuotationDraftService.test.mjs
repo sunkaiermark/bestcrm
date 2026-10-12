@@ -26,7 +26,7 @@ test('sales owner saves an internal quote draft from a ready uploaded file befor
     async saveDraft(input) { calls.push(input); return { id: 10, draftRevisionNo: 1, ...input }; }
   };
   const result = await saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'zh', {
-    sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on', currency: 'usd',
+    sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on', currency: 'usd', taxRate: '7.50',
     sellerEntityCode: 'sunkaier_china', term_payment: '91',
     description: ['Mixer', 'Spare seal'], quantity: ['2', '1'],
     unit: ['set', 'piece'], unitPrice: ['1000.00', '20.00'], includeInTotal: ['included', 'excluded']
@@ -35,9 +35,11 @@ test('sales owner saves an internal quote draft from a ready uploaded file befor
   assert.equal(calls[0].language, 'zh');
   assert.equal(calls[0].source.sha256, 'a'.repeat(64));
   assert.equal(calls[0].currency, 'USD');
+  assert.equal(calls[0].taxRate, '7.50');
   assert.equal(calls[0].sellerEntityName, '江苏胜开尔工业技术有限公司');
   assert.deepEqual(calls[0].termSelections.payment, {
-    id: 91, revisionNo: 2, language: 'zh', title: '已批准付款条款', body: '经批准的付款文案'
+    id: 91, revisionNo: 2, language: 'zh', title: '已批准付款条款',
+    templateBody: '经批准的付款文案', body: '经批准的付款文案'
   });
   assert.equal(calls[0].lineItems.length, 2);
   assert.equal(calls[0].lineItems[1].description, 'Spare seal');
@@ -67,8 +69,93 @@ test('invalid source, row values and stale revision fail closed', async () => {
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, unitPrice: '10.999' }), /Unit price/);
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, includeInTotal: 'yes' }), /total inclusion/);
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, sellerEntityCode: 'other' }), /seller entity/);
+  await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, taxRate: '101' }), /Tax rate/);
+  await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, taxRate: '7.123' }), /Tax rate/);
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', { ...base, term_payment: '91' }), { statusCode: 409 });
   await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', base), { statusCode: 409 });
+});
+
+test('built-in typical wording can be selected without a database-published duplicate', async () => {
+  const calls = [];
+  const repository = {
+    async getTechnicalSource() { return source; },
+    async getByOpportunity() { return null; },
+    async listPublishedStandardTerms() { return []; },
+    async saveDraft(input) { calls.push(input); return input; }
+  };
+  await saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
+    sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on',
+    term_payment: 'builtin:payment:telegraphic_transfer:5'
+  });
+  assert.equal(calls[0].termSelections.payment.title, '30/70');
+  assert.equal(calls[0].termSelections.payment.body, '30% advance, 70% before shipment');
+});
+
+test('typical Incoterm wording can be edited and the saved quotation text is authoritative', async () => {
+  const calls = [];
+  const repository = {
+    async getTechnicalSource() { return source; },
+    async getByOpportunity() { return null; },
+    async listPublishedStandardTerms() { return []; },
+    async saveDraft(input) { calls.push(input); return input; }
+  };
+  const base = {
+    sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on',
+    term_delivery: 'builtin:price:price_basis_incoterms_2020:14'
+  };
+  await saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
+    ...base, term_delivery_body: '  FOB Shanghai Port, China, Incoterms® 2020.  '
+  });
+  assert.deepEqual(calls[0].termSelections.delivery, {
+    id: 'builtin:price:price_basis_incoterms_2020:14', revisionNo: 1, language: 'en',
+    title: 'FOB',
+    templateBody: 'FOB [Named Port of Shipment], Incoterms® 2020.',
+    body: 'FOB Shanghai Port, China, Incoterms® 2020.'
+  });
+  await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', base),
+    /Replace all bracketed placeholders/);
+  await assert.rejects(() => saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
+    ...base, term_delivery_body: 'FOB [Named Port of Shipment], Incoterms® 2020.'
+  }), /Replace all bracketed placeholders/);
+});
+
+test('delivery period template can be completed as editable quotation wording', async () => {
+  const calls = [];
+  const repository = {
+    async getTechnicalSource() { return source; },
+    async getByOpportunity() { return null; },
+    async listPublishedStandardTerms() { return []; },
+    async saveDraft(input) { calls.push(input); return input; }
+  };
+  await saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
+    sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on',
+    term_delivery_period: 'builtin:delivery:delivery_period_start:1',
+    term_delivery_period_body: 'Delivery shall be made within sixteen (16) weeks after receipt of the advance payment and approval of the technical documents.'
+  });
+  assert.deepEqual(calls[0].termSelections.delivery_period, {
+    id: 'builtin:delivery:delivery_period_start:1', revisionNo: 1, language: 'en',
+    title: 'After Advance Payment and Technical Approval',
+    templateBody: 'Delivery shall be made within [Delivery Period] after receipt of the advance payment and approval of the technical documents.',
+    body: 'Delivery shall be made within sixteen (16) weeks after receipt of the advance payment and approval of the technical documents.'
+  });
+});
+
+test('built-in warranty wording can be selected for a quotation', async () => {
+  const calls = [];
+  const repository = {
+    async getTechnicalSource() { return source; },
+    async getByOpportunity() { return null; },
+    async listPublishedStandardTerms() { return []; },
+    async saveDraft(input) { calls.push(input); return input; }
+  };
+  await saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
+    sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on',
+    term_warranty: 'builtin:warranty:warranty_period:1'
+  });
+  assert.equal(
+    calls[0].termSelections.warranty.body,
+    'The warranty period shall be twelve (12) months from the date of commissioning or eighteen (18) months from the date of shipment, whichever occurs first.'
+  );
 });
 
 test('a standard term from another language is rejected even if the catalog adapter returns it', async () => {
@@ -111,4 +198,34 @@ test('standard wording is selected in the saved draft language, not a later logi
   });
   assert.equal(calls[0], 'zh');
   assert.equal(calls[1].language, 'zh');
+});
+
+test('attention is snapshotted only from an active contact of the opportunity customer', async () => {
+  const calls = [];
+  const customerOpportunity = {
+    ...opportunity, customerId: 30, primaryContactId: 501, primaryContactName: 'Primary Buyer'
+  };
+  const repository = {
+    async getTechnicalSource() { return source; },
+    async getByOpportunity() { return null; },
+    async listPublishedStandardTerms() { return []; },
+    async saveDraft(input) { calls.push(input); return input; }
+  };
+  const customerContacts = [
+    { id: 501, customerId: 30, name: 'Primary Buyer', phone: '+1 555 0101', email: 'primary@example.com' },
+    { id: 502, customerId: 30, name: 'Selected Buyer', phone: '+1 555 0102', email: 'selected@example.com' },
+    { id: 900, customerId: 99, name: 'Other Customer Contact', phone: '+1 555 0900', email: 'other@example.com' }
+  ];
+  const base = { sourceAttachmentId: '51', expectedRevisionNo: '0', confirmSourceVersion: 'on' };
+  await saveSalesCommercialQuotationDraft(repository, owner, customerOpportunity, 'en', {
+    ...base, customerContactId: '502'
+  }, { customerContacts });
+  assert.equal(calls[0].customerContactId, 502);
+  assert.equal(calls[0].customerContactName, 'Selected Buyer');
+  assert.equal(calls[0].customerContactPhone, '+1 555 0102');
+  assert.equal(calls[0].customerContactEmail, 'selected@example.com');
+  await assert.rejects(() => saveSalesCommercialQuotationDraft(
+    repository, owner, customerOpportunity, 'en', { ...base, customerContactId: '900' },
+    { customerContacts }
+  ), { statusCode: 409 });
 });

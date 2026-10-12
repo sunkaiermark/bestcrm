@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { ROLES } from '../../src/domain/roles.mjs';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../../src/domain/quotationCommercialTermSections.mjs';
+import { BUILT_IN_QUOTATION_TYPICAL_TERMS } from '../../src/domain/quotationTypicalTermTemplates.mjs';
 import {
   canSignSalesCommercialQuotation,
   reviewSalesCommercialQuotation,
@@ -38,8 +39,11 @@ const source = { technicalDraftId: 41, technicalDraftRevisionNo: 2, attachmentId
 function draft(entityCode = 'sunkaier_china') {
   return {
     id: 3, opportunityId: 20, draftRevisionNo: 2, language: 'en', currency: 'USD',
+    taxRate: '9.00',
     sellerEntityCode: entityCode,
     sellerEntityName: entityCode === 'sunkaier_china' ? '江苏胜开尔工业技术有限公司' : 'SUNKAIER ASIA PACIFIC PTE. LTD.',
+    customerContactId: 501, customerContactName: 'Selected Buyer',
+    customerContactPhone: '+1 555 0101', customerContactEmail: 'buyer@example.com',
     sourceTechnicalDraftId: 41, sourceAttachmentId: 51, sourceSha256: 'a'.repeat(64),
     sourceFileName: 'Technical file.pdf',
     lineItems: [{ description: 'Mixer', quantity: '1', unit: 'set', unitPrice: '100', includeInTotal: 'included' }],
@@ -71,8 +75,14 @@ test('formal submit freezes only an approved exact source and eight published te
     const repo = repository(draft());
     await submitSalesCommercialQuotation(repo, sales, opportunity, 2, { sellerProfilesFile: profilesFile });
     assert.equal(repo.calls[0][1].snapshot.seller.legalName, '江苏胜开尔工业技术有限公司');
+    assert.equal(repo.calls[0][1].snapshot.attention, 'Selected Buyer');
+    assert.equal(repo.calls[0][1].snapshot.customerContactPhone, '+1 555 0101');
+    assert.equal(repo.calls[0][1].snapshot.customerContactEmail, 'buyer@example.com');
     assert.equal(repo.calls[0][1].snapshot.termSelections.payment.body, terms[1].body);
     assert.equal(repo.calls[0][1].snapshot.lineItems[0].description, 'Mixer');
+    assert.deepEqual(repo.calls[0][1].snapshot.totals, {
+      subtotal: '100.00', taxRate: '9.00', taxAmount: '9.00', total: '109.00'
+    });
     await assert.rejects(() => submitSalesCommercialQuotation(repo, sales, opportunity, 1,
       { sellerProfilesFile: profilesFile }), /Draft revision changed/);
     source.technicalStatus = 'ready';
@@ -83,6 +93,34 @@ test('formal submit freezes only an approved exact source and eight published te
     await assert.rejects(() => submitSalesCommercialQuotation(repo, sales, opportunity, 2,
       { sellerProfilesFile: profilesFile }), /current published standard wording/);
   } finally { await rm(dir, { recursive: true, force: true }); }
+});
+
+test('formal submit freezes edited quotation wording while revalidating its source template', async () => {
+  const quoteDraft = draft();
+  const fob = BUILT_IN_QUOTATION_TYPICAL_TERMS.find(
+    (term) => term.id === 'builtin:price:price_basis_incoterms_2020:14'
+  );
+  quoteDraft.termSelections.delivery = {
+    id: fob.id, revisionNo: fob.revisionNo, language: fob.language, title: fob.title,
+    templateBody: fob.body,
+    body: 'FOB Shanghai Port, China, Incoterms® 2020.'
+  };
+  const repo = repository(quoteDraft);
+  const configuredOpportunity = { ...opportunity, salespersonPhone: '+86 510 0000 0000' };
+  const submitted = await submitSalesCommercialQuotation(repo, sales, configuredOpportunity, 2);
+  assert.equal(
+    submitted.snapshot.termSelections.delivery.body,
+    'FOB Shanghai Port, China, Incoterms® 2020.'
+  );
+  quoteDraft.termSelections.delivery.body = 'FOB Busan Port, Korea, Incoterms® 2020.';
+  const edited = await submitSalesCommercialQuotation(repo, sales, configuredOpportunity, 2);
+  assert.equal(
+    edited.snapshot.termSelections.delivery.body,
+    'FOB Busan Port, Korea, Incoterms® 2020.'
+  );
+  quoteDraft.termSelections.delivery.templateBody = 'FOB changed template';
+  await assert.rejects(() => submitSalesCommercialQuotation(repo, sales, configuredOpportunity, 2),
+    /current published standard wording/);
 });
 
 test('formal submit automatically freezes represented-company details and the sales owner phone', async () => {
@@ -194,6 +232,60 @@ test('issued A4 PDF renders a frozen China quotation with personal signature and
   if (process.env.BESTCRM_PDF_QA_OUTPUT) {
     await writeFile(process.env.BESTCRM_PDF_QA_OUTPUT, pdf);
   }
+});
+
+test('issued Singapore quotation with three rows and all commercial terms stays on one A4 page', async () => {
+  const version = {
+    id: 74,
+    opportunityId: 20,
+    status: 'approved',
+    quotationNo: 'Q-800020-V6',
+    versionNo: 6,
+    snapshot: {
+      opportunityNo: '800020',
+      project: 'Production Line Equipment Package',
+      customerName: 'META BIOMED CO., LTD.',
+      attention: 'Selected Buyer',
+      customerContactPhone: '+82 2 555 0101',
+      customerContactEmail: 'buyer@example.com',
+      seller: {
+        code: 'sunkaier_apac',
+        legalName: 'SUNKAIER ASIA PACIFIC PTE. LTD.',
+        address: '2 Venture Drive, #10-30, Vision Exchange, Singapore 608526',
+        phone: '+65 6000 0000',
+        website: 'https://www.sunkaier.com',
+        email: 'sales@sunkaier.com'
+      },
+      sellerContact: 'Mark Yang',
+      language: 'en',
+      currency: 'USD',
+      taxRate: '9.00',
+      lineItems: [
+        { description: 'Production Line', quantity: '1', unit: 'set', unitPrice: '650000', includeInTotal: 'included' },
+        { description: 'Heating Unit', quantity: '1', unit: 'set', unitPrice: '80000', includeInTotal: 'included' },
+        { description: 'Pelletizing Unit', quantity: '1', unit: 'set', unitPrice: '150000', includeInTotal: 'included' }
+      ],
+      termSelections: {
+        price_tax: { body: 'All prices are exclusive of applicable taxes.' },
+        payment: { body: '30% advance, 70% before shipment.' },
+        delivery: { body: 'FOB Shanghai Port, China, Incoterms® 2020.' },
+        delivery_period: { body: 'Delivery shall be made within sixteen (16) weeks after receipt of the advance payment and approval of the technical documents.' },
+        packing: { body: 'Shipment by sea in Full Container Load (FCL).' },
+        warranty: { body: 'The warranty period shall be twelve (12) months from commissioning or eighteen (18) months from shipment, whichever occurs first.' },
+        validity: { body: 'This quotation is valid for thirty (30) days from the quotation date.' },
+        scope: { body: 'The contract price is fixed and firm.' }
+      }
+    }
+  };
+
+  const pdf = await renderSalesCommercialQuotationFormalPdf({
+    version,
+    signedAt: '2026-10-12T01:02:03.000Z',
+    signature: png,
+    seal: png
+  });
+
+  assert.equal((pdf.toString('latin1').match(/\/Type \/Page\b/g) || []).length, 1);
 });
 
 test('explicit test-phase policy permits omitted contact fields and terms but keeps approval, source and personal-signing gates', async () => {

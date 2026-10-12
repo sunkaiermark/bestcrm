@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireLogin } from '../middleware/auth.mjs';
 import { QUOTATION_SELLER_EMAIL, QUOTATION_SELLER_ENTITIES } from '../domain/quotationSellerEntities.mjs';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
+import { QUOTATION_CURRENCY_OPTIONS } from '../domain/quotationTypicalTermTemplates.mjs';
 import { renderSalesCommercialQuotationPreviewPdf } from '../services/salesCommercialQuotationPreviewPdfService.mjs';
 import { renderSalesCommercialQuotationFormalPdf } from '../services/salesCommercialQuotationFormalPdfService.mjs';
 import { inlineContentDisposition } from '../utils/contentDisposition.mjs';
@@ -26,6 +27,7 @@ import {
 export function salesCommercialQuotationDraftRoutes({
   opportunityRepository,
   opportunityResponsibilityRepository,
+  contactRepository,
   userRepository,
   salesCommercialQuotationDraftRepository,
   quotationPreviewPdfRenderer = renderSalesCommercialQuotationPreviewPdf,
@@ -56,6 +58,11 @@ export function salesCommercialQuotationDraftRoutes({
     };
   }
 
+  async function listCustomerContacts(opportunity) {
+    if (typeof contactRepository?.listContacts !== 'function') return [];
+    return contactRepository.listContacts({ customerId: opportunity.customerId });
+  }
+
   function handleError(error, res, next) {
     if (error instanceof SalesCommercialQuotationDraftError || error instanceof SalesCommercialQuotationFormalError) {
       res.status(error.statusCode).send(error.message);
@@ -73,6 +80,7 @@ export function salesCommercialQuotationDraftRoutes({
       const context = await loadSalesCommercialQuotationDraft(
         salesCommercialQuotationDraftRepository, req.currentUser, opportunity, req.language
       );
+      const customerContacts = await listCustomerContacts(opportunity);
       const formalVersions = typeof salesCommercialQuotationDraftRepository.listFormalVersions === 'function'
         ? await salesCommercialQuotationDraftRepository.listFormalVersions(opportunity.id) : [];
       const sellerProfiles = await loadSalesCommercialQuotationSellerProfiles(quotationSigning, opportunity);
@@ -82,10 +90,12 @@ export function salesCommercialQuotationDraftRoutes({
       res.render('sales-commercial-quotation-drafts/form', {
         opportunity,
         ...context,
+        customerContacts,
         sellerEntities: QUOTATION_SELLER_ENTITIES,
         sellerProfiles,
         defaultSellerEntityCode,
         sellerEmail: QUOTATION_SELLER_EMAIL,
+        currencyOptions: QUOTATION_CURRENCY_OPTIONS,
         termSections: QUOTATION_COMMERCIAL_TERM_SECTIONS,
         canEdit: canEditSalesCommercialQuotationDraft(req.currentUser, opportunity),
         canSubmitFormal: canSubmitSalesCommercialQuotation(req.currentUser, opportunity),
@@ -104,9 +114,10 @@ export function salesCommercialQuotationDraftRoutes({
     try {
       const opportunity = await loadOpportunity(req, res);
       if (!opportunity) return;
+      const customerContacts = await listCustomerContacts(opportunity);
       await saveSalesCommercialQuotationDraft(
         salesCommercialQuotationDraftRepository,
-        req.currentUser, opportunity, req.language, req.body
+        req.currentUser, opportunity, req.language, req.body, { customerContacts }
       );
       res.redirect(`/opportunities/${opportunity.id}/commercial-quotation-draft?saved=1`);
     } catch (error) {

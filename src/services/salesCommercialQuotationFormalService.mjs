@@ -3,6 +3,9 @@ import { readFile, realpath } from 'node:fs/promises';
 import path from 'node:path';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
+import { quotationTotalsSnapshot } from '../domain/quotationMoney.mjs';
+import { withBuiltInQuotationTypicalTerms } from '../domain/quotationTypicalTermTemplates.mjs';
+import { isValidQuotationTermWording } from '../domain/quotationTermWording.mjs';
 import {
   getQuotationSellerEntity,
   QUOTATION_SELLER_EMAIL,
@@ -84,14 +87,18 @@ function validateLineItems(items) {
 }
 
 function validatePublishedSelections(draft, publishedTerms, allowIncomplete = false) {
-  const byId = new Map(publishedTerms.map((term) => [Number(term.id), term]));
+  const byId = new Map(publishedTerms.map((term) => [String(term.id), term]));
   for (const section of QUOTATION_COMMERCIAL_TERM_SECTIONS) {
     const selection = draft.termSelections?.[section.key];
     if (selection == null && allowIncomplete) continue;
-    const current = byId.get(Number(selection?.id));
+    const current = byId.get(String(selection?.id ?? ''));
+    const sourceTemplateMatches = Object.hasOwn(selection || {}, 'templateBody')
+      ? selection.templateBody === current?.body
+      : selection?.body === current?.body;
     if (!selection || !current || current.key !== section.key
       || current.language !== draft.language || current.revisionNo !== selection.revisionNo
-      || current.title !== selection.title || current.body !== selection.body) {
+      || current.title !== selection.title || !sourceTemplateMatches
+      || !isValidQuotationTermWording(selection.body)) {
       fail(`A current published standard wording is required for ${section.en}`);
     }
   }
@@ -172,21 +179,29 @@ export async function submitSalesCommercialQuotation(repository, user, opportuni
   if (!entity || draft.sellerEntityName !== entity.legalName) fail('Choose a valid seller entity');
   if (!/^[A-Z]{3}$/.test(draft.currency)) fail('Currency is required');
   validateLineItems(draft.lineItems);
+  const totals = quotationTotalsSnapshot(draft.lineItems, draft.taxRate);
+  if (!totals) fail('Tax rate or quotation totals are invalid');
   await currentApprovedSource(repository, draft, opportunity.id);
-  const publishedTerms = await repository.listPublishedStandardTerms(draft.language);
+  const publishedTerms = withBuiltInQuotationTypicalTerms(
+    await repository.listPublishedStandardTerms(draft.language), draft.language
+  );
   validatePublishedSelections(draft, publishedTerms, settings.allowIncompleteFormal);
   const profile = await sellerProfile(settings, entity, opportunity);
   const snapshot = {
     opportunityNo: requiredText(opportunity.opportunityNo, 'Opportunity reference', 100),
     project: requiredText(opportunity.title, 'Project', 2000),
     customerName: requiredText(opportunity.customerName, 'Customer', 500),
-    attention: requiredText(opportunity.primaryContactName, 'Customer contact', 500),
+    attention: requiredText(draft.customerContactName || opportunity.primaryContactName,
+      'Customer contact', 500),
+    customerContactPhone: optionalText(draft.customerContactPhone, 'Customer contact telephone', 200),
+    customerContactEmail: optionalText(draft.customerContactEmail, 'Customer contact email', 320),
     seller: profile,
     sellerContact: requiredText(
       opportunity.salespersonQuotationContactName || opportunity.salespersonDisplayName,
       'Seller contact', 500
     ),
-    language: draft.language, currency: draft.currency,
+    language: draft.language, currency: draft.currency, taxRate: totals.taxRate,
+    totals,
     sourceFileName: draft.sourceFileName,
     lineItems: structuredClone(draft.lineItems),
     termSelections: structuredClone(draft.termSelections || {})
@@ -211,7 +226,9 @@ export async function reviewSalesCommercialQuotation(repository, user, opportuni
   if (!['approved', 'rejected'].includes(decision)) fail('Invalid review decision', 400);
   if (decision === 'approved') {
     await currentApprovedSource(repository, version, opportunity.id);
-    const terms = await repository.listPublishedStandardTerms(version.snapshot.language);
+    const terms = withBuiltInQuotationTypicalTerms(
+      await repository.listPublishedStandardTerms(version.snapshot.language), version.snapshot.language
+    );
     validatePublishedSelections(version.snapshot, terms, settings.allowIncompleteFormal);
     validatedSeller(version.snapshot.seller, settings.allowIncompleteFormal);
   }
@@ -238,7 +255,9 @@ export async function signSalesCommercialQuotation(repository, user, opportunity
   const version = await requireVersion(repository, opportunity.id, id);
   if (!canSignSalesCommercialQuotation(user, opportunity, version)) fail('Only the active MarkYang account may personally sign an approved quotation', 403);
   await currentApprovedSource(repository, version, opportunity.id);
-  const terms = await repository.listPublishedStandardTerms(version.snapshot.language);
+  const terms = withBuiltInQuotationTypicalTerms(
+    await repository.listPublishedStandardTerms(version.snapshot.language), version.snapshot.language
+  );
   validatePublishedSelections(version.snapshot, terms, options.allowIncompleteFormal);
   const seller = validatedSeller(version.snapshot.seller, options.allowIncompleteFormal);
   const signature = await privatePng(options.uploadDir, options.signatureFile, 'Mark Yang signature');

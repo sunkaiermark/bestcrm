@@ -2336,6 +2336,25 @@
         overflow: hidden;
       }
 
+      .typical-term-grid-heading,
+      .typical-term-catalog {
+        grid-column: 1 / -1;
+      }
+
+      .typical-term-grid-heading {
+        margin: 12px 0 0;
+      }
+
+      .typical-term-catalog .list-table th:first-child,
+      .typical-term-catalog .list-table td:first-child {
+        width: 72px;
+      }
+
+      .typical-term-catalog .list-table th:nth-child(2),
+      .typical-term-catalog .list-table td:nth-child(2) {
+        width: 260px;
+      }
+
       .typical-term-section-header {
         align-items: center;
         background: var(--soft);

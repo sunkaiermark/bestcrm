@@ -24,19 +24,29 @@ test('saveDraft uses an optimistic revision check and never changes frozen langu
     opportunityId: 20, source: {
       technicalDraftId: 41, attachmentId: 51,
       sha256: 'a'.repeat(64), originalName: 'technical-offer.pdf'
-    }, language: 'en', currency: 'USD', sellerEntityCode: 'sunkaier_apac',
-    sellerEntityName: 'SUNKAIER ASIA PACIFIC PTE. LTD.', lineItems: [],
+    }, language: 'en', currency: 'USD', taxRate: '7.50', sellerEntityCode: 'sunkaier_apac',
+    sellerEntityName: 'SUNKAIER ASIA PACIFIC PTE. LTD.',
+    customerContactId: 501, customerContactName: 'Buyer',
+    customerContactPhone: '+1 555 0101', customerContactEmail: 'buyer@example.com', lineItems: [],
     termSelections: { payment: { id: 91, body: 'Approved text' } }, actorUserId: 7, expectedRevisionNo: 2
   });
   assert.equal(saved, null);
   assert.match(calls[0].sql, /ON CONFLICT \(opportunity_id\) DO UPDATE/);
-  assert.match(calls[0].sql, /WHERE sales_commercial_quotation_drafts\.draft_revision_no = \$13/);
+  assert.match(calls[0].sql, /WHERE sales_commercial_quotation_drafts\.draft_revision_no = \$18/);
   assert.match(calls[0].sql, /seller_entity_name = EXCLUDED\.seller_entity_name/);
+  assert.match(calls[0].sql, /customer_contact_name = EXCLUDED\.customer_contact_name/);
+  assert.match(calls[0].sql, /customer_contact_phone = EXCLUDED\.customer_contact_phone/);
+  assert.match(calls[0].sql, /customer_contact_email = EXCLUDED\.customer_contact_email/);
   assert.match(calls[0].sql, /term_selections = EXCLUDED\.term_selections/);
   assert.doesNotMatch(calls[0].sql, /SET[\s\S]*language = EXCLUDED\.language/);
-  assert.equal(calls[0].values[12], 2);
-  assert.equal(calls[0].values[8], 'SUNKAIER ASIA PACIFIC PTE. LTD.');
-  assert.deepEqual(JSON.parse(calls[0].values[10]), { payment: { id: 91, body: 'Approved text' } });
+  assert.equal(calls[0].values[17], 2);
+  assert.equal(calls[0].values[7], '7.50');
+  assert.equal(calls[0].values[9], 'SUNKAIER ASIA PACIFIC PTE. LTD.');
+  assert.equal(calls[0].values[10], 501);
+  assert.equal(calls[0].values[11], 'Buyer');
+  assert.equal(calls[0].values[12], '+1 555 0101');
+  assert.equal(calls[0].values[13], 'buyer@example.com');
+  assert.deepEqual(JSON.parse(calls[0].values[15]), { payment: { id: 91, body: 'Approved text' } });
 });
 
 test('only currently published standard terms in the draft language are selectable', async () => {

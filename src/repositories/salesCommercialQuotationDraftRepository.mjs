@@ -22,8 +22,13 @@ function mapDraft(row) {
     sourceFileName: row.source_file_name,
     language: row.language,
     currency: row.currency || '',
+    taxRate: row.tax_rate == null ? '0' : String(row.tax_rate),
     sellerEntityCode: row.seller_entity_code || '',
     sellerEntityName: row.seller_entity_name || '',
+    customerContactId: row.customer_contact_id == null ? null : Number(row.customer_contact_id),
+    customerContactName: row.customer_contact_name || '',
+    customerContactPhone: row.customer_contact_phone || '',
+    customerContactEmail: row.customer_contact_email || '',
     termSelections: row.term_selections || {},
     lineItems: row.line_items || [],
     draftRevisionNo: Number(row.draft_revision_no),
@@ -237,28 +242,38 @@ export function createSalesCommercialQuotationDraftRepository(queryTarget) {
         INSERT INTO sales_commercial_quotation_drafts (
           opportunity_id, source_technical_draft_id, source_attachment_id,
           source_sha256, source_file_name, language, currency,
-          seller_entity_code, seller_entity_name, line_items,
-          term_selections, created_by, updated_by
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::jsonb, $12, $12)
+          tax_rate,
+          seller_entity_code, seller_entity_name,
+          customer_contact_id, customer_contact_name,
+          customer_contact_phone, customer_contact_email,
+          line_items, term_selections, created_by, updated_by
+        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::jsonb, $16::jsonb, $17, $17)
         ON CONFLICT (opportunity_id) DO UPDATE SET
           source_technical_draft_id = EXCLUDED.source_technical_draft_id,
           source_attachment_id = EXCLUDED.source_attachment_id,
           source_sha256 = EXCLUDED.source_sha256,
           source_file_name = EXCLUDED.source_file_name,
           currency = EXCLUDED.currency,
+          tax_rate = EXCLUDED.tax_rate,
           seller_entity_code = EXCLUDED.seller_entity_code,
           seller_entity_name = EXCLUDED.seller_entity_name,
+          customer_contact_id = EXCLUDED.customer_contact_id,
+          customer_contact_name = EXCLUDED.customer_contact_name,
+          customer_contact_phone = EXCLUDED.customer_contact_phone,
+          customer_contact_email = EXCLUDED.customer_contact_email,
           line_items = EXCLUDED.line_items,
           term_selections = EXCLUDED.term_selections,
           draft_revision_no = sales_commercial_quotation_drafts.draft_revision_no + 1,
           updated_by = EXCLUDED.updated_by
-        WHERE sales_commercial_quotation_drafts.draft_revision_no = $13
+        WHERE sales_commercial_quotation_drafts.draft_revision_no = $18
         RETURNING *
       `, [
         input.opportunityId, input.source.technicalDraftId, input.source.attachmentId,
         input.source.sha256, input.source.originalName, input.language,
-        input.currency || null, input.sellerEntityCode || null,
-        input.sellerEntityName || null, JSON.stringify(input.lineItems),
+        input.currency || null, input.taxRate || '0', input.sellerEntityCode || null,
+        input.sellerEntityName || null, input.customerContactId || null,
+        input.customerContactName || '', input.customerContactPhone || '',
+        input.customerContactEmail || '', JSON.stringify(input.lineItems),
         JSON.stringify(input.termSelections || {}), input.actorUserId,
         input.expectedRevisionNo
       ]);

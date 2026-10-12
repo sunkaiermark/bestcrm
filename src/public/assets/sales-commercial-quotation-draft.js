@@ -11,11 +11,50 @@
   sellerEntitySelect?.addEventListener('change', updateSellerProfile);
   updateSellerProfile();
 
+  const customerContactSelect = document.querySelector('[name="customerContactId"]');
+  const customerContactPhone = document.querySelector('[data-customer-contact-phone]');
+  const customerContactEmail = document.querySelector('[data-customer-contact-email]');
+  function updateCustomerContact() {
+    const option = customerContactSelect?.selectedOptions[0];
+    const phone = option?.dataset.phone || '';
+    const email = option?.dataset.email || '';
+    if (customerContactPhone) {
+      customerContactPhone.textContent = phone || '—';
+      customerContactPhone.classList.toggle('draft-pending', !phone);
+    }
+    if (customerContactEmail) {
+      customerContactEmail.textContent = email || '—';
+      customerContactEmail.classList.toggle('draft-pending', !email);
+    }
+  }
+  customerContactSelect?.addEventListener('change', updateCustomerContact);
+
+  function updateTermWording(control, resetForNewTerm = false) {
+    const select = control.querySelector('[data-standard-term-select]');
+    const body = control.querySelector('[data-term-body-input]');
+    const option = select?.selectedOptions[0];
+    const termId = option?.value || '';
+    if (body) {
+      if (resetForNewTerm) body.value = option?.dataset.templateBody || '';
+      body.disabled = !termId || select?.disabled;
+      body.required = Boolean(termId && !select?.disabled);
+    }
+  }
+
+  for (const control of document.querySelectorAll('[data-term-control]')) {
+    const select = control.querySelector('[data-standard-term-select]');
+    select?.addEventListener('change', () => updateTermWording(control, true));
+    updateTermWording(control);
+  }
+
   const container = document.getElementById('sales-quote-draft-rows');
   const addButton = document.querySelector('[data-add-quote-row]');
   if (!container) return;
-  const currencyInput = document.querySelector('input[name="currency"]');
+  const currencyInput = document.querySelector('[name="currency"]');
+  const taxRateInput = document.querySelector('[name="taxRate"]');
   const subtotalDisplay = document.querySelector('[data-draft-subtotal]');
+  const taxAmountDisplay = document.querySelector('[data-draft-tax-amount]');
+  const grandTotalDisplay = document.querySelector('[data-draft-grand-total]');
 
   function scaledDecimal(rawValue, fractionalDigits, wholeDigits) {
     const value = String(rawValue || '').trim();
@@ -59,8 +98,15 @@
       else if (inclusion !== 'excluded') complete = false;
     }
     const currency = String(currencyInput?.value || '').trim().toUpperCase();
-    if (subtotalDisplay) subtotalDisplay.textContent = hasLine && complete
-      ? `${/^[A-Z]{3}$/.test(currency) ? `${currency} ` : ''}${formatCents(subtotal)}` : '—';
+    const taxRate = scaledDecimal(taxRateInput?.value || '0', 2, 3);
+    const validTaxRate = taxRate !== null && taxRate <= 10000n;
+    const ready = hasLine && complete && validTaxRate;
+    const taxAmount = ready ? (subtotal * taxRate + 5000n) / 10000n : null;
+    const currencyPrefix = /^[A-Z]{3}$/.test(currency) ? `${currency} ` : '';
+    if (subtotalDisplay) subtotalDisplay.textContent = ready ? `${currencyPrefix}${formatCents(subtotal)}` : '—';
+    if (taxAmountDisplay) taxAmountDisplay.textContent = ready ? `${currencyPrefix}${formatCents(taxAmount)}` : '—';
+    if (grandTotalDisplay) grandTotalDisplay.textContent = ready
+      ? `${currencyPrefix}${formatCents(subtotal + taxAmount)}` : '—';
   }
 
   function renumber() {
@@ -97,13 +143,7 @@
   container.addEventListener('input', calculate);
   container.addEventListener('change', calculate);
   currencyInput?.addEventListener('input', calculate);
-  document.querySelectorAll('[data-standard-term-select]').forEach((select) => {
-    select.addEventListener('change', () => {
-      const body = select.closest('td')?.querySelector('[data-standard-term-body]');
-      if (!body) return;
-      body.textContent = select.selectedOptions[0]?.dataset.body || '';
-      body.hidden = !body.textContent;
-    });
-  });
+  currencyInput?.addEventListener('change', calculate);
+  taxRateInput?.addEventListener('input', calculate);
   calculate();
 })();

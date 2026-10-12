@@ -7,6 +7,19 @@
 </header>
 <p><a class="secondary-action" href="/quotation-standard-terms?language=en" aria-current="<%= catalogLanguage === 'en' ? 'page' : 'false' %>">English</a> <a class="secondary-action" href="/quotation-standard-terms?language=zh" aria-current="<%= catalogLanguage === 'zh' ? 'page' : 'false' %>">中文</a></p>
 <div class="typical-terms-grid">
+  <% if (templateGroups.length) { %>
+    <h2 class="typical-term-grid-heading"><%= zh ? '内置标准条款' : 'Built-in typical wording' %></h2>
+    <% for (const group of templateGroups) { %>
+      <section class="typical-term-section typical-term-catalog">
+        <header class="typical-term-section-header"><h2><%= group.number %>. <%= group.title %></h2><span class="muted"><%= group.items.length %> options</span></header>
+        <table class="list-table content-fit-table">
+          <thead><tr><th>No.</th><th><%= group.catalog === 'payment' ? 'Payment Terms' : group.catalog === 'delivery' ? 'Delivery Method' : 'Type' %></th><th>Standard Wording</th></tr></thead>
+          <tbody><% for (const item of group.items) { %><tr><td><%= item.number %></td><td><strong><%= item.type %></strong></td><td><%= item.standardWording || '—' %></td></tr><% } %></tbody>
+        </table>
+      </section>
+    <% } %>
+    <h2 class="typical-term-grid-heading"><%= zh ? '公司自定义条款' : 'Company custom wording' %></h2>
+  <% } %>
   <% for (const section of sections) { const sectionTerms = terms.filter((term) => term.key === section.key); %>
     <section class="typical-term-section">
       <header class="typical-term-section-header">

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { requireLogin } from '../middleware/auth.mjs';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
+import { QUOTATION_TYPICAL_TERM_TEMPLATE_GROUPS } from '../domain/quotationTypicalTermTemplates.mjs';
 import {
   SalesQuotationStandardTermError,
   canApproveSalesQuotationStandardTerms,
@@ -40,6 +41,7 @@ export function salesQuotationStandardTermRoutes({ salesQuotationStandardTermRep
       );
       res.render('sales-quotation-standard-terms/index', {
         terms, sections: QUOTATION_COMMERCIAL_TERM_SECTIONS, catalogLanguage,
+        templateGroups: catalogLanguage === 'en' ? QUOTATION_TYPICAL_TERM_TEMPLATE_GROUPS : [],
         canAuthor: canAuthorSalesQuotationStandardTerms(req.currentUser),
         canApprove: canApproveSalesQuotationStandardTerms(req.currentUser),
         currentUserId: req.currentUser.id
