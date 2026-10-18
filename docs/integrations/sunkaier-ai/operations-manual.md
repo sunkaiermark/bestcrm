@@ -25,3 +25,7 @@ AI_SOURCE_ENABLED 控制人工工作区，SUNKAIER_AI_INTEGRATION_ENABLED 控制
 - git diff --check
 
 监控管理员运行审计中的认证失败、冲突和扫描失败。错误响应不返回内部堆栈。大型部署可另行评估 substring 查询索引和私有文件孤儿对账，当前查询为参数化分词 ILIKE，不是 AI 语义搜索。
+
+## 清理后的默认行为
+
+本地启动默认不灌入演示数据，来源列表为空，数据库结构和本地登录账号保留。需要合成演练时可显式运行 node scripts/local-ai-source.mjs --seed-demo；不能在真实数据库运行该脚本。旧 local-preview.mjs 与 preview/ai-source 已移除。备份目录保留，不纳入垃圾删除。

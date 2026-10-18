@@ -23,4 +23,4 @@ SUNKAIER AI 持续搜索全球项目并甄别、去重、更新，也整理官�
 - completion-review.md：文件清单和实际验证结果。
 - examples：合成请求响应。
 
-正式人工工作区 /ai-sources。node scripts/local-ai-source.mjs 提供 127.0.0.1:3001 的持久化合成版本。旧 /ai-source-preview/ 只是浏览器内存布局样稿。
+正式人工工作区 /ai-sources。node scripts/local-ai-source.mjs 提供 127.0.0.1:3001 的持久化合成版本。旧纯前端布局样稿已移除；仅保留正式数据库工作区。

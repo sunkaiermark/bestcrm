@@ -20,7 +20,7 @@ try{credentials=JSON.parse(await readFile(credentialsFile,'utf8'));}catch{creden
 const pool=await testDatabase('var/ai-source-local-db');
 const manager=await syntheticUser(pool,credentials.username,['administrator','sales_manager','salesperson'],credentials.password);
 const repository=createAiSourceRepository(pool),service=createAiSourceService(repository);
-if(!(await pool.query('SELECT 1 FROM ai_sources WHERE client_id=$1 LIMIT 1',['local-synthetic'])).rows.length){
+if(process.argv.includes('--seed-demo')&&!(await pool.query('SELECT 1 FROM ai_sources WHERE client_id=$1 LIMIT 1',['local-synthetic'])).rows.length){
  const titles=['合成海湾材料扩建项目','合成东南亚树脂产线','合成欧洲电池材料项目','合成北美溶剂回收项目','合成南美生物材料项目','合成非洲化工改造项目'];
  for(let i=0;i<30;i++){
   const channel=i<24?'ai_project_search':['website_form','web_chat','phone_consultation'][i%3];

@@ -1,6 +1,6 @@
 # AI Source 实现状态
 
-本次实现 CRM AI Source 持久化工作区及默认关闭的机器 API，替代原先仅浏览器内存的演示能力。旧 /ai-source-preview/ 保留为布局样稿，正式工作区为 /ai-sources。
+本次实现 CRM AI Source 持久化工作区及默认关闭的机器 API，替代原先仅浏览器内存的演示能力。旧 /ai-source-preview/ 布局样稿已移除，正式工作区为 /ai-sources。
 
 ## 已实现
 
