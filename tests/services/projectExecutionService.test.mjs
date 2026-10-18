@@ -87,7 +87,7 @@ test('assigned Sales starts execution with signed contract without any creation 
 
   assert.equal(result.created, true);
   assert.equal(calls.some(([name])=>name==='setting'),false);
-  assert.deepEqual(calls[0],['create',{opportunityId:30,contractSignedOn:'2026-09-14',confirmedByUserId:7,projectOwnerUserId:11,signedContractAttachmentId:90}]);
+  assert.deepEqual(calls[0],['create',{opportunityId:30,contractSignedOn:null,confirmedByUserId:7,projectOwnerUserId:null,signedContractAttachmentId:90}]);
   assert.equal(calls[1][1].eventType,'sales_project_started');
   assert.equal(calls.some(([name])=>name==='kickoff'),false);
 });
@@ -181,8 +181,9 @@ test('signed contract selection is required and an ordinary contract cannot be s
  const {actor,repositories}=setup();
  await assert.rejects(()=>confirmProjectExecution(repositories,actor,30,{contractSignedOn:'2026-09-14',projectOwnerUserId:11,signedContractAttachmentId:999}),/signed contract attachment is required/);
 });
-test('inactive project owners and future signing dates cannot start execution',async()=>{
- const {actor,repositories}=setup();
- await assert.rejects(()=>confirmProjectExecution(repositories,actor,30,{contractSignedOn:'2099-01-01',projectOwnerUserId:11,signedContractAttachmentId:90}),/future/);
- await assert.rejects(()=>confirmProjectExecution(repositories,actor,30,{contractSignedOn:'2026-09-14',projectOwnerUserId:999,signedContractAttachmentId:90}),/Active project owner/);
+test('Sales cannot assign an execution owner or fabricate the signing date',async()=>{
+ const {actor,repositories,calls}=setup();
+ await confirmProjectExecution(repositories,actor,30,{contractSignedOn:'2099-01-01',projectOwnerUserId:999,signedContractAttachmentId:90});
+ assert.equal(calls[0][1].contractSignedOn,null);
+ assert.equal(calls[0][1].projectOwnerUserId,null);
 });

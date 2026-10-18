@@ -83,13 +83,14 @@ async function setup(options = {}) {
   return { agent, getCreates: () => creates };
 }
 
-test('assigned Sales starts the one execution record with no second approval', async () => {
+test('Sales sees upload-only UI and the obsolete manual-start POST creates no project', async () => {
   const { agent, getCreates } = await setup();
 
   const form = await agent.get('/opportunities/30/project-execution/confirm');
   assert.equal(form.status, 200);
-  assert.match(form.text, /Start Project Execution/);
-  assert.match(form.text, /Contract signing date/);
+  assert.match(form.text, /Upload mutually signed contract/);
+  assert.doesNotMatch(form.text, /name="projectOwnerUserId"/);
+  assert.doesNotMatch(form.text, /name="contractSignedOn"/);
 
   const created = await agent
     .post('/opportunities/30/project-execution/confirm')
@@ -98,9 +99,8 @@ test('assigned Sales starts the one execution record with no second approval', a
       contractSignedOn: '2026-09-14', signedContractAttachmentId:90, projectOwnerUserId: 7, projectEngineerUserId: 12,
       processEngineerUserId: 13, technicalManagerUserId: 14, approverUserId: 15, publisherUserId: 16
     });
-  assert.equal(created.status, 302);
-  assert.equal(created.headers.location, '/project-executions/5');
-  assert.equal(getCreates(), 1);
+  assert.equal(created.status, 410);
+  assert.equal(getCreates(), 0);
 });
 
 test('project execution has a standalone visible list for authorized project users', async () => {

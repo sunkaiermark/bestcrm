@@ -56,6 +56,7 @@ function mapMilestone(row) {
 function mapWorkPackage(row) {
   if (!row) return null;
   return {
+    departmentCode: row.department_code || null,
     id: Number(row.id), projectExecutionId: Number(row.project_execution_id), title: row.title, instruction: row.instruction || '',
     responsibleUserId: Number(row.responsible_user_id),
     responsibleDisplayName: row.responsible_display_name || '',
@@ -311,6 +312,20 @@ export function createProjectExecutionRepository(queryTarget) {
         ORDER BY w.due_on NULLS LAST, w.id
       `, [projectExecutionId]);
       return result.rows.map(mapWorkPackage);
+    },
+
+    async saveDepartmentPlan(input) {
+      const result=await queryTarget.query(`
+        INSERT INTO project_execution_work_packages(project_execution_id,department_code,title,instruction,responsible_user_id,
+          planned_start_on,due_on,created_by_user_id)
+        VALUES($1,$2,$3,$4,$5,$6,$7,$8)
+        ON CONFLICT(project_execution_id,department_code) WHERE department_code IS NOT NULL
+        DO UPDATE SET title=excluded.title,instruction=excluded.instruction,responsible_user_id=excluded.responsible_user_id,
+          planned_start_on=excluded.planned_start_on,due_on=excluded.due_on,updated_at=now()
+        RETURNING id
+      `,[input.projectExecutionId,input.departmentCode,input.title,input.instruction,input.responsibleUserId,
+        input.plannedStartOn,input.dueOn,input.actorUserId]);
+      return Number(result.rows[0].id);
     },
 
     async createWorkPackage(input) {

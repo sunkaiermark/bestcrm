@@ -1,3 +1,6 @@
+import path from 'node:path';
+import {rm} from 'node:fs/promises';
+import {persistUploadedOpportunityAttachment} from './attachmentIntegrityService.mjs';
 import { createOpportunityRepository } from '../repositories/opportunityRepository.mjs';
 import { createAttachmentRepository } from '../repositories/attachmentRepository.mjs';
 import { createUserRepository } from '../repositories/userRepository.mjs';
@@ -66,14 +69,13 @@ export function canConfirmProjectExecution(actor, opportunity) {
 }
 
 export function canViewProjectExecution(actor, projectExecution) {
-  return Number(projectExecution?.confirmedByUserId) === Number(actor?.id)
+  return hasRole(actor,'general_manager') || Number(projectExecution?.confirmedByUserId) === Number(actor?.id)
     || Number(projectExecution?.projectOwnerUserId) === Number(actor?.id)
     || canViewOpportunity(actor, projectExecution);
 }
 
 export function canManageProjectExecution(actor, projectExecution) {
-  return hasRole(actor, 'administrator')
-    || Number(projectExecution?.projectOwnerUserId) === Number(actor?.id);
+  return actor?.isActive !== false && hasRole(actor, 'general_manager');
 }
 
 async function requireActiveWorkflowParticipants(userRepository, input) {
@@ -130,12 +132,9 @@ export async function confirmProjectExecution(repositories, actor, opportunityId
   await repositories.projectExecutionRepository.lockOpportunity?.(opportunityId);
   const context = await loadProjectExecutionConfirmationContext(repositories, actor, opportunityId);
   if (context.projectExecution) return {projectExecution:context.projectExecution,created:false};
-  const contractSignedOn = validDateOnly(input.contractSignedOn);
-  if (!contractSignedOn || contractSignedOn > todayInShanghai()) {
-    throw new Error('Valid contract signing date is required and cannot be in the future');
-  }
-  const ownerId=validUserId(input.projectOwnerUserId);
-  if (!ownerId || !context.users.some(user => Number(user.id)===ownerId)) throw new Error('Active project owner is required');
+  // Sales only supplies the signed file. Do not invent a signing date or accept execution assignments here.
+  const contractSignedOn = null;
+  const ownerId = null;
   const signedContract=context.signedContracts.find(file => Number(file.id)===Number(input.signedContractAttachmentId));
   if (!signedContract || !/^[a-f0-9]{64}$/.test(signedContract.sha256||'') || !(signedContract.fileSize>0)) {
     throw new Error('Valid signed contract attachment is required');
@@ -147,9 +146,69 @@ export async function confirmProjectExecution(repositories, actor, opportunityId
   });
   if(result.created) await repositories.projectExecutionRepository.appendAuditEvent({
     projectExecutionId:result.projectExecution.id,eventType:'sales_project_started',actorUserId:actor.id,
-    note:'销售收到双方签署合同后直接启动项目执行；合同附件 #'+signedContract.id+'；SHA256 '+signedContract.sha256
+    note:'销售上传双方签署合同，系统自动创建执行项目，待总经理制定计划；合同附件 #'+signedContract.id+'；SHA256 '+signedContract.sha256
   });
   return result;
+}
+
+export async function receiveSignedContract(repositories, actor, opportunityId, file, uploadDir) {
+ if(repositories.projectExecutionRepository.withTransaction && !repositories.inProjectTransaction){
+  try {
+   return await repositories.projectExecutionRepository.withTransaction((projectExecutionRepository,client)=>
+    receiveSignedContract(transactionRepositories(repositories,projectExecutionRepository,client),actor,opportunityId,file,uploadDir));
+  } catch(error) {
+   const target=file?.path && path.resolve(file.path),root=path.resolve(uploadDir)+path.sep;
+   if(target?.startsWith(root)) await rm(target,{force:true});
+   throw error;
+  }
+ }
+ await repositories.projectExecutionRepository.lockOpportunity?.(opportunityId);
+ await loadProjectExecutionConfirmationContext(repositories,actor,opportunityId);
+ const attachment=await persistUploadedOpportunityAttachment({attachmentRepository:repositories.attachmentRepository,uploadDir,file,
+  opportunityId:Number(opportunityId),category:'signed_contract',actorUserId:actor.id});
+ const result=await confirmProjectExecution(repositories,actor,opportunityId,{signedContractAttachmentId:attachment.id});
+ if(!result.created) await repositories.projectExecutionRepository.appendAuditEvent({projectExecutionId:result.projectExecution.id,
+  eventType:'signed_contract_received',actorUserId:actor.id,note:'销售补传双方签署合同，保留版本；合同附件 #'+attachment.id});
+ return {...result,attachment};
+}
+
+export const PROJECT_DEPARTMENTS = Object.freeze([
+ ['project','项目部执行','Project Department'],['technical','技术','Technical'],
+ ['supply_chain','供应链','Supply chain'],['quality_control','质量控制','Quality control']
+]);
+
+export async function saveGeneralManagerPlan(repositories,actor,projectExecutionId,input){
+ if(!canManageProjectExecution(actor)) forbidden();
+ if(repositories.projectExecutionRepository.withTransaction && !repositories.inProjectTransaction)
+  return repositories.projectExecutionRepository.withTransaction((projectExecutionRepository,client)=>
+   saveGeneralManagerPlan(transactionRepositories(repositories,projectExecutionRepository,client),actor,projectExecutionId,input));
+ await repositories.projectExecutionRepository.lockProject?.(projectExecutionId);
+ const project=await getProjectExecutionDetail(repositories,actor,projectExecutionId);
+ const start=validDateOnly(input.plannedStartOn),end=validDateOnly(input.plannedCompletionOn);
+ if(!start||!end||end<start)throw new Error('Valid project plan dates are required; completion cannot be before start');
+ const departments=[];
+ for(const [code,title] of PROJECT_DEPARTMENTS){
+  const responsibleUserId=validUserId(input[code+'UserId']);
+  const user=responsibleUserId && await repositories.userRepository.findByIdWithRoles(responsibleUserId);
+  if(!user||user.isActive===false)throw new Error('Active department owner is required: '+code);
+  const plannedStartOn=validDateOnly(input[code+'StartOn']||start),dueOn=validDateOnly(input[code+'DueOn']||end);
+  if(!plannedStartOn||!dueOn||dueOn<plannedStartOn||plannedStartOn<start||dueOn>end)
+   throw new Error('Department dates must be within the project plan: '+code);
+  departments.push({departmentCode:code,title,responsibleUserId,plannedStartOn,dueOn,
+   instruction:text(input[code+'Instruction'])||title+'负责本部门执行、进度反馈与成果提交。'});
+ }
+ await repositories.projectExecutionRepository.updateProject(project.id,{
+  projectOwnerUserId:departments[0].responsibleUserId,status:project.status,
+  plannedStartOn:start,plannedCompletionOn:end,actualDeliveryOn:project.actualDeliveryOn,
+  actualAcceptanceOn:project.actualAcceptanceOn,riskSummary:text(input.riskSummary)
+ });
+ for(const department of departments){
+  const workPackageId=await repositories.projectExecutionRepository.saveDepartmentPlan({projectExecutionId:project.id,...department,actorUserId:actor.id});
+  await repositories.projectExecutionRepository.appendAuditEvent({projectExecutionId:project.id,workPackageId,
+   eventType:'department_plan_assigned',actorUserId:actor.id,
+   note:'总经理分配'+department.title+'；执行人 #'+department.responsibleUserId+'；计划 '+department.plannedStartOn+' 至 '+department.dueOn});
+ }
+ return repositories.projectExecutionRepository.findById(project.id);
 }
 
 export async function configureProjectExecutionWorkflow(repositories, actor, projectExecutionId, input) {
@@ -164,7 +223,7 @@ export async function configureProjectExecutionWorkflow(repositories, actor, pro
   if(existing) return existing;
   const participants=await requireActiveWorkflowParticipants(repositories.userRepository,{...input,projectOwnerUserId:project.projectOwnerUserId});
   await repositories.projectExecutionRepository.createContractKickoffTemplate({
-    projectExecutionId:project.id,referenceDate:String(project.contractSignedOn).slice(0,10),
+    projectExecutionId:project.id,referenceDate:project.plannedStartOn || project.contractSignedOn || todayInShanghai(),
     ...participants,technicalResponsibleUserId:participants.projectEngineerUserId,
     technicalApproverUserId:participants.technicalManagerUserId,
     kickoffParticipantNote:'参与人：销售负责人、技术负责人、项目执行人。',actorUserId:actor.id
@@ -252,6 +311,8 @@ export async function loadProjectExecutionWorkspace(repositories, actor, project
       technicalApproverUserId: releaseWorkflow?.technicalManagerUserId || projectExecution.technicalManagerId,
       technicalManagerId: releaseWorkflow?.technicalManagerUserId || projectExecution.technicalManagerId
     },
+    canViewOriginOpportunity: canViewOpportunity(actor,projectExecution),
+    departments: workPackages.filter(item => item.departmentCode),
     canManage: canManageProjectExecution(actor, projectExecution)
   };
 }
@@ -259,6 +320,7 @@ export async function loadProjectExecutionWorkspace(repositories, actor, project
 export async function updateProjectExecution(repositories, actor, projectExecutionId, input) {
   const project = await getProjectExecutionDetail(repositories, actor, projectExecutionId);
   if (!canManageProjectExecution(actor, project)) forbidden();
+  if(Number(input.projectOwnerUserId)!==Number(project.projectOwnerUserId)) throw new Error('Project owner must be assigned through department plan');
   const status = validProjectStatus(input.status);
   const projectOwnerUserId = Number(input.projectOwnerUserId);
   if (!status || !Number.isInteger(projectOwnerUserId) || projectOwnerUserId <= 0) {

@@ -893,7 +893,7 @@ export function createApp(options = {}) {
     now: options.inquiryIntakeNow
   }));
   app.use(session({
-    name: 'bestcrm.sid',
+    name: options.sessionCookieName || 'bestcrm.sid',
     secret: config.sessionSecret,
     resave: false,
     saveUninitialized: false,
@@ -1083,6 +1083,7 @@ export function createApp(options = {}) {
     opportunityRepository
   }));
   app.use(projectExecutionRoutes({
+    uploadDir: config.uploadDir,
     attachmentRepository,
     opportunityRepository,
     projectExecutionRepository,

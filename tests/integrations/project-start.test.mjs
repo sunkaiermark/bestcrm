@@ -1,9 +1,8 @@
-import {mkdtemp,rm} from 'node:fs/promises';
-import {tmpdir} from 'node:os';
-import path from 'node:path';
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {randomBytes} from 'node:crypto';
+import {mkdtemp,rm,readdir,writeFile} from 'node:fs/promises';
+import {tmpdir} from 'node:os';
+import path from 'node:path';
 import request from 'supertest';
 import {testDatabase,syntheticUser} from './ai-source-fixtures.mjs';
 import {createApp} from '../../src/server.mjs';
@@ -12,75 +11,76 @@ import {createOpportunityRepository} from '../../src/repositories/opportunityRep
 import {createAttachmentRepository} from '../../src/repositories/attachmentRepository.mjs';
 import {createUserRepository} from '../../src/repositories/userRepository.mjs';
 import {createProjectExecutionRepository} from '../../src/repositories/projectExecutionRepository.mjs';
-import {confirmProjectExecution,configureProjectExecutionWorkflow} from '../../src/services/projectExecutionService.mjs';
+import {receiveSignedContract,saveGeneralManagerPlan,configureProjectExecutionWorkflow,updateProjectWorkPackage} from '../../src/services/projectExecutionService.mjs';
 
-test('Sales contract upload, atomic start, access control and later technical configuration use the real schema',async()=>{
+test('Sales upload automatically creates one project; only GM plans four departments; assignees execute without reallocating',async()=>{
+
  const pool=await testDatabase();
  const uploadDir=await mkdtemp(path.join(tmpdir(),'bestcrm-project-start-'));
- const password=randomBytes(18).toString('hex');
+ const password='Synthetic-local-only-'+Date.now();
  try{
-  const seller=await syntheticUser(pool,'synthetic-project-seller',['salesperson'],password);
-  const other=await syntheticUser(pool,'synthetic-other-seller',['salesperson'],password);
+  const sales=await syntheticUser(pool,'synthetic-project-sales',['salesperson'],password);
+  const other=await syntheticUser(pool,'synthetic-project-other',['salesperson'],password);
+  const gm=await syntheticUser(pool,'synthetic-project-gm',['general_manager'],password);
+  const admin=await syntheticUser(pool,'synthetic-project-admin',['administrator'],password);
   const owner=await syntheticUser(pool,'synthetic-project-owner',[],password);
-  const technical=await syntheticUser(pool,'synthetic-project-technical',['technical_manager'],password);
+  const engineer=await syntheticUser(pool,'synthetic-project-engineer',['quotation_engineer'],password);
+  const supply=await syntheticUser(pool,'synthetic-project-supply',[],password);
+  const quality=await syntheticUser(pool,'synthetic-project-quality',[],password);
+  const technical=await syntheticUser(pool,'synthetic-project-reviewer',['technical_manager'],password);
   const repos={opportunityRepository:createOpportunityRepository(pool),attachmentRepository:createAttachmentRepository(pool),userRepository:createUserRepository(pool),projectExecutionRepository:createProjectExecutionRepository(pool)};
-  const customer=(await pool.query('INSERT INTO customers(name,owner_user_id) VALUES($1,$2) RETURNING id',['Synthetic project customer',seller.id])).rows[0];
-  async function opportunity(number,status='contract_archived'){
-   return Number((await pool.query('INSERT INTO opportunities(opportunity_no,title,customer_id,requirement,status,salesperson_id,archived_at) VALUES($1,$2,$3,$4,$5,$6,now()) RETURNING id',[number,'Synthetic project',customer.id,'Synthetic requirement',status,seller.id])).rows[0].id);
-  }
-  const id=await opportunity('SYN-PROJECT-1');
-  const foreignId=await opportunity('SYN-PROJECT-2');
-  const notApproved=await opportunity('SYN-PROJECT-3','contract_approval_in_progress');
-  const file=await repos.attachmentRepository.createAttachment({opportunityId:id,category:'signed_contract',originalName:'synthetic-signed.pdf',storedPath:'synthetic/signed.pdf',mimeType:'application/pdf',fileSize:100,sha256:'a'.repeat(64),uploadedBy:seller.id});
-  const foreignFile=await repos.attachmentRepository.createAttachment({opportunityId:foreignId,category:'signed_contract',originalName:'foreign.pdf',storedPath:'synthetic/foreign.pdf',mimeType:'application/pdf',fileSize:100,sha256:'b'.repeat(64),uploadedBy:seller.id});
-  const ordinaryFile=await repos.attachmentRepository.createAttachment({opportunityId:id,category:'contract',originalName:'approval-only.pdf',storedPath:'synthetic/approval.pdf',mimeType:'application/pdf',fileSize:100,sha256:'d'.repeat(64),uploadedBy:seller.id});
-  const input={contractSignedOn:'2026-10-18',projectOwnerUserId:owner.id,signedContractAttachmentId:file.id};
-  assert.equal((await pool.query("SELECT count(*) FROM approval_settings WHERE setting_key='project_execution_creation'")).rows[0].count,0);
-  await assert.rejects(()=>confirmProjectExecution(repos,other,id,input),/Forbidden/);
-  await assert.rejects(()=>confirmProjectExecution(repos,seller,notApproved,input),/contract approval/);
-  await assert.rejects(()=>confirmProjectExecution(repos,seller,id,{...input,signedContractAttachmentId:foreignFile.id}),/signed contract attachment/);
-  await assert.rejects(()=>confirmProjectExecution(repos,seller,id,{...input,signedContractAttachmentId:ordinaryFile.id}),/signed contract attachment/);
-  assert.equal(Number((await pool.query('SELECT count(*) FROM project_executions')).rows[0].count),0);
-  const [one,two]=await Promise.all([confirmProjectExecution(repos,seller,id,input),confirmProjectExecution(repos,seller,id,input)]);
-  assert.equal(one.projectExecution.id,two.projectExecution.id);
-  assert.equal([one,two].filter(x=>x.created).length,1);
-  const projectId=one.projectExecution.id;
-  assert.equal(Number((await pool.query("SELECT count(*) FROM project_execution_audit_events WHERE event_type='sales_project_started'")).rows[0].count),1);
-  assert.equal(await repos.projectExecutionRepository.findReleaseWorkflow(projectId),null);
-  await assert.rejects(()=>pool.query('UPDATE project_executions SET signed_contract_attachment_id=$2 WHERE id=$1',[projectId,foreignFile.id]),/cannot be overwritten/);
-  const failingId=await opportunity('SYN-PROJECT-ROLLBACK');
-  const failingFile=await repos.attachmentRepository.createAttachment({opportunityId:failingId,category:'signed_contract',originalName:'rollback.pdf',storedPath:'synthetic/rollback.pdf',mimeType:'application/pdf',fileSize:100,sha256:'c'.repeat(64),uploadedBy:seller.id});
-  const failing={...repos,projectExecutionRepository:{withTransaction:work=>repos.projectExecutionRepository.withTransaction((tx,client)=>work({...tx,appendAuditEvent:async()=>{throw Error('synthetic audit failure');}},client))}};
-  await assert.rejects(()=>confirmProjectExecution(failing,seller,failingId,{...input,signedContractAttachmentId:failingFile.id}),/synthetic audit failure/);
-  assert.equal(await repos.projectExecutionRepository.findByOpportunity(failingId),null);
-  const participants={projectEngineerUserId:seller.id,processEngineerUserId:other.id,technicalManagerUserId:technical.id,approverUserId:owner.id,publisherUserId:owner.id};
-  await assert.rejects(()=>configureProjectExecutionWorkflow(repos,seller,projectId,participants),/Forbidden/);
-  await assert.rejects(()=>configureProjectExecutionWorkflow(repos,owner,projectId,{...participants,approverUserId:seller.id}),/cannot review or approve/);
-  await configureProjectExecutionWorkflow(repos,owner,projectId,participants);
-  await configureProjectExecutionWorkflow(repos,owner,projectId,participants);
-  assert.equal(Number((await pool.query('SELECT count(*) FROM project_execution_work_packages WHERE project_execution_id=$1',[projectId])).rows[0].count),4);
-  assert.equal(Number((await pool.query('SELECT count(*) FROM project_execution_milestones WHERE project_execution_id=$1',[projectId])).rows[0].count),4);
+  const customer=(await pool.query('INSERT INTO customers(name,owner_user_id) VALUES($1,$2) RETURNING id',['Synthetic execution customer',sales.id])).rows[0];
+  const createOpportunity=async(number,status='contract_archived')=>Number((await pool.query('INSERT INTO opportunities(opportunity_no,title,customer_id,requirement,status,salesperson_id,archived_at) VALUES($1,$2,$3,$4,$5,$6,now()) RETURNING id',[number,'Synthetic project',customer.id,'Synthetic only',status,sales.id])).rows[0].id);
+  const id=await createOpportunity('SYN-AUTO-PROJECT');
+  const unapproved=await createOpportunity('SYN-NOT-APPROVED','contract_approval_in_progress');
   const app=createApp({...loadConfig({}),pool,uploadDir,sessionSecret:password,sessionStore:undefined,csrfProtection:true,aiSourceConfig:{enabled:false,workspaceEnabled:false,keys:[]},startEmailPurgeFileCleanupLoop:()=>null});
-  const agent=request.agent(app);
-  const login=await agent.get('/login');
   const csrf=html=>(html.match(/name="_csrf" value="([^"]+)"/)||[])[1];
-  const loggedIn=await agent.post('/login').type('form').send({username:seller.username,password,_csrf:csrf(login.text)});
-  assert.equal(loggedIn.status,302);
-  const form=await agent.get('/opportunities/'+foreignId+'/project-execution/start');
-  assert.equal(form.status,200);
-  const rejected=await agent.post('/opportunities/'+foreignId+'/project-execution/start').type('form').send(input);
-  assert.equal(rejected.status,403);
-  const signedUpload=await agent.post('/opportunities/'+foreignId+'/attachments').field('_csrf',csrf(form.text)).field('category','signed_contract').field('returnTo','project-start').attach('attachment',Buffer.from('%PDF-1.4 synthetic signed test contract'),{filename:'signed-upload.pdf',contentType:'application/pdf'});
-  assert.equal(signedUpload.status,302);
-  const uploaded=(await repos.attachmentRepository.listByOpportunity(foreignId)).find(f=>f.originalName==='signed-upload.pdf');
-  assert.ok(uploaded.sha256);
-  const started=await agent.post('/opportunities/'+foreignId+'/project-execution/start').type('form').send({...input,signedContractAttachmentId:uploaded.id,_csrf:csrf(form.text)});
-  assert.equal(started.status,302);
-  const page=await agent.get(started.headers.location);
-  assert.equal(page.status,200);
-  assert.match(page.text,/Signed contract and project start/);
- }finally{await pool.end();
-  if(path.dirname(path.resolve(uploadDir))!==path.resolve(tmpdir())) throw new Error('Unexpected test cleanup path');
-  await rm(uploadDir,{recursive:true,force:true});
- }
+  async function login(user){const agent=request.agent(app);const page=await agent.get('/login');assert.equal((await agent.post('/login').type('form').send({username:user.username,password,_csrf:csrf(page.text)})).status,302);return agent;}
+  const agent=await login(sales);
+  const form=await agent.get('/opportunities/'+id+'/project-execution/start');assert.equal(form.status,200);
+  assert.doesNotMatch(form.text,/name="(projectOwnerUserId|contractSignedOn)"/);
+  const upload=()=>agent.post('/opportunities/'+id+'/attachments').field('_csrf',csrf(form.text)).field('category','signed_contract').field('projectOwnerUserId',sales.id).field('contractSignedOn','2099-01-01').attach('attachment',Buffer.from('%PDF-1.4 Synthetic contract only'),{filename:'signed.pdf',contentType:'application/pdf'});
+
+  const first=await upload();assert.equal(first.status,302);assert.match(first.headers.location,/^\/project-executions\/\d+$/);
+  const project=await repos.projectExecutionRepository.findByOpportunity(id);assert.equal(project.projectOwnerUserId,null);assert.equal(project.contractSignedOn,null);
+  const projectId=project.id;
+
+  const second=await upload();assert.equal(second.headers.location,first.headers.location);
+  assert.equal(Number((await pool.query('SELECT count(*) FROM project_executions WHERE opportunity_id=$1',[id])).rows[0].count),1);
+  assert.equal((await repos.attachmentRepository.listByOpportunity(id)).filter(f=>f.category==='signed_contract').length,2);
+  assert.equal((await repos.projectExecutionRepository.findById(projectId)).signedContractAttachmentId,project.signedContractAttachmentId);
+  const stranger=await login(other);
+  assert.equal((await stranger.get('/opportunities/'+id+'/project-execution/start')).status,403);
+  const rejected=await agent.post('/opportunities/'+unapproved+'/attachments').field('_csrf',csrf(form.text)).field('category','signed_contract').attach('attachment',Buffer.from('%PDF-1.4 blocked'),{filename:'blocked.pdf',contentType:'application/pdf'});assert.equal(rejected.status,403);
+  const original=await agent.post('/opportunities/'+id+'/project-execution/start').type('form').send({_csrf:csrf(form.text)});assert.equal(original.status,410);
+  const input={plannedStartOn:'2026-10-20',plannedCompletionOn:'2026-11-20',projectUserId:owner.id,technicalUserId:engineer.id,supply_chainUserId:supply.id,quality_controlUserId:quality.id,projectInstruction:'项目协调与交付',technicalInstruction:'图纸与技术文件',supply_chainInstruction:'采购与物料交付',quality_controlInstruction:'检验与质量控制'};
+  await assert.rejects(()=>saveGeneralManagerPlan(repos,sales,projectId,input),/Forbidden/);
+  await assert.rejects(()=>saveGeneralManagerPlan(repos,admin,projectId,input),/Forbidden/);
+  await assert.rejects(()=>saveGeneralManagerPlan(repos,gm,projectId,{...input,quality_controlUserId:99999}),/Active department owner/);
+  await assert.rejects(()=>saveGeneralManagerPlan(repos,gm,projectId,{...input,technicalStartOn:'2026-10-19'}),/within the project plan/);
+  assert.equal((await repos.projectExecutionRepository.listWorkPackages(projectId)).length,0);
+
+  await saveGeneralManagerPlan(repos,gm,projectId,input);
+  const tasks=await repos.projectExecutionRepository.listWorkPackages(projectId);assert.equal(tasks.length,4);assert.deepEqual(new Set(tasks.map(t=>t.departmentCode)),new Set(['project','technical','supply_chain','quality_control']));
+
+  const gmAgent=await login(gm);const gmPage=await gmAgent.get('/project-executions/'+projectId);assert.equal(gmPage.status,200);assert.match(gmPage.text,/General Manager plan and department assignments/);
+  const contract=await gmAgent.get('/project-executions/'+projectId+'/signed-contract');assert.equal(contract.status,200);assert.match(contract.headers['content-type'],/application\/pdf/);
+  const unrelated=await stranger.get('/project-executions/'+projectId+'/signed-contract');assert.equal(unrelated.status,403);
+  const salesPage=await agent.get('/project-executions/'+projectId);assert.doesNotMatch(salesPage.text,/action="[^"]*department-plan"/);
+  const task=tasks.find(t=>t.departmentCode==='supply_chain');
+  await updateProjectWorkPackage(repos,supply,projectId,task.id,{status:'in_progress',responsibleUserId:sales.id,plannedStartOn:'2099-01-01',blockerNote:'',acceptanceNote:'采购准备'});
+  const progress=await repos.projectExecutionRepository.findWorkPackage(task.id);assert.equal(progress.responsibleUserId,supply.id);assert.equal(progress.plannedStartOn,'2026-10-20');
+  await saveGeneralManagerPlan(repos,gm,projectId,{...input,supply_chainUserId:other.id});
+  const reassigned=await repos.projectExecutionRepository.findWorkPackage(task.id);assert.equal(reassigned.status,'in_progress');assert.equal(reassigned.responsibleUserId,other.id);
+  assert.equal((await repos.projectExecutionRepository.listWorkPackages(projectId)).length,4);
+
+  const failingId=await createOpportunity('SYN-ROLLBACK-PROJECT');
+  const filePath=path.join(uploadDir,'rollback.pdf');await writeFile(filePath,Buffer.from('%PDF-1.4 rollback fixture'));
+  const failing={...repos,projectExecutionRepository:{withTransaction:work=>repos.projectExecutionRepository.withTransaction((tx,client)=>work({...tx,appendAuditEvent:async()=>{throw Error('synthetic audit failure');}},client))}};
+  await assert.rejects(()=>receiveSignedContract(failing,sales,failingId,{path:filePath,originalname:'rollback.pdf',mimetype:'application/pdf'},uploadDir),/synthetic audit failure/);
+  assert.equal(await repos.projectExecutionRepository.findByOpportunity(failingId),null);assert.equal((await repos.attachmentRepository.listByOpportunity(failingId)).length,0);
+  assert.equal((await readdir(uploadDir)).includes('rollback.pdf'),false);
+  await configureProjectExecutionWorkflow(repos,gm,projectId,{projectEngineerUserId:engineer.id,processEngineerUserId:supply.id,technicalManagerUserId:technical.id,approverUserId:gm.id,publisherUserId:owner.id});
+  assert.ok(await repos.projectExecutionRepository.findReleaseWorkflow(projectId));
+ }finally{await pool.end();if(path.dirname(path.resolve(uploadDir))!==path.resolve(tmpdir()))throw Error('Unexpected cleanup path');await rm(uploadDir,{recursive:true,force:true});}
 });

@@ -1,7 +1,10 @@
+import {inspectStoredAttachmentFile} from '../services/attachmentFileService.mjs';
+import {inlineContentDisposition} from '../utils/contentDisposition.mjs';
 import { Router } from 'express';
 import { requireLogin } from '../middleware/auth.mjs';
 import {
   confirmProjectExecution,
+  saveGeneralManagerPlan,
   configureProjectExecutionWorkflow,
   createProjectMilestone,
   createProjectWorkPackage,
@@ -35,6 +38,7 @@ export function projectExecutionRoutes({
   projectExecutionRepository,
   approvalSettingRepository,
   attachmentRepository,
+  uploadDir,
   userRepository
 }) {
   const router = Router();
@@ -56,6 +60,20 @@ export function projectExecutionRoutes({
     } catch (error) {
       respondProjectExecutionError(error, res, next);
     }
+  });
+
+  router.get('/project-executions/:id/signed-contract',async(req,res,next)=>{
+    try {
+      const workspace=await loadProjectExecutionWorkspace(repositories,req.currentUser,req.params.id);
+      const project=workspace.projectExecution;
+      const file=project.signedContractAttachmentId && await attachmentRepository.findById(project.signedContractAttachmentId);
+      if(!file||Number(file.opportunityId)!==Number(project.opportunityId)||file.category!=='signed_contract')return res.status(404).send('Signed contract not found');
+      const inspected=await inspectStoredAttachmentFile({uploadDir,storedPath:file.storedPath});
+      if(inspected.sha256!==file.sha256||inspected.fileSize!==file.fileSize)return res.status(409).send('Signed contract integrity check failed');
+      res.set('Cache-Control','private, no-store');res.set('X-Content-Type-Options','nosniff');
+      if(file.mimeType==='application/pdf'){res.type('application/pdf');res.set('Content-Disposition',inlineContentDisposition(file.originalName));return res.sendFile(inspected.absolutePath);}
+      res.download(inspected.absolutePath,file.originalName);
+    }catch(error){respondProjectExecutionError(error,res,next);}
   });
 
   router.get('/project-executions/:id', async (req, res, next) => {
@@ -88,18 +106,13 @@ export function projectExecutionRoutes({
     }
   });
 
-  router.post(['/opportunities/:opportunityId/project-execution/start','/opportunities/:opportunityId/project-execution/confirm'], async (req, res, next) => {
-    try {
-      const result = await confirmProjectExecution(
-        repositories,
-        req.currentUser,
-        req.params.opportunityId,
-        req.body
-      );
-      res.redirect(`/project-executions/${result.projectExecution.id}`);
-    } catch (error) {
-      respondProjectExecutionError(error, res, next);
-    }
+  router.post(['/opportunities/:opportunityId/project-execution/start','/opportunities/:opportunityId/project-execution/confirm'], (req,res)=>{
+    res.status(410).send('Upload the mutually signed contract in the Opportunity. Project creation is automatic.');
+  });
+  router.post('/project-executions/:id/department-plan',async(req,res,next)=>{
+    try{await saveGeneralManagerPlan(repositories,req.currentUser,req.params.id,req.body);
+      res.redirect('/project-executions/'+req.params.id+'#department-plan');
+    }catch(error){respondProjectExecutionError(error,res,next);}
   });
 
   router.post('/project-executions/:id', async (req, res, next) => {

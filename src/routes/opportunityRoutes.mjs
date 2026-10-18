@@ -45,7 +45,7 @@ import {
   canReviewOpportunityTechnicalDraft,
   isTechnicalAdminSelfApprovalTest
 } from '../services/opportunityTechnicalDraftService.mjs';
-import { canConfirmProjectExecution } from '../services/projectExecutionService.mjs';
+import { canConfirmProjectExecution, receiveSignedContract } from '../services/projectExecutionService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import {
   applyDirectAttachmentPreviewHeaders,
@@ -1751,6 +1751,12 @@ export function opportunityRoutes({
       if (!canUploadAttachment(req.currentUser, req.opportunity, category)) {
         await rm(req.file.path, { force: true });
         res.status(403).send('Attachment upload is not allowed for this section');
+        return;
+      }
+      if(category === 'signed_contract'){
+        const result=await receiveSignedContract({opportunityRepository,attachmentRepository,userRepository,projectExecutionRepository},
+          req.currentUser,req.opportunity.id,req.file,uploadDir);
+        res.redirect('/project-executions/'+result.projectExecution.id);
         return;
       }
       await persistUploadedOpportunityAttachment({

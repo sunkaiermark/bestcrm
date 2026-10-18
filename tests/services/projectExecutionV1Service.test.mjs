@@ -11,7 +11,7 @@ const project = {
   salespersonId: 2, status: 'planning'
 };
 
-test('project owner updates execution plan without changing the originating opportunity', async () => {
+test('General Manager updates delivery status without changing the originating opportunity', async () => {
   let saved = null;
   const repositories = {
     projectExecutionRepository: {
@@ -19,7 +19,7 @@ test('project owner updates execution plan without changing the originating oppo
       async updateProject(_id, input) { saved = input; return { ...project, ...input }; }
     }
   };
-  await updateProjectExecution(repositories, { id: 7, roles: [ROLES.SALESPERSON] }, 5, {
+  await updateProjectExecution(repositories, { id: 7, roles: [ROLES.GENERAL_MANAGER] }, 5, {
     projectOwnerUserId: '7', status: 'in_progress', plannedStartOn: '2026-10-20',
     plannedCompletionOn: '2026-11-20', actualDeliveryOn: '', actualAcceptanceOn: '',
     riskSummary: 'Supplier date to confirm'

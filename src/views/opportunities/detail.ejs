@@ -804,7 +804,7 @@
 <section class="content-section business-section business-section-contract" id="project-execution-start">
 <h2><%= language==='zh'?'双方签署合同 · 项目执行':'Signed contract · Project Execution' %></h2><div class="section-body">
 <% if(projectExecution){ %><p><%= language==='zh'?'执行项目已启动，合同与商机保持关联。':'Execution has started; the contract and Opportunity remain linked.' %></p><a class="secondary-action" href="/project-executions/<%= projectExecution.id %>"><%= language==='zh'?'进入项目执行':'Open Project Execution' %></a>
-<% }else{ %><p><%= language==='zh'?'合同已审批通过。销售收到双方签署版合同后，可直接启动执行，无需再次审批。':'Contract approval is complete. Sales can upload the mutually signed contract and start execution directly.' %></p><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/project-execution/start"><%= language==='zh'?'上传签署合同并启动执行':'Upload signed contract and start execution' %></a><% } %>
+<% }else{ %><p><%= language==='zh'?'合同已审批通过。销售只需上传双方签署合同，系统自动创建执行项目；总经理随后制定执行计划并分配人员。':'Upload the mutually signed contract to create the execution project automatically. The General Manager plans delivery afterwards.' %></p><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/project-execution/start"><%= language==='zh'?'上传双方签署合同':'Upload mutually signed contract' %></a><% } %>
 </div></section><% } %>
 
           <section class="content-section business-section-audit">
