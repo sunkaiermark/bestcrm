@@ -1,0 +1,82 @@
+<%- include('../partials/app-start', { title: `${t('customers')} - BESTCRM`, activeNav: 'customers' }) %>
+        <header class="page-header">
+          <h1><%= t('customers') %></h1>
+          <a class="quick-action" href="/customers/new"><%= t('newCustomer') %></a>
+        </header>
+
+        <section class="list-section">
+          <form class="form-panel opportunity-filter-panel" method="get" action="/customers">
+            <label class="opportunity-search-field">
+              <%= t('keyword') %>
+              <input name="q" type="search" value="<%= filters.searchTerm %>" placeholder="<%= t('customerSearchPlaceholder') %>">
+            </label>
+            <% if (showSalesOwnerFilter) { %>
+              <label>
+                <%= t('customerCoordinator') %>
+                <select name="salespersonId">
+                  <option value=""><%= t('allCustomerCoordinators') %></option>
+                  <% for (const coordinator of (filterOptions.salesCoordinators || filterOptions.salesOwners || [])) { %>
+                    <option value="<%= coordinator.id %>"<%= filters.salespersonId === coordinator.id ? ' selected' : '' %>><%= coordinator.displayName %></option>
+                  <% } %>
+                </select>
+              </label>
+            <% } %>
+            <label>
+              <%= t('customer') %>
+              <select name="customerId">
+                <option value=""><%= t('allCustomers') %></option>
+                <% for (const customer of filterOptions.customers) { %>
+                  <option value="<%= customer.id %>"<%= filters.customerId === customer.id ? ' selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('country') %>
+              <select name="country">
+                <option value=""><%= t('allCountries') %></option>
+                <% for (const country of filterOptions.countries) { %>
+                  <option value="<%= country %>"<%= filters.country === country ? ' selected' : '' %>><%= country %></option>
+                <% } %>
+              </select>
+            </label>
+            <label>
+              <%= t('archive') %>
+              <select name="archiveScope">
+                <option value="active"<%= filters.archiveScope === 'active' ? ' selected' : '' %>><%= t('activeRecords') %></option>
+                <option value="archived"<%= filters.archiveScope === 'archived' ? ' selected' : '' %>><%= t('archivedRecords') %></option>
+                <option value="all"<%= filters.archiveScope === 'all' ? ' selected' : '' %>><%= t('allRecords') %></option>
+              </select>
+            </label>
+            <button type="submit"><%= t('search') %></button>
+            <a class="secondary-action" href="/customers"><%= t('clearFilters') %></a>
+          </form>
+          <div class="list-body record-list-body customer-list-body" tabindex="0" aria-label="<%= t('customers') %>">
+            <table class="list-table record-list-table customer-list-table">
+              <thead>
+                <tr>
+                  <th scope="col"><%= t('customerCode') %></th>
+                  <th scope="col"><%= t('name') %></th>
+                  <th scope="col"><%= t('industry') %></th>
+                  <th scope="col"><%= t('country') %></th>
+                  <th scope="col"><%= t('region') %></th>
+                  <th scope="col"><%= t('customerCoordinator') %></th>
+                  <th scope="col"><%= t('contacts') %></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const customer of customers) { %>
+                  <tr>
+                    <td data-label="<%= t('customerCode') %>"><a href="/customers/<%= customer.id %>"><%= customer.customerCode %></a></td>
+                    <td data-label="<%= t('name') %>"><a href="/customers/<%= customer.id %>" title="<%= customer.name %>"><%= customer.name %></a></td>
+                    <td data-label="<%= t('industry') %>"><%= customer.industry %></td>
+                    <td data-label="<%= t('country') %>"><%= customer.country %></td>
+                    <td data-label="<%= t('region') %>"><%= customer.region %></td>
+                    <td data-label="<%= t('customerCoordinator') %>"><%= customer.coordinatorDisplayName || customer.coordinatorUsername || '-' %></td>
+                    <td data-label="<%= t('contacts') %>"><%= customer.contactCount %></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

@@ -1,0 +1,13 @@
+<%- include('../partials/app-start', { title: `${t('needsMyAction')} - BESTCRM`, activeNav: 'workbench' }) %>
+        <p class="breadcrumb"><a href="/workbench"><%= t('workbench') %></a> / <%= t('needsMyAction') %></p>
+        <header class="page-header"><h1><%= t('needsMyAction') %></h1></header>
+        <nav class="workbench-action-nav" aria-label="<%= t('workbench') %>">
+          <a class="secondary-action" href="/sales-work/plans"><%= t('workPlan') %> <span aria-hidden="true">→</span></a>
+        </nav>
+
+        <section class="list-section workbench-action-section" aria-label="<%= t('needsMyAction') %>">
+          <div class="list-body record-list-body workbench-action-list-body">
+            <%- include('_action-table', { actionItems, tableClass: '' }) %>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

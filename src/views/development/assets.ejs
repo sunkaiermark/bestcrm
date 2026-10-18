@@ -1,0 +1,42 @@
+<%- include('../partials/app-start', { title: 'Technical asset library - BESTCRM', activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    back: '返回课题总览', title: '技术资产库', note: '仅显示你是有效成员的课题中已发布且未撤回的结论版本。这里是内部复用目录；原始研究文件仍按各自密级授权，对客引用另需指定商机、版本和用途的批准。',
+    noAssets: '暂无可查看的已发布技术资产。', revision: '结论修订',
+    applicability: '适用条件', limitations: '限制与未知项', previous: '上一页', next: '下一页'
+  } : {
+    back: 'Back to topic overview', title: 'Technical asset library', note: 'Only published, non-withdrawn versions from topics where you are an active member appear here. This is an internal reuse index. Research originals retain separate file permissions; customer-facing use requires approval for the exact opportunity, revision and purpose.',
+    noAssets: 'No published technical assets are visible to you.', revision: 'Outcome revision',
+    applicability: 'Applicability', limitations: 'Limitations and unknowns', previous: 'Previous', next: 'Next'
+  };
+%>
+<style>
+  .development-assets { width: 100%; margin: 0; }
+  .development-assets .asset-note { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; }
+  .development-assets .asset-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; margin: 14px 0; }
+  .development-assets .asset-copy { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .development-assets .asset-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+  .development-assets .asset-pages { display: flex; justify-content: space-between; gap: 12px; }
+  @media (max-width: 800px) { .development-assets .asset-grid { grid-template-columns: 1fr; } }
+</style>
+<section class="development-assets">
+  <p class="breadcrumb"><a href="/development/topics"><%= labels.back %></a></p>
+  <header class="page-header"><h1><%= labels.title %></h1></header>
+  <p class="asset-note"><%= labels.note %></p>
+  <% if (!assets.length) { %><p class="muted"><%= labels.noAssets %></p><% } %>
+  <% for (const asset of assets) { %>
+    <article class="asset-card">
+      <h2><%= asset.title %></h2>
+      <p><a href="/development/topics/<%= asset.topicId %>#outcomes"><%= asset.topicNo %> · <%= asset.topicTitle %></a> · <%= labels.revision %> <%= asset.revisionNo %></p>
+      <p class="asset-copy"><%= asset.finding %></p>
+      <div class="asset-grid">
+        <div><strong><%= labels.applicability %></strong><p class="asset-copy"><%= asset.applicability %></p></div>
+        <div><strong><%= labels.limitations %></strong><p class="asset-copy"><%= asset.limitations %></p></div>
+      </div>
+    </article>
+  <% } %>
+  <nav class="asset-pages"><span><% if (page > 1) { %><a href="/development/assets?page=<%= page - 1 %>"><%= labels.previous %></a><% } %></span>
+    <span><% if (assets.length === 50) { %><a href="/development/assets?page=<%= page + 1 %>"><%= labels.next %></a><% } %></span></nav>
+</section>
+<%- include('../partials/app-end') %>

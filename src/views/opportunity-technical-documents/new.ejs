@@ -1,0 +1,40 @@
+<%- include('../partials/app-start', { title: `${t('generateFormalTechnicalDocument')} - ${opportunity.opportunityNo} - BESTCRM`, activeNav: 'opportunities' }) %>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>/technical-documents"><%= t('opportunityTechnicalDocuments') %></a> / <%= t('generateFormalTechnicalDocument') %></p>
+        <header class="page-header">
+          <div><h1><%= t('generateFormalTechnicalDocument') %></h1><div class="muted"><%= opportunity.title %></div></div>
+        </header>
+        <nav class="inline-actions" aria-label="<%= t('technicalDocumentType') %>">
+          <% for (const type of documentTypes) { %>
+            <a class="<%= documentType === type.value ? 'quick-action' : 'secondary-action' %>" href="/opportunities/<%= opportunity.id %>/technical-documents/new?type=<%= type.value %>"><%= t(`technicalDocumentType.${type.value}`) %></a>
+          <% } %>
+        </nav>
+        <form class="form-panel" method="post" action="/opportunities/<%= opportunity.id %>/technical-documents">
+          <%- csrfField() %>
+          <input type="hidden" name="documentType" value="<%= documentType %>">
+          <h2><%= t(`technicalDocumentType.${documentType}`) %></h2>
+          <p class="muted"><%= documentType === 'datasheet' ? t('datasheetSingleItemNotice') : t('combinedDocumentItemsNotice') %></p>
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead><tr><th><%= t('select') %></th><th><%= t('itemNumber') %></th><th><%= t('productCategory') %></th><th><%= t('equipmentName') %></th><th><%= t('productModel') %></th><th><%= t('templateStatus') %></th></tr></thead>
+              <tbody>
+                <% for (const item of equipmentItems) { const covered = coveredCategories.has(item.productCategoryCode); %>
+                  <tr>
+                    <td><input style="width:auto" type="<%= documentType === 'datasheet' ? 'radio' : 'checkbox' %>" name="equipmentItemIds" value="<%= item.id %>" <%= covered ? '' : 'disabled' %>></td>
+                    <td><%= String(item.itemNo).padStart(2, '0') %></td>
+                    <td><%= t(`technicalProductCategory.${item.productCategoryCode}`) %></td>
+                    <td><%= item.equipmentName %></td>
+                    <td><%= item.model || '-' %></td>
+                    <td><span class="status"><%= covered ? t('publishedTemplateReady') : t('publishedTemplateMissing') %></span></td>
+                  </tr>
+                <% } %>
+                <% if (!equipmentItems.length) { %><tr><td colspan="6" class="empty"><%= t('noActiveEquipmentForDocument') %></td></tr><% } %>
+              </tbody>
+            </table>
+          </div>
+          <p><strong><%= t('firstSaveCreatesV1') %></strong></p>
+          <div class="inline-actions">
+            <button type="submit" <%= equipmentItems.some((item) => coveredCategories.has(item.productCategoryCode)) ? '' : 'disabled' %>><%= t('generateAndSaveV1') %></button>
+            <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents"><%= t('cancel') %></a>
+          </div>
+        </form>
+<%- include('../partials/app-end') %>

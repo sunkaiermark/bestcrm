@@ -1,0 +1,13 @@
+<%- include('../partials/app-start', { title: `${language === 'zh' ? '项目执行' : 'Project Execution'} - BESTCRM`, activeNav: 'project-executions' }) %>
+<% const zh = language === 'zh'; %>
+<section class="page-section">
+  <header class="page-header"><div><h1><%= zh ? '项目执行' : 'Project Execution' %></h1><p class="muted"><%= zh ? '已签合同订单的交付计划、责任工作与验收留痕。' : 'Delivery plans, accountable work, and acceptance evidence for signed orders.' %></p></div></header>
+  <section class="list-section"><div class="list-body">
+    <% if (!projectExecutions.length) { %><p class="muted"><%= zh ? '暂无可访问的项目执行记录。请在已签合同商机中确认创建。' : 'No accessible project execution records. Confirm creation from a signed-contract Opportunity.' %></p><% } else { %>
+      <div class="table-wrap"><table><thead><tr><th><%= zh ? '项目 / 商机' : 'Project / Opportunity' %></th><th><%= zh ? '客户' : 'Customer' %></th><th><%= zh ? '负责人' : 'Owner' %></th><th><%= zh ? '状态' : 'Status' %></th><th><%= zh ? '计划完成' : 'Planned completion' %></th><th><%= zh ? '实际交付' : 'Actual delivery' %></th></tr></thead><tbody>
+        <% for (const project of projectExecutions) { %><tr><td><a href="/project-executions/<%= project.id %>"><%= project.opportunityNo %> · <%= project.opportunityTitle %></a></td><td><%= project.customerName %></td><td><%= project.projectOwnerDisplayName || '—' %></td><td><%= project.status %></td><td><%= project.plannedCompletionOn || '—' %></td><td><%= project.actualDeliveryOn || '—' %></td></tr><% } %>
+      </tbody></table></div>
+    <% } %>
+  </div></section>
+</section>
+<%- include('../partials/app-end') %>

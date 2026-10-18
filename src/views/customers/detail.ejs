@@ -1,0 +1,185 @@
+<%- include('../partials/app-start', { title: customer.name + ' - BESTCRM', activeNav: 'customers' }) %>
+        <p class="breadcrumb"><a href="/customers"><%= t('customers') %></a></p>
+        <header class="page-header">
+          <h1><%= customer.name %></h1>
+          <div class="page-actions">
+            <a class="secondary-action" href="/customers"><%= t('backToList') %></a>
+            <% if (typeof canEditCustomer !== 'undefined' && canEditCustomer) { %><a class="quick-action" href="/customers/<%= customer.id %>/edit"><%= t('editCustomer') %></a><% } %>
+            <% if (typeof canArchiveCustomer !== 'undefined' && canArchiveCustomer) { %>
+              <form method="post" action="/customers/<%= customer.id %>/archive">
+                <%- csrfField() %>
+                <input name="reason" required maxlength="500" placeholder="<%= t('archiveReason') %>" aria-label="<%= t('archiveReason') %>">
+                <button class="danger-action" type="submit"><%= t('archiveCustomer') %></button>
+              </form>
+            <% } %>
+            <% if (typeof canReopenCustomer !== 'undefined' && canReopenCustomer) { %>
+              <form method="post" action="/customers/<%= customer.id %>/reopen">
+                <%- csrfField() %>
+                <input name="reason" required maxlength="500" placeholder="<%= t('reopenReason') %>" aria-label="<%= t('reopenReason') %>">
+                <button class="quick-action" type="submit"><%= t('reopen') %></button>
+              </form>
+            <% } %>
+          </div>
+        </header>
+        <% if (customer.archivedAt) { %><p class="user-line"><%= t('archivedRecord') %><% if (customer.archiveReason) { %>: <%= customer.archiveReason %><% } %></p><% } %>
+
+        <section class="content-section">
+          <h2><%= t('customerDetail') %></h2>
+          <div class="section-body">
+            <div class="basic-info-grid">
+              <table class="detail-table basic-info-table customer-detail-table">
+                <colgroup>
+                  <col class="customer-detail-label-column">
+                  <col>
+                  <col class="customer-detail-label-column">
+                  <col>
+                </colgroup>
+                <tbody>
+                  <tr>
+                    <th scope="row"><%= t('customerCode') %></th>
+                    <td title="<%= customer.customerCode || '' %>"><%= customer.customerCode %></td>
+                    <th scope="row"><%= t('industry') %></th>
+                    <td title="<%= customer.industry || '' %>"><%= customer.industry %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><%= t('website') %></th>
+                    <td title="<%= customer.website || '' %>">
+                      <% if (customer.website) { %>
+                        <a href="<%= customer.website %>" target="_blank" rel="noopener noreferrer"><%= customer.website %></a>
+                      <% } %>
+                    </td>
+                    <th scope="row"><%= t('country') %></th>
+                    <td title="<%= customer.country || '' %>"><%= customer.country %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><%= t('parentCompany') %></th>
+                    <td title="<%= customer.parentCompany || '' %>"><%= customer.parentCompany %></td>
+                    <th scope="row"><%= t('region') %></th>
+                    <td title="<%= customer.region || '' %>"><%= customer.region %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><%= t('address') %></th>
+                    <td title="<%= customer.address || '' %>"><%= customer.address %></td>
+                    <th scope="row"><%= t('enterpriseNature') %></th>
+                    <td title="<%= customer.enterpriseNature || '' %>"><%= customer.enterpriseNature %></td>
+                  </tr>
+                  <tr>
+                    <th scope="row"><%= t('customerCoordinator') %></th>
+                    <td colspan="3"><%= customer.coordinatorDisplayName || customer.coordinatorUsername || '-' %></td>
+                  </tr>
+                  <tr class="customer-detail-long-row">
+                    <th scope="row"><%= t('companyHighlights') %></th>
+                    <td colspan="3" title="<%= customer.companyHighlights || '' %>"><%= customer.companyHighlights %></td>
+                  </tr>
+                  <tr class="customer-detail-long-row">
+                    <th scope="row"><%= t('customerOutline') %></th>
+                    <td colspan="3" title="<%= customer.notes || '' %>"><%= customer.notes %></td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+
+        <% if (typeof canManageCoordinator !== 'undefined' && canManageCoordinator) { %>
+          <section class="content-section">
+            <h2><%= t('changeCustomerCoordinator') %></h2>
+            <div class="section-body">
+              <form class="form-panel compact-form-panel" method="post" action="/customers/<%= customer.id %>/coordinator">
+                <%- csrfField() %>
+                <label>
+                  <%= t('customerCoordinator') %>
+                  <select name="coordinatorUserId" required>
+                    <option value=""><%= t('selectSalesOwner') %></option>
+                    <% for (const coordinator of (typeof coordinators !== 'undefined' ? coordinators : [])) { %>
+                      <option value="<%= coordinator.id %>"<%= Number(customer.coordinatorUserId || customer.ownerUserId) === Number(coordinator.id) ? ' selected' : '' %>><%= coordinator.displayName || coordinator.username %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label><%= t('coordinatorChangeReason') %><textarea name="note" required maxlength="1000"></textarea></label>
+                <button type="submit"><%= t('changeCustomerCoordinator') %></button>
+              </form>
+            </div>
+          </section>
+        <% } %>
+
+        <section class="content-section">
+          <h2><%= t('opportunities') %></h2>
+          <div class="section-body">
+            <% if ((typeof opportunities !== 'undefined' ? opportunities : []).length) { %>
+              <table class="list-table content-fit-table">
+                <thead><tr><th><%= t('opportunityNo') %></th><th><%= t('opportunityName') %></th><th><%= t('salesOwner') %></th><th><%= t('status') %></th></tr></thead>
+                <tbody>
+                  <% for (const opportunity of opportunities) { %>
+                    <tr>
+                      <td><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a></td>
+                      <td><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.title %></a></td>
+                      <td><%= opportunity.salespersonDisplayName || opportunity.salespersonUsername || '-' %></td>
+                      <td><span class="status"><%= statusLabel(opportunity.status) %></span></td>
+                    </tr>
+                  <% } %>
+                </tbody>
+              </table>
+            <% } else { %>
+              <p class="empty"><%= t('noOpportunities') %></p>
+            <% } %>
+          </div>
+        </section>
+
+        <% if ((typeof coordinationEvents !== 'undefined' ? coordinationEvents : []).length) { %>
+          <section class="content-section">
+            <h2><%= t('customerCoordinatorHistory') %></h2>
+            <div class="section-body">
+              <table class="list-table content-fit-table">
+                <thead><tr><th><%= t('previousCoordinator') %></th><th><%= t('customerCoordinator') %></th><th><%= t('actor') %></th><th><%= t('notes') %></th><th><%= t('createdAt') %></th></tr></thead>
+                <tbody>
+                  <% for (const event of coordinationEvents) { %>
+                    <tr>
+                      <td><%= event.previousCoordinatorDisplayName || '-' %></td>
+                      <td><%= event.coordinatorDisplayName || '-' %></td>
+                      <td><%= event.actorDisplayName || '-' %></td>
+                      <td><%= event.note || '-' %></td>
+                      <td><%= event.createdAt || '' %></td>
+                    </tr>
+                  <% } %>
+                </tbody>
+              </table>
+            </div>
+          </section>
+        <% } %>
+
+        <section class="content-section">
+          <h2><%= t('contacts') %></h2>
+          <div class="section-body">
+            <p><a href="/contacts/new?customerId=<%= customer.id %>"><%= t('newContact') %></a></p>
+            <% if ((customer.contacts || []).length > 0) { %>
+              <div class="customer-contact-table-wrap">
+                <table class="list-table content-fit-table customer-contact-table">
+                  <thead>
+                    <tr>
+                      <th scope="col"><%= t('contactCode') %></th>
+                      <th scope="col"><%= t('name') %></th>
+                      <th scope="col"><%= t('title') %></th>
+                      <th scope="col"><%= t('phone') %></th>
+                      <th scope="col"><%= t('email') %></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const contact of customer.contacts || []) { %>
+                      <tr>
+                        <td><a href="/contacts/<%= contact.id %>"><%= contact.contactCode %></a></td>
+                        <td><a href="/contacts/<%= contact.id %>"><%= contact.name %></a></td>
+                        <td><%= contact.title %></td>
+                        <td><%= contact.phone %></td>
+                        <td><%= contact.email %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              </div>
+            <% } else { %>
+              <p class="empty"><%= t('noContacts') %></p>
+            <% } %>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

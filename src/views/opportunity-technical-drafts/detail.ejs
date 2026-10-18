@@ -1,0 +1,266 @@
+<%- include('../partials/app-start', { title: `${draft.formalVersionLabel || draft.draftLabel} - ${opportunity.title} - BESTCRM`, activeNav: 'opportunities' }) %>
+<%
+  const sections = [...(draft.renderedContent?.sections || [])].sort((left, right) => left.sortOrder - right.sortOrder);
+  const activeAssignments = (draft.assignments || []).filter((assignment) => assignment.isActive !== false);
+  const selectedClauseIds = new Set((draft.selectedClauses || []).map((clause) => clause.id));
+  const issueByVariable = new Map((draft.validationIssues || []).map((issue) => [issue.variableKey, issue]));
+  const uploadedFiles = Array.isArray(draft.uploadedFiles) && draft.uploadedFiles.length
+    ? draft.uploadedFiles
+    : (draft.uploadedFile ? [draft.uploadedFile] : []);
+  const formatUploadedAt = (value) => {
+    if (!value) return '';
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return String(value);
+    return new Intl.DateTimeFormat('en-CA', {
+      timeZone: 'Asia/Singapore', year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', hourCycle: 'h23'
+    }).format(date).replace(',', '');
+  };
+  const sectionLabel = (sectionKey) => {
+    const section = sections.find((candidate) => candidate.key === sectionKey);
+    return section ? (draft.language === 'zh' ? section.labelZh : section.labelEn) : sectionKey;
+  };
+%>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %></a> / <a href="/opportunities/<%= opportunity.id %>/technical-drafts"><%= t('projectTechnicalDrafts') %></a></p>
+        <header class="page-header">
+          <div>
+            <h1><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %></h1>
+            <div class="muted"><%= draft.sourceKind === 'uploaded_file' ? draft.templateNameSnapshot : `${draft.templateCodeSnapshot} · TPL-R${draft.templateRevisionNoSnapshot}` %></div>
+          </div>
+          <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %><% if (draft.authorizedSelfReview) { %> · <%= t('technicalAuthorizedSelfReviewBadge') %><% } %></span>
+        </header>
+
+        <% if (draft.sourceKind === 'uploaded_file') { %>
+          <section class="detail-section">
+            <h2><%= t('technicalFile') %></h2>
+            <% if (canManageDraft) { %>
+              <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/file" enctype="multipart/form-data">
+                <%- csrfField() %>
+                <div class="technical-upload-field">
+                  <label for="technical-draft-detail-file-<%= draft.id %>"><%= uploadedFiles.length ? t('replaceTechnicalFile') : t('uploadTechnicalFile') %></label>
+                  <%- include('../partials/_localized-file-picker', { pickerId: `technical-draft-detail-file-${draft.id}`, inputName: 'attachment', labelText: uploadedFiles.length ? t('replaceTechnicalFile') : t('uploadTechnicalFile'), multiple: true }) %>
+                </div>
+                <p class="muted"><%= t('technicalFileUploadLimit') %> <%= technicalFileLimitMb %> MB</p>
+                <button type="submit"><%= t('upload') %></button>
+              </form>
+            <% } %>
+            <% if (uploadedFiles.length) { %>
+              <% for (const uploadedFile of uploadedFiles) { %>
+                <p><%= draft.draftLabel %> · <%= uploadedFile.originalName %>
+                  <% if (uploadedFile.uploadedAt) { %><span class="muted">· <%= t('technicalFileUploadedAt') %> <%= formatUploadedAt(uploadedFile.uploadedAt) %></span><% } %>
+                  <a href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/preview"><%= t('preview') %></a>
+                  <a href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/download"><%= t('download') %></a>
+                  <% if (canManageDraft && (!uploadedFile.materialVersionId || uploadedFile.materialVersionStatus === 'withdrawn')) { %>
+                    <form class="inline-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/files/<%= uploadedFile.id %>/withdraw" onsubmit="return confirm('<%= t('withdrawUploadedTechnicalFileConfirm') %>')">
+                      <%- csrfField() %><button class="danger-action" type="submit"><%= t('withdrawUploadedTechnicalFile') %></button>
+                    </form>
+                  <% } %>
+                </p>
+              <% } %>
+            <% } else { %><p class="muted"><%= t('technicalFileNotUploaded') %></p><% } %>
+          </section>
+        <% } else { %>
+        <section class="detail-section">
+          <h2><%= t('snapshotAndValidation') %></h2>
+          <p class="muted"><%= t('technicalDraftSnapshotNotice') %></p>
+          <% if ((draft.validationIssues || []).length) { %>
+            <div class="form-panel validation-warning">
+              <strong><%= t('draftHasValidationIssues') %></strong>
+              <ul>
+                <% for (const issue of draft.validationIssues) { %>
+                  <li><%= draft.language === 'zh' ? issue.labelZh : issue.labelEn %> · <%= t(`validationIssue.${issue.code}`) %><%= issue.expected !== undefined ? ` (${Array.isArray(issue.expected) ? issue.expected.join(', ') : issue.expected})` : '' %></li>
+                <% } %>
+              </ul>
+            </div>
+          <% } else { %><p class="status"><%= t('draftValidationPassed') %></p><% } %>
+          <% if (draft.renderedContent?.clauseSelectionChanged) { %><p class="validation-warning"><strong><%= t('standardClauseSelectionChanged') %></strong></p><% } %>
+          <% if (canManageDraft) { %>
+            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/readiness">
+              <%- csrfField() %><button type="submit"><%= t('checkAndMarkReady') %></button>
+            </form>
+          <% } %>
+        </section>
+        <% } %>
+
+        <% if (canSubmitDraft) { %>
+          <section class="detail-section form-panel">
+            <h2><%= t('submitTechnicalDraftApproval') %></h2>
+            <p class="muted"><%= t('submitTechnicalDraftNotice') %></p>
+            <form class="technical-proposal-footer-action" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/submit">
+              <%- csrfField() %>
+              <label><%= t('submissionComment') %><textarea name="comment" maxlength="2000"></textarea></label>
+              <button type="submit"><%= t('submitForTechnicalApproval') %></button>
+            </form>
+          </section>
+        <% } %>
+
+        <% if (canWithdrawDraft) { %>
+          <section class="detail-section form-panel">
+            <h2><%= t('pendingTechnicalApproval') %></h2>
+            <form class="technical-proposal-withdraw-form technical-proposal-footer-action" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/withdraw">
+              <%- csrfField() %><button class="secondary-action" type="submit"><%= t('withdrawTechnicalSubmission') %></button>
+            </form>
+          </section>
+        <% } %>
+
+        <% if (canReviewDraft) { %><%- include('../partials/_technical-manager-review', { draft, opportunity, returnTo: 'draft' }) %><% } %>
+
+        <% if (draft.status === 'rejected') { %>
+          <section class="detail-section validation-warning">
+            <h2><%= t('technicalVersionReturned') %></h2>
+            <% if (draft.reviewComment) { %><p><%= draft.reviewComment %></p><% } %>
+            <% if (reviewAttachments.length) { %>
+              <strong><%= t('reviewAttachments') %></strong>
+              <ul>
+                <% for (const file of reviewAttachments) { %><li><%= file.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/download"><%= t('download') %></a></li><% } %>
+              </ul>
+            <% } %>
+            <p class="muted"><%= t('returnedDraftCloneNotice') %></p>
+          </section>
+        <% } %>
+
+        <% if ((draft.documents || []).length) { %>
+          <section class="detail-section">
+            <h2><%= t('approvedTechnicalDocuments') %></h2>
+            <p class="muted"><%= t('documentChecksumNotice') %></p>
+            <div class="list-body"><table class="list-table content-fit-table"><thead><tr><th><%= t('document') %></th><th><%= t('format') %></th><th><%= t('checksumSha256') %></th><th><%= t('generatedAt') %></th><th><%= t('actions') %></th></tr></thead><tbody>
+              <% for (const document of draft.documents) { %><tr><td><strong><%= document.documentNo %></strong><br><%= document.originalName %></td><td><%= document.format.toUpperCase() %></td><td><code><%= document.sha256 %></code></td><td><%= document.generatedAt || '' %></td><td><a href="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/download"><%= t('download') %></a></td></tr><% } %>
+            </tbody></table></div>
+          </section>
+          <section class="detail-section" id="customer-file-release">
+            <h2><%= language === 'zh' ? '技术文件对客放行' : 'Technical files for customer release' %></h2>
+            <p class="muted"><%= language === 'zh' ? '技术批准不等于对客放行。每个文件版本默认仅供内部使用；新版本须重新申请。' : 'Technical approval does not authorize customer delivery. Each file version is internal-only by default; a new version needs a new release.' %></p>
+            <div class="list-body"><table class="list-table content-fit-table"><thead><tr>
+              <th><%= language === 'zh' ? '文件版本' : 'File version' %></th>
+              <th><%= language === 'zh' ? '对客状态' : 'Customer-release status' %></th>
+              <th><%= t('actions') %></th>
+            </tr></thead><tbody>
+              <% for (const document of draft.documents) { const release = customerReleaseByDocumentId.get(document.id); %>
+                <tr>
+                  <td><strong><%= document.originalName %></strong><br><small><%= document.documentNo %> · SHA-256 <%= document.sha256 %></small></td>
+                  <td>
+                    <strong><%= release ? (language === 'zh' ? ({ pending: '待对客审批', approved: '已批准对客使用', rejected: '已驳回', revoked: '已撤销' }[release.status] || release.status) : ({ pending: 'Pending customer release', approved: 'Released for customer use', rejected: 'Rejected', revoked: 'Revoked' }[release.status] || release.status)) : (language === 'zh' ? '仅内部使用' : 'Internal only') %></strong>
+                    <% if (release?.purpose) { %><br><small><%= release.purpose %></small><% } %>
+                    <% if (release?.reviewComment) { %><br><small><%= release.reviewComment %></small><% } %>
+                    <% if (release?.revocationReason) { %><br><small><%= release.revocationReason %></small><% } %>
+                  </td>
+                  <td>
+                    <% if (!release && canRequestCustomerRelease) { %>
+                      <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/customer-release/request">
+                        <%- csrfField() %>
+                        <label><%= language === 'zh' ? '对客用途' : 'Customer-facing purpose' %><input name="purpose" maxlength="1000" required></label>
+                        <button type="submit"><%= language === 'zh' ? '申请对客放行' : 'Request release' %></button>
+                      </form>
+                    <% } %>
+                    <% if (release?.status === 'pending' && canReviewCustomerRelease && Number(release.requestedBy) !== Number(currentUser.id)) { %>
+                      <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/customer-release/review">
+                        <%- csrfField() %><input type="hidden" name="decision" value="approved">
+                        <label><%= language === 'zh' ? '审批备注（可选）' : 'Review note (optional)' %><input name="comment" maxlength="1000"></label>
+                        <button type="submit"><%= language === 'zh' ? '批准对客使用' : 'Approve release' %></button>
+                      </form>
+                      <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/customer-release/review">
+                        <%- csrfField() %><input type="hidden" name="decision" value="rejected">
+                        <label><%= language === 'zh' ? '驳回原因' : 'Rejection reason' %><input name="comment" maxlength="1000" required></label>
+                        <button class="secondary-action" type="submit"><%= language === 'zh' ? '驳回' : 'Reject' %></button>
+                      </form>
+                    <% } %>
+                    <% if (release?.status === 'approved' && canReviewCustomerRelease) { %>
+                      <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/documents/<%= document.id %>/customer-release/revoke">
+                        <%- csrfField() %>
+                        <label><%= language === 'zh' ? '撤销原因' : 'Revocation reason' %><input name="reason" maxlength="1000" required></label>
+                        <button class="secondary-action" type="submit"><%= language === 'zh' ? '撤销放行' : 'Revoke release' %></button>
+                      </form>
+                    <% } %>
+                  </td>
+                </tr>
+              <% } %>
+            </tbody></table></div>
+          </section>
+        <% } %>
+
+        <% if (draft.sourceKind !== 'uploaded_file') { %>
+        <section class="detail-section">
+          <h2><%= t('projectVariables') %></h2>
+          <p class="muted"><%= t('prefilledVariableNotice') %></p>
+          <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/variables">
+            <%- csrfField() %>
+            <div class="form-grid">
+              <% for (const variable of draft.variableSchemaSnapshot || []) { const editable = canManageDraft || editableSectionKeys.has(variable.sectionKey); %>
+                <label>
+                  <%= draft.language === 'zh' ? variable.labelZh : variable.labelEn %><%= variable.isRequired ? ' *' : '' %>
+                  <span class="muted"><%= variable.variableKey %> · <%= sectionLabel(variable.sectionKey) %></span>
+                  <% if (variable.dataType === 'boolean') { %>
+                    <select name="<%= variable.variableKey %>" <%= editable ? '' : 'disabled' %>><option value=""></option><option value="true" <%= draft.variableValues[variable.variableKey] === true ? 'selected' : '' %>><%= t('yesValue') %></option><option value="false" <%= draft.variableValues[variable.variableKey] === false ? 'selected' : '' %>><%= t('noValue') %></option></select>
+                  <% } else { %>
+                    <input name="<%= variable.variableKey %>" value="<%= draft.variableValues[variable.variableKey] ?? '' %>" <%= variable.dataType === 'number' || variable.dataType === 'integer' ? 'type="number" step="any"' : variable.dataType === 'date' ? 'type="date"' : '' %> <%= editable ? '' : 'disabled' %>>
+                  <% } %>
+                  <% if (issueByVariable.has(variable.variableKey)) { %><span class="validation-error"><%= t(`validationIssue.${issueByVariable.get(variable.variableKey).code}`) %></span><% } %>
+                </label>
+              <% } %>
+            </div>
+            <% if (canManageDraft || editableSectionKeys.size) { %><button type="submit"><%= t('saveProjectVariables') %></button><% } %>
+          </form>
+        </section>
+
+        <% if (canManageDraft) { %>
+          <section class="detail-section">
+            <h2><%= t('standardClauseSelection') %></h2>
+            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/clauses">
+              <%- csrfField() %>
+              <% for (const clause of clauses) { %>
+                <label class="checkbox-row"><input type="checkbox" name="clauseIds" value="<%= clause.id %>" <%= selectedClauseIds.has(clause.id) ? 'checked' : '' %>><span><%= clause.revisionLabel %> · <%= clause.title %></span></label>
+              <% } %>
+              <button type="submit"><%= t('saveClauseSelection') %></button>
+            </form>
+          </section>
+
+          <section class="detail-section">
+            <h2><%= t('sectionAssignments') %></h2>
+            <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/assignments">
+              <%- csrfField() %>
+              <div class="form-grid">
+                <label><%= t('assignedSection') %><select name="sectionKey" required><% for (const section of sections) { %><option value="<%= section.key %>"><%= draft.language === 'zh' ? section.labelZh : section.labelEn %></option><% } %></select></label>
+                <label><%= t('supportingEngineer') %><select name="assigneeUserId" required><option value=""></option><% for (const engineer of supportingEngineers) { %><option value="<%= engineer.userId %>"><%= engineer.userDisplayName || engineer.username %></option><% } %></select></label>
+                <label><%= t('dueDate') %><input name="dueDate" type="date"></label>
+              </div>
+              <button type="submit" <%= supportingEngineers.length ? '' : 'disabled' %>><%= t('assignSection') %></button>
+            </form>
+            <div class="list-body"><table class="list-table content-fit-table"><thead><tr><th><%= t('assignedSection') %></th><th><%= t('supportingEngineer') %></th><th><%= t('dueDate') %></th><th><%= t('actions') %></th></tr></thead><tbody>
+              <% for (const assignment of activeAssignments) { %><tr><td><%= sectionLabel(assignment.sectionKey) %></td><td><%= assignment.assigneeDisplayName || assignment.assigneeUsername %></td><td><%= assignment.dueDate || '' %></td><td><form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/assignments/<%= assignment.id %>/remove"><%- csrfField() %><button class="danger-action" type="submit"><%= t('remove') %></button></form></td></tr><% } %>
+              <% if (!activeAssignments.length) { %><tr><td colspan="4" class="empty"><%= t('noSectionAssignments') %></td></tr><% } %>
+            </tbody></table></div>
+          </section>
+        <% } %>
+
+        <section class="detail-section">
+          <h2><%= t('structuredTechnicalContent') %></h2>
+          <% for (const section of sections) { %>
+            <article class="form-panel technical-template-revision <%= section.included ? '' : 'muted' %>">
+              <header class="page-header"><div><h3><%= section.sortOrder %>. <%= draft.language === 'zh' ? section.labelZh : section.labelEn %></h3><div class="muted"><%= t(`sectionType.${section.sectionType}`) %> · <%= section.included ? t('includedSection') : t('excludedByCondition') %></div></div><% if (section.standardChanged) { %><span class="status"><%= t('standardContentChanged') %></span><% } %></header>
+              <% if (editableSectionKeys.has(section.key)) { %>
+                <form method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/sections/<%= section.key %>">
+                  <%- csrfField() %>
+                  <label><%= t('sectionBody') %><textarea name="body" maxlength="100000"><%= (draft.language === 'zh' ? section.bodyZh : section.bodyEn) || '' %></textarea></label>
+                  <label><%= t('structuredTableRows') %><textarea name="tableRows" maxlength="100000"><%= (section[draft.language === 'zh' ? 'tableRowsZh' : 'tableRowsEn'] || []).map((row) => row.join(' | ')).join('\n') %></textarea></label>
+                  <button type="submit"><%= t('saveProjectSection') %></button>
+                </form>
+              <% } else { %>
+                <% const activeBody = draft.language === 'zh' ? section.bodyZh : section.bodyEn; %>
+                <% if (activeBody) { %><p><%= activeBody %></p><% } %>
+              <% } %>
+              <% const activeTableRows = section[draft.language === 'zh' ? 'tableRowsZh' : 'tableRowsEn'] || []; %>
+              <% if (activeTableRows.length) { %><div class="list-body"><table class="list-table content-fit-table"><tbody><% for (const row of activeTableRows) { %><tr><% for (const cell of row) { %><td><%= cell %></td><% } %></tr><% } %></tbody></table></div><% } %>
+              <% if ((section.clauses || []).length) { %><h4><%= t('standardClauses') %></h4><ul><% for (const clause of section.clauses) { %><li><strong><%= clause.revisionLabel %> · <%= clause.title %></strong><br><%= clause.content %><% if (clause.standardChanged) { %> <span class="status"><%= t('standardContentChanged') %></span><% } %></li><% } %></ul><% } %>
+            </article>
+          <% } %>
+        </section>
+        <% } %>
+
+        <section class="detail-section">
+          <h2><%= t('draftContributionHistory') %></h2>
+          <div class="list-body"><table class="list-table content-fit-table"><thead><tr><th><%= t('event') %></th><th><%= t('assignedSection') %></th><th><%= t('actor') %></th><th><%= t('createdAt') %></th></tr></thead><tbody>
+            <% for (const event of draft.events || []) { %><tr><td><%= t(`technicalDraftEvent.${event.eventType}`) %></td><td><%= event.sectionKey ? sectionLabel(event.sectionKey) : '-' %></td><td><%= event.actorDisplayName || event.actorUserId %></td><td><%= event.createdAt || '' %></td></tr><% } %>
+          </tbody></table></div>
+        </section>
+<script src="/assets/localized-file-picker.js" defer></script>
+<%- include('../partials/app-end') %>

@@ -1,0 +1,200 @@
+<%- include('../partials/app-start', { title: `${t('opportunity')} - BESTCRM`, activeNav: 'opportunities' }) %>
+        <p class="breadcrumb"><a href="/opportunities"><%= t('opportunities') %></a></p>
+        <header class="page-header">
+          <h1><%= typeof pageTitle === 'undefined' ? t('opportunityInitiation') : pageTitle %></h1>
+        </header>
+
+        <% if (typeof directEntryNotice !== 'undefined' && directEntryNotice) { %>
+          <p class="muted"><%= directEntryNotice %></p>
+        <% } %>
+
+        <form id="opportunity-form" method="post" action="<%= action %>">
+          <%- csrfField() %>
+          <% if (typeof emailThreadId !== 'undefined' && emailThreadId) { %><input type="hidden" name="emailThreadId" value="<%= emailThreadId %>"><% } %>
+        </form>
+        <section class="form-panel<%= typeof isEditMode !== 'undefined' && isEditMode ? ' opportunity-edit-form-panel' : '' %>">
+          <% if (typeof allowSalesOwnerChoice !== 'undefined' && allowSalesOwnerChoice) { %>
+            <label>
+              <%= t('salesOwner') %>
+              <select id="opportunity-salesperson" name="salespersonId" form="opportunity-form" required>
+                <option value=""><%= t('selectSalesOwner') %></option>
+                <% for (const salesperson of salespeople) { %>
+                  <option value="<%= salesperson.id %>"<%= String(opportunity.salespersonId || '') === String(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
+                <% } %>
+              </select>
+            </label>
+          <% } %>
+          <label>
+            <%= t('customer') %>
+            <select id="opportunity-customer" name="customerId" form="opportunity-form" required>
+              <% if (typeof allowSalesOwnerChoice !== 'undefined' && allowSalesOwnerChoice) { %>
+                <option value=""><%= t('selectCustomer') %></option>
+              <% } %>
+              <% for (const customer of customers) { %>
+                <option value="<%= customer.id %>" <%= String(opportunity.customerId || '') === String(customer.id) ? 'selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
+              <% } %>
+            </select>
+          </label>
+          <% if (typeof allowInlineCreate === 'undefined' || allowInlineCreate) { %>
+            <details class="inline-create-panel" <%= (typeof inlineCustomerOpen !== 'undefined' && inlineCustomerOpen) ? 'open' : '' %>>
+              <summary><%= t('addNewCustomerHere') %></summary>
+              <form method="post" action="/opportunities/customers">
+                <%- csrfField() %>
+                <% const inlineCustomer = typeof newCustomer !== 'undefined' ? newCustomer : {}; %>
+                <% if (typeof duplicateCustomers !== 'undefined' && duplicateCustomers.length) { %>
+                  <section class="duplicate-warning" role="alert">
+                    <strong><%= t('duplicateCustomerFound') %></strong>
+                    <p><%= t('duplicateCustomerCoordinationHint') %></p>
+                    <table class="duplicate-table">
+                      <thead>
+                        <tr>
+                            <th><%= t('customerCode') %></th>
+                            <th><%= t('customerName') %></th>
+                          <th><%= t('responsiblePerson') %></th>
+                          <th><%= t('contacts') %></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <% for (const duplicate of duplicateCustomers) { %>
+                          <tr>
+                            <td><%= duplicate.customerCode %></td>
+                            <td><%= duplicate.name %></td>
+                            <td><%= duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></td>
+                            <td><%= duplicate.contactCount %></td>
+                          </tr>
+                        <% } %>
+                      </tbody>
+                    </table>
+                  </section>
+                <% } %>
+                <label>
+                  <%= t('customerName') %>
+                  <input name="name" value="<%= inlineCustomer.name || '' %>" required>
+                </label>
+                <label>
+                  <%= t('website') %>
+                  <input name="website" type="text" inputmode="url" placeholder="https://www.example.com" value="<%= inlineCustomer.website || '' %>">
+                </label>
+                <label>
+                  <%= t('industry') %>
+                  <select name="industry">
+                    <option value=""><%= t('selectIndustry') %></option>
+                    <% for (const industry of (typeof industryOptions !== 'undefined' ? industryOptions : [])) { %>
+                      <option value="<%= industry %>"<%= inlineCustomer.industry === industry ? ' selected' : '' %>><%= industry %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label>
+                  <%= t('country') %>
+                  <select name="country">
+                    <% const inlineCountry = inlineCustomer.country || ''; %>
+                    <% const inlineCountryOptions = typeof countryOptions !== 'undefined' ? countryOptions : []; %>
+                    <option value=""><%= t('selectCountry') %></option>
+                    <% if (inlineCountry && !inlineCountryOptions.includes(inlineCountry)) { %>
+                      <option value="<%= inlineCountry %>" selected><%= inlineCountry %></option>
+                    <% } %>
+                    <% for (const country of inlineCountryOptions) { %>
+                      <option value="<%= country %>"<%= inlineCountry === country ? ' selected' : '' %>><%= country %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label>
+                  <%= t('region') %>
+                  <select name="region">
+                    <option value=""><%= t('selectRegion') %></option>
+                    <% for (const region of (typeof regionOptions !== 'undefined' ? regionOptions : [])) { %>
+                      <option value="<%= region %>"<%= inlineCustomer.region === region ? ' selected' : '' %>><%= region %></option>
+                    <% } %>
+                  </select>
+                </label>
+                <label>
+                  <%= t('address') %>
+                  <input name="address" value="<%= inlineCustomer.address || '' %>">
+                </label>
+                <label>
+                  <%= t('customerOutline') %>
+                  <textarea name="notes"><%= inlineCustomer.notes || '' %></textarea>
+                </label>
+                <button type="submit"><%= t('createCustomer') %></button>
+              </form>
+            </details>
+          <% } %>
+          <label>
+            <%= t('contacts') %>
+            <select id="opportunity-contact" name="primaryContactId" form="opportunity-form">
+              <option value=""></option>
+              <% for (const contact of contacts) { %>
+                <option value="<%= contact.id %>" data-customer-id="<%= contact.customerId %>" <%= String(opportunity.primaryContactId || '') === String(contact.id) ? 'selected' : '' %>><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %><%= contact.customerName ? ` (${contact.customerCode ? `${contact.customerCode} · ` : ''}${contact.customerName})` : '' %></option>
+              <% } %>
+            </select>
+          </label>
+          <% if (typeof allowInlineCreate === 'undefined' || allowInlineCreate) { %>
+            <% if (customers.length) { %>
+              <p><a class="secondary-action" href="<%= typeof newContactUrl !== 'undefined' ? newContactUrl : '/contacts/new?returnTo=opportunity-initiation' %>"><%= t('addNewContactHere') %></a></p>
+            <% } else { %>
+              <p class="empty"><%= t('addCustomerBeforeContact') %></p>
+            <% } %>
+          <% } %>
+          <label>
+            <%= t('opportunityName') %>
+            <input name="title" form="opportunity-form" value="<%= opportunity.title || '' %>" required>
+          </label>
+          <label>
+            <%= t('requirement') %>
+            <textarea name="requirement" form="opportunity-form" required><%= opportunity.requirement || '' %></textarea>
+          </label>
+          <label>
+            <%= t('estimatedAmount') %>
+            <input name="estimatedAmount" form="opportunity-form" value="<%= opportunity.estimatedAmount || '' %>">
+          </label>
+          <label>
+            <%= t('productInterest') %>
+            <input name="productInterest" form="opportunity-form" value="<%= opportunity.productInterest || '' %>">
+          </label>
+          <%- include('../partials/product-category-picker', { record: opportunity, subjectInput: 'title', requirementInput: 'requirement', formId: 'opportunity-form', className: '' }) %>
+          <label>
+            <%= t('opportunityType') %>
+            <select name="projectType" form="opportunity-form">
+              <option value=""><%= t('selectProjectType') %></option>
+              <% const projectTypeOptions = ['新增', '扩建', '改造', '维修']; %>
+              <% if (opportunity.projectType && !projectTypeOptions.includes(opportunity.projectType)) { %>
+                <option value="<%= opportunity.projectType %>" selected><%= opportunity.projectType %></option>
+              <% } %>
+              <% for (const projectType of projectTypeOptions) { %>
+                <option value="<%= projectType %>" <%= opportunity.projectType === projectType ? 'selected' : '' %>><%= projectType %></option>
+              <% } %>
+            </select>
+          </label>
+          <label>
+            <%= t('deliveryPeriod') %>
+            <input name="deliveryCycle" form="opportunity-form" value="<%= opportunity.deliveryCycle || '' %>">
+          </label>
+          <label>
+            <%= t('expectedBidDate') %>
+            <input name="expectedBidDate" form="opportunity-form" type="date" value="<%= opportunity.expectedBidDate || '' %>">
+          </label>
+          <button type="submit" form="opportunity-form"><%= typeof submitLabel === 'undefined' ? t('saveDraft') : submitLabel %></button>
+        </section>
+        <script>
+          (() => {
+            const customerSelect = document.getElementById('opportunity-customer');
+            const contactSelect = document.getElementById('opportunity-contact');
+            if (!customerSelect || !contactSelect) return;
+
+            const updateContacts = (resetSelection) => {
+              const customerId = customerSelect.value;
+              for (const option of contactSelect.options) {
+                const unavailable = Boolean(option.value) && option.dataset.customerId !== customerId;
+                option.hidden = unavailable;
+                option.disabled = unavailable;
+              }
+              if (resetSelection || contactSelect.selectedOptions[0]?.disabled) {
+                contactSelect.value = '';
+              }
+            };
+
+            customerSelect.addEventListener('change', () => updateContacts(true));
+            updateContacts(false);
+          })();
+        </script>
+<%- include('../partials/app-end') %>

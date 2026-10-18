@@ -1,0 +1,509 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {
+  canContributeOpportunityEngineering,
+  canManageOpportunityEngineeringTeam,
+  canManageOpportunityResponsibility,
+  canArchiveOpportunity,
+  canCreateOpportunityManually,
+  canDeleteOpportunity,
+  canEditOpportunity,
+  canReopenOpportunity,
+  canViewOpportunity,
+  archiveOpportunity,
+  createOpportunityDraft,
+  deleteOpportunity,
+  isProjectLeadEngineer,
+  isSupportingEngineer,
+  reopenOpportunity,
+  updateOpportunity
+} from '../../src/services/opportunityService.mjs';
+import { ROLES } from '../../src/domain/roles.mjs';
+import { STATUSES } from '../../src/domain/statuses.mjs';
+
+function buildRepositories({ customer, contact, salespeople = [{ id: 7, isActive: true, roles: [ROLES.SALESPERSON] }] }) {
+  const calls = [];
+  return {
+    calls,
+    customerRepository: {
+      async getCustomerDetail(id) {
+        calls.push(['getCustomer', Number(id)]);
+        return customer;
+      }
+    },
+    contactRepository: {
+      async getContactDetail(id) {
+        calls.push(['getContact', Number(id)]);
+        return contact;
+      }
+    },
+    userRepository: {
+      async listUsersByRole(role) {
+        return role === ROLES.SALESPERSON ? salespeople : [];
+      }
+    },
+    opportunityRepository: {
+      async createOpportunity(input) {
+        calls.push(['createOpportunity', input]);
+        return { id: 30, ...input };
+      },
+      async updateOpportunity(id, input) {
+        calls.push(['updateOpportunity', Number(id), input]);
+        return { id: Number(id), ...input };
+      }
+    }
+  };
+}
+
+test('sales manager creates draft opportunity only through a reviewed inquiry', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7 },
+    contact: { id: 20, customerId: 10, customerOwnerUserId: 7 }
+  });
+
+  const opportunity = await createOpportunityDraft(repositories, {
+    id: 2,
+    roles: [ROLES.SALES_MANAGER]
+  }, {
+    title: 'Factory upgrade',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Upgrade production line',
+    estimatedAmount: '120000.50',
+    productInterest: 'Industrial mixer',
+    projectType: 'automation',
+    deliveryCycle: '45 days',
+    expectedBidDate: '2026-07-10'
+  }, { inquiryConversion: true, originInquiryId: 11, salespersonId: 7 });
+
+  assert.equal(opportunity.status, STATUSES.DRAFT);
+  assert.equal(opportunity.customerId, 10);
+  assert.equal(opportunity.primaryContactId, 20);
+  assert.equal(opportunity.salespersonId, 7);
+  assert.equal(opportunity.originInquiryId, 11);
+  assert.equal(opportunity.opportunityNo, null);
+  assert.deepEqual(repositories.calls, [
+    ['getCustomer', 10],
+    ['getContact', 20],
+    ['createOpportunity', {
+      originInquiryId: 11,
+      opportunityNo: null,
+      title: 'Factory upgrade',
+      customerId: 10,
+      primaryContactId: 20,
+      requirement: 'Upgrade production line',
+      estimatedAmount: 120000.50,
+      productInterest: 'Industrial mixer',
+      productCategoryCode: 'mixers',
+      confirmedProductCategoryCodes: [],
+      productCategoryReviewedBy: 2,
+      projectType: 'automation',
+      deliveryCycle: '45 days',
+      expectedBidDate: '2026-07-10',
+      status: STATUSES.DRAFT,
+      salespersonId: 7
+    }]
+  ]);
+});
+
+test('inquiry conversion rejects contact from another customer', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7 },
+    contact: { id: 20, customerId: 11, customerOwnerUserId: 7 }
+  });
+
+  await assert.rejects(() => createOpportunityDraft(repositories, {
+    id: 2,
+    roles: [ROLES.SALES_MANAGER]
+  }, {
+    title: 'Factory upgrade',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Upgrade production line'
+  }, { inquiryConversion: true, originInquiryId: 11, salespersonId: 7 }), /Contact does not belong to customer/);
+});
+
+test('createOpportunityDraft rejects direct opportunity creation', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 8 },
+    contact: null
+  });
+
+  await assert.rejects(() => createOpportunityDraft(repositories, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, {
+    title: 'Factory upgrade',
+    customerId: 10,
+    requirement: 'Upgrade production line'
+  }), /Forbidden/);
+
+  assert.deepEqual(repositories.calls, []);
+});
+
+test('sales manager cannot create a manual opportunity outside the protected inquiry flow', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, coordinatorUserId: 8 },
+    contact: { id: 20, customerId: 10, customerCoordinatorUserId: 8 }
+  });
+
+  await assert.rejects(() => createOpportunityDraft(repositories, {
+    id: 2,
+    roles: [ROLES.SALES_MANAGER]
+  }, {
+    title: 'Existing customer expansion',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Add one production line'
+  }, { manualEntry: true, salespersonId: 7 }), /Forbidden/);
+  assert.deepEqual(repositories.calls, []);
+  assert.equal(canCreateOpportunityManually({ id: 2, roles: [ROLES.SALES_MANAGER] }), false);
+  assert.equal(canCreateOpportunityManually({ id: 99, roles: [ROLES.ADMINISTRATOR] }), true);
+});
+
+test('sales manager can create an opportunity only through a controlled email-thread conversion', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, coordinatorUserId: 8 },
+    contact: { id: 20, customerId: 10, customerCoordinatorUserId: 8 }
+  });
+
+  const opportunity = await createOpportunityDraft(repositories, {
+    id: 2,
+    roles: [ROLES.SALES_MANAGER]
+  }, {
+    title: 'Email sourced mixer project',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Please quote one mixer'
+  }, {
+    emailThreadConversion: true,
+    emailThreadId: 30,
+    salespersonId: 7
+  });
+
+  assert.equal(opportunity.salespersonId, 7);
+  assert.equal(opportunity.originInquiryId, null);
+  assert.equal(repositories.calls.at(-1)[0], 'createOpportunity');
+});
+
+test('canViewOpportunity allows owner assignees and administrator', () => {
+  const opportunity = {
+    customerCoordinatorUserId: 6,
+    salespersonId: 1,
+    salesManagerId: 2,
+    quotationEngineerId: 3,
+    technicalManagerId: 4,
+    commercialManagerId: 5
+  };
+
+  assert.equal(canViewOpportunity({ id: 1, roles: [ROLES.SALESPERSON] }, opportunity), true);
+  assert.equal(canViewOpportunity({ id: 6, roles: [ROLES.SALESPERSON] }, opportunity), true);
+  assert.equal(canViewOpportunity({ id: 3, roles: [ROLES.QUOTATION_ENGINEER] }, opportunity), true);
+  assert.equal(canViewOpportunity({ id: 99, roles: [ROLES.ADMINISTRATOR] }, opportunity), true);
+  assert.equal(canViewOpportunity({ id: 9, roles: [ROLES.SALESPERSON] }, opportunity), false);
+});
+
+test('canViewOpportunity allows active opportunity team members', () => {
+  const opportunity = {
+    salespersonId: 1,
+    salesManagerId: null,
+    quotationEngineerId: null,
+    technicalManagerId: null,
+    commercialManagerId: null,
+    teamMembers: [
+      { userId: 8, isActive: true },
+      { userId: 9, isActive: false }
+    ]
+  };
+
+  assert.equal(canViewOpportunity({ id: 8, roles: [ROLES.SALESPERSON] }, opportunity), true);
+  assert.equal(canViewOpportunity({ id: 9, roles: [ROLES.SALESPERSON] }, opportunity), false);
+});
+
+test('owner salesperson updates opportunity fields', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7 },
+    contact: { id: 20, customerId: 10, customerOwnerUserId: 7 }
+  });
+
+  const opportunity = await updateOpportunity(repositories, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, {
+    id: 30,
+    salespersonId: 7
+  }, {
+    title: 'Factory upgrade revised',
+    customerId: '10',
+    primaryContactId: '20',
+    requirement: 'Upgrade production and packing lines',
+    estimatedAmount: '180000',
+    productInterest: 'Mixer and packing line',
+    projectType: 'automation',
+    deliveryCycle: '60 days',
+    expectedBidDate: '2026-08-01'
+  });
+
+  assert.equal(opportunity.id, 30);
+  assert.deepEqual(repositories.calls, [
+    ['getCustomer', 10],
+    ['getContact', 20],
+    ['updateOpportunity', 30, {
+      title: 'Factory upgrade revised',
+      customerId: 10,
+      primaryContactId: 20,
+      requirement: 'Upgrade production and packing lines',
+      estimatedAmount: 180000,
+      productInterest: 'Mixer and packing line',
+      productCategoryCode: 'mixers',
+      confirmedProductCategoryCodes: [],
+      productCategoryReviewedBy: 7,
+      projectType: 'automation',
+      deliveryCycle: '60 days',
+      expectedBidDate: '2026-08-01'
+    }]
+  ]);
+});
+
+test('updateOpportunity preserves existing fields when edit payload leaves them blank', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7 },
+    contact: { id: 20, customerId: 10, customerOwnerUserId: 7 }
+  });
+
+  const opportunity = await updateOpportunity(repositories, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, {
+    id: 30,
+    salespersonId: 7,
+    title: 'Factory upgrade',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Upgrade production line',
+    estimatedAmount: 120000.50,
+    productInterest: 'Industrial mixer',
+    projectType: 'automation',
+    deliveryCycle: '45 days',
+    expectedBidDate: '2026-07-10'
+  }, {
+    title: 'Factory upgrade revised',
+    customerId: '',
+    primaryContactId: '',
+    requirement: '',
+    estimatedAmount: '',
+    productInterest: '',
+    projectType: '',
+    deliveryCycle: '',
+    expectedBidDate: ''
+  });
+
+  assert.equal(opportunity.id, 30);
+  assert.deepEqual(repositories.calls, [
+    ['getCustomer', 10],
+    ['getContact', 20],
+    ['updateOpportunity', 30, {
+      title: 'Factory upgrade revised',
+      customerId: 10,
+      primaryContactId: 20,
+      requirement: 'Upgrade production line',
+      estimatedAmount: 120000.50,
+      productInterest: 'Industrial mixer',
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
+      productCategoryReviewedBy: 7,
+      projectType: 'automation',
+      deliveryCycle: '45 days',
+      expectedBidDate: '2026-07-10'
+    }]
+  ]);
+});
+
+test('project owner can update project fields but cannot replace an unowned customer or contact', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 11, ownerUserId: 8 },
+    contact: { id: 21, customerId: 11, customerOwnerUserId: 8 }
+  });
+  const opportunity = {
+    id: 30,
+    salespersonId: 7,
+    customerId: 10,
+    primaryContactId: 20,
+    title: 'Factory upgrade',
+    requirement: 'Upgrade production line'
+  };
+
+  await assert.rejects(() => updateOpportunity(repositories, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, opportunity, {
+    customerId: '11',
+    primaryContactId: '21',
+    title: 'Factory upgrade revised',
+    requirement: 'Upgrade production line'
+  }), /Forbidden/);
+});
+
+test('canEditOpportunity only allows administrator or owner salesperson', () => {
+  const opportunity = { salespersonId: 7 };
+
+  assert.equal(canEditOpportunity({ id: 7, roles: [ROLES.SALESPERSON] }, opportunity), true);
+  assert.equal(canEditOpportunity({ id: 99, roles: [ROLES.ADMINISTRATOR] }, opportunity), true);
+  assert.equal(canEditOpportunity({ id: 8, roles: [ROLES.SALESPERSON] }, opportunity), false);
+  assert.equal(canEditOpportunity({ id: 99, roles: [ROLES.ADMINISTRATOR] }, { ...opportunity, archivedAt: new Date() }), false);
+});
+
+test('administrator archives and reopens an opportunity with audited reasons', async () => {
+  const calls = [];
+  const repository = {
+    async archiveById(id, input) {
+      calls.push(['archive', id, input]);
+      return { id, archivedAt: new Date() };
+    },
+    async reopenById(id, input) {
+      calls.push(['reopen', id, input]);
+      return { id, archivedAt: null };
+    }
+  };
+  const actor = { id: 99, roles: [ROLES.ADMINISTRATOR] };
+  const active = { id: 30, status: STATUSES.DRAFT, archivedAt: null };
+  const archived = { ...active, archivedAt: new Date('2026-09-07T00:00:00Z') };
+
+  assert.equal(canArchiveOpportunity(actor, active), true);
+  assert.equal(canReopenOpportunity(actor, archived), true);
+  await archiveOpportunity(repository, actor, active, 'Duplicate opportunity');
+  await reopenOpportunity(repository, actor, archived, 'Restored after review');
+
+  assert.deepEqual(calls, [
+    ['archive', 30, { actorUserId: 99, reason: 'Duplicate opportunity' }],
+    ['reopen', 30, { actorUserId: 99, reason: 'Restored after review' }]
+  ]);
+});
+
+test('only an administrator can delete an opportunity with a reason and exact DELETE confirmation', async () => {
+  const calls = [];
+  const repository = {
+    async deleteById(id, input) {
+      calls.push({ id, input });
+      return { id, lifecycleEventId: 55, unlinkedEmailThreadCount: 2 };
+    }
+  };
+  const administrator = { id: 99, roles: [ROLES.ADMINISTRATOR] };
+  const salesManager = { id: 2, roles: [ROLES.SALES_MANAGER] };
+  const opportunity = { id: 30, status: STATUSES.DRAFT, archivedAt: null };
+
+  assert.equal(canDeleteOpportunity(administrator), true);
+  assert.equal(canDeleteOpportunity(salesManager), false);
+  await assert.rejects(
+    () => deleteOpportunity(repository, salesManager, opportunity, { confirmation: 'DELETE', reason: 'Duplicate' }),
+    /Forbidden/
+  );
+  await assert.rejects(
+    () => deleteOpportunity(repository, administrator, opportunity, { confirmation: 'delete', reason: 'Duplicate' }),
+    /Type DELETE/
+  );
+  await assert.rejects(
+    () => deleteOpportunity(repository, administrator, opportunity, { confirmation: 'DELETE', reason: '   ' }),
+    /Delete reason is required/
+  );
+
+  const result = await deleteOpportunity(repository, administrator, opportunity, {
+    confirmation: 'DELETE',
+    reason: 'Duplicate opportunity'
+  });
+  assert.equal(result.unlinkedEmailThreadCount, 2);
+  assert.deepEqual(calls, [{
+    id: 30,
+    input: { actorUserId: 99, reason: 'Duplicate opportunity' }
+  }]);
+});
+
+test('opportunity archival requires reasons and archived records are read-only', async () => {
+  const actor = { id: 99, roles: [ROLES.ADMINISTRATOR] };
+  const active = { id: 30, status: STATUSES.DRAFT, archivedAt: null };
+  const archived = { ...active, archivedAt: new Date('2026-09-07T00:00:00Z') };
+  const repository = {
+    async archiveById() { throw new Error('must not be called'); },
+    async reopenById() { throw new Error('must not be called'); }
+  };
+
+  await assert.rejects(() => archiveOpportunity(repository, actor, active, ''), /Archive reason is required/);
+  await assert.rejects(() => reopenOpportunity(repository, actor, archived, ''), /Reopen reason is required/);
+  assert.equal(canManageOpportunityResponsibility(actor, archived), false);
+  assert.equal(canManageOpportunityEngineeringTeam(actor, archived), false);
+  assert.equal(canContributeOpportunityEngineering(actor, archived), false);
+});
+
+test('opportunity cannot link archived customers or contacts', async () => {
+  const actor = { id: 2, roles: [ROLES.SALES_MANAGER] };
+  const archivedCustomerRepositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7, archivedAt: new Date() },
+    contact: null
+  });
+  await assert.rejects(() => createOpportunityDraft(archivedCustomerRepositories, actor, {
+    title: 'Factory upgrade',
+    customerId: 10,
+    requirement: 'Upgrade line'
+  }, { inquiryConversion: true, originInquiryId: 11, salespersonId: 7 }), /Archived customer/);
+
+  const archivedContactRepositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 7, archivedAt: null },
+    contact: { id: 20, customerId: 10, customerOwnerUserId: 7, archivedAt: new Date() }
+  });
+  await assert.rejects(() => createOpportunityDraft(archivedContactRepositories, actor, {
+    title: 'Factory upgrade',
+    customerId: 10,
+    primaryContactId: 20,
+    requirement: 'Upgrade line'
+  }, { inquiryConversion: true, originInquiryId: 11, salespersonId: 7 }), /Archived contact/);
+});
+
+test('canManageOpportunityResponsibility allows administrators and Sales Managers only', () => {
+  assert.equal(canManageOpportunityResponsibility({ id: 1, roles: [ROLES.ADMINISTRATOR] }), true);
+  assert.equal(canManageOpportunityResponsibility({ id: 2, roles: [ROLES.SALES_MANAGER] }), true);
+  assert.equal(canManageOpportunityResponsibility({ id: 7, roles: [ROLES.SALESPERSON] }), false);
+});
+
+test('engineering collaboration distinguishes the lead from active supporting engineers', () => {
+  const opportunity = {
+    quotationEngineerId: 3,
+    teamMembers: [
+      { userId: 8, roleCode: ROLES.QUOTATION_ENGINEER, isActive: true },
+      { userId: 9, roleCode: ROLES.QUOTATION_ENGINEER, isActive: false }
+    ]
+  };
+  const lead = { id: 3, roles: [ROLES.QUOTATION_ENGINEER] };
+  const support = { id: 8, roles: [ROLES.QUOTATION_ENGINEER] };
+  const removedSupport = { id: 9, roles: [ROLES.QUOTATION_ENGINEER] };
+
+  assert.equal(isProjectLeadEngineer(lead, opportunity), true);
+  assert.equal(isSupportingEngineer(lead, opportunity), false);
+  assert.equal(isSupportingEngineer(support, opportunity), true);
+  assert.equal(isSupportingEngineer(removedSupport, opportunity), false);
+  assert.equal(canManageOpportunityEngineeringTeam(lead, opportunity), true);
+  assert.equal(canManageOpportunityEngineeringTeam(support, opportunity), false);
+  assert.equal(canContributeOpportunityEngineering(support, opportunity), true);
+  assert.equal(canContributeOpportunityEngineering(removedSupport, opportunity), false);
+  assert.equal(canContributeOpportunityEngineering({ id: 99, roles: [ROLES.ADMINISTRATOR] }, opportunity), true);
+});
+
+test('updateOpportunity rejects non-owner salesperson', async () => {
+  const repositories = buildRepositories({
+    customer: { id: 10, ownerUserId: 8 },
+    contact: null
+  });
+
+  await assert.rejects(() => updateOpportunity(repositories, {
+    id: 7,
+    roles: [ROLES.SALESPERSON]
+  }, {
+    id: 30,
+    salespersonId: 8
+  }, {
+    title: 'Factory upgrade revised',
+    customerId: 10,
+    requirement: 'Upgrade production line'
+  }), /Forbidden/);
+
+  assert.deepEqual(repositories.calls, []);
+});

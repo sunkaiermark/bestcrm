@@ -1,0 +1,75 @@
+<%- include('../partials/app-start', { title: `${mode === 'new' ? t('newTechnicalTemplate') : t('editTechnicalTemplate')} - BESTCRM`, activeNav: 'technical-templates' }) %>
+        <p class="breadcrumb"><a href="/technical-templates"><%= t('technicalTemplateLibrary') %></a> / <%= mode === 'new' ? t('newTechnicalTemplate') : t('edit') %></p>
+        <header class="page-header">
+          <h1><%= mode === 'new' ? t('newTechnicalTemplate') : t('editTechnicalTemplate') %></h1>
+        </header>
+
+        <form class="form-panel" method="post" action="<%= action %>">
+          <%- csrfField() %>
+          <% if (mode === 'new') { %>
+            <label>
+              <%= t('templateCode') %>
+              <input name="templateCode" maxlength="32" pattern="[A-Za-z][A-Za-z0-9-]*" value="<%= template.templateCode %>" required>
+            </label>
+          <% } else { %>
+            <label>
+              <%= t('templateCode') %>
+              <input value="<%= template.templateCode %>" disabled>
+            </label>
+          <% } %>
+          <label>
+            <%= t('templateName') %>
+            <input name="name" maxlength="200" value="<%= template.name %>" required>
+          </label>
+          <div class="form-grid">
+            <label>
+              <%= t('technicalDocumentType') %>
+              <% if (mode === 'new' || !template.productCategoryCode) { %>
+                <select name="documentType" required>
+                  <% for (const type of documentTypes) { %>
+                    <option value="<%= type.value %>" <%= template.documentType === type.value ? 'selected' : '' %>><%= t(`technicalDocumentType.${type.value}`) %></option>
+                  <% } %>
+                </select>
+              <% } else { %>
+                <input value="<%= t(`technicalDocumentType.${template.documentType}`) %>" disabled>
+                <input type="hidden" name="documentType" value="<%= template.documentType %>">
+              <% } %>
+            </label>
+            <label>
+              <%= t('productCategory') %>
+              <% if (mode === 'new' || !template.productCategoryCode) { %>
+                <select name="productCategoryCode" required>
+                  <option value=""><%= t('selectProductCategory') %></option>
+                  <% for (const category of productCategories) { %>
+                    <option value="<%= category.code %>" <%= template.productCategoryCode === category.code ? 'selected' : '' %>><%= t(`technicalProductCategory.${category.code}`) %></option>
+                  <% } %>
+                </select>
+              <% } else { %>
+                <% const category = productCategories.find((item) => item.code === template.productCategoryCode); %>
+                <input value="<%= t(`technicalProductCategory.${category.code}`) %>" disabled>
+                <input type="hidden" name="productCategoryCode" value="<%= template.productCategoryCode %>">
+              <% } %>
+            </label>
+          </div>
+          <div class="muted"><%= t('templateClassificationImmutableNotice') %></div>
+          <input type="hidden" name="productFamily" value="<%= template.productFamily || 'Controlled product category' %>">
+          <label>
+            <%= t('productModel') %>
+            <input name="productModel" maxlength="200" value="<%= template.productModel || '' %>">
+          </label>
+          <label>
+            <%= t('application') %>
+            <input name="application" maxlength="300" value="<%= template.application || '' %>">
+          </label>
+          <% if (mode === 'new') { %>
+            <label>
+              <%= t('changeSummary') %>
+              <textarea name="changeSummary" maxlength="2000" required><%= template.changeSummary || '' %></textarea>
+            </label>
+          <% } %>
+          <div class="inline-actions">
+            <button type="submit"><%= mode === 'new' ? t('createTemplate') : t('saveTemplate') %></button>
+            <a class="secondary-action" href="<%= mode === 'new' ? '/technical-templates' : `/technical-templates/${template.id}` %>"><%= t('cancel') %></a>
+          </div>
+        </form>
+<%- include('../partials/app-end') %>

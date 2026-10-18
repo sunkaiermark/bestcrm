@@ -1,0 +1,584 @@
+<%- include('../partials/app-start', { title: `${t('leadSubmissionReceipt')} - BESTCRM`, activeNav: 'lead-submissions' }) %>
+        <%
+          const formatFileSize = (bytes) => {
+            const value = Number(bytes || 0);
+            if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`;
+            if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`;
+            return `${value} B`;
+          };
+          const leadDateTimeFormatter = new Intl.DateTimeFormat('en-CA', {
+            timeZone: 'Asia/Singapore',
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit',
+            hourCycle: 'h23'
+          });
+          const formatLeadDateTime = (value) => {
+            if (!value) return '-';
+            const date = value instanceof Date ? value : new Date(value);
+            if (Number.isNaN(date.getTime())) return String(value);
+            const parts = Object.fromEntries(
+              leadDateTimeFormatter.formatToParts(date).map((part) => [part.type, part.value])
+            );
+            return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+          };
+          const leadApprovalInput = approvalInput || {};
+          const leadApprovalValue = (field, fallback = '') => Object.hasOwn(leadApprovalInput, field)
+            ? leadApprovalInput[field]
+            : fallback;
+          const selectedCustomerId = leadApprovalValue('customerId', submission.matchedCustomerId);
+          const selectedContactId = leadApprovalValue('primaryContactId', submission.matchedContactId);
+          const requestedCustomerResolution = leadApprovalValue('customerResolution', '');
+          const hasMatchingCustomer = duplicateCustomers.length > 0;
+          const selectedCustomerResolution = hasMatchingCustomer
+            ? 'existing'
+            : ['new', 'existing'].includes(requestedCustomerResolution)
+              ? requestedCustomerResolution
+              : submission.matchedCustomerId ? 'existing' : '';
+          const confirmedNewCustomerDetails = !hasMatchingCustomer
+            && leadApprovalValue('confirmNewCustomerDetails', '') === '1';
+          const confirmedNewContactDetails = leadApprovalValue('confirmNewContactDetails', '') === '1';
+          const selectedSalespersonId = leadApprovalValue('salespersonId', submission.recommendedSalespersonId);
+          const rawSelectedQuotationEngineerIds = leadApprovalValue('quotationEngineerIds', []);
+          const selectedQuotationEngineerIds = [...new Set(
+            (Array.isArray(rawSelectedQuotationEngineerIds)
+              ? rawSelectedQuotationEngineerIds
+              : [rawSelectedQuotationEngineerIds])
+              .map(Number)
+              .filter((userId) => Number.isSafeInteger(userId) && userId > 0)
+          )];
+          const requestedQuotationEngineerLeadId = Number(leadApprovalValue(
+            'quotationEngineerLeadId',
+            selectedQuotationEngineerIds[0]
+          ));
+          const selectedQuotationEngineerLeadId = selectedQuotationEngineerIds.includes(requestedQuotationEngineerLeadId)
+            ? requestedQuotationEngineerLeadId
+            : selectedQuotationEngineerIds[0];
+          const orderedQuotationEngineerIds = selectedQuotationEngineerLeadId
+            ? [
+                selectedQuotationEngineerLeadId,
+                ...selectedQuotationEngineerIds.filter((userId) => userId !== selectedQuotationEngineerLeadId)
+              ]
+            : [];
+        %>
+        <p class="breadcrumb"><a href="/lead-submissions"><%= t('myLeadSubmissions') %></a></p>
+        <header class="page-header">
+          <div>
+            <h1><%= submission.subject || submission.companyName || `${t('leadSubmissionReceipt')} #${submission.id}` %></h1>
+          </div>
+          <div class="inline-actions">
+            <a class="secondary-action" href="/lead-submissions" title="<%= t('backToList') %>" aria-label="<%= t('backToList') %>"><span aria-hidden="true">←</span> <%= t('backShort') %></a>
+            <% if (canEdit) { %><a class="quick-action" href="/lead-submissions/<%= submission.id %>/edit"><%= t(submission.status === 'returned' ? 'editAndResubmit' : 'editLead') %></a><% } %>
+            <% if (submission.convertedOpportunityId) { %><a class="quick-action" href="/opportunities/<%= submission.convertedOpportunityId %>"><%= t('viewOpportunity') %></a><% } %>
+            <% if (typeof aiSourceEnabled !== 'undefined' && aiSourceEnabled && submission.rawPayload?.aiSourceId) { %><a class="secondary-action" href="/ai-sources/<%= encodeURIComponent(submission.rawPayload.aiSourceId) %>">AI Source</a><% } %>
+            <% if (Number(submission.rawPayload?.emailThreadId) > 0) { %><a class="secondary-action" href="/email-center/threads/<%= submission.rawPayload.emailThreadId %>"><%= t('viewSourceEmail') %></a><% } %>
+          </div>
+        </header>
+
+        <section class="content-section lead-summary-section">
+          <dl class="lead-summary-details">
+            <dt><%= t('status') %></dt><dd><%= t(`leadStatus.${submission.status}`) %></dd>
+            <dt><%= t('submittedAt') %></dt><dd><%= formatLeadDateTime(submission.createdAt) %></dd>
+            <dt><%= t('reviewSalesManager') %></dt><dd><%= submission.assignedDisplayName || '-' %></dd>
+            <dt><%= t('leadSourceChannel') %></dt><dd><%= t(`leadSourceChannel.${submission.sourceChannel}`) %></dd>
+            <dt><%= t('leadSourceAttribution') %></dt><dd><%= [
+              t(`leadSourceChannel.${submission.sourceAttributionChannel || submission.sourceChannel}`),
+              submission.sourceAttributionOwnerDisplayName || submission.sourceAttributionOwnerLabel,
+              submission.sourceAttributionNote
+            ].filter(Boolean).join(' · ') || '-' %></dd>
+            <dt><%= t('leadLifecycleState') %></dt><dd><%= t(`leadLifecycle.${submission.leadLifecycleState || 'active'}`) %></dd>
+            <dt><%= t('leadNextFollowUpOn') %></dt><dd><%= submission.leadNextFollowUpOn || '-' %></dd>
+            <dt><%= t('companyName') %></dt><dd><%= submission.companyName || '-' %></dd>
+            <dt><%= t('website') %></dt><dd><%= submission.companyWebsite || submission.matchedCustomerWebsite || '-' %></dd>
+            <dt><%= t('contactName') %></dt><dd><%= submission.contactName || '-' %></dd>
+            <dt><%= t('email') %></dt><dd><%= submission.contactEmail || '-' %></dd>
+            <dt><%= t('phone') %></dt><dd><%= submission.contactPhone || '-' %></dd>
+            <dt><%= t('productInterest') %></dt><dd><%= submission.productInterest || '-' %></dd>
+            <dt><%= t('opportunityType') %></dt><dd><%= submission.opportunityType || '-' %></dd>
+            <dt><%= t('recommendedSalesOwner') %></dt><dd><%= submission.recommendedSalespersonDisplayName || '-' %></dd>
+          </dl>
+          <dl class="lead-summary-narrative">
+            <div><dt><%= t('requirement') %></dt><dd class="detail-text-cell"><%= submission.requirementText || '-' %></dd></div>
+            <% if (submission.reviewNote) { %><div><dt><%= t('latestDecisionReason') %></dt><dd class="detail-text-cell"><%= submission.reviewNote %></dd></div><% } %>
+          </dl>
+        </section>
+
+        <% if (canManageLifecycle || canRecordFollowUp || relatedLeads.length || managementEvents.length) { %>
+          <section class="content-section lead-lifecycle-section">
+            <h2><%= t('leadLifecycle') %></h2>
+            <% if (canManageLifecycle) { %>
+              <form class="inquiry-workflow-form lead-lifecycle-form" method="post" action="/lead-submissions/<%= submission.id %>/management">
+                <%- csrfField() %>
+                <div class="inquiry-form-grid">
+                  <label>
+                    <%= t('leadLifecycleState') %>
+                    <select name="lifecycleState" required>
+                      <% for (const state of ['active', 'nurture', 'closed', 'duplicate']) { %>
+                        <option value="<%= state %>"<%= (submission.leadLifecycleState || 'active') === state ? ' selected' : '' %>><%= t(`leadLifecycle.${state}`) %></option>
+                      <% } %>
+                    </select>
+                  </label>
+                  <label>
+                    <%= t('recommendedSalesOwner') %>
+                    <select name="recommendedSalespersonId">
+                      <option value=""><%= t('selectSalesOwner') %></option>
+                      <% for (const salesperson of salespeople) { %>
+                        <option value="<%= salesperson.id %>"<%= Number(submission.recommendedSalespersonId) === Number(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
+                      <% } %>
+                    </select>
+                  </label>
+                  <label>
+                    <%= t('leadNextFollowUpOn') %>
+                    <input name="nextFollowUpOn" type="date" value="<%= submission.leadNextFollowUpOn || '' %>">
+                  </label>
+                  <label>
+                    <%= t('leadRelatedInquiry') %>
+                    <select name="relatedInquiryId">
+                      <option value=""><%= t('selectRelatedLead') %></option>
+                      <% for (const related of relatedLeads) { %>
+                        <option value="<%= related.id %>"<%= Number(submission.leadRelatedInquiryId) === Number(related.id) ? ' selected' : '' %>>#<%= related.id %> · <%= related.subject || related.productInterest || related.companyName %></option>
+                      <% } %>
+                    </select>
+                  </label>
+                  <label class="inquiry-field-wide"><%= t('leadLifecycleReason') %><textarea name="reason" maxlength="1000"><%= submission.leadLifecycleReason || '' %></textarea></label>
+                </div>
+                <div class="inquiry-primary-actions"><button type="submit"><%= t('saveLeadOrganisation') %></button></div>
+              </form>
+            <% } %>
+
+            <% if (canRecordFollowUp && (submission.leadLifecycleState || 'active') === 'nurture') { %>
+              <form class="inquiry-workflow-form lead-follow-up-form" method="post" action="/lead-submissions/<%= submission.id %>/follow-ups">
+                <%- csrfField() %>
+                <div class="inquiry-form-grid">
+                  <label class="inquiry-field-wide"><%= t('followUpNote') %><textarea name="note" required maxlength="2000"></textarea></label>
+                  <label><%= t('leadNextFollowUpOn') %><input name="nextFollowUpOn" type="date" value="<%= submission.leadNextFollowUpOn || '' %>"></label>
+                </div>
+                <div class="inquiry-primary-actions"><button type="submit"><%= t('saveFollowUp') %></button></div>
+              </form>
+            <% } %>
+
+            <h3><%= t('sameCustomerLeads') %></h3>
+            <% if (!relatedLeads.length) { %>
+              <p class="empty-state"><%= t('noSameCustomerLeads') %></p>
+            <% } else { %>
+              <table><thead><tr><th>#</th><th><%= t('requirement') %></th><th><%= t('leadLifecycleState') %></th><th><%= t('status') %></th></tr></thead><tbody>
+                <% for (const related of relatedLeads) { %><tr><td><a href="/lead-submissions/<%= related.id %>">#<%= related.id %></a></td><td><%= related.subject || related.productInterest || '-' %></td><td><%= t(`leadLifecycle.${related.leadLifecycleState || 'active'}`) %></td><td><%= t(`leadStatus.${related.status}`) %></td></tr><% } %>
+              </tbody></table>
+            <% } %>
+
+            <h3><%= t('leadManagementHistory') %></h3>
+            <% if (!managementEvents.length && !followUpEvents.length) { %>
+              <p class="empty-state"><%= t('noLeadManagementHistory') %></p>
+            <% } else { %>
+              <table><thead><tr><th><%= t('time') %></th><th><%= t('user') %></th><th><%= t('leadLifecycleState') %></th><th><%= t('reason') %></th></tr></thead><tbody>
+                <% for (const event of managementEvents) { %><tr><td><%= formatLeadDateTime(event.createdAt) %></td><td><%= event.actorDisplayName || `#${event.actorUserId}` %></td><td><%= t(`leadLifecycle.${event.fromState}`) %> → <%= t(`leadLifecycle.${event.toState}`) %></td><td><%= event.reason || '-' %></td></tr><% } %>
+                <% for (const event of followUpEvents) { %><tr><td><%= formatLeadDateTime(event.createdAt) %></td><td><%= event.actorDisplayName || `#${event.actorUserId}` %></td><td><%= t('leadFollowUps') %><%= event.nextFollowUpOn ? ` · ${event.nextFollowUpOn}` : '' %></td><td><%= event.note %></td></tr><% } %>
+              </tbody></table>
+            <% } %>
+          </section>
+        <% } %>
+
+        <%- include('../partials/product-category-review', { record: submission, action: `/lead-submissions/${submission.id}/product-categories`, canEditCategories: canEditCategories, suggestions: suggestProductCategoryCodes({ productInterest: submission.productInterest, subject: submission.subject, requirementText: submission.requirementText }) }) %>
+
+        <% if (canReview) { %>
+          <section class="content-section business-section business-section-project-approval lead-sales-manager-review">
+            <h2><%= t('leadSalesManagerReview') %></h2>
+            <div class="section-body">
+              <form id="lead-approval-form" class="inquiry-workflow-form lead-conversion-review-form" method="post" action="/lead-submissions/<%= submission.id %>/approve">
+                <%- csrfField() %>
+                <input type="hidden" name="createMissingRecords" value="1">
+                <div class="lead-customer-resolution">
+                  <% if (hasMatchingCustomer) { %>
+                    <input type="hidden" name="customerResolution" id="lead-customer-resolution" value="existing">
+                    <div class="lead-customer-match-note" role="alert">
+                      <strong><%= t('matchingCustomerFound') %>：</strong>
+                      <div class="lead-customer-match-list">
+                        <% for (const customer of duplicateCustomers) { %>
+                          <div class="lead-customer-match-row">
+                            <span class="lead-customer-match-name"><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></span>
+                            <button
+                              type="button"
+                              class="secondary-action lead-select-existing-customer<%= Number(selectedCustomerId) === Number(customer.id) ? ' is-selected' : '' %>"
+                              data-select-existing-customer-id="<%= customer.id %>"
+                              aria-pressed="<%= Number(selectedCustomerId) === Number(customer.id) ? 'true' : 'false' %>"
+                            ><%= t('selectThisCustomer') %></button>
+                          </div>
+                        <% } %>
+                      </div>
+                    </div>
+                  <% } else { %>
+                    <label class="lead-customer-mode-field">
+                      <%= t('leadCustomerDecision') %>
+                      <select name="customerResolution" id="lead-customer-resolution" required>
+                        <option value=""><%= t('selectCustomerResolution') %></option>
+                        <option value="existing"<%= selectedCustomerResolution === 'existing' ? ' selected' : '' %>><%= t('leadCustomerExistingOption') %></option>
+                        <option value="new"<%= selectedCustomerResolution === 'new' ? ' selected' : '' %>><%= t('leadCustomerNewOption') %></option>
+                      </select>
+                    </label>
+                  <% } %>
+                  <div class="lead-existing-customer-fields" data-existing-customer-fields<%= selectedCustomerResolution === 'existing' ? '' : ' hidden' %>>
+                    <% if (hasMatchingCustomer) { %>
+                      <input type="hidden" name="customerId" id="lead-customer-select" value="<%= selectedCustomerId || '' %>">
+                    <% } else { %>
+                      <label class="inquiry-field-wide">
+                        <%= t('selectExistingCustomer') %>
+                        <select name="customerId" id="lead-customer-select"<%= selectedCustomerResolution === 'existing' ? ' required' : '' %>>
+                          <option value=""><%= t('selectExistingCustomer') %></option>
+                          <% for (const customer of customers) { %>
+                            <option value="<%= customer.id %>"<%= Number(selectedCustomerId) === Number(customer.id) ? ' selected' : '' %>><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.name %></option>
+                          <% } %>
+                        </select>
+                      </label>
+                    <% } %>
+                    <input type="hidden" name="primaryContactId" id="lead-contact-select" value="<%= selectedContactId || '' %>">
+                    <div
+                      class="lead-contact-resolution inquiry-field-wide"
+                      data-contact-resolution
+                      data-lead-contact-email="<%= submission.contactEmail || '' %>"
+                      data-lead-contact-phone="<%= submission.contactPhone || '' %>"
+                    >
+                      <div class="lead-contact-match-note" data-contact-match-note hidden>
+                        <strong><%= t('matchingContactFound') %>：</strong>
+                        <div class="lead-contact-match-list">
+                          <% for (const contact of contacts) { %>
+                            <div
+                              class="lead-contact-match-row"
+                              data-contact-match-row
+                              data-customer-id="<%= contact.customerId %>"
+                              data-contact-email="<%= contact.email || '' %>"
+                              data-contact-phone="<%= contact.phone || '' %>"
+                              hidden
+                            >
+                              <span class="lead-contact-match-name">
+                                <span><%= contact.contactCode ? `${contact.contactCode} · ` : '' %><%= contact.name %></span>
+                                <small><%= [contact.email, contact.phone].filter(Boolean).join(' · ') %></small>
+                              </span>
+                              <button
+                                type="button"
+                                class="secondary-action lead-select-existing-contact<%= Number(selectedContactId) === Number(contact.id) ? ' is-selected' : '' %>"
+                                data-select-existing-contact-id="<%= contact.id %>"
+                                aria-pressed="<%= Number(selectedContactId) === Number(contact.id) ? 'true' : 'false' %>"
+                              ><%= t('selectThisContact') %></button>
+                            </div>
+                          <% } %>
+                        </div>
+                      </div>
+                      <div class="lead-new-contact-fields" data-new-contact-fields hidden>
+                        <div class="lead-new-contact-heading">
+                          <strong><%= t('newContactDetailsReview') %></strong>
+                          <p class="muted"><%= t('newContactDetailsAutoFilled') %></p>
+                        </div>
+                        <dl class="lead-new-contact-summary">
+                          <div><dt><%= t('contactName') %></dt><dd><%= submission.contactName || '-' %></dd></div>
+                          <div><dt><%= t('email') %></dt><dd><%= submission.contactEmail || '-' %></dd></div>
+                          <div><dt><%= t('phone') %></dt><dd><%= submission.contactPhone || '-' %></dd></div>
+                        </dl>
+                        <label class="lead-new-contact-confirmation">
+                          <input type="checkbox" name="confirmNewContactDetails" value="1"<%= confirmedNewContactDetails ? ' checked' : '' %>>
+                          <span><%= t('confirmNewContactDetails') %></span>
+                        </label>
+                      </div>
+                    </div>
+                  </div>
+                  <% if (!hasMatchingCustomer) { %>
+                    <div class="lead-new-customer-fields" data-new-customer-fields<%= selectedCustomerResolution === 'new' ? '' : ' hidden' %>>
+                      <div class="lead-new-customer-heading">
+                        <strong><%= t('newCustomerDetailsReview') %></strong>
+                        <p class="muted"><%= t('newCustomerDetailsAutoFilled') %></p>
+                      </div>
+                      <dl class="lead-new-customer-summary">
+                        <div><dt><%= t('customerName') %></dt><dd><%= submission.companyName || '-' %></dd></div>
+                        <div><dt><%= t('website') %></dt><dd><%= submission.companyWebsite || '-' %></dd></div>
+                        <div><dt><%= t('country') %></dt><dd><%= submission.country || '-' %></dd></div>
+                        <div><dt><%= t('contactName') %></dt><dd><%= submission.contactName || '-' %></dd></div>
+                        <div><dt><%= t('email') %></dt><dd><%= submission.contactEmail || '-' %></dd></div>
+                        <div><dt><%= t('phone') %></dt><dd><%= submission.contactPhone || '-' %></dd></div>
+                      </dl>
+                      <label class="lead-new-customer-confirmation">
+                        <input type="checkbox" name="confirmNewCustomerDetails" value="1"<%= confirmedNewCustomerDetails ? ' checked' : '' %><%= selectedCustomerResolution === 'new' ? ' required' : '' %>>
+                        <span><%= t('confirmNewCustomerDetails') %></span>
+                      </label>
+                    </div>
+                  <% } %>
+                </div>
+                <div class="inquiry-form-grid">
+                  <label class="inquiry-field-wide"><%= t('opportunityName') %><input name="title" value="<%= leadApprovalValue('title', submission.subject || submission.productInterest || submission.companyName) || '' %>" required></label>
+                  <label><%= t('estimatedAmount') %><input type="number" step="0.01" name="estimatedAmount" value="<%= leadApprovalValue('estimatedAmount') || '' %>"></label>
+                  <label><%= t('deliveryPeriod') %><input name="deliveryCycle" value="<%= leadApprovalValue('deliveryCycle') || '' %>"></label>
+                  <label><%= t('expectedBidDate') %><input type="date" name="expectedBidDate" value="<%= leadApprovalValue('expectedBidDate') || '' %>"></label>
+                  <label>
+                    <%= t('workflowField.technicalPlanSubmitDate') %>
+                    <input type="date" name="technicalPlanSubmitDate" value="<%= leadApprovalValue('technicalPlanSubmitDate') || '' %>" required>
+                  </label>
+                </div>
+              </form>
+
+              <div class="lead-review-decision-grid">
+                <label class="lead-review-decision-cell lead-review-sales-owner">
+                  <span class="lead-review-decision-name"><%= t('salesOwner') %></span>
+                  <select name="salespersonId" form="lead-approval-form" required>
+                    <option value=""><%= t('selectSalesOwner') %></option>
+                    <% for (const salesperson of salespeople) { %>
+                      <option value="<%= salesperson.id %>"<%= Number(selectedSalespersonId) === Number(salesperson.id) ? ' selected' : '' %>><%= salesperson.displayName || salesperson.username %></option>
+                    <% } %>
+                  </select>
+                </label>
+
+                <div class="lead-review-decision-cell lead-review-engineer">
+                  <span class="lead-review-decision-name"><%= language === 'zh' ? '项目工程师及组员工程师' : 'Project and supporting engineers' %></span>
+                  <details
+                    class="workflow-engineer-picker"
+                    data-engineer-picker
+                    data-approval-form-id="lead-approval-form"
+                    data-selected-order="<%= orderedQuotationEngineerIds.join(',') %>"
+                  >
+                    <summary data-engineer-summary><%= orderedQuotationEngineerIds.length > 0
+                      ? orderedQuotationEngineerIds
+                          .map((id) => quotationEngineers.find((user) => Number(user.id) === id))
+                          .filter(Boolean)
+                          .map((user) => user.displayName || user.username)
+                          .join(', ')
+                      : t('workflowField.quotationEngineerIds') %></summary>
+                    <input form="lead-approval-form" type="hidden" name="quotationEngineerLeadId" value="<%= selectedQuotationEngineerLeadId || '' %>" data-engineer-lead>
+                    <div class="workflow-engineer-options">
+                      <% for (const engineer of quotationEngineers) { %>
+                        <label>
+                          <input
+                            form="lead-approval-form"
+                            type="checkbox"
+                            name="quotationEngineerIds"
+                            value="<%= engineer.id %>"
+                            data-engineer-option
+                            data-engineer-name="<%= engineer.displayName || engineer.username %>"
+                            <%= selectedQuotationEngineerIds.includes(Number(engineer.id)) ? 'checked' : '' %>
+                          >
+                          <span><%= engineer.displayName || engineer.username %></span>
+                        </label>
+                      <% } %>
+                    </div>
+                  </details>
+                  <span class="muted"><%= language === 'zh' ? '首位为项目工程师，其余为组员工程师；可仅选择一人。' : 'The first selection is the project engineer; the rest are supporting engineers.' %></span>
+                </div>
+
+                <form class="lead-review-decision-cell lead-review-return" method="post" action="/lead-submissions/<%= submission.id %>/return">
+                  <%- csrfField() %>
+                  <button class="workflow-action-button workflow-reject-button" type="submit"><%= t('rejectForModification') %></button>
+                  <label class="lead-review-decision-option">
+                    <span class="visually-hidden"><%= t('modificationRequest') %></span>
+                    <input name="reason" type="text" required maxlength="1000" placeholder="<%= t('modificationRequest') %>">
+                  </label>
+                </form>
+
+                <div class="lead-review-decision-cell lead-review-approve">
+                  <button form="lead-approval-form" class="workflow-action-button workflow-approve-button" type="submit" disabled><%= t('approveLeadAndCreateOpportunity') %></button>
+                  <label class="lead-review-decision-option">
+                    <span class="visually-hidden"><%= t('reviewNote') %></span>
+                    <input form="lead-approval-form" name="reviewNote" type="text" maxlength="1000" value="<%= leadApprovalValue('reviewNote') || '' %>" placeholder="<%= t('reviewNote') %>">
+                  </label>
+                </div>
+              </div>
+            </div>
+          </section>
+        <% } %>
+
+        <section class="content-section">
+          <h2><%= t('supportingFiles') %></h2>
+          <% if (!attachments.length) { %>
+            <p class="empty-state"><%= t('noSupportingFiles') %></p>
+          <% } else { %>
+            <div class="inquiry-attachment-list lead-attachment-list">
+            <% for (const attachment of attachments) { %>
+                <div class="inquiry-attachment-row">
+                  <span><%= attachment.originalName %></span>
+                  <span class="muted"><%= formatFileSize(attachment.fileSize) %></span>
+                  <span class="inline-actions">
+                    <a href="/lead-submissions/<%= submission.id %>/attachments/<%= attachment.id %>/preview"><%= t('preview') %></a>
+                    <a href="/lead-submissions/<%= submission.id %>/attachments/<%= attachment.id %>/download"><%= t('download') %></a>
+                  </span>
+                </div>
+            <% } %>
+            </div>
+          <% } %>
+        </section>
+
+        <section class="content-section">
+          <h2><%= t('leadReviewHistory') %></h2>
+          <% if (!reviewEvents.length) { %>
+            <p class="empty-state"><%= t('noLeadReviewHistory') %></p>
+          <% } else { %>
+            <table>
+              <thead><tr><th><%= t('time') %></th><th><%= t('actions') %></th><th><%= t('user') %></th><th><%= t('status') %></th><th><%= t('reason') %></th></tr></thead>
+              <tbody>
+                <% for (const event of reviewEvents) { %>
+                  <tr>
+                    <td><%= formatLeadDateTime(event.createdAt) %></td>
+                    <td><%= t(`leadReviewEvent.${event.eventType}`) %></td>
+                    <td><%= event.actorDisplayName || `#${event.actorUserId}` %></td>
+                    <td><%= t(`leadStatus.${event.fromStatus}`) %> → <%= t(`leadStatus.${event.toStatus}`) %></td>
+                    <td><%= event.reason || '-' %></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          <% } %>
+        </section>
+
+        <% if (canReview) { %>
+          <script>
+            (() => {
+              const resolutionSelect = document.getElementById('lead-customer-resolution');
+              const existingFields = document.querySelector('[data-existing-customer-fields]');
+              const newFields = document.querySelector('[data-new-customer-fields]');
+              const customerSelect = document.getElementById('lead-customer-select');
+              const contactInput = document.getElementById('lead-contact-select');
+              const contactResolution = document.querySelector('[data-contact-resolution]');
+              const contactMatchNote = document.querySelector('[data-contact-match-note]');
+              const contactMatchRows = [...document.querySelectorAll('[data-contact-match-row]')];
+              const newContactFields = document.querySelector('[data-new-contact-fields]');
+              const newContactConfirmation = document.querySelector('input[name="confirmNewContactDetails"]');
+              const newCustomerConfirmation = document.querySelector('input[name="confirmNewCustomerDetails"]');
+              const matchingCustomerButtons = [...document.querySelectorAll('[data-select-existing-customer-id]')];
+              const matchingContactButtons = [...document.querySelectorAll('[data-select-existing-contact-id]')];
+              const approveButton = document.querySelector('.workflow-approve-button[form="lead-approval-form"]');
+              if (!resolutionSelect || !existingFields || !customerSelect || !contactInput || !contactResolution) return;
+              const normalizeEmail = (value) => String(value || '').trim().toLowerCase();
+              const normalizePhone = (value) => String(value || '').replace(/\D/g, '');
+              const leadEmail = normalizeEmail(contactResolution.dataset.leadContactEmail);
+              const leadPhone = normalizePhone(contactResolution.dataset.leadContactPhone);
+              const rowMatchesLead = (row) => (
+                (leadEmail && normalizeEmail(row.dataset.contactEmail) === leadEmail)
+                || (leadPhone && normalizePhone(row.dataset.contactPhone) === leadPhone)
+              );
+              const refreshCustomerButtons = () => {
+                const customerId = customerSelect.value;
+                for (const button of matchingCustomerButtons) {
+                  const selected = button.dataset.selectExistingCustomerId === customerId;
+                  button.classList.toggle('is-selected', selected);
+                  button.setAttribute('aria-pressed', String(selected));
+                }
+              };
+              const refreshContactDecision = () => {
+                const customerId = customerSelect.value;
+                const matchingRows = [];
+                for (const row of contactMatchRows) {
+                  const matches = Boolean(customerId)
+                    && row.dataset.customerId === customerId
+                    && rowMatchesLead(row);
+                  row.hidden = !matches;
+                  if (matches) matchingRows.push(row);
+                }
+                const selectedContactIsVisible = matchingRows.some((row) => (
+                  row.querySelector('[data-select-existing-contact-id]')?.dataset.selectExistingContactId
+                    === contactInput.value
+                ));
+                if (!selectedContactIsVisible) contactInput.value = '';
+                for (const button of matchingContactButtons) {
+                  const selected = button.dataset.selectExistingContactId === contactInput.value;
+                  button.classList.toggle('is-selected', selected);
+                  button.setAttribute('aria-pressed', String(selected));
+                }
+                const hasMatches = matchingRows.length > 0;
+                if (contactMatchNote) contactMatchNote.hidden = !customerId || !hasMatches;
+                if (newContactFields) newContactFields.hidden = !customerId || hasMatches;
+                if (newContactConfirmation) {
+                  newContactConfirmation.required = Boolean(customerId) && !hasMatches;
+                  if (hasMatches) newContactConfirmation.checked = false;
+                }
+                return Boolean(customerId) && (hasMatches
+                  ? Boolean(contactInput.value)
+                  : Boolean(newContactConfirmation?.checked));
+              };
+              const refreshApproveButton = () => {
+                if (!approveButton) return;
+                if (resolutionSelect.value === 'new') {
+                  approveButton.disabled = !newCustomerConfirmation?.checked;
+                  return;
+                }
+                approveButton.disabled = resolutionSelect.value !== 'existing'
+                  || !refreshContactDecision();
+              };
+              const refreshCustomerResolution = () => {
+                const isExisting = resolutionSelect.value === 'existing';
+                const isNew = resolutionSelect.value === 'new' && Boolean(newFields);
+                existingFields.hidden = !isExisting;
+                if (newFields) newFields.hidden = !isNew;
+                if (customerSelect.tagName === 'SELECT') customerSelect.required = isExisting;
+                if (newCustomerConfirmation) newCustomerConfirmation.required = isNew;
+                if (!isExisting) {
+                  customerSelect.value = '';
+                  contactInput.value = '';
+                  if (newContactConfirmation) newContactConfirmation.checked = false;
+                }
+                if (!isNew && newCustomerConfirmation) newCustomerConfirmation.checked = false;
+                refreshCustomerButtons();
+                refreshContactDecision();
+                refreshApproveButton();
+              };
+              resolutionSelect.addEventListener('change', () => {
+                customerSelect.value = '';
+                contactInput.value = '';
+                if (newContactConfirmation) newContactConfirmation.checked = false;
+                refreshCustomerResolution();
+              });
+              customerSelect.addEventListener('change', () => {
+                contactInput.value = '';
+                if (newContactConfirmation) newContactConfirmation.checked = false;
+                refreshCustomerButtons();
+                refreshContactDecision();
+                refreshApproveButton();
+              });
+              for (const button of matchingCustomerButtons) {
+                button.addEventListener('click', () => {
+                  customerSelect.value = button.dataset.selectExistingCustomerId || '';
+                  customerSelect.dispatchEvent(new Event('change', { bubbles: true }));
+                });
+              }
+              for (const button of matchingContactButtons) {
+                button.addEventListener('click', () => {
+                  contactInput.value = button.dataset.selectExistingContactId || '';
+                  refreshContactDecision();
+                  refreshApproveButton();
+                });
+              }
+              newContactConfirmation?.addEventListener('change', refreshApproveButton);
+              newCustomerConfirmation?.addEventListener('change', refreshApproveButton);
+              refreshCustomerResolution();
+            })();
+            document.querySelectorAll('[data-engineer-picker]').forEach((picker) => {
+              const options = [...picker.querySelectorAll('[data-engineer-option]')];
+              const summary = picker.querySelector('[data-engineer-summary]');
+              const leadInput = picker.querySelector('[data-engineer-lead]');
+              let selectionOrder = String(picker.dataset.selectedOrder || '')
+                .split(',')
+                .filter(Boolean);
+              const refresh = () => {
+                const selected = options.filter((option) => option.checked);
+                const selectedIds = new Set(selected.map((option) => option.value));
+                selectionOrder = selectionOrder.filter((id) => selectedIds.has(id));
+                for (const option of selected) {
+                  if (!selectionOrder.includes(option.value)) selectionOrder.push(option.value);
+                }
+                leadInput.value = selectionOrder[0] || '';
+                summary.textContent = selectionOrder
+                  .map((id) => options.find((option) => option.value === id)?.dataset.engineerName)
+                  .filter(Boolean)
+                  .join(', ') || <%- JSON.stringify(t('workflowField.quotationEngineerIds')) %>;
+              };
+              for (const option of options) option.addEventListener('change', refresh);
+              const approvalForm = document.getElementById(picker.dataset.approvalFormId || 'lead-approval-form');
+              approvalForm?.addEventListener('submit', (event) => {
+                refresh();
+                if (!leadInput.value) {
+                  event.preventDefault();
+                  picker.open = true;
+                  options[0]?.focus();
+                }
+              });
+              refresh();
+            });
+          </script>
+        <% } %>
+<%- include('../partials/app-end') %>
+

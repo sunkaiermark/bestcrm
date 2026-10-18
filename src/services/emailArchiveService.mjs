@@ -1,0 +1,1317 @@
+import { createHash } from 'node:crypto';
+import { suggestProductCategoryCode, suggestProductInterest } from '../domain/productCategories.mjs';
+import { ROLES, hasRole } from '../domain/roles.mjs';
+import { normalizeUploadedFilename } from '../utils/filenameEncoding.mjs';
+import { canAccessInquiryInbox } from './inquiryService.mjs';
+import { canSubmitNewLead, submitSalesLead } from './leadSubmissionService.mjs';
+import {
+  canViewOpportunity,
+  createOpportunityDraft
+} from './opportunityService.mjs';
+import { removeStoredAttachmentFile, storeAttachmentBuffer } from './attachmentFileService.mjs';
+import {
+  processEmailPurgeFileJobs,
+  supportsEmailPurgeFileCleanup
+} from './emailPurgeFileCleanupService.mjs';
+import {
+  EmailRawIdentityConflictError,
+  EmailRawMalwareError,
+  EmailRawScanError
+} from './emailRawArchiveService.mjs';
+
+function text(value) {
+  return String(value || '').trim();
+}
+
+function maxAttachmentBytes(maxUploadMb) {
+  const value = Number(maxUploadMb);
+  return Number.isFinite(value) && value > 0 ? value * 1024 * 1024 : 0;
+}
+
+function fallbackAttachmentName(index) {
+  return `email-attachment-${index + 1}`;
+}
+
+function normalizedContentDisposition(value) {
+  const disposition = text(value).toLowerCase();
+  return ['attachment', 'inline'].includes(disposition) ? disposition : '';
+}
+
+export class EmailArchiveError extends Error {
+  constructor(message, statusCode = 400) {
+    super(message);
+    this.name = 'EmailArchiveError';
+    this.statusCode = statusCode;
+  }
+}
+
+export function canPurgeEmailSpam(actor) {
+  return hasRole(actor, ROLES.ADMINISTRATOR);
+}
+
+export async function canReclassifyOrphanedConvertedInquiryAsSpam(dependencies, actor, thread) {
+  if (!canPurgeEmailSpam(actor)
+    || thread?.triageStatus !== 'converted_inquiry'
+    || thread?.archiveDisposition !== 'active'
+    || thread?.inquiryId
+    || thread?.opportunityId
+    || thread?.customerId
+    || thread?.contactId
+    || typeof dependencies.emailArchiveRepository?.isOrphanedConvertedInquirySpamEligible !== 'function') {
+    return false;
+  }
+  return dependencies.emailArchiveRepository.isOrphanedConvertedInquirySpamEligible(thread.id);
+}
+
+export class EmailArchiveDuplicateRaceError extends Error {
+  constructor() {
+    super('Email archive duplicate race');
+    this.name = 'EmailArchiveDuplicateRaceError';
+  }
+}
+
+function assertInboundIdentity(message) {
+  if (!text(message.messageId) && (!text(message.providerMailbox) || !message.providerUid)) {
+    throw new EmailArchiveError('Email message identity is required');
+  }
+  if (!text(message.fromAddress)) {
+    throw new EmailArchiveError('Email sender address is required');
+  }
+}
+
+function inboundClassification(inquiry = {}) {
+  const filter = inquiry.rawPayload?.emailFilter || {};
+  const archiveDisposition = inquiry.status === 'spam'
+    ? 'spam'
+    : inquiry.status === 'archived' ? 'archived' : 'active';
+  return {
+    archiveDisposition,
+    classificationCategory: text(filter.category) || 'inquiry',
+    classificationReason: text(filter.reason) || 'manual_review',
+    entryDecision: text(filter.entryDecision)
+      || (inquiry.status === 'spam' ? 'reject_spam' : inquiry.status === 'new' ? 'manual_review' : 'accept'),
+    ruleVersion: text(filter.ruleVersion),
+    spamScore: Number(filter.spamScore || 0),
+    spamSignals: Array.isArray(filter.spamSignals) ? filter.spamSignals : [],
+    protectedReasons: Array.isArray(filter.protectedReasons) ? filter.protectedReasons : []
+  };
+}
+
+function knownContactInquiry(inquiry, contact) {
+  if (!contact) return inquiry;
+  const previousFilter = inquiry.rawPayload?.emailFilter || {};
+  return {
+    ...inquiry,
+    status: 'new',
+    matchedCustomerId: contact.customerId,
+    matchedContactId: contact.id,
+    rawPayload: {
+      ...(inquiry.rawPayload || {}),
+      emailFilter: {
+        status: 'new',
+        category: 'known_contact',
+        reason: 'known_contact_email',
+        matchedRules: [String(contact.contactCode || contact.id)],
+        entryDecision: 'accept',
+        ruleVersion: text(previousFilter.ruleVersion),
+        spamScore: Number(previousFilter.spamScore || 0),
+        spamSignals: Array.isArray(previousFilter.spamSignals) ? previousFilter.spamSignals : [],
+        protectedReasons: [
+          ...new Set([
+            ...(Array.isArray(previousFilter.protectedReasons) ? previousFilter.protectedReasons : []),
+            'known_contact_email'
+          ])
+        ]
+      }
+    },
+    reviewNote: inquiry.reviewNote || ''
+  };
+}
+
+export async function resolveInboundEmailClassification(repositories, parsed) {
+  const { message, inquiry } = parsed;
+  const thread = typeof repositories.emailArchiveRepository?.findThreadByReferences === 'function'
+    ? await repositories.emailArchiveRepository.findThreadByReferences(message.replyReferenceIds)
+    : null;
+  let effectiveInquiry = inquiry;
+  let contact = null;
+  if (!thread && typeof repositories.contactRepository?.findUniqueByEmail === 'function') {
+    contact = await repositories.contactRepository.findUniqueByEmail(message.fromAddress);
+    effectiveInquiry = knownContactInquiry(inquiry, contact);
+  }
+  const humanSpamSenderRule = !thread && !contact && !effectiveInquiry.matchedContactId
+    && typeof repositories.emailArchiveRepository?.findActiveHumanSpamSenderRule === 'function'
+    ? await repositories.emailArchiveRepository.findActiveHumanSpamSenderRule(message.fromAddress)
+    : null;
+  const classification = thread
+    ? {
+        archiveDisposition: thread.archiveDisposition || 'active',
+        classificationCategory: thread.classificationCategory || 'conversation',
+        classificationReason: thread.classificationReason || 'known_thread_reply',
+        entryDecision: 'accept',
+        ruleVersion: text(inquiry.rawPayload?.emailFilter?.ruleVersion),
+        spamScore: Number(inquiry.rawPayload?.emailFilter?.spamScore || 0),
+        spamSignals: Array.isArray(inquiry.rawPayload?.emailFilter?.spamSignals)
+          ? inquiry.rawPayload.emailFilter.spamSignals
+          : [],
+        protectedReasons: ['known_thread_reply']
+      }
+    : humanSpamSenderRule
+      ? {
+          archiveDisposition: 'spam',
+          classificationCategory: 'marketing_spam',
+          classificationReason: 'human_confirmed_sender_spam',
+          entryDecision: 'reject_spam',
+          ruleVersion: 'human-confirmed-sender-v1',
+          spamScore: 0,
+          spamSignals: ['human_confirmed_sender'],
+          protectedReasons: []
+        }
+      : inboundClassification(effectiveInquiry);
+  return { thread, inquiry: effectiveInquiry, classification, humanSpamSenderRule: Boolean(humanSpamSenderRule) };
+}
+
+function assertRawCaptureMatches(rawMessage, rawCapture) {
+  if (!rawMessage
+    || rawMessage.sha256 !== rawCapture.sha256
+    || Number(rawMessage.fileSize) !== Number(rawCapture.fileSize)
+    || rawMessage.storedPath !== rawCapture.storedPath) {
+    throw new EmailRawIdentityConflictError();
+  }
+}
+
+function scanAttemptInput(rawMessageId, scan = {}) {
+  const now = new Date().toISOString();
+  return {
+    rawMessageId,
+    engine: text(scan.engine) || 'unknown',
+    engineVersion: text(scan.engineVersion),
+    signatureVersion: text(scan.signatureVersion),
+    verdict: text(scan.verdict) || 'error',
+    findingCode: text(scan.findingCode),
+    safeDetail: text(scan.safeDetail).slice(0, 1000),
+    startedAt: scan.startedAt || now,
+    completedAt: scan.completedAt || now
+  };
+}
+
+export async function persistRawEmailCapture(emailArchiveRepository, rawCapture) {
+  if (!rawCapture) return null;
+  const result = await emailArchiveRepository.createRawMessage({
+    mailboxKey: rawCapture.mailboxKey,
+    providerName: rawCapture.providerName,
+    providerMailbox: rawCapture.providerMailbox,
+    providerUidValidity: rawCapture.providerUidValidity,
+    providerUid: rawCapture.providerUid,
+    rfcMessageIdHint: rawCapture.rfcMessageIdHint || '',
+    sourceReceivedAt: rawCapture.sourceReceivedAt || null,
+    storedPath: rawCapture.storedPath,
+    fileSize: rawCapture.fileSize,
+    sha256: rawCapture.sha256
+  });
+  assertRawCaptureMatches(result.rawMessage, rawCapture);
+  await emailArchiveRepository.createRawScanAttempt(
+    scanAttemptInput(result.rawMessage.id, rawCapture.scan)
+  );
+  return result.rawMessage;
+}
+
+export async function persistRawEmailCaptureOnly(repositories, rawCapture, processing = {}) {
+  const rawMessage = await persistRawEmailCapture(repositories.emailArchiveRepository, rawCapture);
+  const now = new Date().toISOString();
+  await repositories.emailArchiveRepository.createRawProcessingAttempt({
+    rawMessageId: rawMessage.id,
+    stage: processing.stage || 'parse',
+    outcome: processing.outcome || 'retryable_error',
+    processorVersion: processing.processorVersion || 'email-parser-v1',
+    safeErrorCode: processing.safeErrorCode || 'parse_failed',
+    safeDetail: text(processing.safeDetail).slice(0, 1000),
+    startedAt: processing.startedAt || now,
+    completedAt: processing.completedAt || now
+  });
+  return rawMessage;
+}
+
+async function recordSuccessfulRawProcessing(emailArchiveRepository, rawMessageId) {
+  if (!rawMessageId || typeof emailArchiveRepository.createRawProcessingAttempt !== 'function') return;
+  const now = new Date().toISOString();
+  await emailArchiveRepository.createRawProcessingAttempt({
+    rawMessageId,
+    stage: 'parse',
+    outcome: 'succeeded',
+    processorVersion: 'email-parser-v1',
+    startedAt: now,
+    completedAt: now
+  });
+}
+
+async function recordMailboxDelivery(emailArchiveRepository, message, archivedMessage, rawMessage, direction) {
+  if (typeof emailArchiveRepository.createMailboxDelivery !== 'function') return null;
+  if (!text(message.mailboxKey)
+    || !text(message.providerMailbox)
+    || !text(message.providerUidValidity)
+    || !message.providerUid) {
+    return null;
+  }
+  const delivery = await emailArchiveRepository.createMailboxDelivery({
+    messageId: archivedMessage.id,
+    rawMessageId: rawMessage?.id || null,
+    mailboxKey: message.mailboxKey,
+    providerName: 'imap',
+    providerMailbox: message.providerMailbox,
+    providerUidValidity: message.providerUidValidity,
+    providerUid: message.providerUid,
+    direction,
+    firstObservedAt: message.receivedAt || message.sentAt || new Date().toISOString()
+  });
+  const linkedMessageId = Number(delivery?.message_id ?? delivery?.messageId);
+  const linkedRawMessageId = Number(delivery?.raw_message_id ?? delivery?.rawMessageId ?? 0);
+  if (!delivery || linkedMessageId !== Number(archivedMessage.id)
+    || (rawMessage?.id && linkedRawMessageId !== Number(rawMessage.id))) {
+    throw new EmailRawIdentityConflictError('Mailbox delivery identity conflicts with archived evidence');
+  }
+  return delivery;
+}
+
+export async function archiveInboundEmailRecord(repositories, parsed, options = {}) {
+  const { emailArchiveRepository, inquiryRepository } = repositories;
+  const { message, inquiry } = parsed;
+  assertInboundIdentity(message);
+
+  const existing = await emailArchiveRepository.findMessageIdentity(message);
+  if (existing) {
+    let rawMessage = null;
+    if (options.rawCapture) {
+      rawMessage = await persistRawEmailCapture(emailArchiveRepository, options.rawCapture);
+      if (!existing.rawMessageId) {
+        const linked = await emailArchiveRepository.linkInboundMessageRawArchive({
+          messageId: existing.id,
+          rawMessageId: rawMessage.id,
+          rawEmlStoredPath: rawMessage.storedPath,
+          rawEmlFileSize: rawMessage.fileSize,
+          rawEmlSha256: rawMessage.sha256,
+          importedAt: new Date().toISOString()
+        });
+        if (!linked) throw new EmailRawIdentityConflictError('Existing email could not bind raw evidence');
+        Object.assign(existing, linked);
+      }
+      await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage.id);
+    }
+    await recordMailboxDelivery(emailArchiveRepository, message, existing, rawMessage, 'inbound');
+    const thread = await emailArchiveRepository.findThreadById(existing.threadId);
+    return { duplicate: true, message: existing, thread, inquiry: null, rawMessage };
+  }
+
+  const resolved = options.resolvedClassification
+    || await resolveInboundEmailClassification(repositories, parsed);
+  let thread = resolved.thread;
+  const effectiveInquiry = resolved.inquiry;
+  const classification = resolved.classification;
+  const archiveClassification = thread
+    ? classification
+    : { ...classification, archiveDisposition: resolved.humanSpamSenderRule ? 'spam' : 'active' };
+  const rawMessage = options.rawCapture
+    ? await persistRawEmailCapture(emailArchiveRepository, options.rawCapture)
+    : null;
+  if (!thread) {
+    thread = await emailArchiveRepository.createThread({
+      mailboxKey: message.mailboxKey,
+      subject: message.subject,
+      normalizedSubject: message.normalizedSubject,
+      inquiryId: null,
+      customerId: effectiveInquiry.matchedCustomerId,
+      contactId: effectiveInquiry.matchedContactId,
+      triageStatus: resolved.humanSpamSenderRule ? 'spam' : 'pending',
+      triagedAt: resolved.humanSpamSenderRule ? new Date().toISOString() : null,
+      triageNote: resolved.humanSpamSenderRule ? 'Matched a human-confirmed spam sender' : '',
+      ...archiveClassification,
+      lastMessageAt: message.receivedAt
+    });
+  }
+
+  const archivedMessage = await emailArchiveRepository.createInboundMessage({
+    ...message,
+    ...archiveClassification,
+    rawMessageId: rawMessage?.id || null,
+    rawEmlStoredPath: rawMessage?.storedPath || null,
+    rawEmlFileSize: rawMessage?.fileSize || null,
+    rawEmlSha256: rawMessage?.sha256 || null,
+    importedAt: rawMessage ? new Date().toISOString() : null,
+    threadId: thread.id
+  });
+  if (!archivedMessage) {
+    throw new EmailArchiveDuplicateRaceError();
+  }
+  await recordMailboxDelivery(emailArchiveRepository, message, archivedMessage, rawMessage, 'inbound');
+  if (thread.lastMessageAt !== message.receivedAt) {
+    await emailArchiveRepository.touchThread(thread.id, message.receivedAt);
+  }
+  if (typeof emailArchiveRepository.createClassificationEvent === 'function') {
+    await emailArchiveRepository.createClassificationEvent({
+      messageId: archivedMessage.id,
+      threadId: thread.id,
+      actorType: 'rule',
+      actorVersion: classification.ruleVersion || 'email-intake-rule-v1',
+      category: classification.classificationCategory,
+      confidence: resolved.humanSpamSenderRule || classification.entryDecision === 'accept' ? 1 : 0.5,
+      reasonCodes: [
+        classification.classificationReason,
+        ...classification.spamSignals,
+        ...classification.protectedReasons
+      ].filter(Boolean),
+      isFinal: Boolean(resolved.humanSpamSenderRule)
+    });
+  }
+  await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage?.id);
+  return {
+    duplicate: false,
+    rejectedSpam: false,
+    message: archivedMessage,
+    thread,
+    inquiry: null,
+    classification: archiveClassification,
+    rawMessage
+  };
+}
+
+async function outboundContact(contactRepository, recipients = []) {
+  if (typeof contactRepository?.findUniqueByEmail !== 'function') return null;
+  for (const recipient of recipients) {
+    const address = text(recipient?.address).toLowerCase();
+    if (!address || address.endsWith('@sunkaier.com')) continue;
+    const contact = await contactRepository.findUniqueByEmail(address);
+    if (contact) return contact;
+  }
+  return null;
+}
+
+export async function archiveImportedOutboundEmailRecord(repositories, parsed, options = {}) {
+  const { emailArchiveRepository, contactRepository } = repositories;
+  const { message } = parsed;
+  assertInboundIdentity(message);
+
+  const existing = await emailArchiveRepository.findMessageIdentity(message);
+  if (existing) {
+    const rawMessage = options.rawCapture
+      ? await persistRawEmailCapture(emailArchiveRepository, options.rawCapture)
+      : null;
+    await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage?.id);
+    await recordMailboxDelivery(emailArchiveRepository, message, existing, rawMessage, 'outbound');
+    if (typeof emailArchiveRepository.reconcileOutboundSentObservation === 'function') {
+      const reconciled = await emailArchiveRepository.reconcileOutboundSentObservation({
+        messageId: existing.id,
+        providerMessageId: message.providerMessageId || message.messageId || '',
+        sentAt: message.sentAt
+      });
+      if (reconciled) Object.assign(existing, reconciled);
+    }
+    return {
+      duplicate: true,
+      message: existing,
+      thread: await emailArchiveRepository.findThreadById(existing.threadId),
+      inquiry: null,
+      rawMessage
+    };
+  }
+
+  const rawMessage = options.rawCapture
+    ? await persistRawEmailCapture(emailArchiveRepository, options.rawCapture)
+    : null;
+  let thread = typeof emailArchiveRepository.findThreadByReferences === 'function'
+    ? await emailArchiveRepository.findThreadByReferences(message.replyReferenceIds)
+    : null;
+  if (!thread) {
+    const contact = await outboundContact(contactRepository, [
+      ...(message.toRecipients || []),
+      ...(message.ccRecipients || [])
+    ]);
+    thread = await emailArchiveRepository.createThread({
+      mailboxKey: message.mailboxKey,
+      subject: message.subject,
+      normalizedSubject: message.normalizedSubject,
+      customerId: contact?.customerId || null,
+      contactId: contact?.id || null,
+      archiveDisposition: 'active',
+      classificationCategory: 'conversation',
+      classificationReason: 'imported_sent_mail',
+      triageStatus: 'outbound_only',
+      lastMessageAt: message.sentAt
+    });
+  }
+  const authoredBy = typeof emailArchiveRepository.findActivePersonalMailboxOwner === 'function'
+    ? await emailArchiveRepository.findActivePersonalMailboxOwner(message.mailboxKey)
+    : null;
+  const archivedMessage = await emailArchiveRepository.createImportedOutboundMessage({
+    ...message,
+    threadId: thread.id,
+    authoredBy,
+    rawMessageId: null,
+    rawEmlStoredPath: null,
+    rawEmlFileSize: null,
+    rawEmlSha256: null,
+    importedAt: null
+  });
+  if (!archivedMessage) throw new EmailArchiveDuplicateRaceError();
+  await recordMailboxDelivery(emailArchiveRepository, message, archivedMessage, rawMessage, 'outbound');
+  if (typeof emailArchiveRepository.reconcileOutboundSentObservation === 'function') {
+    await emailArchiveRepository.reconcileOutboundSentObservation({
+      messageId: archivedMessage.id,
+      providerMessageId: message.providerMessageId || message.messageId || '',
+      sentAt: message.sentAt
+    });
+  }
+  if (thread.lastMessageAt !== message.sentAt) {
+    await emailArchiveRepository.touchThread(thread.id, message.sentAt);
+  }
+  await recordSuccessfulRawProcessing(emailArchiveRepository, rawMessage?.id);
+  return {
+    duplicate: false,
+    message: archivedMessage,
+    thread,
+    inquiry: null,
+    rawMessage
+  };
+}
+
+export async function storeEmailArchiveAttachments({
+  emailArchiveRepository,
+  messageId,
+  attachments = [],
+  attachmentScans = [],
+  uploadDir,
+  maxUploadMb
+}) {
+  if (!Array.isArray(attachments) || attachments.length === 0) {
+    return { stored: [], skipped: [] };
+  }
+  const existing = typeof emailArchiveRepository.listAttachmentsByMessage === 'function'
+    ? await emailArchiveRepository.listAttachmentsByMessage(messageId)
+    : [];
+  const existingByIndex = new Map(
+    existing.map((attachment) => [Number(attachment.sourceIndex), attachment])
+  );
+  const maxBytes = maxAttachmentBytes(maxUploadMb);
+  const stored = [];
+  const skipped = [];
+
+  for (const [index, attachment] of attachments.entries()) {
+    if (existingByIndex.has(index)) {
+      const existingAttachment = existingByIndex.get(index);
+      const retryScan = attachmentScans[index] || null;
+      if (retryScan?.verdict === 'malware') throw new EmailRawMalwareError(retryScan);
+      if (retryScan && retryScan.verdict !== 'clean') throw new EmailRawScanError(retryScan);
+      if (retryScan && typeof emailArchiveRepository.createAttachmentScanAttempt === 'function') {
+        await emailArchiveRepository.createAttachmentScanAttempt({
+          attachmentId: existingAttachment.id,
+          ...scanAttemptInput(null, retryScan)
+        });
+      }
+      skipped.push({ sourceIndex: index, reason: 'duplicate' });
+      continue;
+    }
+    const content = Buffer.isBuffer(attachment?.content) ? attachment.content : null;
+    if (!content) {
+      skipped.push({ sourceIndex: index, reason: 'missing_content' });
+      continue;
+    }
+    if (maxBytes > 0 && content.length > maxBytes) {
+      throw new EmailArchiveError('Email attachment exceeds configured limit', 413);
+    }
+    const scan = attachmentScans[index] || null;
+    if (scan?.verdict === 'malware') throw new EmailRawMalwareError(scan);
+    if (scan && scan.verdict !== 'clean') throw new EmailRawScanError(scan);
+    const originalName = normalizeUploadedFilename(attachment.filename || fallbackAttachmentName(index));
+    const file = await storeAttachmentBuffer({
+      uploadDir,
+      originalName,
+      content,
+      prefix: 'email-archive'
+    });
+    let record = null;
+    try {
+      record = await emailArchiveRepository.createAttachment({
+        messageId,
+        sourceIndex: index,
+        originalName,
+        storedPath: file.storedPath,
+        mimeType: attachment.contentType || 'application/octet-stream',
+        fileSize: file.fileSize,
+        sha256: createHash('sha256').update(content).digest('hex'),
+        contentId: attachment.cid || attachment.contentId || '',
+        contentDisposition: normalizedContentDisposition(attachment.contentDisposition),
+        sourceOpportunityAttachmentId: attachment.sourceOpportunityAttachmentId || null,
+        sourceTechnicalDocumentId: attachment.sourceTechnicalDocumentId || null
+      });
+      if (record) {
+        if (scan && typeof emailArchiveRepository.createAttachmentScanAttempt === 'function') {
+          await emailArchiveRepository.createAttachmentScanAttempt({
+            attachmentId: record.id,
+            ...scanAttemptInput(null, scan)
+          });
+        }
+        stored.push(record);
+      } else {
+        await removeStoredAttachmentFile(file.absolutePath);
+        skipped.push({ sourceIndex: index, reason: 'duplicate' });
+      }
+    } catch (error) {
+      // Once the immutable attachment row exists, retain the matching file. A
+      // retry will detect the duplicate and append the newly completed scan
+      // attempt instead of leaving a database row that points at a missing file.
+      if (!record) await removeStoredAttachmentFile(file.absolutePath);
+      throw error;
+    }
+  }
+  return { stored, skipped };
+}
+
+async function opportunityForThread(dependencies, thread) {
+  if (!thread.opportunityId) return null;
+  const opportunity = await dependencies.opportunityRepository.getOpportunityDetail(thread.opportunityId);
+  if (!opportunity) return null;
+  const teamMembers = typeof dependencies.opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
+    ? await dependencies.opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
+    : [];
+  return { ...opportunity, teamMembers };
+}
+
+export async function canViewEmailThread(dependencies, actor, thread) {
+  const mailboxOwnerUserIds = Array.isArray(thread?.mailboxOwnerUserIds)
+    ? thread.mailboxOwnerUserIds.map(Number).filter((value) => value > 0)
+    : [Number(thread?.mailboxOwnerUserId || 0)].filter((value) => value > 0);
+  const hasSharedMailboxDelivery = thread?.hasSharedMailboxDelivery === true
+    || text(thread?.mailboxKey).toLowerCase() === text(dependencies.sharedAddress || 'sales@sunkaier.com').toLowerCase();
+  if (thread?.opportunityId) {
+    const opportunity = await opportunityForThread(dependencies, thread);
+    return Boolean(opportunity && canViewOpportunity(actor, opportunity));
+  }
+  if (mailboxOwnerUserIds.length > 0 && !hasSharedMailboxDelivery) return false;
+  return canAccessInquiryInbox(actor);
+}
+
+export async function listVisibleEmailThreads(dependencies, actor, filter = {}) {
+  const threads = await dependencies.emailArchiveRepository.listThreads(filter);
+  const visible = [];
+  for (const thread of threads) {
+    if (await canViewEmailThread(dependencies, actor, thread)) {
+      visible.push(thread);
+    }
+  }
+  return visible;
+}
+
+export async function listVisibleEmailMailboxes(dependencies, actor) {
+  const sharedAddress = text(dependencies.sharedAddress || 'sales@sunkaier.com').toLowerCase();
+  if (!actor?.id || !sharedAddress) return [];
+  return [{
+    key: sharedAddress,
+    label: sharedAddress,
+    type: 'shared',
+    ownerUserId: null,
+    ownerDisplayName: ''
+  }];
+}
+
+export async function resolveVisibleEmailMailbox(dependencies, actor, mailboxKey = '') {
+  const mailboxes = await listVisibleEmailMailboxes(dependencies, actor);
+  const requested = text(mailboxKey).toLowerCase();
+  if (!requested) return { mailbox: mailboxes[0] || null, mailboxes };
+  const mailbox = mailboxes.find((item) => item.key === requested);
+  if (!mailbox) throw new EmailArchiveError('Forbidden', 403);
+  return { mailbox, mailboxes };
+}
+
+export async function getVisibleEmailThread(dependencies, actor, threadId) {
+  const thread = await dependencies.emailArchiveRepository.findThreadById(threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) {
+    throw new EmailArchiveError('Forbidden', 403);
+  }
+  return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
+}
+
+export async function listEmailLinkableOpportunities(dependencies, actor) {
+  if (typeof dependencies.opportunityRepository?.listOpportunities !== 'function') return [];
+  const filter = hasRole(actor, ROLES.ADMINISTRATOR)
+    ? { archiveScope: 'active' }
+    : { archiveScope: 'active', visibleToUserId: actor.id };
+  return dependencies.opportunityRepository.listOpportunities(filter);
+}
+
+export function canLinkConvertedInquiryToOpportunity(actor, thread) {
+  return canAccessInquiryInbox(actor)
+    && Boolean(thread?.inquiryId)
+    && !thread?.opportunityId
+    && thread?.triageStatus === 'converted_inquiry';
+}
+
+export async function listEmailLinkableInquiries(dependencies, actor) {
+  if (!canAccessInquiryInbox(actor)) return [];
+  if (typeof dependencies.inquiryRepository?.listInquiries !== 'function') return [];
+  const inquiries = await dependencies.inquiryRepository.listInquiries({ limit: 250 });
+  return inquiries.filter((inquiry) => [
+    'new',
+    'reviewing',
+    'customer_approval_pending'
+  ].includes(inquiry.status));
+}
+
+async function withEmailArchiveTransaction(dependencies, callback) {
+  if (typeof dependencies.emailArchiveTransaction === 'function') {
+    return dependencies.emailArchiveTransaction((repositories) => callback({
+      ...dependencies,
+      ...repositories
+    }));
+  }
+  return callback(dependencies);
+}
+
+function triageTransitionAllowed(thread) {
+  return ['pending', 'outbound_only'].includes(thread?.triageStatus || 'pending');
+}
+
+async function recordTriageEvent(repository, input) {
+  if (typeof repository.createTriageEvent !== 'function') return null;
+  return repository.createTriageEvent(input);
+}
+
+async function transitionTriage(repository, thread, actor, input) {
+  const fromStatus = thread?.triageStatus || 'pending';
+  const allowedFromStatuses = Array.isArray(input.allowedFromStatuses)
+    ? input.allowedFromStatuses
+    : ['pending', 'outbound_only'];
+  if (!allowedFromStatuses.includes(fromStatus)) {
+    if (thread.triageStatus === input.triageStatus) return thread;
+    throw new EmailArchiveError('Email thread has already been triaged', 409);
+  }
+  const transitioned = await repository.transitionThreadTriage({
+    threadId: thread.id,
+    expectedStatus: fromStatus,
+    triageStatus: input.triageStatus,
+    archiveDisposition: input.archiveDisposition || 'active',
+    actorUserId: actor.id,
+    triagedAt: input.triagedAt,
+    note: input.note || ''
+  });
+  if (!transitioned) throw new EmailArchiveError('Email triage changed; refresh and try again', 409);
+  await recordTriageEvent(repository, {
+    threadId: thread.id,
+    eventType: input.eventType,
+    fromStatus,
+    toStatus: input.triageStatus,
+    actorUserId: actor.id,
+    assignedUserId: input.assignedUserId || null,
+    inquiryId: input.inquiryId || null,
+    opportunityId: input.opportunityId || null,
+    note: input.note || ''
+  });
+  return transitioned;
+}
+
+export async function linkEmailThreadToOpportunity(dependencies, actor, threadId, opportunityId) {
+  const targetOpportunityId = Number(opportunityId);
+  if (!Number.isInteger(targetOpportunityId) || targetOpportunityId <= 0) {
+    throw new EmailArchiveError('Opportunity is required', 400);
+  }
+  const thread = await dependencies.emailArchiveRepository.findThreadById(threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) {
+    throw new EmailArchiveError('Forbidden', 403);
+  }
+  const linksConvertedInquiry = thread.triageStatus === 'converted_inquiry';
+  if (linksConvertedInquiry && !canLinkConvertedInquiryToOpportunity(actor, thread)) {
+    throw new EmailArchiveError(thread.inquiryId ? 'Forbidden' : 'Historical inquiry link is missing', thread.inquiryId ? 403 : 409);
+  }
+  if (thread.opportunityId) {
+    if (Number(thread.opportunityId) === targetOpportunityId
+      && thread.triageStatus === 'linked_opportunity') return thread;
+    throw new EmailArchiveError('Email thread is already linked to an opportunity', 409);
+  }
+  const opportunity = await dependencies.opportunityRepository.getOpportunityDetail(targetOpportunityId);
+  if (!opportunity) throw new EmailArchiveError('Opportunity not found', 404);
+  if (linksConvertedInquiry && (opportunity.archivedAt || opportunity.deletedAt)) {
+    throw new EmailArchiveError('Historical inquiry can only be linked to an active opportunity', 409);
+  }
+  const teamMembers = typeof dependencies.opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
+    ? await dependencies.opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
+    : [];
+  if (!canViewOpportunity(actor, { ...opportunity, teamMembers })) {
+    throw new EmailArchiveError('Forbidden', 403);
+  }
+  await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
+    const current = await transactionDependencies.emailArchiveRepository.findThreadById(thread.id);
+    if (!current) throw new EmailArchiveError('Email thread not found', 404);
+    if (current.opportunityId) {
+      if (Number(current.opportunityId) === targetOpportunityId
+        && current.triageStatus === 'linked_opportunity') return current;
+      throw new EmailArchiveError('Email thread is already linked to an opportunity', 409);
+    }
+    const linksCurrentConvertedInquiry = current.triageStatus === 'converted_inquiry';
+    let linked;
+    let auditNote = '';
+    if (linksCurrentConvertedInquiry) {
+      if (!canLinkConvertedInquiryToOpportunity(actor, current)) {
+        throw new EmailArchiveError(current.inquiryId ? 'Forbidden' : 'Historical inquiry link is missing', current.inquiryId ? 403 : 409);
+      }
+      if (typeof transactionDependencies.inquiryRepository?.findById !== 'function'
+        || typeof transactionDependencies.inquiryRepository?.markConverted !== 'function'
+        || typeof transactionDependencies.emailArchiveRepository?.linkConvertedInquiryThreadToOpportunity !== 'function') {
+        throw new EmailArchiveError('Historical inquiry linking is not configured', 500);
+      }
+      const inquiry = await transactionDependencies.inquiryRepository.findById(current.inquiryId);
+      if (!inquiry || inquiry.submissionType === 'sales_lead') {
+        throw new EmailArchiveError('Historical inquiry not found', 409);
+      }
+      if (!['new', 'reviewing'].includes(inquiry.status)) {
+        throw new EmailArchiveError('Historical inquiry has already been processed', 409);
+      }
+      linked = await transactionDependencies.emailArchiveRepository.linkConvertedInquiryThreadToOpportunity({
+        threadId: current.id,
+        inquiryId: inquiry.id,
+        opportunityId: targetOpportunityId,
+        customerId: opportunity.customerId,
+        contactId: opportunity.primaryContactId
+      });
+      if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
+      const converted = await transactionDependencies.inquiryRepository.markConverted(inquiry.id, {
+        matchedCustomerId: opportunity.customerId,
+        matchedContactId: opportunity.primaryContactId,
+        convertedOpportunityId: targetOpportunityId,
+        productCategoryCode: inquiry.productCategoryCode,
+        confirmedProductCategoryCodes: inquiry.confirmedProductCategoryCodes,
+        reviewedBy: actor.id
+      });
+      if (!converted) throw new EmailArchiveError('Historical inquiry changed; refresh and try again', 409);
+      auditNote = `Historical inquiry #${inquiry.id} linked to existing opportunity ${opportunity.opportunityNo || opportunity.id}`;
+    } else {
+      linked = await transactionDependencies.emailArchiveRepository.linkThreadToOpportunity(
+        current.id,
+        targetOpportunityId
+      );
+    }
+    if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
+    const transitioned = await transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
+      eventType: 'linked_opportunity',
+      triageStatus: 'linked_opportunity',
+      ...(linksCurrentConvertedInquiry ? { allowedFromStatuses: ['converted_inquiry'] } : {}),
+      inquiryId: linksCurrentConvertedInquiry ? current.inquiryId : null,
+      opportunityId: targetOpportunityId,
+      note: auditNote,
+      triagedAt: dependencies.now?.() || new Date().toISOString()
+    });
+    if (typeof transactionDependencies.emailResponseRepository?.notifyOpportunityAssignment === 'function') {
+      await transactionDependencies.emailResponseRepository.notifyOpportunityAssignment({
+        threadId: current.id,
+        opportunityId: targetOpportunityId,
+        actorUserId: actor.id
+      });
+    }
+    return transitioned;
+  });
+  return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
+}
+
+export async function getVisibleEmailMessage(dependencies, actor, messageId) {
+  const message = await dependencies.emailArchiveRepository.findMessageById(messageId);
+  if (!message) throw new EmailArchiveError('Email message not found', 404);
+  const thread = await dependencies.emailArchiveRepository.findThreadById(message.threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) {
+    throw new EmailArchiveError('Forbidden', 403);
+  }
+  const attachments = typeof dependencies.emailArchiveRepository.listAttachmentsByMessage === 'function'
+    ? await dependencies.emailArchiveRepository.listAttachmentsByMessage(message.id)
+    : (Array.isArray(message.attachments) ? message.attachments : []);
+  return { ...message, attachments };
+}
+
+function inboundSourceMessage(thread) {
+  const messages = Array.isArray(thread?.messages) ? thread.messages : [];
+  return [...messages].reverse().find((message) => message.direction === 'inbound') || null;
+}
+
+function conversionDraftFromThread(thread) {
+  const sourceMessage = inboundSourceMessage(thread);
+  if (!sourceMessage) throw new EmailArchiveError('Inbound source message is required', 409);
+  const subject = sourceMessage.subject || thread.subject || '';
+  const requirement = sourceMessage.textBody || subject || 'Email request';
+  return {
+    emailThreadId: thread.id,
+    subject,
+    productInterest: suggestProductInterest({ subject, requirementText: requirement }),
+    productCategoryCode: suggestProductCategoryCode({ subject, requirementText: requirement }),
+    confirmedProductCategoryCodes: thread.confirmedProductCategoryCodes || [],
+    companyName: thread.customerName || '',
+    contactName: sourceMessage.fromName || thread.contactName || '',
+    contactEmail: text(sourceMessage.fromAddress).toLowerCase(),
+    sourceChannel: 'email',
+    requirementText: requirement,
+    customerId: thread.customerId || null,
+    primaryContactId: thread.contactId || null,
+    salespersonId: thread.mailboxOwnerUserId || null,
+    title: subject,
+    requirement
+  };
+}
+
+export async function getEmailThreadIntakeContext(dependencies, actor, threadId) {
+  const thread = await getVisibleEmailThread(dependencies, actor, threadId);
+  return {
+    thread,
+    draft: conversionDraftFromThread(thread)
+  };
+}
+
+export async function linkEmailThreadToInquiry(dependencies, actor, threadId, inquiryId) {
+  if (!canAccessInquiryInbox(actor)) throw new EmailArchiveError('Forbidden', 403);
+  const targetInquiryId = Number(inquiryId);
+  if (!Number.isInteger(targetInquiryId) || targetInquiryId <= 0) {
+    throw new EmailArchiveError('Inquiry is required', 400);
+  }
+  const thread = await dependencies.emailArchiveRepository.findThreadById(threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) throw new EmailArchiveError('Forbidden', 403);
+  if (thread.inquiryId) {
+    if (Number(thread.inquiryId) === targetInquiryId && thread.triageStatus === 'linked_inquiry') return thread;
+    throw new EmailArchiveError('Email thread is already linked to an inquiry', 409);
+  }
+  const inquiry = await dependencies.inquiryRepository.findById(targetInquiryId);
+  if (!inquiry) throw new EmailArchiveError('Inquiry not found', 404);
+  await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
+    const current = await transactionDependencies.emailArchiveRepository.findThreadById(thread.id);
+    if (!current) throw new EmailArchiveError('Email thread not found', 404);
+    const linked = await transactionDependencies.emailArchiveRepository.linkThreadToInquiry(
+      current.id,
+      targetInquiryId
+    );
+    if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
+    return transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
+      eventType: 'linked_inquiry',
+      triageStatus: 'linked_inquiry',
+      inquiryId: targetInquiryId,
+      triagedAt: dependencies.now?.() || new Date().toISOString()
+    });
+  });
+  return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
+}
+
+export async function convertEmailThreadToLead(dependencies, actor, threadId, input) {
+  if (!canSubmitNewLead(actor)) throw new EmailArchiveError('Forbidden', 403);
+  const visible = await getVisibleEmailThread(dependencies, actor, threadId);
+  if (visible.inquiryId && visible.triageStatus === 'converted_lead') {
+    return {
+      thread: visible,
+      lead: await dependencies.inquiryRepository.findById(visible.inquiryId)
+    };
+  }
+  const result = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
+    const current = await transactionDependencies.emailArchiveRepository.getThreadDetail(visible.id);
+    if (!current) throw new EmailArchiveError('Email thread not found', 404);
+    if (!triageTransitionAllowed(current)) throw new EmailArchiveError('Email thread has already been triaged', 409);
+    const lead = await submitSalesLead({
+      inquiryRepository: transactionDependencies.inquiryRepository,
+      userRepository: transactionDependencies.userRepository || dependencies.userRepository
+    }, actor, {
+      ...conversionDraftFromThread(current),
+      ...input,
+      sourceChannel: 'email',
+      emailThreadId: current.id
+    });
+    const linked = await transactionDependencies.emailArchiveRepository.linkThreadToInquiry(current.id, lead.id);
+    if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
+    await transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
+      eventType: 'converted_lead',
+      triageStatus: 'converted_lead',
+      inquiryId: lead.id,
+      triagedAt: dependencies.now?.() || new Date().toISOString()
+    });
+    return { lead };
+  });
+  return {
+    lead: result.lead,
+    thread: await dependencies.emailArchiveRepository.getThreadDetail(visible.id)
+  };
+}
+
+export async function createOpportunityFromEmailThread(dependencies, actor, threadId, input) {
+  const visible = await getVisibleEmailThread(dependencies, actor, threadId);
+  const result = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
+    const current = await transactionDependencies.emailArchiveRepository.getThreadDetail(visible.id);
+    if (!current) throw new EmailArchiveError('Email thread not found', 404);
+    if (!triageTransitionAllowed(current)) throw new EmailArchiveError('Email thread has already been triaged', 409);
+    const draft = conversionDraftFromThread(current);
+    const opportunity = await createOpportunityDraft({
+      customerRepository: transactionDependencies.customerRepository || dependencies.customerRepository,
+      contactRepository: transactionDependencies.contactRepository || dependencies.contactRepository,
+      opportunityRepository: transactionDependencies.opportunityRepository || dependencies.opportunityRepository,
+      userRepository: transactionDependencies.userRepository || dependencies.userRepository
+    }, actor, {
+      ...draft,
+      ...input
+    }, {
+      emailThreadConversion: true,
+      emailThreadId: current.id,
+      salespersonId: input.salespersonId || draft.salespersonId
+    });
+    const linked = await transactionDependencies.emailArchiveRepository.linkThreadToOpportunity(
+      current.id,
+      opportunity.id
+    );
+    if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
+    await transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
+      eventType: 'linked_opportunity',
+      triageStatus: 'linked_opportunity',
+      opportunityId: opportunity.id,
+      triagedAt: dependencies.now?.() || new Date().toISOString()
+    });
+    return { opportunity };
+  });
+  return {
+    opportunity: result.opportunity,
+    thread: await dependencies.emailArchiveRepository.getThreadDetail(visible.id)
+  };
+}
+
+function inquiryInputFromThread(thread, actor) {
+  const sourceMessage = thread.messages.find((message) => message.direction === 'inbound');
+  if (!sourceMessage) throw new EmailArchiveError('Inbound source message is required', 409);
+  return {
+    source: 'email',
+    submissionType: 'standard',
+    sourceChannel: 'email',
+    sourceReference: sourceMessage.messageId || `email-message-${sourceMessage.id}`,
+    sourceReceivedAt: sourceMessage.receivedAt || sourceMessage.createdAt,
+    subject: sourceMessage.subject || thread.subject || '',
+    companyName: thread.customerName || '',
+    contactName: sourceMessage.fromName || '',
+    contactEmail: text(sourceMessage.fromAddress).toLowerCase(),
+    contactPhone: '',
+    country: '',
+    productInterest: suggestProductInterest({ subject: sourceMessage.subject, requirementText: sourceMessage.textBody }),
+    productCategoryCode: suggestProductCategoryCode({ subject: sourceMessage.subject, requirementText: sourceMessage.textBody }),
+    opportunityType: '',
+    requirementText: sourceMessage.textBody || sourceMessage.subject || thread.subject || 'Email inquiry',
+    rawPayload: {
+      emailThreadId: thread.id,
+      emailMessageId: sourceMessage.id,
+      mailboxKeys: thread.mailboxKeys || [thread.mailboxKey]
+    },
+    priority: 'normal',
+    status: 'new',
+    assignedUserId: thread.triageAssignedUserId || actor.id,
+    recommendedSalespersonId: thread.mailboxOwnerUserId || null,
+    matchedCustomerId: thread.customerId || null,
+    matchedContactId: thread.contactId || null,
+    createdBy: actor.id,
+    reviewNote: ''
+  };
+}
+
+export async function convertEmailThreadToInquiry(dependencies, actor, threadId) {
+  if (!canAccessInquiryInbox(actor)) throw new EmailArchiveError('Forbidden', 403);
+  const visible = await getVisibleEmailThread(dependencies, actor, threadId);
+  if (visible.inquiryId && visible.triageStatus === 'converted_inquiry') {
+    return { thread: visible, inquiry: await dependencies.inquiryRepository.findById(visible.inquiryId) };
+  }
+  const result = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
+    const current = await transactionDependencies.emailArchiveRepository.getThreadDetail(visible.id);
+    if (!current) throw new EmailArchiveError('Email thread not found', 404);
+    if (!triageTransitionAllowed(current)) throw new EmailArchiveError('Email thread has already been triaged', 409);
+    const inquiry = await transactionDependencies.inquiryRepository.createInquiry(
+      inquiryInputFromThread(current, actor)
+    );
+    const linked = await transactionDependencies.emailArchiveRepository.linkThreadToInquiry(current.id, inquiry.id);
+    if (!linked) throw new EmailArchiveError('Email thread link changed; refresh and try again', 409);
+    await transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
+      eventType: 'converted_inquiry',
+      triageStatus: 'converted_inquiry',
+      inquiryId: inquiry.id,
+      triagedAt: dependencies.now?.() || new Date().toISOString()
+    });
+    return { inquiry };
+  });
+  return {
+    inquiry: result.inquiry,
+    thread: await dependencies.emailArchiveRepository.getThreadDetail(visible.id)
+  };
+}
+
+export async function setEmailThreadDisposition(dependencies, actor, threadId, action, note = '') {
+  const target = ['archive', 'non_business'].includes(action)
+    ? { eventType: 'archived', triageStatus: 'archived', archiveDisposition: 'archived' }
+    : action === 'spam'
+      ? { eventType: 'spam', triageStatus: 'spam', archiveDisposition: 'spam' }
+      : action === 'restore'
+        ? {
+            eventType: 'reopened',
+            triageStatus: 'pending',
+            archiveDisposition: 'active',
+            allowedFromStatuses: ['spam', 'archived']
+          }
+      : null;
+  if (!target) throw new EmailArchiveError('Invalid email triage action', 400);
+  const thread = await dependencies.emailArchiveRepository.findThreadById(threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) throw new EmailArchiveError('Forbidden', 403);
+  if (thread.triageStatus === target.triageStatus) return thread;
+  await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
+    const current = await transactionDependencies.emailArchiveRepository.findThreadById(thread.id);
+    if (!current) throw new EmailArchiveError('Email thread not found', 404);
+    const wasSpam = current.triageStatus === 'spam';
+    const orphanedConvertedInquirySpam = action === 'spam'
+      && await canReclassifyOrphanedConvertedInquiryAsSpam(transactionDependencies, actor, current);
+    const transitioned = await transitionTriage(transactionDependencies.emailArchiveRepository, current, actor, {
+      ...target,
+      ...(orphanedConvertedInquirySpam
+        ? { allowedFromStatuses: ['converted_inquiry'] }
+        : {}),
+      note: text(note).slice(0, 1000),
+      triagedAt: dependencies.now?.() || new Date().toISOString()
+    });
+    if (action === 'spam') {
+      await transactionDependencies.emailArchiveRepository.confirmHumanSpamSender({
+        threadId: current.id,
+        actorUserId: actor.id
+      });
+    } else if (action === 'restore' && wasSpam) {
+      await transactionDependencies.emailArchiveRepository.disableHumanSpamSender({
+        threadId: current.id,
+        actorUserId: actor.id
+      });
+    }
+    return transitioned;
+  });
+  return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
+}
+
+export async function getEmailSpamCleanupSummary(dependencies, actor, mailboxKey = '') {
+  return getEmailCleanupSummary(dependencies, actor, mailboxKey, 'spam');
+}
+
+export async function getEmailCleanupSummary(dependencies, actor, mailboxKey = '', folder = 'spam') {
+  if (!canPurgeEmailSpam(actor)) throw new EmailArchiveError('Forbidden', 403);
+  const normalizedFolder = folder === 'non_business' ? 'non_business' : 'spam';
+  const repository = dependencies.emailArchiveRepository;
+  if (typeof repository?.getCleanupSummary !== 'function'
+      && !(normalizedFolder === 'spam' && typeof repository?.getSpamCleanupSummary === 'function')) {
+    return {
+      eligibleThreads: 0,
+      messages: 0,
+      attachments: 0,
+      attachmentBytes: 0,
+      rawMessages: 0,
+      rawMessageBytes: 0
+    };
+  }
+  const input = { mailboxKey: text(mailboxKey).toLowerCase(), folder: normalizedFolder };
+  const summary = typeof repository.getCleanupSummary === 'function'
+    ? await repository.getCleanupSummary(input)
+    : await repository.getSpamCleanupSummary({ mailboxKey: input.mailboxKey });
+  return summary;
+}
+
+async function processPurgedEmailFiles(dependencies, candidates) {
+  const purgeAuditIds = candidates
+    .map((candidate) => Number(candidate?.purgeAuditId))
+    .filter((id) => Number.isInteger(id) && id > 0);
+  if (!purgeAuditIds.length) {
+    return { fileFailures: [], fileCleanupPending: 0 };
+  }
+  const processor = dependencies.processEmailPurgeFileJobs || processEmailPurgeFileJobs;
+  try {
+    const result = await processor(dependencies, { purgeAuditIds });
+    return {
+      fileFailures: Array.isArray(result?.failures) ? result.failures : [],
+      fileCleanupPending: Number(result?.pending || 0)
+    };
+  } catch {
+    return {
+      fileFailures: purgeAuditIds.map((purgeAuditId) => ({
+        purgeAuditId,
+        reason: 'cleanup_deferred'
+      })),
+      fileCleanupPending: candidates.reduce(
+        (total, candidate) => total + Number(candidate?.fileJobCount || 0),
+        0
+      )
+    };
+  }
+}
+
+export async function purgeEligibleEmailSpam(dependencies, actor, input = {}) {
+  return purgeEligibleEmailFolder(dependencies, actor, { ...input, folder: 'spam' });
+}
+
+export async function purgeEligibleEmailFolder(dependencies, actor, input = {}) {
+  if (!canPurgeEmailSpam(actor)) throw new EmailArchiveError('Forbidden', 403);
+  const folder = input.folder === 'non_business' ? 'non_business' : 'spam';
+  if (text(input.confirmation) !== 'DELETE') {
+    throw new EmailArchiveError('Type DELETE to confirm permanent email cleanup', 400);
+  }
+  const repository = dependencies.emailArchiveRepository;
+  if (typeof repository?.listCleanupCandidates !== 'function'
+      && !(folder === 'spam' && typeof repository?.listSpamPurgeCandidates === 'function')) {
+    throw new EmailArchiveError('Email cleanup is unavailable', 503);
+  }
+  if (!supportsEmailPurgeFileCleanup(repository)) {
+    throw new EmailArchiveError('Durable email file cleanup is unavailable', 503);
+  }
+  const mailboxKey = text(input.mailboxKey).toLowerCase();
+  const seenThreadIds = new Set();
+  const purged = [];
+  const fileFailures = [];
+  while (true) {
+    const candidateInput = {
+      mailboxKey,
+      folder,
+      limit: 100
+    };
+    const candidates = typeof repository.listCleanupCandidates === 'function'
+      ? await repository.listCleanupCandidates(candidateInput)
+      : await repository.listSpamPurgeCandidates(candidateInput);
+    const newCandidates = candidates.filter((candidate) => !seenThreadIds.has(Number(candidate.threadId)));
+    if (!newCandidates.length) break;
+    for (const listedCandidate of newCandidates) {
+      seenThreadIds.add(Number(listedCandidate.threadId));
+      const subjectSha256 = createHash('sha256').update(listedCandidate.subject || '', 'utf8').digest('hex');
+      const candidate = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => (
+        transactionDependencies.emailArchiveRepository.purgeEmailThread({
+          threadId: listedCandidate.threadId,
+          actorUserId: actor.id,
+          subjectSha256,
+          reason: folder === 'spam'
+            ? 'administrator-confirmed permanent deletion from the spam list'
+            : 'administrator-confirmed permanent deletion from the non-business mail list'
+        })
+      ));
+      if (!candidate) continue;
+      purged.push(candidate);
+      const cleanup = await processPurgedEmailFiles(dependencies, [candidate]);
+      fileFailures.push(...cleanup.fileFailures.map((failure) => ({
+        threadId: candidate.threadId,
+        ...failure
+      })));
+    }
+  }
+  const purgeAuditIds = purged.map((candidate) => candidate.purgeAuditId);
+  const fileCleanupPending = purgeAuditIds.length
+    && typeof repository.countEmailPurgeFileJobs === 'function'
+    ? await repository.countEmailPurgeFileJobs({ purgeAuditIds })
+    : 0;
+  return {
+    candidates: seenThreadIds.size,
+    purgedThreads: purged.length,
+    purgedMessages: purged.reduce((total, candidate) => total + candidate.messageCount, 0),
+    purgedBytes: purged.reduce(
+      (total, candidate) => total + candidate.attachmentBytes + candidate.rawMessageBytes,
+      0
+    ),
+    fileFailures,
+    fileCleanupPending
+  };
+}
+
+export async function canPurgeEmailThread(dependencies, actor, threadId) {
+  if (!canPurgeEmailSpam(actor)) return false;
+  if (typeof dependencies.emailArchiveRepository?.isThreadPurgeEligible !== 'function') return false;
+  return dependencies.emailArchiveRepository.isThreadPurgeEligible(threadId);
+}
+
+export async function purgeEmailThread(dependencies, actor, threadId, input = {}) {
+  if (!canPurgeEmailSpam(actor)) throw new EmailArchiveError('Forbidden', 403);
+  if (text(input.confirmation) !== 'DELETE') {
+    throw new EmailArchiveError('Type DELETE to confirm permanent email deletion', 400);
+  }
+  if (typeof dependencies.emailArchiveRepository?.purgeEmailThread !== 'function') {
+    throw new EmailArchiveError('Email deletion is unavailable', 503);
+  }
+  if (!supportsEmailPurgeFileCleanup(dependencies.emailArchiveRepository)) {
+    throw new EmailArchiveError('Durable email file cleanup is unavailable', 503);
+  }
+  const thread = await dependencies.emailArchiveRepository.findThreadById(threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) throw new EmailArchiveError('Forbidden', 403);
+  const subjectSha256 = createHash('sha256').update(thread.subject || '', 'utf8').digest('hex');
+  const candidate = await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => (
+    transactionDependencies.emailArchiveRepository.purgeEmailThread({
+      threadId: thread.id,
+      actorUserId: actor.id,
+      subjectSha256,
+      reason: 'administrator-confirmed unrestricted permanent deletion from the email center'
+    })
+  ));
+  if (!candidate) {
+    throw new EmailArchiveError(
+      'Delete the linked opportunity before permanently deleting this email conversation',
+      409
+    );
+  }
+  const cleanup = await processPurgedEmailFiles(dependencies, [candidate]);
+  return {
+    purgedThreads: 1,
+    purgedMessages: candidate.messageCount,
+    purgedBytes: candidate.attachmentBytes + candidate.rawMessageBytes,
+    fileFailures: cleanup.fileFailures,
+    fileCleanupPending: cleanup.fileCleanupPending
+  };
+}
+
+export async function listEmailTriageAssignees(dependencies, actor, thread) {
+  if (typeof dependencies.userRepository?.listUsersWithRoles !== 'function') return [];
+  const users = await dependencies.userRepository.listUsersWithRoles();
+  const visible = [];
+  for (const user of users) {
+    if (!user.isActive) continue;
+    if (await canViewEmailThread(dependencies, user, thread)) visible.push(user);
+  }
+  return visible;
+}
+
+export async function assignEmailThreadTriage(dependencies, actor, threadId, assignedUserId) {
+  const targetUserId = Number(assignedUserId);
+  if (!Number.isInteger(targetUserId) || targetUserId <= 0) {
+    throw new EmailArchiveError('Assignee is required', 400);
+  }
+  const thread = await dependencies.emailArchiveRepository.findThreadById(threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) throw new EmailArchiveError('Forbidden', 403);
+  if ((thread.triageStatus || 'pending') !== 'pending') {
+    throw new EmailArchiveError('Only pending email can be assigned', 409);
+  }
+  const assignee = await dependencies.userRepository.findByIdWithRoles(targetUserId);
+  if (!assignee?.isActive || !(await canViewEmailThread(dependencies, assignee, thread))) {
+    throw new EmailArchiveError('Assignee cannot access this mailbox', 403);
+  }
+  if (Number(thread.triageAssignedUserId) === targetUserId) return thread;
+  await withEmailArchiveTransaction(dependencies, async (transactionDependencies) => {
+    const current = await transactionDependencies.emailArchiveRepository.findThreadById(thread.id);
+    const assigned = await transactionDependencies.emailArchiveRepository.assignThreadTriage({
+      threadId: current.id,
+      assignedUserId: targetUserId
+    });
+    if (!assigned) throw new EmailArchiveError('Email triage changed; refresh and try again', 409);
+    await recordTriageEvent(transactionDependencies.emailArchiveRepository, {
+      threadId: current.id,
+      eventType: 'assigned',
+      fromStatus: 'pending',
+      toStatus: 'pending',
+      actorUserId: actor.id,
+      assignedUserId: targetUserId,
+      note: ''
+    });
+  });
+  return dependencies.emailArchiveRepository.getThreadDetail(thread.id);
+}
+
+export async function getVisibleEmailAttachment(dependencies, actor, attachmentId) {
+  const attachment = await dependencies.emailArchiveRepository.findAttachmentById(attachmentId);
+  if (!attachment) throw new EmailArchiveError('Email attachment not found', 404);
+  const message = await dependencies.emailArchiveRepository.findMessageById(attachment.messageId);
+  if (!message) throw new EmailArchiveError('Email message not found', 404);
+  const thread = await dependencies.emailArchiveRepository.findThreadById(message.threadId);
+  if (!thread) throw new EmailArchiveError('Email thread not found', 404);
+  if (!(await canViewEmailThread(dependencies, actor, thread))) {
+    throw new EmailArchiveError('Forbidden', 403);
+  }
+  return { attachment, message, thread };
+}

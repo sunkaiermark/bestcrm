@@ -1,0 +1,58 @@
+<%- include('../partials/app-start', { title: `${t('approvalSettings')} - BESTCRM`, activeNav: 'system-approval-settings' }) %>
+        <header class="page-header">
+          <div>
+            <h1><%= t('approvalSettings') %></h1>
+          </div>
+          <% if (canManageSettings) { %>
+            <a class="quick-action" href="/system/approval-settings/new"><%= t('newSetting') %></a>
+          <% } %>
+        </header>
+
+        <section class="list-section">
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead>
+                <tr>
+                  <th><%= t('stage') %></th>
+                  <th><%= t('role') %></th>
+                  <th><%= t('approver') %></th>
+                  <th><%= t('sort') %></th>
+                  <th><%= t('status') %></th>
+                  <% if (canManageSettings) { %>
+                    <th><%= t('actions') %></th>
+                  <% } %>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const setting of settings) { %>
+                  <tr>
+                    <td><%= setting.stage %></td>
+                    <td><%= setting.roleName %> <span class="muted">(<%= setting.roleCode %>)</span></td>
+                    <td><%= setting.userDisplayName %> <span class="muted">(<%= setting.username %>)</span></td>
+                    <td><%= setting.sortOrder %></td>
+                    <td><span class="status"><%= setting.isActive ? t('active') : t('inactive') %></span></td>
+                    <% if (canManageSettings) { %>
+                      <td class="actions-cell">
+                        <div class="inline-actions system-actions">
+                          <a class="secondary-action" href="/system/approval-settings/<%= setting.id %>/edit"><%= t('edit') %></a>
+                          <% if (setting.isActive) { %>
+                            <form method="post" action="/system/approval-settings/<%= setting.id %>/delete" onsubmit="return confirm('<%= t('deleteApprovalSettingConfirm') %>')">
+                              <%- csrfField() %>
+                              <button class="danger-action" type="submit"><%= t('delete') %></button>
+                            </form>
+                          <% } %>
+                        </div>
+                      </td>
+                    <% } %>
+                  </tr>
+                <% } %>
+                <% if (!settings.length) { %>
+                  <tr>
+                    <td colspan="<%= canManageSettings ? 6 : 5 %>" class="empty"><%= t('noApprovalSettings') %></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

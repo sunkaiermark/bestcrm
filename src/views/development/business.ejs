@@ -1,0 +1,216 @@
+<%- include('../partials/app-start', { title: `${topic.topicNo} - Business - BESTCRM`, activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    back: '返回课题', title: '关联商机与对客使用', boundary: '商机关联只建立内部追溯，不开放研究原件。引用已发布结论到对客方案，必须按商机、精确修订和用途另行申请并由在职技术经理批准。',
+    find: '查找我可访问的商机', search: '按编号或名称搜索', go: '搜索商机',
+    noMatches: '没有匹配且可访问的商机', reason: '关联原因', link: '内部关联',
+    linked: '已关联商机', none: '尚无当前可访问的关联商机', end: '结束关联',
+    requests: '对客使用申请与决定', request: '申请引用已发布结论',
+    asset: '技术资产 · 精确修订', choose: '选择技术资产', purpose: '具体对客用途',
+    submit: '提交申请', noAssets: '本课题暂无可申请的已发布技术结论',
+    pending: '待技术经理独立批准', approved: '已批准该次用途',
+    rejected: '不批准', revoked: '已撤销批准', inactive: '关联或技术资产已失效',
+    decide: '技术经理决定', decision: '决定', approve: '批准该次用途',
+    reject: '拒绝该次用途', decisionReason: '决定理由', record: '记录决定',
+    revoke: '撤销批准', revokeReason: '撤销理由',
+    noRequests: '暂无对客使用申请', opportunity: '商机',
+    approvedOnly: '已批准使用，尚无对客文件使用记录',
+    actualUses: '已在对客文件中使用（留痕）',
+    bind: '登记已发送文件版本', evidence: 'CRM 已发送并归档的文件',
+    selectEvidence: '选择文件版本与邮件附件', noEvidence: '暂无与该商机匹配的已发送文件证据',
+    location: '使用位置（页码／段落）', recordUse: '登记使用',
+    archivedEmail: '归档邮件', hash: 'SHA-256', formalPackage: '正式报价包',
+    confirmContent: '我确认该已批准结论确实出现在所选文件的上述位置'
+  } : {
+    back: 'Back to topic', title: 'Opportunity links and customer use', boundary: 'Linking an opportunity is internal traceability only and does not expose research originals. Use of an exact published result in a customer proposal requires separate approval for the opportunity, revision, and purpose by an active technical manager.',
+    find: 'Find opportunities I can access', search: 'Search by number or title', go: 'Search',
+    noMatches: 'No matching accessible opportunities', reason: 'Link reason', link: 'Link internally',
+    linked: 'Linked opportunities', none: 'No linked opportunities visible to you', end: 'End link',
+    requests: 'Customer-use requests and decisions', request: 'Request use of a published result',
+    asset: 'Technical asset · exact revision', choose: 'Choose technical asset', purpose: 'Specific customer-facing purpose',
+    submit: 'Submit request', noAssets: 'No published technical result is available for request',
+    pending: 'Awaiting separate technical-manager approval', approved: 'Approved for this exact use',
+    rejected: 'Rejected', revoked: 'Approval revoked', inactive: 'Link or technical asset is no longer active',
+    decide: 'Technical-manager decision', decision: 'Decision', approve: 'Approve this use',
+    reject: 'Reject this use', decisionReason: 'Decision reason', record: 'Record decision',
+    revoke: 'Revoke approval', revokeReason: 'Revocation reason',
+    noRequests: 'No customer-use requests yet', opportunity: 'Opportunity',
+    approvedOnly: 'Approved for use; no customer-file use recorded yet',
+    actualUses: 'Used in customer file (audited)',
+    bind: 'Record sent file version', evidence: 'CRM sent and archived file',
+    selectEvidence: 'Choose file version and email attachment',
+    noEvidence: 'No matching sent file evidence for this opportunity',
+    location: 'Use location (page or section)', recordUse: 'Record actual use',
+    archivedEmail: 'Archived email', hash: 'SHA-256', formalPackage: 'Formal quotation package',
+    confirmContent: 'I confirm the approved result appears at the stated location in this exact file'
+  };
+%>
+<style>
+  .development-business { width: 100%; margin: 0; container-type: inline-size; --business-action-width: 152px; }
+  html[lang="en"] .development-business { --business-action-width: 192px; }
+  .development-business .business-boundary { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; }
+  .development-business .business-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; margin: 14px 0; }
+  .development-business .business-card > h2 { margin: 0 0 14px; }
+  .development-business .business-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) auto; gap: 12px; align-items: end; }
+  .development-business .business-grid.business-search,
+  .development-business .business-grid.business-revoke { grid-template-columns: minmax(0, 1fr) auto; }
+  .development-business .business-grid.business-file-use { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .development-business .business-grid label { display: grid; gap: 6px; margin: 0; min-width: 0; }
+  .development-business .business-grid input:not([type="checkbox"]),
+  .development-business .business-grid select { min-width: 0; min-height: 46px; }
+  .development-business .business-grid > button {
+    width: var(--business-action-width);
+    height: 48px;
+    padding: 8px 12px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    justify-self: end;
+    white-space: nowrap;
+  }
+  .development-business .business-row { border-top: 1px solid var(--line); padding: 16px 0; }
+  .development-business .business-row:last-child { padding-bottom: 0; }
+  .development-business .business-link-header,
+  .development-business .business-request-header { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+  .development-business .business-link-header h3,
+  .development-business .business-request-header h3 { margin: 0; min-width: 0; overflow-wrap: anywhere; }
+  .development-business .business-link-header form { margin: 0; flex: none; }
+  .development-business .business-state { flex: none; padding: 5px 10px; border-radius: 6px; background: var(--accent-soft); color: var(--ink); font-weight: 700; }
+  .development-business .business-purpose { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .development-business .business-purpose code { overflow-wrap: anywhere; }
+  .development-business .business-form-block { border-top: 1px solid var(--line); padding-top: 14px; margin-top: 14px; }
+  .development-business .business-grid label.business-confirm { grid-column: 1 / -1; display: flex; align-items: flex-start; gap: 8px; color: var(--ink); font-weight: 400; }
+  .development-business .business-confirm input { width: auto; margin: 6px 0 0; flex: none; }
+  .development-business .business-file-use > button { grid-column: 1 / -1; justify-self: end; }
+  @container (max-width: 640px) {
+    .development-business .business-grid:not(.business-search):not(.business-revoke):not(.business-file-use) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    .development-business .business-grid:not(.business-search):not(.business-revoke):not(.business-file-use) > button { grid-column: 1 / -1; justify-self: end; }
+  }
+  @container (max-width: 500px) {
+    .development-business .business-grid:not(.business-search):not(.business-revoke):not(.business-file-use),
+    .development-business .business-grid,
+    .development-business .business-grid.business-search,
+    .development-business .business-grid.business-revoke,
+    .development-business .business-grid.business-file-use { grid-template-columns: minmax(0, 1fr); }
+    .development-business .business-grid > button { grid-column: 1 / -1; width: 100%; }
+    .development-business .business-link-header,
+    .development-business .business-request-header { align-items: flex-start; flex-direction: column; }
+  }
+</style>
+<section class="development-business">
+  <p class="breadcrumb"><a href="/development/topics/<%= topic.id %>#business"><%= labels.back %></a></p>
+  <header class="page-header"><h1><%= labels.title %> · <%= topic.topicNo %></h1></header>
+  <p class="business-boundary"><%= labels.boundary %></p>
+  <section class="business-card"><h2><%= labels.find %></h2>
+    <form method="get" action="/development/topics/<%= topic.id %>/business" class="business-grid business-search">
+      <label><%= labels.search %><input name="search" value="<%= search %>" maxlength="100"></label>
+      <button type="submit"><%= labels.go %></button>
+    </form>
+    <% if (search && !opportunities.length) { %><p class="muted"><%= labels.noMatches %></p><% } %>
+    <% for (const opportunity of opportunities) { %>
+      <div class="business-row">
+        <strong><%= opportunity.opportunityNo %> · <%= opportunity.title %></strong>
+        <form method="post" action="/development/topics/<%= topic.id %>/business/links" class="business-grid business-search">
+          <%- csrfField() %><input type="hidden" name="opportunityId" value="<%= opportunity.id %>">
+          <label><%= labels.reason %><input name="reason" maxlength="2000" required></label>
+          <button type="submit"><%= labels.link %></button>
+        </form>
+      </div>
+    <% } %>
+  </section>
+  <section class="business-card"><h2><%= labels.linked %></h2>
+    <% if (!links.length) { %><p class="muted"><%= labels.none %></p><% } %>
+    <% for (const link of links) { %>
+      <article class="business-row">
+        <div class="business-link-header">
+          <h3><a href="/opportunities/<%= link.opportunityId %>"><%= link.opportunityNo %> · <%= link.opportunityTitle %></a></h3>
+          <% if (Number(topic.ownerUserId) === Number(currentUser.id)) { %>
+            <form method="post" action="/development/topics/<%= topic.id %>/business/links/<%= link.id %>/unlink">
+              <%- csrfField() %><button class="secondary-action" type="submit"><%= labels.end %></button>
+            </form>
+          <% } %>
+        </div>
+        <p class="business-purpose"><%= link.reason %></p>
+        <% if (assets.length) { %>
+          <form method="post" action="/development/topics/<%= topic.id %>/business/links/<%= link.id %>/customer-use" class="business-grid">
+            <%- csrfField() %>
+            <label><%= labels.asset %><select name="assetId" required>
+              <option value=""><%= labels.choose %></option>
+              <% for (const asset of assets) { %>
+                <option value="<%= asset.id %>"><%= asset.title %> · v<%= asset.revisionNo %> · #<%= asset.outcomeRevisionId %></option>
+              <% } %>
+            </select></label>
+            <label><%= labels.purpose %><input name="purpose" maxlength="2000" required></label>
+            <button type="submit"><%= labels.submit %></button>
+          </form>
+        <% } else { %><p class="muted"><%= labels.noAssets %></p><% } %>
+      </article>
+    <% } %>
+  </section>
+  <section class="business-card"><h2><%= labels.requests %></h2>
+    <% if (!requests.length) { %><p class="muted"><%= labels.noRequests %></p><% } %>
+    <% for (const request of requests) { %>
+      <% const link = links.find((item) => item.id === request.linkId); %>
+      <article class="business-row">
+        <div class="business-request-header">
+          <h3><%= request.outcomeTitle %> · v<%= request.revisionNo %> · #<%= request.outcomeRevisionId %></h3>
+          <span class="business-state"><%= request.decision?.revokedAt ? labels.revoked : request.decision?.decisionCode === 'approved' ? request.effective ? labels.approved : labels.inactive : request.decision?.decisionCode === 'rejected' ? labels.rejected : labels.pending %></span>
+        </div>
+        <p><%= labels.opportunity %>: <%= link?.opportunityNo || request.linkId %></p>
+        <p class="business-purpose"><%= request.purpose %></p>
+        <% if (request.effective && !request.fileUses?.length) { %>
+          <p class="muted"><%= labels.approvedOnly %></p>
+        <% } %>
+        <% if (request.fileUses?.length) { %>
+          <h4><%= labels.actualUses %> · <%= request.fileUses.length %></h4>
+          <% for (const use of request.fileUses) { %>
+            <p class="business-purpose"><strong><%= use.fileName %></strong> · <%= use.versionLabel %> · #<%= use.fileId %>
+              <% if (use.quotationPackageVersionId) { %> · <%= labels.formalPackage %> #<%= use.quotationPackageVersionId %><% } %>
+              · <a href="/email-center/threads/<%= use.emailThreadId %>"><%= labels.archivedEmail %> #<%= use.emailMessageId %> / #<%= use.emailAttachmentId %></a><br>
+              <%= labels.location %>: <%= use.usageLocation %><br>
+              <%= labels.hash %>: <code><%= use.sha256 %></code></p>
+          <% } %>
+        <% } %>
+        <% if (request.decision) { %><p class="business-purpose"><%= request.decision.reason %></p><% } %>
+        <% const availableEvidence = (Array.isArray(sentCustomerFiles) ? sentCustomerFiles : [])
+          .filter((item) => item.opportunityId === request.opportunityId
+            && request.decision?.decidedAt && new Date(item.sentAt) >= new Date(request.decision.decidedAt)
+            && !request.fileUses?.some((use) => use.emailAttachmentId === item.emailAttachmentId)); %>
+        <% if (request.effective && link && availableEvidence.length) { %>
+          <form method="post" action="/development/topics/<%= topic.id %>/business/requests/<%= request.id %>/file-uses" class="business-grid business-file-use business-form-block">
+            <%- csrfField() %>
+            <label><%= labels.evidence %><select name="evidenceKey" required>
+              <option value=""><%= labels.selectEvidence %></option>
+              <% for (const item of availableEvidence) { %>
+                <option value="<%= item.evidenceKey %>"><%= item.fileName %> · <%= item.versionLabel %> · <%= labels.archivedEmail %> #<%= item.emailMessageId %> / #<%= item.emailAttachmentId %></option>
+              <% } %>
+            </select></label>
+            <label><%= labels.location %><input name="usageLocation" maxlength="1000" required></label>
+            <label class="business-confirm"><input type="checkbox" name="contentConfirmed" value="on" required> <span><%= labels.confirmContent %></span></label>
+            <button type="submit" aria-label="<%= zh ? '登记实际使用' : labels.recordUse %>"><%= labels.recordUse %></button>
+          </form>
+        <% } else if (request.effective && link) { %><p class="muted"><%= labels.noEvidence %></p><% } %>
+        <% if (!request.decision && canDecide && link) { %>
+          <form method="post" action="/development/topics/<%= topic.id %>/business/requests/<%= request.id %>/decision" class="business-grid business-form-block">
+            <%- csrfField() %>
+            <label><%= labels.decision %><select name="decisionCode" required>
+              <option value="approved"><%= labels.approve %></option>
+              <option value="rejected"><%= labels.reject %></option>
+            </select></label>
+            <label><%= labels.decisionReason %><input name="reason" maxlength="4000" required></label>
+            <button type="submit"><%= labels.record %></button>
+          </form>
+        <% } %>
+        <% if (request.effective && canDecide && link) { %>
+          <form method="post" action="/development/topics/<%= topic.id %>/business/requests/<%= request.id %>/revoke" class="business-grid business-revoke business-form-block">
+            <%- csrfField() %>
+            <label><%= labels.revokeReason %><input name="reason" maxlength="4000" required></label>
+            <button class="danger" type="submit" aria-label="<%= zh ? '撤销对客使用批准' : 'Revoke customer-use approval' %>"><%= labels.revoke %></button>
+          </form>
+        <% } %>
+      </article>
+    <% } %>
+  </section>
+</section>
+<%- include('../partials/app-end') %>

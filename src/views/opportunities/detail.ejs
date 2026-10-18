@@ -1,0 +1,905 @@
+<%- include('../partials/app-start', { title: opportunity.title + ' - BESTCRM', activeNav: 'opportunities' }) %>
+<% if (typeof aiSourceEnabled !== 'undefined' && aiSourceEnabled && currentUser?.roles?.some(r=>['administrator','sales_manager','salesperson'].includes(r))) { %><a class="secondary-action" href="/ai-sources/related/opportunity/<%= opportunity.id %>">AI Source 来源资料</a><% } %>
+<%
+  const attachmentUploadedAtSortValue = (value) => value instanceof Date ? value.toISOString() : String(value || '');
+  const orderedAttachments = [...(attachments || [])].sort((left, right) => {
+    const leftAt = attachmentUploadedAtSortValue(left.uploadedAt);
+    const rightAt = attachmentUploadedAtSortValue(right.uploadedAt);
+    if (leftAt !== rightAt) {
+      return leftAt.localeCompare(rightAt);
+    }
+    return Number(left.id || 0) - Number(right.id || 0);
+  });
+  const requirementAttachments = orderedAttachments.filter((attachment) => attachment.category === 'requirement' || attachment.category === 'other');
+  const technicalSolutionAttachments = orderedAttachments.filter((attachment) => attachment.category === 'technical_solution');
+  const technicalDraftList = typeof technicalDrafts === 'undefined' ? [] : technicalDrafts;
+  const uploadedFilesForTechnicalDraft = (draft) => Array.isArray(draft?.uploadedFiles) && draft.uploadedFiles.length
+    ? draft.uploadedFiles
+    : (draft?.uploadedFile ? [draft.uploadedFile] : []);
+  const uploadedTechnicalDrafts = technicalDraftList.filter((draft) => draft.sourceKind === 'uploaded_file' && uploadedFilesForTechnicalDraft(draft).length);
+  const inactiveTemplateTechnicalDrafts = technicalDraftList.filter((draft) => draft !== activeTechnicalDraft && draft.sourceKind !== 'uploaded_file');
+  const technicalReviewFilesByDraftId = new Map();
+  for (const file of (typeof technicalReviewAttachments === 'undefined' ? [] : technicalReviewAttachments)) {
+    const draftId = Number(file.technicalDraftId);
+    if (!technicalReviewFilesByDraftId.has(draftId)) technicalReviewFilesByDraftId.set(draftId, []);
+    technicalReviewFilesByDraftId.get(draftId).push(file);
+  }
+  const latestApprovedTechnicalDraft = technicalDraftList.find((draft) => draft.status === 'approved');
+  const technicalDraftAttachmentIds = new Set(technicalDraftList
+    .flatMap((draft) => uploadedFilesForTechnicalDraft(draft).map((file) => Number(file.id)))
+    .filter(Boolean));
+  const commercialQuoteAttachments = orderedAttachments.filter((attachment) => attachment.category === 'commercial_quote');
+  const collaborationPackages = typeof collaborationWorkPackages !== 'undefined' && Array.isArray(collaborationWorkPackages)
+    ? collaborationWorkPackages : [];
+  const collaborationTeamMembers = typeof teamMembers !== 'undefined' && Array.isArray(teamMembers) ? teamMembers : [];
+  const contractAttachments = orderedAttachments.filter((attachment) => attachment.category === 'contract');
+  const canDeleteRequirementMaterials = ['draft', 'initiation_rejected'].includes(opportunity.status);
+  const supplementalRequirementUpdates = typeof requirementUpdates === 'undefined' ? [] : requirementUpdates;
+  const technicalSolutionDeleteStatuses = ['technical_solution_in_progress', 'technical_solution_rejected'];
+  const shortDateFormatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Singapore',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hourCycle: 'h23'
+  });
+  const formatShortDate = (value) => {
+    if (!value) {
+      return '';
+    }
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) {
+      return String(value);
+    }
+    const parts = Object.fromEntries(
+      shortDateFormatter.formatToParts(date).map((part) => [part.type, part.value])
+    );
+    return `${parts.year}-${parts.month}-${parts.day} ${parts.hour}:${parts.minute}`;
+  };
+  const requirementTimelineSortValue = (value) => {
+    if (!value) {
+      return '';
+    }
+    return value instanceof Date ? value.toISOString() : String(value);
+  };
+  const requirementTimeline = [
+    {
+      key: 'initial',
+      type: 'Text',
+      timeLabel: t('initialRequirement'),
+      text: opportunity.requirement,
+      at: '',
+      sortAt: ''
+    },
+    ...supplementalRequirementUpdates.map((update) => ({
+      key: `text-${update.id}`,
+      type: 'Text',
+      text: update.requirementText,
+      at: update.createdAt,
+      sortAt: requirementTimelineSortValue(update.createdAt)
+    })),
+    ...requirementAttachments.map((attachment) => ({
+      key: `file-${attachment.id}`,
+      type: 'File',
+      attachment,
+      text: attachment.originalName,
+      at: attachment.uploadedAt,
+      sortAt: requirementTimelineSortValue(attachment.uploadedAt)
+    }))
+  ].filter((item) => item.text || item.attachment).sort((left, right) => {
+    if (left.sortAt !== right.sortAt) {
+      return left.sortAt.localeCompare(right.sortAt);
+    }
+    return String(left.key).localeCompare(String(right.key));
+  });
+  const technicalSolutionTimeline = technicalSolutionAttachments.filter((attachment) => !technicalDraftAttachmentIds.has(Number(attachment.id))).map((attachment) => ({
+      key: `technical-file-${attachment.id}`,
+      type: 'File',
+      attachment,
+      text: attachment.originalName,
+      at: attachment.uploadedAt,
+      sortAt: requirementTimelineSortValue(attachment.uploadedAt)
+    })).sort((left, right) => {
+    if (left.sortAt !== right.sortAt) {
+      return left.sortAt.localeCompare(right.sortAt);
+    }
+    return String(left.key).localeCompare(String(right.key));
+  });
+  const commercialQuoteTimeline = [
+    ...commercialQuoteAttachments.map((attachment) => ({
+      key: `commercial-quote-file-${attachment.id}`,
+      type: 'File',
+      attachment,
+      text: attachment.originalName,
+      at: attachment.uploadedAt,
+      sortAt: requirementTimelineSortValue(attachment.uploadedAt)
+    }))
+  ].filter((item) => item.text || item.attachment).sort((left, right) => {
+    if (left.sortAt !== right.sortAt) {
+      return left.sortAt.localeCompare(right.sortAt);
+    }
+    return String(left.key).localeCompare(String(right.key));
+  });
+  const contractTimeline = [
+    ...contractAttachments.map((attachment) => ({
+      key: `contract-file-${attachment.id}`,
+      type: 'File',
+      attachment,
+      text: attachment.originalName,
+      at: attachment.uploadedAt,
+      sortAt: requirementTimelineSortValue(attachment.uploadedAt)
+    }))
+  ].filter((item) => item.text || item.attachment).sort((left, right) => {
+    if (left.sortAt !== right.sortAt) {
+      return left.sortAt.localeCompare(right.sortAt);
+    }
+    return String(left.key).localeCompare(String(right.key));
+  });
+  const materialApprovalVersions = typeof materialVersions === 'undefined' ? [] : materialVersions;
+  const materialVersionById = new Map(materialApprovalVersions.map((version) => [Number(version.id), version]));
+  const ownerName = opportunity.salespersonDisplayName || opportunity.salespersonUsername || opportunity.salespersonId || '';
+  const signedInUserId = typeof currentUserId === 'undefined' ? null : currentUserId;
+  const signedInUserIsSupportingEngineer = typeof currentUserIsSupportingEngineer === 'undefined' ? false : currentUserIsSupportingEngineer;
+  const canAddRequirementUpdate = typeof canCreateRequirementUpdate === 'undefined' ? false : canCreateRequirementUpdate;
+  const uploadPermissions = typeof canUploadAttachments === 'undefined' ? {} : canUploadAttachments;
+  const allWorkflowForms = Array.isArray(workflowForms) ? workflowForms : [];
+  const usesVersionedTechnicalDrafts = typeof versionedTechnicalDraftsEnabled === 'undefined' ? false : versionedTechnicalDraftsEnabled;
+  const initiationWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_initiation');
+  const technicalSubmitWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_technical_solution');
+  const commercialQuoteWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_commercial_quote');
+  const contractApprovalWorkflowForm = allWorkflowForms.find((workflowForm) => workflowForm.action === 'submit_contract_approval');
+  const projectApprovalForms = allWorkflowForms.filter((workflowForm) => ['approve_initiation', 'reject_initiation'].includes(workflowForm.action));
+  const requirementWorkflowForms = allWorkflowForms.filter((workflowForm) => workflowForm.action === 'withdraw_initiation');
+  const technicalWorkflowForms = allWorkflowForms.filter((workflowForm) => (
+    workflowForm.action === 'change_quotation_engineer'
+    || (!usesVersionedTechnicalDrafts && ['withdraw_technical_solution', 'approve_technical_solution', 'reject_technical_solution'].includes(workflowForm.action))
+  ));
+  const commercialWorkflowForms = allWorkflowForms.filter((workflowForm) => ['withdraw_commercial_quote', 'approve_commercial_quote', 'reject_commercial_quote', 'mark_won', 'mark_lost'].includes(workflowForm.action));
+  const contractWorkflowForms = allWorkflowForms.filter((workflowForm) => ['withdraw_contract_approval', 'approve_contract', 'reject_contract'].includes(workflowForm.action));
+  const technicalStageWorkflowForms = [
+    ...(!usesVersionedTechnicalDrafts && technicalSubmitWorkflowForm ? [technicalSubmitWorkflowForm] : []),
+    ...technicalWorkflowForms
+  ];
+  const commercialStageWorkflowForms = [
+    ...(commercialQuoteWorkflowForm ? [commercialQuoteWorkflowForm] : []),
+    ...commercialWorkflowForms
+  ];
+  const contractStageWorkflowForms = [
+    ...(contractApprovalWorkflowForm ? [contractApprovalWorkflowForm] : []),
+    ...contractWorkflowForms
+  ];
+  const technicalStartedStatuses = new Set([
+    'technical_solution_in_progress', 'technical_solution_pending', 'technical_solution_rejected',
+    'commercial_quote_in_progress', 'commercial_quote_pending', 'commercial_quote_rejected',
+    'customer_negotiation', 'lost_archived', 'won_contract_pending',
+    'contract_approval_in_progress', 'contract_rejected', 'contract_archived'
+  ]);
+  const commercialStartedStatuses = new Set([
+    'commercial_quote_in_progress', 'commercial_quote_pending', 'commercial_quote_rejected',
+    'customer_negotiation', 'lost_archived', 'won_contract_pending',
+    'contract_approval_in_progress', 'contract_rejected', 'contract_archived'
+  ]);
+  const contractStartedStatuses = new Set(['won_contract_pending', 'contract_approval_in_progress', 'contract_rejected', 'contract_archived']);
+  const technicalStarted = technicalStartedStatuses.has(opportunity.status);
+  const commercialStarted = commercialStartedStatuses.has(opportunity.status);
+  const contractStarted = contractStartedStatuses.has(opportunity.status);
+  const canDeleteTechnicalSolutionAttachments = technicalSolutionDeleteStatuses.includes(opportunity.status);
+  const canDeleteCommercialQuoteAttachments = ['commercial_quote_in_progress', 'commercial_quote_rejected'].includes(opportunity.status);
+  const canDeleteContractAttachments = ['customer_negotiation', 'won_contract_pending', 'contract_rejected'].includes(opportunity.status);
+  const contractSubmitUnavailableMessage = (() => {
+    if (contractApprovalWorkflowForm || !uploadPermissions.contract || contractAttachments.length === 0) {
+      return '';
+    }
+    if (opportunity.status === 'contract_approval_in_progress') {
+      return t('contractApprovalAlreadySubmitted');
+    }
+    if (opportunity.status === 'contract_archived') {
+      return t('contractApprovalArchived');
+    }
+    return t('contractApprovalPrerequisite');
+  })();
+  const correspondenceThreadList = typeof correspondenceThreads === 'undefined' ? [] : correspondenceThreads;
+  const correspondence = correspondenceThreadList
+    .flatMap((thread) => (thread.messages || []).map((message) => ({
+      ...message,
+      threadId: thread.id,
+      threadSubject: thread.subject,
+      occurredAt: message.receivedAt || message.sentAt || message.createdAt
+    })))
+    .sort((left, right) => requirementTimelineSortValue(right.occurredAt).localeCompare(requirementTimelineSortValue(left.occurredAt)));
+  const replyCustomerHref = correspondenceThreadList.length === 1
+    ? `/email-center/compose?threadId=${correspondenceThreadList[0].id}`
+    : `/email-center/compose?opportunityId=${opportunity.id}${correspondenceThreadList.length > 1 ? '&chooseThread=1' : ''}`;
+%>
+        <header class="page-header opportunity-detail-header">
+          <div class="opportunity-detail-toolbar">
+            <a class="opportunity-detail-back" href="/opportunities"><span aria-hidden="true">←</span> <%= t('backToOpportunities') %></a>
+            <div class="page-actions opportunity-detail-actions">
+              <% if (typeof canEditOpportunity !== 'undefined' && canEditOpportunity) { %>
+                <a class="quick-action" href="/opportunities/<%= opportunity.id %>/edit"><%= t('edit') %></a>
+              <% } %>
+              <% if (typeof canArchiveOpportunity !== 'undefined' && canArchiveOpportunity) { %>
+                <button class="opportunity-detail-archive-toggle" type="button" aria-expanded="false" aria-controls="opportunity-detail-archive-panel" data-opportunity-archive-toggle><%= t('archive') %>…</button>
+              <% } %>
+              <% if (typeof canDeleteOpportunity !== 'undefined' && canDeleteOpportunity) { %>
+                <button class="danger-action" type="button" aria-expanded="false" aria-controls="opportunity-detail-delete-panel" data-opportunity-delete-toggle><%= t('delete') %>…</button>
+              <% } %>
+              <% if (typeof canReopenOpportunity !== 'undefined' && canReopenOpportunity) { %>
+                <form method="post" action="/opportunities/<%= opportunity.id %>/reopen">
+                  <%- csrfField() %>
+                  <input name="reason" required maxlength="500" placeholder="<%= t('reopenReason') %>" aria-label="<%= t('reopenReason') %>">
+                  <button class="quick-action" type="submit"><%= t('reopen') %></button>
+                </form>
+              <% } %>
+            </div>
+          </div>
+          <div class="opportunity-detail-heading">
+            <div class="user-line"><%= opportunity.opportunityNo %></div>
+            <h1><%= opportunity.title %></h1>
+          </div>
+          <% if (typeof canArchiveOpportunity !== 'undefined' && canArchiveOpportunity) { %>
+            <div class="opportunity-detail-archive-panel" id="opportunity-detail-archive-panel" data-opportunity-archive-panel hidden>
+              <form method="post" action="/opportunities/<%= opportunity.id %>/archive">
+                <%- csrfField() %>
+                <label><%= t('archiveReason') %><input name="reason" required maxlength="500" placeholder="<%= t('archiveReason') %>"></label>
+                <button class="danger-action" type="submit"><%= t('archive') %></button>
+                <button class="secondary-action" type="button" data-opportunity-archive-cancel><%= t('cancel') %></button>
+              </form>
+            </div>
+          <% } %>
+          <% if (typeof canDeleteOpportunity !== 'undefined' && canDeleteOpportunity) { %>
+            <div class="opportunity-detail-archive-panel" id="opportunity-detail-delete-panel" data-opportunity-delete-panel hidden>
+              <p class="warning-text"><%= t('deleteOpportunityRule') %></p>
+              <form method="post" action="/opportunities/<%= opportunity.id %>/delete">
+                <%- csrfField() %>
+                <label><%= t('deleteOpportunityReason') %><input name="reason" required maxlength="500" placeholder="<%= t('deleteOpportunityReason') %>"></label>
+                <label><%= t('deleteOpportunityConfirmation') %><input name="confirmation" required pattern="DELETE" autocomplete="off" spellcheck="false" placeholder="DELETE"></label>
+                <button class="danger-action" type="submit"><%= t('deleteOpportunityAction') %></button>
+                <button class="secondary-action" type="button" data-opportunity-delete-cancel><%= t('cancel') %></button>
+              </form>
+            </div>
+          <% } %>
+        </header>
+        <% if (opportunity.archivedAt) { %><p class="user-line"><%= t('archivedRecord') %><% if (opportunity.archiveReason) { %>: <%= opportunity.archiveReason %><% } %></p><% } %>
+
+        <div class="section-stack">
+        <% if (typeof developmentLinks !== 'undefined' && developmentLinks.length) { %>
+          <section class="content-section" aria-labelledby="opportunity-development-heading">
+            <h2 id="opportunity-development-heading"><%= language === 'zh' ? '关联研发课题' : 'Linked development topics' %></h2>
+            <div class="section-body">
+              <p class="muted"><%= language === 'zh'
+                ? '仅显示您仍是成员的课题；内部关联不开放研究原件，对客引用须按商机及结论版本单独批准。'
+                : 'Only topics where you are an active member are shown. Links do not grant research access; customer use requires separate approval for this opportunity and exact result revision.' %></p>
+              <% for (const link of developmentLinks) { %>
+                <p><a href="/development/topics/<%= link.topicId %>/business"><%= link.topicNo %> · <%= link.topicTitle %></a>
+                  · <%= language === 'zh' ? '有效对客引用批准' : 'Effective customer-use approvals' %>: <%= link.approvedUses %>
+                  · <%= language === 'zh' ? '已记录的对客文件使用' : 'Recorded customer-file uses' %>: <%= link.fileUses?.length || 0 %></p>
+                <% for (const use of link.fileUses || []) { %>
+                  <p><strong><%= language === 'zh' ? '实际使用' : 'Actual use' %></strong>
+                    · <%= use.outcomeTitle %> v<%= use.revisionNo %>
+                    · <%= use.fileName %> (<%= use.versionLabel %>)
+                    · <a href="/email-center/threads/<%= use.emailThreadId %>"><%= language === 'zh' ? '归档邮件' : 'Archived email' %> #<%= use.emailMessageId %></a>
+                    · SHA-256 <code><%= use.sha256 %></code></p>
+                <% } %>
+                <% for (const citation of link.citations) { %>
+                  <article>
+                    <strong><%= citation.title %> · v<%= citation.revisionNo %> · #<%= citation.outcomeRevisionId %></strong>
+                    <p><%= language === 'zh' ? '批准用途' : 'Approved purpose' %>: <%= citation.purpose %></p>
+                    <p><%= language === 'zh' ? '结论' : 'Finding' %>: <%= citation.finding %></p>
+                    <p><%= language === 'zh' ? '适用条件' : 'Applicability' %>: <%= citation.applicability %></p>
+                    <p><%= language === 'zh' ? '限制' : 'Limitations' %>: <%= citation.limitations %></p>
+                  </article>
+                <% } %>
+              <% } %>
+            </div>
+          </section>
+        <% } %>
+
+          <section class="content-section business-section business-section-basic">
+            <h2><%= t('basicInfo') %></h2>
+            <div class="section-body">
+              <div class="basic-info-grid">
+                <table class="detail-table basic-info-table">
+                  <colgroup>
+                    <col class="basic-info-label-column">
+                    <col>
+                    <col class="basic-info-label-column">
+                    <col>
+                  </colgroup>
+                  <tbody>
+                    <tr>
+                      <th scope="row"><%= t('no') %></th>
+                      <td><%= opportunity.opportunityNo %></td>
+                      <th scope="row"><%= t('status') %></th>
+                      <td><%= statusLabel(opportunity.status) %></td>
+                    </tr>
+                    <tr>
+                      <th scope="row"><%= t('owner') %></th>
+                      <td><%= ownerName %></td>
+                      <th scope="row"><%= t('estimatedAmount') %></th>
+                      <td><%= opportunity.estimatedAmount ?? '' %></td>
+                    </tr>
+                    <% if (opportunity.originInquiryId) { %>
+                      <tr>
+                        <th scope="row"><%= t('sourceLead') %></th>
+                        <td><a href="/lead-submissions/<%= opportunity.originInquiryId %>"><%= t('viewSourceLead') %> #<%= opportunity.originInquiryId %></a></td>
+                        <th scope="row"></th>
+                        <td></td>
+                      </tr>
+                    <% } %>
+                    <tr>
+                      <th scope="row"><%= t('customer') %></th>
+                      <td>
+                        <% if (typeof canViewCustomerMaster === 'undefined' || canViewCustomerMaster) { %>
+                          <a href="/customers/<%= opportunity.customerId %>"><%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %></a>
+                        <% } else { %>
+                          <%= opportunity.customerCode ? `${opportunity.customerCode} · ` : '' %><%= opportunity.customerName %>
+                        <% } %>
+                      </td>
+                      <th scope="row"><%= t('productInterest') %></th>
+                      <td><%= opportunity.productInterest || '' %></td>
+                    </tr>
+                    <tr>
+                      <th scope="row"><%= t('primaryContact') %></th>
+                      <td>
+                        <% if (opportunity.primaryContactId) { %>
+                          <% if (typeof canViewContactMaster === 'undefined' || canViewContactMaster) { %>
+                            <a href="/contacts/<%= opportunity.primaryContactId %>"><%= opportunity.primaryContactCode ? `${opportunity.primaryContactCode} · ` : '' %><%= opportunity.primaryContactName %></a>
+                          <% } else { %>
+                            <%= opportunity.primaryContactCode ? `${opportunity.primaryContactCode} · ` : '' %><%= opportunity.primaryContactName %>
+                          <% } %>
+                        <% } %>
+                      </td>
+                      <th scope="row"><%= t('opportunityType') %></th>
+                      <td><%= opportunity.projectType %></td>
+                    </tr>
+                    <tr>
+                      <th scope="row"><%= t('deliveryPeriod') %></th>
+                      <td><%= opportunity.deliveryCycle %></td>
+                      <th scope="row"><%= t('expectedBidDate') %></th>
+                      <td><%= opportunity.expectedBidDate || '' %></td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </section>
+
+          <% if (collaborationWorkPackagesEnabled && opportunity.quotationEngineerId) { %>
+            <section class="content-section business-section collaboration-assignment-section">
+              <h2><%= language === 'zh' ? '技术报价协作' : 'Technical quotation collaboration' %></h2>
+              <div class="section-body">
+                <table class="detail-table collaboration-assignment-table"><tbody><tr>
+                  <th scope="row"><%= language === 'zh' ? '立项来源' : 'Initiation source' %></th>
+                  <td><%= language === 'zh' ? '销售经理审批并立项（在线索页完成）' : 'Sales manager approval on the lead record' %></td>
+                  <th scope="row"><%= language === 'zh' ? '项目工程师' : 'Project engineer' %></th>
+                  <td><%= opportunity.quotationEngineerDisplayName || opportunity.quotationEngineerUsername %></td>
+                </tr><tr>
+                  <th scope="row"><%= language === 'zh' ? '组员工程师' : 'Supporting engineers' %></th>
+                  <td colspan="3"><%= collaborationTeamMembers.filter((member) => member.roleCode === 'quotation_engineer' && member.isActive !== false).map((member) => member.userDisplayName || member.username).join('、') || '—' %></td>
+                </tr></tbody></table>
+              </div>
+            </section>
+          <% } %>
+
+          <%- include('../partials/product-category-review', { record: opportunity, action: `/opportunities/${opportunity.id}/product-categories`, canEditCategories: canReviewProductCategories, suggestions: suggestProductCategoryCodes({ productInterest: opportunity.productInterest, subject: opportunity.title, requirementText: opportunity.requirement }) }) %>
+
+          <% if (emailCenterEnabled) { %>
+            <section class="content-section business-section business-section-correspondence" id="opportunity-correspondence">
+              <h2>
+                <span><%= t('correspondence') %></span>
+                <span class="correspondence-heading-actions">
+                  <span class="section-heading-meta"><%= correspondence.length %> <%= t('messages') %></span>
+                  <% if (customerEmailSendingEnabled) { %><a class="correspondence-reply-action" href="<%= replyCustomerHref %>"><%= t('replyCustomer') %></a><% } %>
+                </span>
+              </h2>
+              <div class="section-body correspondence-timeline">
+                <% if (correspondence.length > 0) { %>
+                <% for (const message of correspondence) { const recipients = (message.toRecipients || []).map((recipient) => recipient.name ? `${recipient.name} <${recipient.address}>` : recipient.address).join(', '); %>
+                  <details class="correspondence-item" id="opportunity-email-<%= message.id %>"<%- Number(selectedEmailMessageId) === Number(message.id) ? ' open' : '' %>>
+                    <summary>
+                      <time><%= formatShortDate(message.occurredAt) %></time>
+                      <span class="correspondence-marker" aria-hidden="true"></span>
+                      <span class="correspondence-summary-main">
+                        <strong><%= message.subject || message.threadSubject || t('noSubject') %></strong>
+                        <span class="muted"><%= message.fromAddress %><% if (recipients) { %> → <%= recipients %><% } %></span>
+                      </span>
+                      <span class="correspondence-direction"><%= message.direction === 'outbound' ? `→ ${t('outgoing')}` : `← ${t('incoming')}` %></span>
+                    </summary>
+                    <div class="correspondence-content">
+                      <%- include('../email-center/_response-status', { message, canAcknowledgeCustomerEmail, formatEmailListDate: formatShortDate, returnTo: `/opportunities/${opportunity.id}?emailMessageId=${message.id}#opportunity-email-${message.id}` }) %>
+                      <%- include('../email-center/_message-content', { message, formatPlainEmailForReading }) %>
+                      <div class="inline-actions correspondence-actions">
+                        <a href="/email-center/threads/<%= message.threadId %>"><%= t('openEmailThread') %></a>
+                      </div>
+                    </div>
+                  </details>
+                <% } %>
+                <% } else { %>
+                  <p class="empty"><%= t('noEmailMessages') %></p>
+                <% } %>
+              </div>
+            </section>
+          <% } %>
+
+          <section class="content-section business-section opportunity-workflow-section business-section-requirement" id="requirement-materials">
+            <h2><%= t('customerRequirement') %></h2>
+            <div class="section-body">
+              <div class="requirement-source-stack">
+                <section class="requirement-source-block">
+                  <h3>1 · <%= t('requirementText') %></h3>
+                  <% if (canAddRequirementUpdate) { %>
+                    <form class="requirement-input-panel" method="post" action="/opportunities/<%= opportunity.id %>/requirement-updates">
+                      <%- csrfField() %>
+                      <label class="visually-hidden" for="requirement-text-<%= opportunity.id %>"><%= t('requirementText') %></label>
+                      <textarea id="requirement-text-<%= opportunity.id %>" name="requirementText" required></textarea>
+                      <input type="hidden" name="reason" value="<%= t('customerRequirementUpdateReason') %>">
+                      <div class="requirement-input-actions">
+                        <button type="submit"><%= t('save') %></button>
+                      </div>
+                      <% if (typeof requirementSaveState !== 'undefined' && requirementSaveState === 'duplicate') { %><p class="duplicate-save-note"><%= t('duplicateRequirementBlocked') %></p><% } %>
+                    </form>
+                  <% } %>
+                  <% for (const item of requirementTimeline.filter((entry) => !entry.attachment)) { %>
+                    <article class="requirement-row requirement-row-text">
+                      <span class="requirement-row-time"><%= item.at ? formatShortDate(item.at) : item.timeLabel %></span>
+                      <span class="requirement-row-content"><%= item.text %></span>
+                    </article>
+                  <% } %>
+                </section>
+
+                <section class="requirement-source-block">
+                  <h3>2 · <%= t('uploadedFiles') %></h3>
+                  <% for (const item of requirementTimeline.filter((entry) => entry.attachment)) { %>
+                    <article class="requirement-row requirement-row-file">
+                      <span class="requirement-row-time"><%= formatShortDate(item.at) %></span>
+                      <span class="requirement-row-content"><%= item.text %></span>
+                      <div class="inline-actions requirement-row-actions">
+                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
+                        <% if (canDeleteRequirementMaterials) { %>
+                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteRequirementFileConfirm') %>')">
+                            <%- csrfField() %>
+                            <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
+                          </form>
+                        <% } %>
+                      </div>
+                    </article>
+                  <% } %>
+                  <% if (uploadPermissions.requirement) { %>
+                    <form class="attachment-upload-panel requirement-file-upload" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                      <%- csrfField() %>
+                      <input type="hidden" name="category" value="requirement">
+                      <span class="attachment-upload-label"><%= t('uploadFile') %></span>
+                      <%- include('../partials/_localized-file-picker', { pickerId: `opportunity-requirement-file-${opportunity.id}`, inputName: 'attachment', labelText: t('uploadFile') }) %>
+                      <button type="submit"><%= t('upload') %></button>
+                    </form>
+                  <% } %>
+                </section>
+              </div>
+              <% if (initiationWorkflowForm) { %>
+                <div class="requirement-initiation-actions">
+                  <% if (initiationWorkflowForm.missingRequirements && initiationWorkflowForm.missingRequirements.length > 0) { %>
+                    <ul class="inline-list">
+                      <% for (const requirement of initiationWorkflowForm.missingRequirements) { %>
+                        <li><%= requirement %></li>
+                      <% } %>
+                    </ul>
+                  <% } %>
+                  <form method="post" action="/opportunities/<%= opportunity.id %>/workflow">
+                    <%- csrfField() %>
+                    <input type="hidden" name="action" value="<%= initiationWorkflowForm.action %>">
+                    <button type="submit" <%= initiationWorkflowForm.blocked ? 'disabled' : '' %>><%= initiationWorkflowForm.button %></button>
+                  </form>
+                </div>
+              <% } %>
+              <%- include('_workflow-actions', { forms: requirementWorkflowForms }) %>
+            </div>
+          </section>
+
+          <% if (projectApprovalForms.length > 0) { %>
+            <section class="content-section business-section opportunity-workflow-section business-section-project-approval">
+              <h2><%= t('projectApproval') %></h2>
+              <div class="section-body">
+                <%- include('_workflow-actions', { forms: projectApprovalForms }) %>
+              </div>
+            </section>
+          <% } %>
+
+          <% if (technicalStarted) { %>
+          <section id="technical-proposal" class="content-section business-section opportunity-workflow-section business-section-technical">
+            <h2>
+              <span><%= t('technicalProposal') %><% if (usesVersionedTechnicalDrafts && activeTechnicalDraft?.status === 'pending') { %> <span class="section-heading-meta"><%= t('technicalManagerReview') %> · <%= t('technicalDraftStatus.pending') %></span><% } else if (usesVersionedTechnicalDrafts && !activeTechnicalDraft && latestApprovedTechnicalDraft) { %> <span class="section-heading-meta"><%= latestApprovedTechnicalDraft.formalVersionLabel %> · <%= t('technicalDraftStatus.approved') %></span><% } %></span>
+            </h2>
+            <div class="section-body">
+              <% if (collaborationWorkPackagesEnabled) { %>
+                <%- include('../partials/_collaboration-work-packages', {
+                  planKind: 'technical_solution',
+                  workPackages: collaborationPackages,
+                  teamMembers: collaborationTeamMembers,
+                  canManageCollaborationWorkPackages,
+                  canContributeCollaborationWorkPackages,
+                  uploadPermissions,
+                  opportunity,
+                  language,
+                  formatShortDate,
+                  t,
+                  csrfField
+                }) %>
+              <% } %>
+              <% if (usesVersionedTechnicalDrafts) { %>
+                <% if (canCreateUploadedTechnicalDraft) { %>
+                  <form class="form-panel technical-draft-create-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts">
+                    <%- csrfField() %>
+                    <input type="hidden" name="sourceKind" value="uploaded_file">
+                    <input type="hidden" name="returnTo" value="opportunity">
+                    <label for="technical-deliverable-type-<%= opportunity.id %>"><%= t('technicalDeliverableType') %></label>
+                    <select id="technical-deliverable-type-<%= opportunity.id %>" name="deliverableType" required>
+                      <option value=""><%= t('selectTechnicalDeliverableType') %></option>
+                      <option value="datasheet">Datasheet</option>
+                      <option value="technical_agreement">Technical Agreement</option>
+                      <option value="bidding_document">Bidding Document</option>
+                    </select>
+                    <button type="submit"><%= t('createTechnicalFileDraft') %></button>
+                  </form>
+                <% } %>
+                <% if (activeTechnicalDraft?.sourceKind === 'uploaded_file' && !canReviewTechnicalDraft) { const draft = activeTechnicalDraft; %>
+                    <div class="form-panel technical-proposal-upload-panel">
+                      <% if (canManageUploadedTechnicalDraft) { %>
+                        <form class="technical-proposal-upload-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/file" enctype="multipart/form-data">
+                          <%- csrfField() %>
+                          <input type="hidden" name="returnTo" value="opportunity">
+                          <label for="technical-draft-file-<%= draft.id %>"><%= t('upload') %> <%= draft.draftLabel %></label>
+                          <%- include('../partials/_localized-file-picker', { pickerId: `technical-draft-file-${draft.id}`, inputName: 'attachment', labelText: t('uploadTechnicalProposal'), multiple: true }) %>
+                          <button type="submit"><%= t('upload') %></button>
+                        </form>
+                      <% } %>
+                      <% if (!uploadedFilesForTechnicalDraft(draft).length) { %><p class="muted"><%= t('technicalFileNotUploaded') %></p><% } %>
+                <% } %>
+                <% if (uploadedTechnicalDrafts.length) { %>
+                      <div class="technical-uploaded-files">
+                        <strong class="technical-uploaded-files-label"><%= t('uploadedTechnicalProposals') %></strong>
+                        <div class="technical-uploaded-files-scroll">
+                          <table class="technical-uploaded-files-table">
+                            <colgroup><col class="technical-file-version-column"><col><col class="technical-file-time-column"><col class="technical-file-actions-column"></colgroup>
+                            <thead><tr><th scope="col"><%= t('technicalFileVersion') %></th><th scope="col"><%= t('fileName') %></th><th scope="col"><%= t('technicalFileUploadedAt') %></th><th scope="col"><%= t('actions') %></th></tr></thead>
+                            <tbody>
+                              <% for (const draft of uploadedTechnicalDrafts) { const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; const draftFiles = uploadedFilesForTechnicalDraft(draft); %>
+                                <% for (const [fileIndex, uploadedFile] of draftFiles.entries()) { %>
+                                  <tr class="technical-uploaded-file-row" data-technical-draft-id="<%= draft.id %>" data-technical-attachment-id="<%= uploadedFile.id %>">
+                                    <td class="technical-version-summary"><%= draft.draftLabel %><% if (draft.formalVersionLabel) { %> · <%= draft.formalVersionLabel %><% } %> · <%= t(`technicalDraftStatus.${draft.status}`) %><% if (draft.selfApprovalTest) { %><span class="muted"> · <%= t('technicalTestSelfApprovalBadge') %></span><% } %><% if (draft.authorizedSelfReview) { %><span class="muted"> · <%= t('technicalAuthorizedSelfReviewBadge') %></span><% } %></td>
+                                    <td class="technical-uploaded-file-name"><span title="<%= uploadedFile.originalName %>"><%= uploadedFile.originalName %></span>
+                                      <% if (draft.status === 'rejected' && draft.reviewComment) { %><span class="muted"> · <%= draft.reviewComment %></span><% } %>
+                                      <% if (fileIndex === 0 && reviewFiles.length) { %><span class="technical-review-file-links"><%= t('reviewAttachments') %>:
+                                        <% for (const file of reviewFiles) { %><span><%= file.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/download"><%= t('download') %></a></span><% } %>
+                                      </span><% } %>
+                                    </td>
+                                    <td><time class="technical-uploaded-file-time" datetime="<%= attachmentUploadedAtSortValue(uploadedFile.uploadedAt) %>"><%= formatShortDate(uploadedFile.uploadedAt) %></time></td>
+                                    <td><div class="technical-version-actions technical-uploaded-file-actions">
+                                      <a class="technical-file-action technical-file-preview-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/preview"><%= t('preview') %></a>
+                                      <a class="technical-file-action technical-file-download-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= uploadedFile.id %>/download"><%= t('download') %></a>
+                                      <% if (canManageUploadedTechnicalDraft && Number(draft.id) === Number(activeTechnicalDraft?.id) && (!uploadedFile.materialVersionId || uploadedFile.materialVersionStatus === 'withdrawn')) { %>
+                                        <form class="technical-file-withdraw-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/files/<%= uploadedFile.id %>/withdraw" onsubmit="return confirm('<%= t('withdrawUploadedTechnicalFileConfirm') %>')">
+                                          <%- csrfField() %><input type="hidden" name="returnTo" value="opportunity">
+                                          <button class="technical-file-action technical-file-withdraw-action" type="submit"><%= t('withdrawUploadedTechnicalFile') %></button>
+                                        </form>
+                                      <% } %>
+                                    </div></td>
+                                  </tr>
+                                <% } %>
+                              <% } %>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                <% } %>
+                <% if (activeTechnicalDraft?.sourceKind === 'uploaded_file' && !canReviewTechnicalDraft) { const draft = activeTechnicalDraft; %>
+                      <% if (canSubmitUploadedTechnicalDraft && uploadedFilesForTechnicalDraft(draft).length) { %>
+                        <form class="technical-proposal-submit-form technical-proposal-footer-action" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/submit">
+                          <%- csrfField() %>
+                          <input type="hidden" name="returnTo" value="opportunity">
+                          <button type="submit"><%= t('submitForTechnicalApproval') %></button>
+                        </form>
+                      <% } %>
+                    </div>
+                <% } %>
+                <% if (activeTechnicalDraft) { const draft = activeTechnicalDraft; %>
+                  <% if (draft.sourceKind !== 'uploaded_file') { %>
+                    <div class="form-panel">
+                      <strong><%= draft.draftLabel %> · <%= draft.templateNameSnapshot %></strong>
+                      <span class="status"><%= t(`technicalDraftStatus.${draft.status}`) %></span>
+                      <a href="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>"><%= t('openTechnicalDraft') %></a>
+                    </div>
+                  <% } %>
+                  <% if (canWithdrawTechnicalDraft && !canReviewTechnicalDraft) { %>
+                    <form class="technical-proposal-withdraw-form technical-proposal-footer-action" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>/withdraw">
+                      <%- csrfField() %><input type="hidden" name="returnTo" value="opportunity">
+                      <button class="secondary-action" type="submit"><%= t('withdrawTechnicalSubmission') %></button>
+                    </form>
+                  <% } %>
+                  <% if (canReviewTechnicalDraft) { %><%- include('../partials/_technical-manager-review', { draft, opportunity, returnTo: 'opportunity', canWithdraw: canWithdrawTechnicalDraft }) %><% } %>
+                <% } %>
+                <% if (inactiveTemplateTechnicalDrafts.length) { %>
+                  <div class="technical-version-history">
+                    <strong><%= t('technicalVersionHistory') %></strong>
+                    <% for (const draft of inactiveTemplateTechnicalDrafts) { const reviewFiles = technicalReviewFilesByDraftId.get(Number(draft.id)) || []; %>
+                      <div class="technical-version-row">
+                        <span class="technical-version-summary"><%= draft.formalVersionLabel || draft.draftLabel %> · <%= draft.templateNameSnapshot %> · <%= t(`technicalDraftStatus.${draft.status}`) %><% if (draft.selfApprovalTest) { %> · <%= t('technicalTestSelfApprovalBadge') %><% } %><% if (draft.authorizedSelfReview) { %> · <%= t('technicalAuthorizedSelfReviewBadge') %><% } %>
+                          <% if (draft.status === 'rejected' && draft.reviewComment) { %><span class="muted">· <%= draft.reviewComment %></span><% } %>
+                          <% if (reviewFiles.length) { %><span class="technical-review-file-links"><%= t('reviewAttachments') %>:
+                            <% for (const file of reviewFiles) { %><span><%= file.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.attachmentId %>/download"><%= t('download') %></a></span><% } %>
+                          </span><% } %>
+                        </span>
+                        <span class="technical-version-actions">
+                          <% if (draft.uploadedFile) { %><span><%= draft.uploadedFile.originalName %></span><a href="/opportunities/<%= opportunity.id %>/attachments/<%= draft.uploadedFile.id %>/preview"><%= t('preview') %></a><a href="/opportunities/<%= opportunity.id %>/attachments/<%= draft.uploadedFile.id %>/download"><%= t('download') %></a><% } %>
+                          <a href="/opportunities/<%= opportunity.id %>/technical-drafts/<%= draft.id %>"><%= t('openTechnicalDraft') %></a>
+                        </span>
+                      </div>
+                    <% } %>
+                  </div>
+                <% } %>
+              <% } else if (uploadPermissions.technical_solution) { %>
+                <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <%- csrfField() %>
+                  <input type="hidden" name="category" value="technical_solution">
+                  <span class="attachment-upload-label"><%= t('uploadProposal') %></span>
+                  <%- include('../partials/_localized-file-picker', { pickerId: `opportunity-technical-file-${opportunity.id}`, inputName: 'attachment', labelText: t('uploadProposal') }) %>
+                  <button type="submit"><%= t('upload') %></button>
+                </form>
+              <% } %>
+              <% if (technicalSolutionTimeline.length > 0) { %>
+                <div class="requirement-timeline">
+                  <% for (const item of technicalSolutionTimeline) { const linkedVersion = materialVersionById.get(Number(item.attachment.opportunityMaterialVersionId)); %>
+                    <article class="requirement-row requirement-row-file">
+                      <span class="requirement-row-time"><%= formatShortDate(item.at) %></span>
+                      <span class="requirement-row-content"><%= item.text %><% if (linkedVersion?.versionNo) { %> <span class="file-version">V<%= linkedVersion.versionNo %></span><% } %></span>
+                      <div class="inline-actions requirement-row-actions">
+                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
+                        <% if (canDeleteTechnicalSolutionAttachments && uploadPermissions.technical_solution && (!signedInUserIsSupportingEngineer || Number(item.attachment.uploadedBy) === Number(signedInUserId))) { %>
+                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteTechnicalSolutionFileConfirm') %>')">
+                            <%- csrfField() %>
+                            <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
+                          </form>
+                        <% } %>
+                      </div>
+                    </article>
+                  <% } %>
+                </div>
+              <% } else if (!usesVersionedTechnicalDrafts) { %>
+                <p class="empty"><%= t('noTechnicalSolutionRecords') %></p>
+              <% } %>
+              <%- include('_workflow-actions', { forms: technicalStageWorkflowForms }) %>
+            </div>
+          </section>
+          <% } else { %>
+            <section class="content-section business-section opportunity-workflow-section business-section-technical business-section-future">
+              <h2>
+                <span><%= t('technicalProposal') %> <span class="section-heading-meta"><%= t('notStarted') %></span></span>
+              </h2>
+            </section>
+          <% } %>
+
+          <% if (collaborationWorkPackagesEnabled) { %>
+            <%- include('../partials/_collaboration-work-packages', {
+              planKind: 'internal_quote',
+              workPackages: collaborationPackages,
+              teamMembers: collaborationTeamMembers,
+              canManageCollaborationWorkPackages,
+              canContributeCollaborationWorkPackages,
+              uploadPermissions,
+              opportunity,
+              language,
+              formatShortDate,
+              t,
+              csrfField
+            }) %>
+          <% } %>
+
+          <% if (!opportunity.archivedAt && uploadedTechnicalDrafts.length && Number(signedInUserId) === Number(opportunity.salespersonId)) { %>
+            <section class="content-section business-section business-section-quote">
+              <h2><%= language === 'zh' ? '报价草稿' : 'Quotation Draft' %></h2>
+              <div class="section-body"><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/commercial-quotation-draft"><%= language === 'zh' ? '进入报价草稿' : 'Open quotation draft' %></a></div>
+            </section>
+          <% } %>
+
+          <% if (commercialStarted) { %>
+          <section class="content-section business-section opportunity-workflow-section business-section-quote">
+            <h2><%= t('commercialProposal') %></h2>
+            <div class="section-body">
+              <% if (uploadPermissions.commercial_quote) { %>
+                <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <%- csrfField() %>
+                  <input type="hidden" name="category" value="commercial_quote">
+                  <span class="attachment-upload-label"><%= t('uploadProposal') %></span>
+                  <%- include('../partials/_localized-file-picker', { pickerId: `opportunity-commercial-file-${opportunity.id}`, inputName: 'attachment', labelText: t('uploadProposal') }) %>
+                  <button type="submit"><%= t('upload') %></button>
+                </form>
+              <% } %>
+              <% if (commercialQuoteTimeline.length > 0) { %>
+                <div class="requirement-timeline">
+                  <% for (const item of commercialQuoteTimeline) { const linkedVersion = materialVersionById.get(Number(item.attachment.opportunityMaterialVersionId)); %>
+                    <article class="requirement-row requirement-row-file">
+                      <div class="requirement-row-time"><%= formatShortDate(item.at) %></div>
+                      <div class="requirement-row-content"><%= item.text %><% if (linkedVersion?.versionNo) { %> <span class="file-version">V<%= linkedVersion.versionNo %></span><% } %></div>
+                      <div class="inline-actions requirement-row-actions">
+                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
+                        <% if (canDeleteCommercialQuoteAttachments) { %>
+                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteCommercialQuoteFileConfirm') %>')">
+                            <%- csrfField() %>
+                            <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
+                          </form>
+                        <% } %>
+                      </div>
+                    </article>
+                  <% } %>
+                </div>
+              <% } else { %>
+                <p class="empty"><%= t('noCommercialQuoteFiles') %></p>
+              <% } %>
+              <%- include('_workflow-actions', { forms: commercialStageWorkflowForms }) %>
+            </div>
+          </section>
+          <% } else { %>
+            <section class="content-section business-section opportunity-workflow-section business-section-quote business-section-future">
+              <h2><span><%= t('commercialProposal') %></span><span class="section-heading-meta"><%= t('notStarted') %></span></h2>
+            </section>
+          <% } %>
+
+          <% if (contractStarted) { %>
+          <section class="content-section business-section opportunity-workflow-section business-section-contract">
+            <h2><%= t('contract') %></h2>
+            <div class="section-body">
+              <% if (uploadPermissions.contract) { %>
+                <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
+                  <%- csrfField() %>
+                  <input type="hidden" name="category" value="contract">
+                  <span class="attachment-upload-label"><%= t('uploadContract') %></span>
+                  <%- include('../partials/_localized-file-picker', { pickerId: `opportunity-contract-file-${opportunity.id}`, inputName: 'attachment', labelText: t('uploadContract') }) %>
+                  <button type="submit"><%= t('upload') %></button>
+                </form>
+              <% } %>
+              <% if (!contractApprovalWorkflowForm && contractSubmitUnavailableMessage) { %>
+                <div class="form-panel requirement-input-panel commercial-quote-submit-panel">
+                  <p class="empty"><%= contractSubmitUnavailableMessage %></p>
+                  <button type="button" disabled><%= t('workflowButton.submit_contract_approval') %></button>
+                </div>
+              <% } %>
+              <% if (contractTimeline.length > 0) { %>
+                <div class="requirement-timeline">
+                  <% for (const item of contractTimeline) { const linkedVersion = materialVersionById.get(Number(item.attachment.opportunityMaterialVersionId)); %>
+                    <article class="requirement-row requirement-row-file">
+                      <div class="requirement-row-time"><%= formatShortDate(item.at) %></div>
+                      <div class="requirement-row-content"><%= item.text %><% if (linkedVersion?.versionNo) { %> <span class="file-version">V<%= linkedVersion.versionNo %></span><% } %></div>
+                      <div class="inline-actions requirement-row-actions">
+                        <a class="requirement-action-preview" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/preview"><%= t('preview') %></a>
+                        <a class="requirement-action-download" href="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/download"><%= t('download') %></a>
+                        <% if (canDeleteContractAttachments) { %>
+                          <form method="post" action="/opportunities/<%= opportunity.id %>/attachments/<%= item.attachment.id %>/delete" onsubmit="return confirm('<%= t('deleteContractFileConfirm') %>')">
+                            <%- csrfField() %>
+                            <button class="danger-action requirement-action-delete" type="submit"><%= t('delete') %></button>
+                          </form>
+                        <% } %>
+                      </div>
+                    </article>
+                  <% } %>
+                </div>
+              <% } else { %>
+                <p class="empty"><%= t('noContractFiles') %></p>
+              <% } %>
+              <%- include('_workflow-actions', { forms: contractStageWorkflowForms }) %>
+            </div>
+          </section>
+          <% } else { %>
+            <section class="content-section business-section opportunity-workflow-section business-section-contract business-section-future">
+              <h2><span><%= t('contract') %></span><span class="section-heading-meta"><%= t('notStarted') %></span></h2>
+            </section>
+          <% } %>
+
+          <section class="content-section business-section-audit">
+            <h2><%= t('timeline') %></h2>
+            <div class="section-body">
+              <% if (timelineEvents && timelineEvents.length > 0) { %>
+                <ol class="inline-list">
+                  <% for (const event of timelineEvents) { %>
+                    <li>
+                      <strong><%= workflowEventLabel(event.eventType) %></strong>
+                      <span><%= statusLabel(event.fromStatus) %></span>
+                      <span><%= statusLabel(event.toStatus) %></span>
+                      <span><%= event.actorDisplayName %></span>
+                      <% if (event.targetDisplayName) { %>
+                        <span><%= event.targetDisplayName %></span>
+                      <% } %>
+                      <% if (event.comment) { %>
+                        <p><%= event.comment %></p>
+                      <% } %>
+                      <span class="muted"><%= event.createdAt || '' %></span>
+                    </li>
+                  <% } %>
+                </ol>
+              <% } else { %>
+                <p class="empty"><%= t('noTimelineEvents') %></p>
+              <% } %>
+            </div>
+          </section>
+
+        </div>
+<script src="/assets/localized-file-picker.js" defer></script>
+<script>
+  const archiveToggle = document.querySelector('[data-opportunity-archive-toggle]');
+  const archivePanel = document.querySelector('[data-opportunity-archive-panel]');
+  if (archiveToggle && archivePanel) {
+    const setArchiveOpen = (open) => {
+      archivePanel.hidden = !open;
+      archiveToggle.setAttribute('aria-expanded', String(open));
+      if (open) archivePanel.querySelector('input[name="reason"]')?.focus();
+    };
+    archiveToggle.addEventListener('click', () => setArchiveOpen(archivePanel.hidden));
+    archivePanel.querySelector('[data-opportunity-archive-cancel]')?.addEventListener('click', () => setArchiveOpen(false));
+  }
+  const deleteToggle = document.querySelector('[data-opportunity-delete-toggle]');
+  const deletePanel = document.querySelector('[data-opportunity-delete-panel]');
+  if (deleteToggle && deletePanel) {
+    const setDeleteOpen = (open) => {
+      deletePanel.hidden = !open;
+      deleteToggle.setAttribute('aria-expanded', String(open));
+      if (open) deletePanel.querySelector('input[name="reason"]')?.focus();
+    };
+    deleteToggle.addEventListener('click', () => setDeleteOpen(deletePanel.hidden));
+    deletePanel.querySelector('[data-opportunity-delete-cancel]')?.addEventListener('click', () => setDeleteOpen(false));
+  }
+  document.querySelectorAll('[data-engineer-picker]').forEach((picker) => {
+    const options = [...picker.querySelectorAll('[data-engineer-option]')];
+    const summary = picker.querySelector('[data-engineer-summary]');
+    const leadInput = picker.querySelector('[data-engineer-lead]');
+    let selectionOrder = String(picker.dataset.selectedOrder || '')
+      .split(',')
+      .filter(Boolean);
+
+    const refresh = () => {
+      const selected = options.filter((option) => option.checked);
+      const selectedIds = new Set(selected.map((option) => option.value));
+      selectionOrder = selectionOrder.filter((id) => selectedIds.has(id));
+      for (const option of selected) {
+        if (!selectionOrder.includes(option.value)) {
+          selectionOrder.push(option.value);
+        }
+      }
+      leadInput.value = selectionOrder[0] || '';
+      summary.textContent = selectionOrder
+        .map((id) => options.find((option) => option.value === id)?.dataset.engineerName)
+        .filter(Boolean)
+        .join(', ') || <%- JSON.stringify(t('workflowField.quotationEngineerIds')) %>;
+    };
+
+    for (const option of options) {
+      option.addEventListener('change', refresh);
+    }
+    picker.closest('form').addEventListener('submit', (event) => {
+      refresh();
+      if (!leadInput.value) {
+        event.preventDefault();
+        picker.open = true;
+        options[0]?.focus();
+      }
+    });
+    refresh();
+  });
+  document.querySelectorAll('[data-work-package-upload-form]').forEach((form) => {
+    const selector = form.querySelector('[data-work-package-selector]');
+    form.addEventListener('submit', (event) => {
+      if (!selector?.value) {
+        event.preventDefault();
+        selector?.focus();
+        return;
+      }
+      form.action = form.action.replace('/0/versions', `/${selector.value}/versions`);
+    });
+  });
+</script>
+<%- include('../partials/app-end') %>
+
+

@@ -1,0 +1,121 @@
+<%- include('../partials/app-start', { title: `${t('customerDetail')} - BESTCRM`, activeNav: 'customers' }) %>
+        <p class="breadcrumb"><a href="/customers"><%= t('customers') %></a></p>
+        <header class="page-header">
+          <h1><%= customer.id ? t('editCustomer') : t('newCustomer') %></h1>
+        </header>
+
+        <form class="form-panel customer-form" method="post" action="<%= action %>">
+          <%- csrfField() %>
+          <% if ((typeof duplicateCustomers !== 'undefined' && duplicateCustomers.length) || hasRestrictedDuplicate) { %>
+            <section class="duplicate-warning" role="alert">
+              <strong><%= t('duplicateCustomerFound') %></strong>
+              <% if (duplicateCustomers.length) { %>
+                <p><%= t('duplicateCustomerCoordinationHint') %></p>
+                <table class="duplicate-table">
+                  <thead>
+                    <tr>
+                      <th><%= t('customerCode') %></th>
+                      <th><%= t('customerName') %></th>
+                      <th><%= t('customerCoordinator') %></th>
+                      <th><%= t('contacts') %></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% for (const duplicate of duplicateCustomers) { %>
+                      <tr>
+                        <td><%= duplicate.customerCode %></td>
+                        <td><a href="/customers/<%= duplicate.id %>"><%= duplicate.name %></a></td>
+                        <td><%= duplicate.coordinatorDisplayName || duplicate.coordinatorUsername || duplicate.ownerDisplayName || duplicate.ownerUsername || '-' %></td>
+                        <td><%= duplicate.contactCount %></td>
+                      </tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              <% } else { %>
+                <p><%= t('duplicateCustomerRestrictedHint') %></p>
+              <% } %>
+            </section>
+          <% } %>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('name') %></span>
+            <input name="name" value="<%= customer.name || '' %>" required>
+          </label>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('website') %></span>
+            <input name="website" type="text" inputmode="url" placeholder="https://www.example.com" value="<%= customer.website || '' %>">
+          </label>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('industry') %></span>
+            <select name="industry">
+              <% const currentIndustry = customer.industry || ''; %>
+              <% const availableIndustries = typeof industryOptions !== 'undefined' ? industryOptions : []; %>
+              <option value=""><%= t('selectIndustry') %></option>
+              <% if (currentIndustry && !availableIndustries.includes(currentIndustry)) { %>
+                <option value="<%= currentIndustry %>" selected><%= currentIndustry %></option>
+              <% } %>
+              <% for (const industry of availableIndustries) { %>
+                <option value="<%= industry %>"<%= currentIndustry === industry ? ' selected' : '' %>><%= industry %></option>
+              <% } %>
+            </select>
+          </label>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('parentCompany') %></span>
+            <input name="parentCompany" value="<%= customer.parentCompany || '' %>">
+          </label>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('enterpriseNature') %></span>
+            <select name="enterpriseNature">
+              <% const currentEnterpriseNature = customer.enterpriseNature || ''; %>
+              <% const availableEnterpriseNatures = typeof enterpriseNatureOptions !== 'undefined' ? enterpriseNatureOptions : []; %>
+              <option value=""><%= t('selectEnterpriseNature') %></option>
+              <% if (currentEnterpriseNature && !availableEnterpriseNatures.includes(currentEnterpriseNature)) { %>
+                <option value="<%= currentEnterpriseNature %>" selected><%= currentEnterpriseNature %></option>
+              <% } %>
+              <% for (const enterpriseNature of availableEnterpriseNatures) { %>
+                <option value="<%= enterpriseNature %>"<%= currentEnterpriseNature === enterpriseNature ? ' selected' : '' %>><%= enterpriseNature %></option>
+              <% } %>
+            </select>
+          </label>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('country') %></span>
+            <select name="country">
+              <% const currentCountry = customer.country || ''; %>
+              <% const availableCountries = typeof countryOptions !== 'undefined' ? countryOptions : []; %>
+              <option value=""><%= t('selectCountry') %></option>
+              <% if (currentCountry && !availableCountries.includes(currentCountry)) { %>
+                <option value="<%= currentCountry %>" selected><%= currentCountry %></option>
+              <% } %>
+              <% for (const country of availableCountries) { %>
+                <option value="<%= country %>"<%= currentCountry === country ? ' selected' : '' %>><%= country %></option>
+              <% } %>
+            </select>
+          </label>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('region') %></span>
+            <select name="region">
+              <% const currentRegion = customer.region || ''; %>
+              <% const availableRegions = typeof regionOptions !== 'undefined' ? regionOptions : []; %>
+              <option value=""><%= t('selectRegion') %></option>
+              <% if (currentRegion && !availableRegions.includes(currentRegion)) { %>
+                <option value="<%= currentRegion %>" selected><%= currentRegion %></option>
+              <% } %>
+              <% for (const region of availableRegions) { %>
+                <option value="<%= region %>"<%= currentRegion === region ? ' selected' : '' %>><%= region %></option>
+              <% } %>
+            </select>
+          </label>
+          <label class="customer-form-row">
+            <span class="customer-form-label"><%= t('address') %></span>
+            <input name="address" value="<%= customer.address || '' %>">
+          </label>
+          <label class="customer-form-row customer-form-row-textarea">
+            <span class="customer-form-label"><%= t('companyHighlights') %></span>
+            <textarea name="companyHighlights"><%= customer.companyHighlights || '' %></textarea>
+          </label>
+          <label class="customer-form-row customer-form-row-textarea">
+            <span class="customer-form-label"><%= t('customerOutline') %></span>
+            <textarea class="customer-outline-input" name="notes"><%= customer.notes || '' %></textarea>
+          </label>
+          <button type="submit"><%= t('save') %></button>
+        </form>
+<%- include('../partials/app-end') %>

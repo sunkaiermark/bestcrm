@@ -1,0 +1,94 @@
+<%- include('../partials/app-start', { title: `${t('leadStatistics')} - BESTCRM`, activeNav: 'analytics' }) %>
+<%
+  const zh = language === 'zh';
+  const rate = (numerator, denominator) => denominator ? `${(numerator * 100 / denominator).toFixed(1)}%` : '—';
+  const detailHref = row => row.submissionType === 'sales_lead'
+    ? `/lead-submissions/${row.inquiryId}` : `/inquiries/${row.inquiryId}`;
+  const pageHref = page => {
+    const params = new URLSearchParams({ startOn: filters.startOn, endOn: filters.endOn, page: String(page) });
+    if (filters.sourceChannel) params.set('sourceChannel', filters.sourceChannel);
+    if (filters.attributionOwnerUserId) params.set('attributionOwnerUserId', String(filters.attributionOwnerUserId));
+    if (filters.salesOwnerUserId) params.set('salesOwnerUserId', String(filters.salesOwnerUserId));
+    return `/analytics/leads?${params.toString()}`;
+  };
+  const statusLabel = status => ({ new: zh ? '待审核' : 'Pending review', returned: zh ? '已退回' : 'Returned', converted: zh ? '已转商机' : 'Converted', rejected: zh ? '已驳回' : 'Rejected' }[status] || status || '—');
+%>
+<style>
+  .lead-statistics { width: 100%; }
+  .lead-statistics .statistics-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 8px; }
+  .lead-statistics .statistics-filters label { display: grid; gap: 4px; min-width: 150px; margin-bottom: 0; }
+  .lead-statistics .statistics-filters input, .lead-statistics .statistics-filters select, .lead-statistics .statistics-filters button { min-height: 38px; }
+  .lead-statistics .statistics-filters button { width: auto; }
+  .lead-statistics .statistics-summary { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 8px; margin: 12px 0; }
+  .lead-statistics .statistics-card { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 10px 12px; }
+  .lead-statistics .statistics-card span { display: block; color: var(--muted); }
+  .lead-statistics .statistics-card strong { display: block; font-size: 24px; margin-top: 4px; }
+  .lead-statistics .statistics-table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; }
+  .lead-statistics table { min-width: 880px; width: 100%; border-collapse: collapse; }
+  .lead-statistics th, .lead-statistics td { padding: 7px 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: middle; white-space: nowrap; }
+  .lead-statistics th { white-space: nowrap; background: #f4f7f9; }
+  .lead-statistics .attribution-owner { color: var(--muted); margin-left: 5px; }
+  .lead-statistics .detail-heading { margin: 14px 0 7px; font-size: 20px; }
+  .lead-statistics .detail-table { min-width: 1280px; }
+  .lead-statistics .detail-table th:nth-child(1) { width: 130px; }
+  .lead-statistics .detail-table th:nth-child(2) { width: 180px; }
+  .lead-statistics .detail-table th:nth-child(3) { width: 230px; }
+  .lead-statistics .detail-table th:nth-child(4) { width: 160px; }
+  .lead-statistics .detail-table th:nth-child(5) { width: 150px; }
+  .lead-statistics .detail-table th:nth-child(6) { width: 190px; }
+  .lead-statistics .detail-table th:nth-child(7) { width: 170px; }
+  .lead-statistics .detail-table th:nth-child(8) { width: 90px; }
+  .lead-statistics .detail-table a { white-space: nowrap; }
+  .lead-statistics .statistics-pager { display: flex; align-items: center; gap: 12px; margin: 10px 0 0; }
+  @media (max-width: 850px) { .lead-statistics .statistics-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+<section class="lead-statistics">
+  <header class="page-header"><div><h1><%= t('leadStatistics') %></h1></div></header>
+  <form class="form-panel statistics-filters" method="get" action="/analytics/leads">
+    <label><%= t('statisticsStartDate') %><input type="date" name="startOn" value="<%= filters.startOn %>" required></label>
+    <label><%= t('statisticsEndDate') %><input type="date" name="endOn" value="<%= filters.endOn %>" required></label>
+    <label><%= t('leadSourceChannel') %><select name="sourceChannel"><option value=""><%= t('allSources') %></option>
+      <% for (const channel of sourceChannels) { %><option value="<%= channel %>" <%= filters.sourceChannel === channel ? 'selected' : '' %>><%= t(`leadSourceChannel.${channel}`) %></option><% } %>
+    </select></label>
+    <label><%= t('leadSourceOwner') %><select name="attributionOwnerUserId"><option value=""><%= t('allUsers') %></option>
+      <% for (const owner of attributionOwners) { %><option value="<%= owner.id %>" <%= filters.attributionOwnerUserId === owner.id ? 'selected' : '' %>><%= owner.name %><%= owner.isActive ? '' : (zh ? '（已离职）' : ' (inactive)') %></option><% } %>
+    </select></label>
+    <label><%= t('salesOwner') %><select name="salesOwnerUserId"><option value=""><%= t('allSalesOwners') %></option>
+      <% for (const owner of salesOwners) { %><option value="<%= owner.id %>" <%= filters.salesOwnerUserId === owner.id ? 'selected' : '' %>><%= owner.name %><%= owner.isActive ? '' : (zh ? '（已离职）' : ' (inactive)') %></option><% } %>
+    </select></label>
+    <button type="submit"><%= t('filter') %></button>
+  </form>
+  <div class="statistics-summary">
+    <div class="statistics-card"><span><%= t('leadStatistic.leads') %></span><strong><%= summary.leadCount %></strong></div>
+    <div class="statistics-card"><span><%= t('leadStatistic.opportunities') %></span><strong><%= summary.opportunityCount %></strong></div>
+    <div class="statistics-card"><span><%= t('leadStatistic.winsRecorded') %></span><strong><%= summary.winRecordedCount %></strong></div>
+    <div class="statistics-card"><span><%= t('leadStatistic.signedOrders') %></span><strong><%= summary.signedOrderCount %></strong></div>
+  </div>
+  <div class="statistics-table-wrap"><table>
+    <thead><tr><th><%= t('leadSourceAttribution') %></th><th><%= t('leadStatistic.leads') %></th><th><%= t('leadStatistic.opportunities') %></th><th><%= t('leadStatistic.conversionRate') %></th><th><%= t('leadStatistic.winsRecorded') %></th><th><%= t('leadStatistic.signedOrders') %></th></tr></thead>
+    <tbody><% for (const row of groups) { %><tr>
+      <td><%= t(`leadSourceChannel.${row.sourceChannel}`) %><% if (row.sourceOwnerName) { %><span class="attribution-owner">· <%= row.sourceOwnerName %></span><% } %></td>
+      <td><%= row.leadCount %></td><td><%= row.opportunityCount %></td><td><%= rate(row.opportunityCount, row.leadCount) %></td><td><%= row.winRecordedCount %></td><td><%= row.signedOrderCount %></td>
+    </tr><% } %><% if (!groups.length) { %><tr><td colspan="6"><%= t('leadStatistic.noRecords') %></td></tr><% } %></tbody>
+  </table></div>
+  <h2 class="detail-heading"><%= t('leadStatistic.details') %></h2>
+  <div class="statistics-table-wrap"><table class="detail-table">
+    <thead><tr><th><%= t('submittedAt') %></th><th><%= t('companyName') %></th><th><%= t('productInterest') %></th><th><%= t('leadSourceAttribution') %></th><th><%= t('salesOwner') %></th><th><%= t('leadLifecycleState') %></th><th><%= t('leadStatistic.opportunityOrder') %></th><th><%= t('actions') %></th></tr></thead>
+    <tbody><% for (const row of details) { %><tr>
+      <td><%= row.createdAt ? new Date(row.createdAt).toLocaleDateString(zh ? 'zh-CN' : 'en-CA', { timeZone: 'Asia/Shanghai' }) : '—' %></td>
+      <td><%= row.companyName || '—' %></td>
+      <td><%= row.productInterest || row.subject || '—' %></td>
+      <td><%= t(`leadSourceChannel.${row.sourceChannel}`) %><% if (row.sourceOwnerName) { %><span class="attribution-owner">· <%= row.sourceOwnerName %></span><% } %></td>
+      <td><%= row.salesOwnerName || '—' %></td>
+      <td><%= t(`leadLifecycle.${row.lifecycleState}`) %><% if (row.nextFollowUpOn) { %><span class="attribution-owner">· <%= row.nextFollowUpOn %></span><% } %></td>
+      <td><% if (row.opportunityId) { %><a href="/opportunities/<%= row.opportunityId %>"><%= row.opportunityNo %><%= row.signedOrder ? ` · ${t('leadStatistic.signedOrder')}` : '' %></a><% } else { %>—<% } %></td>
+      <td><a href="<%= detailHref(row) %>"><%= t('view') %> →</a></td>
+    </tr><% } %><% if (!details.length) { %><tr><td colspan="8"><%= t('leadStatistic.noDetails') %></td></tr><% } %></tbody>
+  </table></div>
+  <% if (summary.leadCount > filters.pageSize) { const totalPages = Math.ceil(summary.leadCount / filters.pageSize); %><nav class="statistics-pager" aria-label="<%= t('pagination') %>">
+    <% if (filters.page > 1) { %><a href="<%= pageHref(filters.page - 1) %>"><%= t('previousPage') %></a><% } %>
+    <span><%= filters.page %> / <%= totalPages %></span>
+    <% if (filters.page < totalPages) { %><a href="<%= pageHref(filters.page + 1) %>"><%= t('nextPage') %></a><% } %>
+  </nav><% } %>
+</section>
+<%- include('../partials/app-end') %>

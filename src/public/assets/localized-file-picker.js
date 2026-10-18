@@ -1,0 +1,13 @@
+for (const picker of document.querySelectorAll('[data-localized-file-picker]')) {
+  const input = picker.querySelector('input[type="file"]');
+  const status = picker.querySelector('[data-localized-file-status]');
+  if (!input || !status) continue;
+
+  const updateStatus = () => {
+    const filenames = Array.from(input.files || [], (file) => file.name);
+    status.textContent = filenames.length ? filenames.join(', ') : picker.dataset.emptyLabel || '';
+  };
+
+  input.addEventListener('change', updateStatus);
+  updateStatus();
+}

@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="<%= typeof language === 'undefined' ? 'en' : language %>">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>BESTCRM <%= t('login') %></title>
+    <style>
+      :root {
+        color-scheme: light;
+        --bg: #f4f7fa;
+        --panel: #ffffff;
+        --line: #d8e1e8;
+        --ink: #17212b;
+        --muted: #647484;
+        --accent: #0f766e;
+        --accent-dark: #0b5f59;
+        --danger-bg: #fef2f2;
+        --danger: #991b1b;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        min-height: 100vh;
+        margin: 0;
+        background:
+          linear-gradient(180deg, rgba(15, 118, 110, 0.08), rgba(15, 118, 110, 0)),
+          var(--bg);
+        color: var(--ink);
+        font: 20px/1.5 system-ui, "Microsoft YaHei", sans-serif;
+      }
+
+      .login-shell {
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        padding: 24px;
+      }
+
+      .login-card {
+        width: min(100%, 390px);
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        box-shadow: 0 18px 48px rgba(23, 33, 43, 0.12);
+        padding: 28px;
+      }
+
+      .login-logo {
+        display: block;
+        height: auto;
+        margin: 0 auto 22px;
+        max-width: 100%;
+        width: 224px;
+      }
+
+      .login-language-switch {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        margin: 0 0 14px;
+      }
+
+      .login-language-switch a {
+        border: 1px solid var(--line);
+        border-radius: 999px;
+        color: var(--muted);
+        font-size: 20px;
+        font-weight: 700;
+        padding: 4px 10px;
+        text-decoration: none;
+      }
+
+      .login-language-switch a.active {
+        background: var(--accent);
+        border-color: var(--accent);
+        color: white;
+      }
+
+      .login-form {
+        display: grid;
+        gap: 14px;
+      }
+
+      .form-field {
+        display: grid;
+        gap: 6px;
+        font-weight: 700;
+      }
+
+      .form-field input {
+        width: 100%;
+        height: 42px;
+        border: 1px solid var(--line);
+        border-radius: 6px;
+        color: var(--ink);
+        font: inherit;
+        line-height: 1.4;
+        padding: 8px 10px;
+      }
+
+      .form-field input:focus {
+        border-color: var(--accent);
+        box-shadow: 0 0 0 3px rgba(15, 118, 110, 0.15);
+        outline: none;
+      }
+
+      .password-field {
+        display: flex;
+        align-items: stretch;
+      }
+
+      .password-field input {
+        border-radius: 6px 0 0 6px;
+        flex: 1;
+        min-width: 0;
+      }
+
+      .password-toggle {
+        min-width: 82px;
+        height: 42px;
+        border: 1px solid var(--line);
+        border-left: 0;
+        border-radius: 0 6px 6px 0;
+        background: #eef6ff;
+        color: #0b3f78;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        padding: 0 12px;
+      }
+
+      .password-toggle:hover {
+        background: #dbeafe;
+      }
+
+      .remember-username {
+        display: flex;
+        align-items: flex-start;
+        gap: 9px;
+        color: var(--ink);
+        font-size: 18px;
+        font-weight: 400;
+      }
+
+      .remember-username input {
+        width: 18px;
+        height: 18px;
+        flex: 0 0 auto;
+        margin: 5px 0 0;
+      }
+
+      .login-button {
+        width: 100%;
+        height: 44px;
+        border: 0;
+        border-radius: 6px;
+        background: var(--accent);
+        color: white;
+        cursor: pointer;
+        font: inherit;
+        font-weight: 700;
+        line-height: 1;
+      }
+
+      .login-button:hover {
+        background: var(--accent-dark);
+      }
+
+      .login-alert {
+        margin: 0 0 14px;
+        border: 1px solid #fecaca;
+        border-radius: 6px;
+        background: var(--danger-bg);
+        color: var(--danger);
+        padding: 9px 10px;
+      }
+
+      .login-notice {
+        margin: 0 0 14px;
+        border: 1px solid #9ed8c7;
+        border-radius: 6px;
+        background: #eefaf6;
+        color: #17624f;
+        padding: 9px 10px;
+      }
+
+      @media (max-width: 460px) {
+        .login-shell {
+          align-items: start;
+          padding: 18px;
+        }
+
+        .login-card {
+          padding: 22px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <% const loginLanguage = typeof language === 'undefined' ? 'en' : language; %>
+    <main class="login-shell">
+      <section class="login-card" aria-label="Login">
+        <div class="login-language-switch" aria-label="<%= t('language') %>">
+          <a class="<%= loginLanguage === 'en' ? 'active' : '' %>" href="/language?lang=en&amp;returnTo=%2Flogin">English</a>
+          <a class="<%= loginLanguage === 'zh' ? 'active' : '' %>" href="/language?lang=zh&amp;returnTo=%2Flogin">中文</a>
+        </div>
+        <img class="login-logo" src="/assets/sunkaier-logo-login.png" alt="SUNKAIER">
+      <% if (error) { %>
+          <p class="login-alert" role="alert"><%= error %></p>
+      <% } %>
+      <% if (typeof notice !== 'undefined' && notice) { %>
+          <p class="login-notice" role="status"><%= notice %></p>
+      <% } %>
+        <form class="login-form" method="post" action="/login" autocomplete="off">
+          <%- csrfField() %>
+          <label class="form-field">
+          <%= t('username') %>
+            <input id="login-username" name="username" autocomplete="off" value="<%= username %>" required>
+          </label>
+          <label class="form-field">
+          <%= t('password') %>
+            <span class="password-field">
+              <input id="login-password" name="password" type="password" autocomplete="off" required>
+              <button
+                class="password-toggle"
+                type="button"
+                aria-controls="login-password"
+                aria-pressed="false"
+                data-show-label="<%= t('showPassword') %>"
+                data-hide-label="<%= t('hidePassword') %>"
+              ><%= t('showPassword') %></button>
+            </span>
+          </label>
+          <label class="remember-username">
+            <input id="remember-username" name="rememberUsername" type="checkbox" value="1">
+            <span>
+              <%= t('rememberUsername') %>
+            </span>
+          </label>
+          <button class="login-button" type="submit"><%= t('login') %></button>
+        </form>
+      </section>
+    </main>
+    <script>
+      const loginForm = document.querySelector('.login-form');
+      const usernameInput = document.getElementById('login-username');
+      const passwordInput = document.getElementById('login-password');
+      const passwordToggle = document.querySelector('.password-toggle');
+      const rememberUsernameInput = document.getElementById('remember-username');
+      const rememberedUsernameKey = 'bestcrm.rememberedUsername.v1';
+
+      function readRememberedUsername() {
+        try {
+          return window.localStorage.getItem(rememberedUsernameKey) || '';
+        } catch {
+          return '';
+        }
+      }
+
+      function storeRememberedUsername(username) {
+        try {
+          if (username) {
+            window.localStorage.setItem(rememberedUsernameKey, username);
+          } else {
+            window.localStorage.removeItem(rememberedUsernameKey);
+          }
+        } catch {
+          // Private browsing or browser policy may disable local storage.
+        }
+      }
+
+      const rememberedUsername = readRememberedUsername();
+      if (usernameInput && rememberUsernameInput && rememberedUsername) {
+        if (!usernameInput.value) {
+          usernameInput.value = rememberedUsername;
+        }
+        rememberUsernameInput.checked = true;
+      }
+
+      if (rememberUsernameInput) {
+        rememberUsernameInput.addEventListener('change', () => {
+          if (!rememberUsernameInput.checked) {
+            storeRememberedUsername('');
+          }
+        });
+      }
+
+      if (loginForm && usernameInput && rememberUsernameInput) {
+        loginForm.addEventListener('submit', () => {
+          storeRememberedUsername(
+            rememberUsernameInput.checked ? usernameInput.value.trim() : ''
+          );
+        });
+      }
+
+      function clearPasswordField() {
+        if (!passwordInput) {
+          return;
+        }
+        passwordInput.value = '';
+        passwordInput.type = 'password';
+        if (passwordToggle) {
+          passwordToggle.setAttribute('aria-pressed', 'false');
+          passwordToggle.textContent = passwordToggle.dataset.showLabel;
+        }
+      }
+
+      clearPasswordField();
+      window.addEventListener('pageshow', clearPasswordField);
+
+      if (passwordInput && passwordToggle) {
+        passwordToggle.addEventListener('click', () => {
+          const shouldShow = passwordInput.type === 'password';
+          passwordInput.type = shouldShow ? 'text' : 'password';
+          passwordToggle.setAttribute('aria-pressed', String(shouldShow));
+          passwordToggle.textContent = shouldShow
+            ? passwordToggle.dataset.hideLabel
+            : passwordToggle.dataset.showLabel;
+        });
+      }
+    </script>
+    <script src="/assets/form-submission-guard.js" defer></script>
+  </body>
+</html>

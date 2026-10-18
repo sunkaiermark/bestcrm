@@ -1,0 +1,42 @@
+<%- include('../partials/app-start', { title: `${t('workPlans')} - BESTCRM`, activeNav: 'sales-work' }) %>
+        <p class="breadcrumb"><a href="/workbench"><%= t('workbench') %></a> / <%= t('workPlans') %></p>
+        <header class="page-header">
+          <h1><%= t('workPlans') %></h1>
+          <a class="quick-action" href="/sales-work/plans/new"><%= t('newPlan') %></a>
+        </header>
+        <%- include('../workbench/_shortcut-nav', { canAccessSalesPlans: true, activeShortcut: 'plan' }) %>
+
+        <section class="list-section sales-work-plan-section" aria-label="<%= t('workPlans') %>">
+          <div class="list-body record-list-body sales-work-plan-list-body">
+            <table class="list-table sales-work-plan-table">
+              <caption class="visually-hidden"><%= t('workPlans') %></caption>
+              <thead>
+                <tr>
+                  <th scope="col"><%= t('status') %></th>
+                  <th scope="col"><%= t('workPlan') %></th>
+                  <th scope="col"><%= t('activityType') %></th>
+                  <th scope="col"><%= t('relatedOpportunity') %></th>
+                  <th scope="col"><%= t('planDate') %></th>
+                  <th scope="col"><%= t('actions') %></th>
+                </tr>
+              </thead>
+              <tbody>
+                <% if (!plans.length) { %>
+                  <tr><td class="empty-state" colspan="6"><%= t('noSalesWorkPlans') %></td></tr>
+                <% } %>
+                <% for (const plan of plans) { %>
+                  <% const planUrl = `/sales-work/plans/${plan.id}`; %>
+                  <tr>
+                    <td><span class="status sales-work-plan-status"><%= t(`salesPlanStatus.${plan.status}`) %></span></td>
+                    <td class="sales-work-plan-title-cell"><a href="<%= planUrl %>" title="<%= [plan.objective, plan.plannedAction].filter(Boolean).join(' · ') %>"><%= plan.subject %></a></td>
+                    <td class="sales-work-plan-activity-cell"><%= t(`salesActivity.${plan.activityType}`) %></td>
+                    <td class="sales-work-plan-reference-cell"><% if (plan.opportunityId) { %><span class="sales-work-plan-customer"><%= plan.customerName || '—' %></span><span aria-hidden="true"> · </span><span class="sales-work-plan-reference"><%= plan.opportunityNo %></span><span aria-hidden="true"> · </span><bdi title="<%= plan.opportunityTitle %>"><%= plan.opportunityTitle %></bdi><% } else if (plan.customerName) { %><bdi title="<%= plan.customerName %>"><%= plan.customerName %></bdi><% } else { %>—<% } %></td>
+                    <td class="sales-work-plan-date"><%= plan.planDate || '—' %></td>
+                    <td><a class="secondary-action sales-work-plan-open" href="<%= planUrl %>"><%= t('view') %> <span aria-hidden="true">→</span></a></td>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

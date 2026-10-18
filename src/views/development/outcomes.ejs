@@ -1,0 +1,129 @@
+<%- include('../partials/app-start', { title: `${topic.topicNo} - Outcomes - BESTCRM`, activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    back: '返回课题', title: '结论与经验修订', note: '这里记录不可覆写的内部结论。候选独立审核不等于资产发布，更不等于对客使用批准。研究原件仍按各文件权限读取。',
+    create: '记录新结论修订', kind: '类型', technical: '技术结论', lesson: '经验教训',
+    revisionTitle: '标题', finding: '结论／发现', applicability: '适用条件',
+    limitations: '限制与未知项', evidence: '证据引用（每行一项，不自动开放原件）',
+    save: '保存不可变修订', revisions: '历史修订', revision: '修订',
+    noRevisions: '尚无结论修订', propose: '提出技术资产候选', rationale: '提议理由',
+    submitCandidate: '提交候选', pendingReview: '待另一位技术经理独立审核',
+    endorsed: '内部独立审核通过，尚未发布资产', revise: '需修订后重新提议',
+    review: '独立审核候选', decision: '审核决定', endorse: '认可候选', requireRevision: '要求修订',
+    reviewReason: '审核理由', recordReview: '记录审核', older: '历史修订不再接受新候选或审核',
+    published: '已发布到内部技术资产库', withdrawn: '已撤回内部资产',
+    publish: '发布内部资产', publishReason: '发布理由', withdraw: '撤回内部资产',
+    withdrawReason: '撤回理由', library: '查看技术资产库'
+  } : {
+    back: 'Back to topic', title: 'Outcome and lesson revisions', note: 'These are immutable internal findings. Independent candidate review is not asset publication or customer-use approval. Research originals keep their own file permissions.',
+    create: 'Record a new outcome revision', kind: 'Kind', technical: 'Technical result', lesson: 'Lesson learned',
+    revisionTitle: 'Title', finding: 'Finding', applicability: 'Applicability',
+    limitations: 'Limitations and unknowns', evidence: 'Evidence references (one per line; no file access is granted)',
+    save: 'Save immutable revision', revisions: 'Revision history', revision: 'Revision',
+    noRevisions: 'No outcome revisions yet', propose: 'Propose an asset candidate', rationale: 'Proposal rationale',
+    submitCandidate: 'Submit candidate', pendingReview: 'Awaiting another technical manager for independent review',
+    endorsed: 'Independently endorsed internally; not published as an asset', revise: 'Revision required before another proposal',
+    review: 'Independent candidate review', decision: 'Decision', endorse: 'Endorse candidate', requireRevision: 'Require revision',
+    reviewReason: 'Review reason', recordReview: 'Record review', older: 'Historical revisions cannot be newly proposed or reviewed',
+    published: 'Published to the internal technical asset library', withdrawn: 'Internal asset withdrawn',
+    publish: 'Publish internal asset', publishReason: 'Publication reason', withdraw: 'Withdraw internal asset',
+    withdrawReason: 'Withdrawal reason', library: 'Open technical asset library'
+  };
+  const latestId = revisions[0]?.id;
+%>
+<style>
+  .development-outcomes { width: 100%; margin: 0; }
+  .development-outcomes .outcome-note { border-left: 4px solid var(--accent); background: var(--accent-soft); padding: 12px 16px; }
+  .development-outcomes .outcome-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; margin: 14px 0; }
+  .development-outcomes .outcome-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .development-outcomes .outcome-grid .full { grid-column: 1 / -1; }
+  .development-outcomes form { display: grid; gap: 12px; }
+  .development-outcomes label { display: grid; gap: 5px; }
+  .development-outcomes button { justify-self: start; width: auto; }
+  .development-outcomes .outcome-copy { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .development-outcomes .review-form { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+  @media (max-width: 800px) { .development-outcomes .outcome-grid { grid-template-columns: 1fr; } .development-outcomes .outcome-grid .full { grid-column: auto; } }
+</style>
+<section class="development-outcomes">
+  <p class="breadcrumb"><a href="/development/topics/<%= topic.id %>#outcomes"><%= labels.back %></a></p>
+  <header class="page-header"><h1><%= labels.title %> · <%= topic.topicNo %></h1></header>
+  <p><a class="secondary-action" href="/development/assets"><%= labels.library %></a></p>
+  <p class="outcome-note"><%= labels.note %></p>
+  <section class="outcome-card"><h2><%= labels.create %></h2>
+    <form method="post" action="/development/topics/<%= topic.id %>/outcomes">
+      <%- csrfField() %>
+      <div class="outcome-grid">
+        <label><%= labels.kind %><select name="outcomeKind" required>
+          <option value="technical_result"><%= labels.technical %></option>
+          <option value="lesson_learned"><%= labels.lesson %></option>
+        </select></label>
+        <label><%= labels.revisionTitle %><input name="title" maxlength="200" required></label>
+        <label class="full"><%= labels.finding %><textarea name="finding" maxlength="20000" rows="6" required></textarea></label>
+        <label><%= labels.applicability %><textarea name="applicability" maxlength="10000" rows="4" required></textarea></label>
+        <label><%= labels.limitations %><textarea name="limitations" maxlength="10000" rows="4" required></textarea></label>
+        <label class="full"><%= labels.evidence %><textarea name="evidenceReferences" rows="3"></textarea></label>
+      </div>
+      <button type="submit"><%= labels.save %></button>
+    </form>
+  </section>
+  <section aria-labelledby="outcome-revisions-title"><h2 id="outcome-revisions-title"><%= labels.revisions %></h2>
+    <% if (!revisions.length) { %><p class="muted"><%= labels.noRevisions %></p><% } %>
+    <% for (const revision of revisions) { %>
+      <article class="outcome-card">
+        <h3><%= labels.revision %> <%= revision.revisionNo %> · <%= revision.title %></h3>
+        <p class="muted"><%= revision.outcomeKind === 'technical_result' ? labels.technical : labels.lesson %> · <%= new Date(revision.authoredAt).toLocaleString(zh ? 'zh-CN' : 'en-SG') %></p>
+        <div class="outcome-grid">
+          <div><strong><%= labels.finding %></strong><p class="outcome-copy"><%= revision.finding %></p></div>
+          <div><strong><%= labels.applicability %></strong><p class="outcome-copy"><%= revision.applicability %></p></div>
+          <div><strong><%= labels.limitations %></strong><p class="outcome-copy"><%= revision.limitations %></p></div>
+          <div><strong><%= labels.evidence %></strong><p class="outcome-copy"><%= revision.evidenceReferences.join('\n') || '—' %></p></div>
+        </div>
+        <% if (revision.candidate) { %>
+          <p><strong><%= revision.asset?.withdrawnAt ? labels.withdrawn : revision.asset ? labels.published : revision.candidate.review?.decisionCode === 'endorsed' ? labels.endorsed : revision.candidate.review?.decisionCode === 'revision_required' ? labels.revise : labels.pendingReview %></strong></p>
+          <p class="outcome-copy"><%= revision.candidate.rationale %></p>
+          <% if (revision.candidate.review) { %><p class="outcome-copy"><%= revision.candidate.review.reason %></p><% } %>
+          <% if (revision.asset) { %><p class="outcome-copy"><%= revision.asset.publicationReason %></p><% } %>
+          <% if (revision.asset?.withdrawnAt) { %><p class="outcome-copy"><%= revision.asset.withdrawalReason %></p><% } %>
+        <% } else if (revision.id === latestId) { %>
+          <form class="review-form" method="post" action="/development/topics/<%= topic.id %>/outcomes/<%= revision.id %>/candidate">
+            <%- csrfField() %>
+            <label><%= labels.rationale %><textarea name="rationale" maxlength="4000" required></textarea></label>
+            <button type="submit"><%= labels.submitCandidate %></button>
+          </form>
+        <% } else { %><p class="muted"><%= labels.older %></p><% } %>
+        <% if (revision.id === latestId && revision.candidate && !revision.candidate.review && canReview
+          && revision.authoredByUserId !== Number(currentUser.id)
+          && revision.candidate.proposedByUserId !== Number(currentUser.id)) { %>
+          <form class="review-form" method="post" action="/development/topics/<%= topic.id %>/asset-candidates/<%= revision.candidate.id %>/review">
+            <%- csrfField() %><h4><%= labels.review %></h4>
+            <label><%= labels.decision %><select name="decisionCode" required>
+              <option value="endorsed"><%= labels.endorse %></option>
+              <option value="revision_required"><%= labels.requireRevision %></option>
+            </select></label>
+            <label><%= labels.reviewReason %><textarea name="reason" maxlength="4000" required></textarea></label>
+            <button type="submit"><%= labels.recordReview %></button>
+          </form>
+        <% } %>
+        <% if (revision.id === latestId && revision.candidate?.review?.decisionCode === 'endorsed'
+          && !revision.asset && canReview
+          && revision.authoredByUserId !== Number(currentUser.id)
+          && revision.candidate.proposedByUserId !== Number(currentUser.id)) { %>
+          <form class="review-form" method="post" action="/development/topics/<%= topic.id %>/asset-candidates/<%= revision.candidate.id %>/publish">
+            <%- csrfField() %>
+            <label><%= labels.publishReason %><textarea name="reason" maxlength="4000" required></textarea></label>
+            <button type="submit"><%= labels.publish %></button>
+          </form>
+        <% } %>
+        <% if (revision.asset && !revision.asset.withdrawnAt && canReview) { %>
+          <form class="review-form" method="post" action="/development/topics/<%= topic.id %>/assets/<%= revision.asset.id %>/withdraw">
+            <%- csrfField() %>
+            <label><%= labels.withdrawReason %><textarea name="reason" maxlength="4000" required></textarea></label>
+            <button class="danger" type="submit"><%= labels.withdraw %></button>
+          </form>
+        <% } %>
+      </article>
+    <% } %>
+  </section>
+</section>
+<%- include('../partials/app-end') %>

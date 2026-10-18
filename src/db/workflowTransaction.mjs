@@ -1,0 +1,48 @@
+import { createAttachmentRepository } from '../repositories/attachmentRepository.mjs';
+import { createApprovalSettingRepository } from '../repositories/approvalSettingRepository.mjs';
+import { createCommercialQuoteRepository } from '../repositories/commercialQuoteRepository.mjs';
+import { createContractApprovalRepository } from '../repositories/contractApprovalRepository.mjs';
+import { createOpportunityMaterialVersionRepository } from '../repositories/opportunityMaterialVersionRepository.mjs';
+import { createOpportunityRepository } from '../repositories/opportunityRepository.mjs';
+import { createOpportunityResponsibilityRepository } from '../repositories/opportunityResponsibilityRepository.mjs';
+import { createOpportunityTechnicalDraftRepository } from '../repositories/opportunityTechnicalDraftRepository.mjs';
+import { createQuotationPackageRepository } from '../repositories/quotationPackageRepository.mjs';
+import { createTechnicalSolutionRepository } from '../repositories/technicalSolutionRepository.mjs';
+import { createTechnicalTemplateRepository } from '../repositories/technicalTemplateRepository.mjs';
+import { createTodoRepository } from '../repositories/todoRepository.mjs';
+import { createWorkflowEventRepository } from '../repositories/workflowEventRepository.mjs';
+
+function createWorkflowRepositories(queryTarget) {
+  return {
+    attachmentRepository: createAttachmentRepository(queryTarget),
+    approvalSettingRepository: createApprovalSettingRepository(queryTarget),
+    commercialQuoteRepository: createCommercialQuoteRepository(queryTarget),
+    contractApprovalRepository: createContractApprovalRepository(queryTarget),
+    opportunityMaterialVersionRepository: createOpportunityMaterialVersionRepository(queryTarget),
+    opportunityRepository: createOpportunityRepository(queryTarget),
+    opportunityResponsibilityRepository: createOpportunityResponsibilityRepository(queryTarget),
+    opportunityTechnicalDraftRepository: createOpportunityTechnicalDraftRepository(queryTarget),
+    quotationPackageRepository: createQuotationPackageRepository(queryTarget),
+    technicalSolutionRepository: createTechnicalSolutionRepository(queryTarget),
+    technicalTemplateRepository: createTechnicalTemplateRepository(queryTarget),
+    todoRepository: createTodoRepository(queryTarget),
+    workflowEventRepository: createWorkflowEventRepository(queryTarget)
+  };
+}
+
+export function createWorkflowTransaction(pool) {
+  return async function workflowTransaction(callback) {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const result = await callback(createWorkflowRepositories(client));
+      await client.query('COMMIT');
+      return result;
+    } catch (error) {
+      await client.query('ROLLBACK');
+      throw error;
+    } finally {
+      client.release();
+    }
+  };
+}

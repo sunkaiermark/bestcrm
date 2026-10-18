@@ -1,0 +1,22 @@
+<% if (message.direction === 'inbound' && message.response?.tracked) { const response = message.response; %>
+  <div class="email-response-status" aria-label="<%= t('emailResponseStatus') %>">
+    <span class="email-response-state<%= response.overdue && !response.repliedAt ? ' is-overdue' : '' %>">
+      <%= response.repliedAt ? t('emailResponseReplied') : response.overdue ? t('emailResponseOverdue') : response.confirmedAt ? t('emailResponseConfirmedWaiting') : t('emailResponseAwaitingConfirmation') %>
+    </span>
+    <% if (response.confirmedAt) { %>
+      <span class="email-response-detail"><%= t('emailResponseConfirmedBy') %> <%= response.confirmedByName || `#${response.confirmedBy}` %> · <%= formatEmailListDate(response.confirmedAt) %></span>
+    <% } %>
+    <% if (response.repliedAt) { %>
+      <span class="email-response-detail"><%= t('emailResponseRepliedAt') %> <%= formatEmailListDate(response.repliedAt) %></span>
+    <% } else { %>
+      <span class="email-response-detail"><%= t('emailResponseDueAt') %> <%= formatEmailListDate(response.dueAt) %></span>
+    <% } %>
+    <% if (canAcknowledgeCustomerEmail && !response.confirmedAt) { %>
+      <form method="post" action="/email-center/messages/<%= message.id %>/acknowledge">
+        <%- csrfField() %>
+        <input type="hidden" name="returnTo" value="<%= returnTo || '' %>">
+        <button type="submit"><%= t('emailResponseConfirmReceipt') %></button>
+      </form>
+    <% } %>
+  </div>
+<% } %>

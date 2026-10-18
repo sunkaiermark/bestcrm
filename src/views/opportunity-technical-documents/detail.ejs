@@ -1,0 +1,71 @@
+<%- include('../partials/app-start', { title: `${document.documentCode} - BESTCRM`, activeNav: 'opportunities' }) %>
+        <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>/technical-documents"><%= t('opportunityTechnicalDocuments') %></a> / <%= document.documentCode %></p>
+        <header class="page-header">
+          <div><h1><%= document.title %></h1><div class="muted"><%= document.currentVersionLabel %></div></div>
+          <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents"><%= t('back') %></a>
+        </header>
+        <section class="detail-section">
+          <h2><%= t('documentIdentity') %></h2>
+          <dl class="detail-grid">
+            <div><dt><%= t('technicalDocumentType') %></dt><dd><%= t(`technicalDocumentType.${document.documentType}`) %></dd></div>
+            <div><dt><%= t('documentCode') %></dt><dd><%= document.documentCode %></dd></div>
+            <div><dt><%= t('currentVersion') %></dt><dd><%= document.currentVersionLabel %></dd></div>
+            <div><dt><%= t('createdBy') %></dt><dd><%= document.createdByDisplayName || document.createdBy %></dd></div>
+          </dl>
+          <p class="muted"><%= t('immutableFormalVersionNotice') %></p>
+        </section>
+
+        <% if (canManage) { %>
+          <section class="form-panel">
+            <h2><%= t('saveExternalEditAsNextVersion') %></h2>
+            <p class="muted"><%= t('externalEditPairNotice') %></p>
+            <form method="post" enctype="multipart/form-data" action="/opportunities/<%= opportunity.id %>/technical-documents/<%= document.id %>/versions">
+              <%- csrfField() %>
+              <input type="hidden" name="sourceVersionNo" value="<%= document.currentVersionNo %>">
+              <label><%= t('changeSummary') %><textarea name="changeSummary" maxlength="2000" required></textarea></label>
+              <div class="form-grid">
+                <label><%= t('editableDocx') %><input name="docxFile" type="file" accept=".docx,application/vnd.openxmlformats-officedocument.wordprocessingml.document" required></label>
+                <label><%= t('matchingPdf') %><input name="pdfFile" type="file" accept=".pdf,application/pdf" required></label>
+              </div>
+              <div class="muted"><%= t('technicalDocumentFileLimit').replace('{mb}', fileLimitMb) %></div>
+              <button type="submit"><%= t('saveAsNextVersion') %></button>
+            </form>
+          </section>
+        <% } %>
+
+        <section class="detail-section">
+          <h2><%= t('versionHistory') %></h2>
+          <% for (const version of document.versions) { %>
+            <article class="form-panel">
+              <header class="page-header">
+                <div><h3><%= version.versionLabel %></h3><div class="muted"><%= version.changeSummary %></div></div>
+                <span class="status"><%= t(`technicalDocumentCreationMethod.${version.creationMethod}`) %></span>
+              </header>
+              <dl class="detail-grid">
+                <div><dt><%= t('createdBy') %></dt><dd><%= version.createdByDisplayName || version.createdBy %></dd></div>
+                <div><dt><%= t('createdAt') %></dt><dd><%= version.createdAt ? new Date(version.createdAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-GB') : '-' %></dd></div>
+                <div><dt><%= t('basedOnVersion') %></dt><dd><%= version.basedOnVersionId || '-' %></dd></div>
+                <div><dt><%= t('equipmentCount') %></dt><dd><%= version.items.length %></dd></div>
+              </dl>
+              <h4><%= t('frozenEquipmentAndTemplates') %></h4>
+              <div class="list-body">
+                <table class="list-table content-fit-table">
+                  <thead><tr><th><%= t('itemNumber') %></th><th><%= t('productCategory') %></th><th><%= t('equipmentName') %></th><th><%= t('quantity') %></th><th><%= t('sourceTemplate') %></th></tr></thead>
+                  <tbody>
+                    <% for (const item of version.items) { %>
+                      <tr><td><%= String(item.itemNo).padStart(2, '0') %></td><td><%= item.productCategoryName %></td><td><%= item.equipmentName %><%= item.model ? ` · ${item.model}` : '' %></td><td><%= item.quantity %></td><td><%= item.templateCode %> · TPL-R<%= item.templateRevisionNo %></td></tr>
+                    <% } %>
+                  </tbody>
+                </table>
+              </div>
+              <h4><%= t('versionFiles') %></h4>
+              <div class="inline-actions">
+                <% for (const file of version.files) { %>
+                  <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/technical-documents/<%= document.id %>/files/<%= file.id %>/download"><%= file.format.toUpperCase() %> · <%= file.originalName %></a>
+                <% } %>
+              </div>
+              <% for (const file of version.files) { %><div class="muted"><%= file.format.toUpperCase() %> SHA-256: <code><%= file.sha256 %></code></div><% } %>
+            </article>
+          <% } %>
+        </section>
+<%- include('../partials/app-end') %>

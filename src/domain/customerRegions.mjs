@@ -1,0 +1,42 @@
+export const CHINA_PROVINCE_LEVEL_REGIONS = [
+  'Beijing',
+  'Shanghai',
+  'Tianjin',
+  'Chongqing',
+  'Hebei',
+  'Shanxi',
+  'Liaoning',
+  'Jilin',
+  'Heilongjiang',
+  'Jiangsu',
+  'Zhejiang',
+  'Anhui',
+  'Fujian',
+  'Jiangxi',
+  'Shandong',
+  'Henan',
+  'Hubei',
+  'Hunan',
+  'Guangdong',
+  'Hainan',
+  'Sichuan',
+  'Guizhou',
+  'Yunnan',
+  'Shaanxi',
+  'Gansu',
+  'Qinghai',
+  'Inner Mongolia',
+  'Guangxi',
+  'Tibet',
+  'Ningxia',
+  'Xinjiang',
+  'Hong Kong',
+  'Macau',
+  'Taiwan'
+];
+
+export const CUSTOMER_REGIONS = [
+  ...CHINA_PROVINCE_LEVEL_REGIONS,
+  'Overseas',
+  'Other'
+];

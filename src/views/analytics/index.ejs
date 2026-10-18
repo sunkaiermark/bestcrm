@@ -1,0 +1,19 @@
+<%- include('../partials/app-start', { title: `${t('analytics')} - BESTCRM`, activeNav: 'analytics' }) %>
+
+<header class="page-header">
+  <div>
+    <h1><%= t('analytics') %></h1>
+  </div>
+</header>
+
+<section class="form-panel">
+  <% if (canViewProductReport || canViewTaskReport || canViewLeadReport) { %>
+    <% if (canViewProductReport) { %><a class="quick-action" href="/analytics/products"><%= t('productCategoryReport') %></a><% } %>
+    <% if (canViewTaskReport) { %><a class="quick-action" href="/analytics/tasks"><%= language === 'zh' ? '全员任务统计' : 'Team Task Statistics' %></a><% } %>
+    <% if (canViewLeadReport) { %><a class="quick-action" href="/analytics/leads"><%= t('leadStatistics') %></a><% } %>
+  <% } else { %>
+    <p class="muted"><%= t('noAnalyticsReports') %></p>
+  <% } %>
+</section>
+
+<%- include('../partials/app-end') %>

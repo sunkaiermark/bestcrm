@@ -1,0 +1,44 @@
+<% const formatWorkbenchWorkTime = (value) => {
+  if (!value) return t('notSet');
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString(language === 'zh' ? 'zh-CN' : 'en-US', {
+    year: 'numeric', month: '2-digit', day: '2-digit',
+    hour: '2-digit', minute: '2-digit', hour12: false
+  });
+}; %>
+<% const workbenchWorkStatusLabel = (status) => {
+  const key = `workItemStatus.${status || 'pending'}`;
+  const label = t(key);
+  return label === key ? status : label;
+}; %>
+<table class="list-table workbench-action-table<% if (tableClass) { %> <%= tableClass %><% } %>">
+  <caption class="visually-hidden"><%= t('needsMyAction') %></caption>
+  <thead>
+    <tr>
+      <th scope="col"><%= t('status') %></th>
+      <th scope="col"><%= t('workItemTask') %></th>
+      <th scope="col"><%= t('relatedOpportunity') %></th>
+      <th scope="col"><%= t('plannedStart') %></th>
+      <th scope="col"><%= t('requiredCompletionTime') %></th>
+      <th scope="col"><%= t('actions') %></th>
+    </tr>
+  </thead>
+  <tbody>
+    <% if (!actionItems.length) { %>
+      <tr><td class="empty-state" colspan="6"><%= t('noWorkItems') %></td></tr>
+    <% } %>
+    <% for (const todo of actionItems) { %>
+      <% const isOverdue = todo.dueAt && new Date(todo.dueAt).getTime() < Date.now(); %>
+      <% const detailUrl = todo.directActionUrl || todo.actionUrl || (typeof todo.id === 'number' ? `/workbench/work-items/${todo.id}` : `/opportunities/${todo.opportunityId}`); %>
+      <tr>
+        <td><span class="work-item-status<%= isOverdue ? ' overdue' : '' %>"><%= isOverdue ? t('overdue') : workbenchWorkStatusLabel(todo.status) %></span></td>
+        <td class="workbench-action-title-cell"><a class="workbench-action-title" href="<%= detailUrl %>" title="<%= todoTitleLabel(todo.title) %>"><%= todoTitleLabel(todo.title) %></a></td>
+        <td class="workbench-action-opportunity-cell"><% if (todo.opportunityId) { %><span class="workbench-reference"><%= todo.opportunityNo %></span> · <bdi title="<%= todo.opportunityTitle %>"><%= todo.opportunityTitle %></bdi><% } else { %>—<% } %></td>
+        <td class="workbench-action-time"><%= formatWorkbenchWorkTime(todo.plannedStartAt) %></td>
+        <td class="workbench-action-time<%= isOverdue ? ' overdue' : '' %>"><%= formatWorkbenchWorkTime(todo.dueAt) %></td>
+        <td><a class="secondary-action workbench-action-open" href="<%= detailUrl %>"><%= t('view') %> <span aria-hidden="true">→</span></a></td>
+      </tr>
+    <% } %>
+  </tbody>
+</table>

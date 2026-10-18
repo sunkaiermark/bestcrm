@@ -1,0 +1,63 @@
+<%- include('../partials/app-start', { title: `${attachment.originalName} - ${t('preview')} - BESTCRM`, activeNav }) %>
+        <%
+          const previewContextLabelKey = typeof contextLabelKey !== 'undefined' ? contextLabelKey : 'opportunities';
+          const previewContextText = typeof contextText !== 'undefined' ? contextText : `${opportunity.opportunityNo} - ${opportunity.title}`;
+          const previewBackUrl = typeof backUrl !== 'undefined' ? backUrl : `/opportunities/${opportunity.id}`;
+          const previewBackLabelKey = typeof backLabelKey !== 'undefined' ? backLabelKey : 'backToOpportunity';
+        %>
+        <header class="page-header">
+          <div>
+            <div class="eyebrow"><%= t(previewContextLabelKey) %></div>
+            <h1><%= t('spreadsheetPreview') %></h1>
+            <div class="muted"><%= previewContextText %></div>
+          </div>
+          <div class="page-actions">
+            <a class="quick-action secondary-action" href="<%= previewBackUrl %>"><%= t(previewBackLabelKey) %></a>
+            <a class="quick-action" href="<%= downloadUrl %>"><%= t('download') %></a>
+          </div>
+        </header>
+
+        <section class="content-section">
+          <h2><%= attachment.originalName %></h2>
+          <div class="section-body spreadsheet-preview-stack">
+            <% if (preview.truncated) { %>
+              <p class="notice"><%= t('spreadsheetPreviewTruncated')
+                .replace('{maxSheets}', preview.maxSheets)
+                .replace('{maxRows}', preview.maxRows)
+                .replace('{maxColumns}', preview.maxColumns) %></p>
+            <% } %>
+            <% const populatedSheets = preview.sheets.filter((sheet) => sheet.rows.length > 0); %>
+            <% if (populatedSheets.length > 0) { %>
+              <% for (const sheet of populatedSheets) { %>
+                <section class="spreadsheet-sheet">
+                  <h3><%= sheet.name %></h3>
+                  <div class="spreadsheet-table-wrap">
+                    <table class="spreadsheet-preview-table">
+                      <thead>
+                        <tr>
+                          <th scope="col">#</th>
+                          <% for (const columnLabel of sheet.columnLabels) { %>
+                            <th scope="col"><%= columnLabel %></th>
+                          <% } %>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <% for (const row of sheet.rows) { %>
+                          <tr>
+                            <th scope="row"><%= row.number %></th>
+                            <% for (const cell of row.cells) { %>
+                              <td><%= cell %></td>
+                            <% } %>
+                          </tr>
+                        <% } %>
+                      </tbody>
+                    </table>
+                  </div>
+                </section>
+              <% } %>
+            <% } else { %>
+              <p class="muted"><%= t('spreadsheetNoPreviewData') %></p>
+            <% } %>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

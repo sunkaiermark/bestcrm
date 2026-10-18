@@ -1,0 +1,16 @@
+[Unit]
+Description=BESTCRM
+After=network.target postgresql.service
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/bestcrm/app
+EnvironmentFile=/etc/bestcrm/bestcrm.env
+ExecStart=/usr/bin/npm start
+Restart=always
+RestartSec=5
+User=www-data
+Group=www-data
+
+[Install]
+WantedBy=multi-user.target

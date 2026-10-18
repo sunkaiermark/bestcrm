@@ -1,0 +1,15 @@
+{
+  "external_lead_id": "synthetic-project-001",
+  "external_event_id": "synthetic-event-001",
+  "idempotency_key": "synthetic-key-001",
+  "event_type": "discovered",
+  "occurred_at": "2026-10-18T09:00:00Z",
+  "source_channel": "ai_project_search",
+  "title": "合成材料产线扩建项目",
+  "company_name": "合成示例材料公司",
+  "email": "visitor@example.invalid",
+  "requirement_summary": "合成项目需求，采购信息待核实",
+  "consent_status": "unknown",
+  "data_origin": "synthetic",
+  "project": {"name": "合成项目", "verification": "unverified", "sources": [{"title": "合成公告", "url": "https://source.example.invalid/project-001"}]}
+}

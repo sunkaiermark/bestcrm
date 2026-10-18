@@ -1,0 +1,39 @@
+<%- include('../partials/app-start', { title: `${t('recoveryCodesTitle')} - BESTCRM`, activeNav: 'account-security' }) %>
+        <header class="page-header">
+          <div>
+            <div class="eyebrow"><%= t('accountSecurity') %></div>
+            <h1><%= t('recoveryCodesTitle') %></h1>
+            <p class="muted"><%= t('recoveryCodesIntroduction') %></p>
+          </div>
+        </header>
+
+        <section class="form-panel account-recovery-panel">
+          <p class="warning-text"><strong><%= t('recoveryCodesWarning') %></strong></p>
+          <ol class="account-recovery-code-list" aria-label="<%= t('recoveryCodesTitle') %>">
+            <% for (const code of codes) { %><li><code class="account-recovery-code"><%= code %></code></li><% } %>
+          </ol>
+          <div class="inline-actions account-recovery-actions">
+            <button class="secondary-action" id="copy-codes" type="button"><%= t('copyRecoveryCodes') %></button>
+            <button class="secondary-action" id="download-codes" type="button"><%= t('downloadRecoveryCodes') %></button>
+            <button class="secondary-action" type="button" onclick="window.print()"><%= t('printRecoveryCodes') %></button>
+            <a class="quick-action" href="/account/security"><%= t('recoveryCodesSavedReturn') %></a>
+          </div>
+          <p class="muted"><%= t('recoveryCodesNoRedisplay') %></p>
+        </section>
+        <script>
+          const recoveryCodeText = Array.from(document.querySelectorAll('.account-recovery-code'))
+            .map((element) => element.textContent.trim())
+            .join('\n');
+          document.getElementById('copy-codes')?.addEventListener('click', async () => {
+            await navigator.clipboard.writeText(recoveryCodeText);
+          });
+          document.getElementById('download-codes')?.addEventListener('click', () => {
+            const blob = new Blob([`BESTCRM recovery codes\n\n${recoveryCodeText}\n`], { type: 'text/plain;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = 'bestcrm-recovery-codes.txt';
+            link.click();
+            URL.revokeObjectURL(link.href);
+          });
+        </script>
+<%- include('../partials/app-end') %>

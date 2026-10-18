@@ -1,0 +1,115 @@
+<%- include('../partials/app-start', { title: `${t('accountSecurity')} - BESTCRM`, activeNav: 'account-security' }) %>
+        <header class="page-header">
+          <div>
+            <div class="eyebrow"><%= t('accountSecurity') %></div>
+            <h1><%= t('authenticatorSecurityTitle') %></h1>
+            <p class="muted"><%= t('authenticatorSecurityDescription') %></p>
+          </div>
+        </header>
+
+        <% if (error) { %><p class="error-text" role="alert"><%= error %></p><% } %>
+        <% if (notice) { %><p class="success-text" role="status"><%= notice %></p><% } %>
+
+        <div class="account-security-grid">
+          <section class="form-panel">
+            <div class="section-heading-row">
+              <div>
+                <h2><%= t('authenticatorApp') %></h2>
+                <p class="muted"><%= t('authenticatorAppDescription') %></p>
+              </div>
+              <span class="status"><%= !mfaEnabled ? t('mfaStatusUnavailable') : t(`mfaStatus.${mfaStatus?.status || 'disabled'}`) %></span>
+            </div>
+
+            <% if (!mfaEnabled) { %>
+              <p><%= t('authenticatorFeatureDisabled') %></p>
+            <% } else if (mfaStatus?.status === 'active') { %>
+              <p><%= t('authenticatorActiveSince') %>: <strong><%= mfaStatus.enrolledAt ? new Date(mfaStatus.enrolledAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-SG') : '—' %></strong></p>
+              <form method="post" action="/account/security/enroll" onsubmit="return confirm('<%= t('rebindAuthenticatorConfirm') %>')">
+                <%- csrfField() %>
+                <label>
+                  <%= t('currentPassword') %>
+                  <input name="currentPassword" type="password" autocomplete="current-password" required>
+                </label>
+                <label>
+                  <%= t('authenticatorCode') %>
+                  <input name="authenticatorCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+                </label>
+                <button type="submit"><%= t('rebindAuthenticator') %></button>
+              </form>
+            <% } else { %>
+              <p><%= mfaStatus?.status === 'pending' ? t('authenticatorPendingDescription') : t('authenticatorBindDescription') %></p>
+              <form method="post" action="/account/security/enroll">
+                <%- csrfField() %>
+                <label>
+                  <%= t('currentPassword') %>
+                  <input name="currentPassword" type="password" autocomplete="current-password" required>
+                </label>
+                <button type="submit"><%= mfaStatus?.status === 'pending' ? t('restartAuthenticatorSetup') : t('bindAuthenticator') %></button>
+              </form>
+            <% } %>
+          </section>
+
+          <section class="form-panel">
+            <h2><%= t('recoveryCodesTitle') %></h2>
+            <p class="muted"><%= t('regenerateRecoveryCodesDescription') %></p>
+            <% if (mfaEnabled && mfaStatus?.status === 'active') { %>
+              <form method="post" action="/account/security/recovery-codes" onsubmit="return confirm('<%= t('regenerateRecoveryCodesConfirm') %>')">
+                <%- csrfField() %>
+                <label>
+                  <%= t('currentPassword') %>
+                  <input name="currentPassword" type="password" autocomplete="current-password" required>
+                </label>
+                <label>
+                  <%= t('authenticatorCode') %>
+                  <input name="authenticatorCode" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required>
+                </label>
+                <button type="submit"><%= t('regenerateRecoveryCodes') %></button>
+              </form>
+            <% } else { %>
+              <p><%= t('activeAuthenticatorRequired') %></p>
+            <% } %>
+          </section>
+        </div>
+
+        <section class="list-section account-trusted-devices">
+          <div class="section-heading-row list-heading">
+            <div>
+              <h2><%= t('trustedDevices') %></h2>
+              <p class="muted"><%= t('trustedDevicesDescription') %></p>
+            </div>
+            <% if (trustedDevices.some((device) => device.state === 'active')) { %>
+              <form method="post" action="/account/security/trusted-devices/revoke-all" onsubmit="return confirm('<%= t('revokeAllTrustedDevicesConfirm') %>')">
+                <%- csrfField() %>
+                <button class="danger-action" type="submit"><%= t('revokeAllTrustedDevices') %></button>
+              </form>
+            <% } %>
+          </div>
+          <div class="list-body">
+            <% if (!trustedDevices.length) { %>
+              <p class="empty"><%= t('noTrustedDevices') %></p>
+            <% } else { %>
+              <table class="list-table content-fit-table">
+                <thead><tr><th><%= t('device') %></th><th><%= t('lastUsed') %></th><th><%= t('expiresAt') %></th><th><%= t('status') %></th><th><%= t('actions') %></th></tr></thead>
+                <tbody>
+                  <% for (const device of trustedDevices) { %>
+                    <tr>
+                      <td><strong><%= device.deviceLabel %></strong><% if (device.isCurrent) { %> <span class="status"><%= t('currentDevice') %></span><% } %><div class="muted"><%= device.lastIp || '' %></div></td>
+                      <td><%= device.lastUsedAt ? new Date(device.lastUsedAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-SG') : '—' %></td>
+                      <td><%= device.expiresAt ? new Date(device.expiresAt).toLocaleString(language === 'zh' ? 'zh-CN' : 'en-SG') : '—' %></td>
+                      <td><%= t(`trustedDeviceState.${device.state}`) %></td>
+                      <td>
+                        <% if (device.state === 'active') { %>
+                          <form method="post" action="<%= device.isCurrent ? '/account/security/trusted-devices/current/forget' : `/account/security/trusted-devices/${device.id}/revoke` %>" onsubmit="return confirm('<%= t('revokeTrustedDeviceConfirm') %>')">
+                            <%- csrfField() %>
+                            <button class="danger-action" type="submit"><%= device.isCurrent ? t('forgetCurrentDevice') : t('revokeTrustedDevice') %></button>
+                          </form>
+                        <% } else { %>—<% } %>
+                      </td>
+                    </tr>
+                  <% } %>
+                </tbody>
+              </table>
+            <% } %>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

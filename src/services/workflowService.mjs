@@ -1,0 +1,1034 @@
+import { ACTIONS, transition } from '../domain/workflow.mjs';
+import { ROLES } from '../domain/roles.mjs';
+import {
+  isAuthorizedTechnicalSelfReview,
+  isTechnicalAdminSelfApprovalTest,
+  technicalDraftSubmissionSummary
+} from './opportunityTechnicalDraftService.mjs';
+
+export class WorkflowValidationError extends Error {
+  constructor(message, statusCode = 400) {
+    super(message);
+    this.name = 'WorkflowValidationError';
+    this.statusCode = statusCode;
+  }
+}
+
+const workflowStateFields = [
+  'status',
+  'salesManagerId',
+  'quotationEngineerId',
+  'technicalManagerId',
+  'commercialManagerId',
+  'technicalPlanSubmitDate',
+  'finalDealAmount',
+  'lostReason',
+  'wonDescription',
+  'archivedAt'
+];
+
+const withdrawActions = new Set([
+  ACTIONS.WITHDRAW_INITIATION,
+  ACTIONS.WITHDRAW_TECHNICAL_SOLUTION,
+  ACTIONS.WITHDRAW_COMMERCIAL_QUOTE,
+  ACTIONS.WITHDRAW_CONTRACT_APPROVAL
+]);
+
+const completedTodoActions = new Set([
+  ACTIONS.APPROVE_INITIATION,
+  ACTIONS.REJECT_INITIATION,
+  ACTIONS.SUBMIT_TECHNICAL_SOLUTION,
+  ACTIONS.APPROVE_TECHNICAL_SOLUTION,
+  ACTIONS.REJECT_TECHNICAL_SOLUTION,
+  ACTIONS.SUBMIT_COMMERCIAL_QUOTE,
+  ACTIONS.APPROVE_COMMERCIAL_QUOTE,
+  ACTIONS.REJECT_COMMERCIAL_QUOTE,
+  ACTIONS.MARK_LOST,
+  ACTIONS.MARK_WON,
+  ACTIONS.SUBMIT_CONTRACT_APPROVAL,
+  ACTIONS.APPROVE_CONTRACT,
+  ACTIONS.REJECT_CONTRACT
+]);
+
+const attachmentRequirements = new Map([
+  [ACTIONS.SUBMIT_COMMERCIAL_QUOTE, {
+    category: 'commercial_quote',
+    message: 'Commercial Quote attachment is required'
+  }],
+  [ACTIONS.SUBMIT_CONTRACT_APPROVAL, {
+    category: 'contract',
+    message: 'Contract attachment is required'
+  }]
+]);
+
+const contractReviewActions = new Set([
+  ACTIONS.APPROVE_CONTRACT,
+  ACTIONS.REJECT_CONTRACT
+]);
+
+const technicalSolutionReviewStatuses = new Map([
+  [ACTIONS.APPROVE_TECHNICAL_SOLUTION, 'approved'],
+  [ACTIONS.REJECT_TECHNICAL_SOLUTION, 'rejected']
+]);
+
+const commercialQuoteReviewStatuses = new Map([
+  [ACTIONS.APPROVE_COMMERCIAL_QUOTE, 'approved'],
+  [ACTIONS.REJECT_COMMERCIAL_QUOTE, 'rejected']
+]);
+
+const materialSubmissionTypes = new Map([
+  [ACTIONS.SUBMIT_TECHNICAL_SOLUTION, 'technical_solution'],
+  [ACTIONS.SUBMIT_COMMERCIAL_QUOTE, 'commercial_quote'],
+  [ACTIONS.SUBMIT_CONTRACT_APPROVAL, 'contract']
+]);
+
+const materialReviewTypes = new Map([
+  [ACTIONS.APPROVE_TECHNICAL_SOLUTION, 'technical_solution'],
+  [ACTIONS.REJECT_TECHNICAL_SOLUTION, 'technical_solution'],
+  [ACTIONS.APPROVE_COMMERCIAL_QUOTE, 'commercial_quote'],
+  [ACTIONS.REJECT_COMMERCIAL_QUOTE, 'commercial_quote'],
+  [ACTIONS.APPROVE_CONTRACT, 'contract'],
+  [ACTIONS.REJECT_CONTRACT, 'contract']
+]);
+
+const configuredApprovalAssignees = new Map([
+  [ACTIONS.SUBMIT_INITIATION, {
+    settingKey: 'opportunity_initiation',
+    payloadField: 'salesManagerId'
+  }],
+  [ACTIONS.SUBMIT_TECHNICAL_SOLUTION, {
+    settingKey: 'technical_solution',
+    payloadField: 'technicalManagerId'
+  }],
+  [ACTIONS.SUBMIT_COMMERCIAL_QUOTE, {
+    settingKey: 'commercial_quote',
+    payloadField: 'commercialManagerId'
+  }],
+  [ACTIONS.SUBMIT_CONTRACT_APPROVAL, {
+    settingKey: 'contract_approval',
+    payloadField: 'legalReviewerId'
+  }]
+]);
+
+function hasValue(value) {
+  return value !== undefined && value !== null && value !== '';
+}
+
+function hasNonBlankValue(value) {
+  return hasValue(value) && String(value).trim() !== '';
+}
+
+function timestampValue(value) {
+  if (!value) {
+    return null;
+  }
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function commentFromPayload(payload) {
+  const primary = payload.reason || payload.comment || '';
+  const improvement = payload.improvement || '';
+  const technicalPlan = payload.technicalPlanSubmitDate || '';
+  return [
+    primary,
+    improvement ? `Improvement required: ${improvement}` : '',
+    technicalPlan ? `Plan to submit: ${technicalPlan}` : ''
+  ]
+    .filter(Boolean)
+    .join('\n') || null;
+}
+
+function targetUserForAction(action, before, after, payload) {
+  switch (action) {
+    case ACTIONS.SUBMIT_INITIATION:
+      return after.salesManagerId;
+    case ACTIONS.APPROVE_INITIATION:
+    case ACTIONS.CHANGE_QUOTATION_ENGINEER:
+    case ACTIONS.REJECT_TECHNICAL_SOLUTION:
+    case ACTIONS.REJECT_COMMERCIAL_QUOTE:
+      return after.quotationEngineerId;
+    case ACTIONS.REJECT_INITIATION:
+    case ACTIONS.APPROVE_COMMERCIAL_QUOTE:
+      return after.salespersonId;
+    case ACTIONS.MARK_WON:
+    case ACTIONS.MARK_LOST:
+      return after.salesManagerId || null;
+    case ACTIONS.SUBMIT_TECHNICAL_SOLUTION:
+      return after.technicalManagerId;
+    case ACTIONS.APPROVE_TECHNICAL_SOLUTION:
+      return after.quotationEngineerId;
+    case ACTIONS.SUBMIT_COMMERCIAL_QUOTE:
+      return after.commercialManagerId;
+    case ACTIONS.SUBMIT_CONTRACT_APPROVAL:
+      return payload.legalReviewerId || null;
+    case ACTIONS.APPROVE_CONTRACT:
+    case ACTIONS.REJECT_CONTRACT:
+      return after.salespersonId;
+    default:
+      return null;
+  }
+}
+
+function quotationEngineerTodoForStatus(after) {
+  switch (after.status) {
+    case 'technical_solution_in_progress':
+      return {
+        opportunityId: after.id,
+        assigneeUserId: after.quotationEngineerId,
+        title: 'Prepare technical solution',
+        ...(after.technicalPlanSubmitDate
+          ? { dueAt: `${after.technicalPlanSubmitDate}T23:59:59+08:00` }
+          : {})
+      };
+    case 'technical_solution_rejected':
+      return { opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Revise technical solution' };
+    case 'commercial_quote_in_progress':
+      return { opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Prepare commercial quote' };
+    case 'commercial_quote_rejected':
+      return { opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Revise commercial quote' };
+    default:
+      return null;
+  }
+}
+
+function nextTodosForAction(action, after, payload) {
+  switch (action) {
+    case ACTIONS.SUBMIT_INITIATION:
+      return [{ opportunityId: after.id, assigneeUserId: after.salesManagerId, title: 'Approve opportunity initiation' }];
+    case ACTIONS.APPROVE_INITIATION:
+      return [...new Set(
+        Array.isArray(payload.quotationEngineerIds) && payload.quotationEngineerIds.length > 0
+          ? payload.quotationEngineerIds.map(Number)
+          : [Number(after.quotationEngineerId)]
+      )].filter(Number.isFinite).map((assigneeUserId) => ({
+        opportunityId: after.id,
+        assigneeUserId,
+        title: 'Prepare technical solution',
+        ...(payload.technicalPlanSubmitDate
+          ? { dueAt: `${payload.technicalPlanSubmitDate}T23:59:59+08:00` }
+          : {})
+      }));
+    case ACTIONS.CHANGE_QUOTATION_ENGINEER: {
+      const todo = quotationEngineerTodoForStatus(after);
+      return todo ? [todo] : [];
+    }
+    case ACTIONS.REJECT_INITIATION:
+      return [{ opportunityId: after.id, assigneeUserId: after.salespersonId, title: 'Revise opportunity initiation' }];
+    case ACTIONS.SUBMIT_TECHNICAL_SOLUTION:
+      return [{ opportunityId: after.id, assigneeUserId: after.technicalManagerId, title: 'Approve technical solution' }];
+    case ACTIONS.APPROVE_TECHNICAL_SOLUTION:
+      return [{ opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Prepare commercial quote' }];
+    case ACTIONS.REJECT_TECHNICAL_SOLUTION:
+      return [{ opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Revise technical solution' }];
+    case ACTIONS.SUBMIT_COMMERCIAL_QUOTE:
+      return [{ opportunityId: after.id, assigneeUserId: after.commercialManagerId, title: 'Approve commercial quote' }];
+    case ACTIONS.REJECT_COMMERCIAL_QUOTE:
+      return [{ opportunityId: after.id, assigneeUserId: after.quotationEngineerId, title: 'Revise commercial quote' }];
+    case ACTIONS.APPROVE_COMMERCIAL_QUOTE:
+      return [{ opportunityId: after.id, assigneeUserId: after.salespersonId, title: 'Send approved quote to customer' }];
+    case ACTIONS.MARK_WON:
+      return [{ opportunityId: after.id, assigneeUserId: after.salespersonId, title: 'Submit contract approval' }];
+    case ACTIONS.SUBMIT_CONTRACT_APPROVAL:
+      return payload.legalReviewerId
+        ? [{ opportunityId: after.id, assigneeUserId: payload.legalReviewerId, title: 'Review contract' }]
+        : [];
+    case ACTIONS.REJECT_CONTRACT:
+      return [{ opportunityId: after.id, assigneeUserId: after.salespersonId, title: 'Revise contract' }];
+    default:
+      return [];
+  }
+}
+
+function changedWorkflowFields(before, after) {
+  const changes = {};
+  for (const field of workflowStateFields) {
+    if (before[field] !== after[field]) {
+      changes[field] = after[field];
+    }
+  }
+  return changes;
+}
+
+function numericPayloadValue(payload, field) {
+  const value = Number(payload[field]);
+  return Number.isFinite(value) ? value : null;
+}
+
+function assertTechnicalSolutionPayload(payload, attachments) {
+  const hasTechnicalAttachment = attachments.some((attachment) => attachment.category === 'technical_solution');
+  if (!hasNonBlankValue(payload.solutionSummary) && !hasTechnicalAttachment) {
+    throw new WorkflowValidationError('Technical solution description or attachment is required');
+  }
+}
+
+function assertTechnicalPlanSubmitDate(action, payload) {
+  if (action !== ACTIONS.APPROVE_INITIATION) {
+    return;
+  }
+  if (!hasValue(payload.technicalPlanSubmitDate)) {
+    throw new WorkflowValidationError('Plan to Submit is required');
+  }
+  const value = String(payload.technicalPlanSubmitDate);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    throw new WorkflowValidationError('Plan to Submit must be a valid date');
+  }
+  const parsed = new Date(`${value}T00:00:00Z`);
+  if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== value) {
+    throw new WorkflowValidationError('Plan to Submit must be a valid date');
+  }
+}
+
+async function persistInitiationEngineeringAssignments({ action, actor, opportunityId, payload, repositories }) {
+  if (action !== ACTIONS.APPROVE_INITIATION || !Array.isArray(payload.quotationEngineerIds)) {
+    return;
+  }
+  const repository = repositories.opportunityResponsibilityRepository;
+  if (typeof repository?.listTeamMembersByOpportunity !== 'function'
+      || typeof repository?.addTeamMember !== 'function'
+      || typeof repository?.removeTeamMember !== 'function') {
+    return;
+  }
+
+  const leadEngineerId = Number(payload.quotationEngineerId);
+  const supportingEngineerIds = new Set(payload.quotationEngineerIds
+    .map(Number)
+    .filter((userId) => Number.isSafeInteger(userId) && userId > 0 && userId !== leadEngineerId));
+  const currentMembers = await repository.listTeamMembersByOpportunity(Number(opportunityId));
+  const currentSupportingEngineers = currentMembers.filter((member) => member.roleCode === ROLES.QUOTATION_ENGINEER);
+
+  for (const member of currentSupportingEngineers) {
+    if (!supportingEngineerIds.has(Number(member.userId))) {
+      await repository.removeTeamMember({
+        opportunityId: Number(opportunityId),
+        memberId: Number(member.id),
+        removedBy: actor.id
+      });
+    }
+  }
+  for (const userId of supportingEngineerIds) {
+    await repository.addTeamMember({
+      opportunityId: Number(opportunityId),
+      userId,
+      roleCode: ROLES.QUOTATION_ENGINEER,
+      permissionLevel: 'edit',
+      assignmentScope: 'Technical Proposal',
+      taskDescription: 'Prepare technical proposal',
+      dueDate: payload.technicalPlanSubmitDate || null,
+      canSendExternalEmail: false,
+      addedBy: actor.id
+    });
+  }
+}
+
+function isUnboundAttachment(attachment) {
+  return attachment.opportunityMaterialVersionId === null
+    || attachment.opportunityMaterialVersionId === undefined;
+}
+
+function hasUnboundAttachment(attachments, category) {
+  return attachments.some((attachment) => attachment.category === category && isUnboundAttachment(attachment));
+}
+
+function assertRevisedTechnicalSolutionAfterRejection({ before, payload, attachments }) {
+  if (before.status !== 'technical_solution_rejected') {
+    return;
+  }
+  if (hasNonBlankValue(payload.technicalDraftId)
+      || hasNonBlankValue(payload.solutionSummary)
+      || hasUnboundAttachment(attachments, 'technical_solution')) {
+    return;
+  }
+  throw new WorkflowValidationError('Revised Technical Solution material is required after rejection');
+}
+
+function assertRevisedCommercialQuoteAfterRejection({ before, attachments }) {
+  if (before.status !== 'commercial_quote_rejected') {
+    return;
+  }
+  if (hasUnboundAttachment(attachments, 'commercial_quote')) {
+    return;
+  }
+  throw new WorkflowValidationError('Revised Commercial Quote attachment is required after rejection');
+}
+
+function technicalSolutionInput({ opportunityId, actor, payload }) {
+  const opportunityTechnicalDraftId = numericPayloadValue(payload, 'technicalDraftId');
+  return {
+    opportunityId: Number(opportunityId),
+    summary: hasNonBlankValue(payload.solutionSummary) ? String(payload.solutionSummary).trim() : '',
+    parameters: hasNonBlankValue(payload.solutionParameters) ? String(payload.solutionParameters).trim() : null,
+    implementationPlan: hasNonBlankValue(payload.implementationPlan) ? String(payload.implementationPlan).trim() : null,
+    submittedBy: actor.id,
+    ...(opportunityTechnicalDraftId ? { opportunityTechnicalDraftId } : {})
+  };
+}
+
+function commercialQuoteInput({ opportunityId, actor, payload }) {
+  return {
+    opportunityId,
+    totalPrice: 0,
+    paymentTerms: null,
+    validityDate: null,
+    remarks: commentFromPayload(payload),
+    submittedBy: actor.id,
+    items: []
+  };
+}
+
+function materialVersionRepository(repositories) {
+  if (typeof repositories.opportunityMaterialVersionRepository?.createVersion !== 'function'
+    || typeof repositories.opportunityMaterialVersionRepository?.findLatestByOpportunityAndType !== 'function'
+    || typeof repositories.opportunityMaterialVersionRepository?.reviewVersion !== 'function') {
+    throw new WorkflowValidationError('Opportunity material version repository is not configured');
+  }
+  return repositories.opportunityMaterialVersionRepository;
+}
+
+function uploadedTechnicalFiles(draft) {
+  if (Array.isArray(draft?.uploadedFiles) && draft.uploadedFiles.length) {
+    return draft.uploadedFiles;
+  }
+  if (draft?.uploadedFile) {
+    return [draft.uploadedFile];
+  }
+  return draft?.uploadedAttachmentId ? [{ id: draft.uploadedAttachmentId }] : [];
+}
+
+function currentTechnicalSubmissionFiles(draft) {
+  const files = uploadedTechnicalFiles(draft);
+  if (['draft', 'ready'].includes(draft?.status)) {
+    return files.filter((file) => !file.materialVersionId);
+  }
+  const matchingVersionFiles = files.filter((file) => file.materialVersionStatus === draft?.status);
+  if (matchingVersionFiles.length) {
+    return matchingVersionFiles;
+  }
+  const activeVersionFiles = files.filter((file) => file.materialVersionStatus !== 'withdrawn');
+  return activeVersionFiles.length ? activeVersionFiles : files;
+}
+
+function uploadedTechnicalFileIds(draft) {
+  const ids = currentTechnicalSubmissionFiles(draft).map((file) => Number(file.id));
+  return [...new Set(ids.filter(Number.isInteger))];
+}
+
+async function createPendingMaterialVersion({ action, actor, opportunityId, payload, repositories }) {
+  const materialType = materialSubmissionTypes.get(action);
+  if (!materialType) {
+    return null;
+  }
+  const version = await materialVersionRepository(repositories).createVersion({
+    opportunityId: Number(opportunityId),
+    materialType,
+    status: 'pending',
+    submittedBy: actor.id
+  });
+  if (version && payload?.technicalDraft?.sourceKind === 'uploaded_file') {
+    const attachmentIds = uploadedTechnicalFileIds(payload.technicalDraft);
+    if (!attachmentIds.length) throw new WorkflowValidationError('The uploaded technical files could not be bound to this version');
+    if (typeof repositories.attachmentRepository?.bindSelectedManyToMaterialVersion === 'function') {
+      const boundIds = await repositories.attachmentRepository.bindSelectedManyToMaterialVersion({
+        attachmentIds,
+        opportunityId: Number(opportunityId),
+        opportunityMaterialVersionId: version.id
+      });
+      if (boundIds.length !== attachmentIds.length) {
+        throw new WorkflowValidationError('The uploaded technical files could not be bound to this version');
+      }
+    } else {
+      for (const attachmentId of attachmentIds) {
+        const bound = await repositories.attachmentRepository?.bindSelectedToMaterialVersion?.({
+          attachmentId,
+          opportunityId: Number(opportunityId),
+          opportunityMaterialVersionId: version.id
+        });
+        if (!bound) throw new WorkflowValidationError('The uploaded technical files could not be bound to this version');
+      }
+    }
+  } else if (version && typeof repositories.attachmentRepository?.bindUnboundToMaterialVersion === 'function') {
+    await repositories.attachmentRepository.bindUnboundToMaterialVersion({
+      opportunityId: Number(opportunityId),
+      category: materialType,
+      opportunityMaterialVersionId: version.id
+    });
+  }
+  return version;
+}
+
+async function reviewLatestPendingMaterialVersion({ action, actor, opportunityId, payload, repositories, status }) {
+  const materialType = materialReviewTypes.get(action);
+  if (!materialType) {
+    return null;
+  }
+  const repository = materialVersionRepository(repositories);
+  const latest = await repository.findLatestByOpportunityAndType(Number(opportunityId), materialType);
+  if (!latest) {
+    return null;
+  }
+  return repository.reviewVersion({
+    versionId: latest.id,
+    status,
+    reviewedBy: actor.id,
+    reviewComment: commentFromPayload(payload)
+  });
+}
+
+async function listAttachmentsForOpportunity(repositories, opportunityId) {
+  if (typeof repositories.attachmentRepository?.listByOpportunity !== 'function') {
+    return [];
+  }
+  return repositories.attachmentRepository.listByOpportunity(opportunityId);
+}
+
+function latestRejectedContractApprovalTime(contractApprovals) {
+  return contractApprovals
+    .filter((approval) => approval.status === 'rejected')
+    .map((approval) => timestampValue(approval.completedAt) || timestampValue(approval.actedAt) || timestampValue(approval.submittedAt))
+    .filter((timestamp) => timestamp !== null)
+    .sort((left, right) => right - left)[0] || null;
+}
+
+async function assertRevisedContractAfterRejection({ action, opportunityId, attachments, repositories }) {
+  if (action !== ACTIONS.SUBMIT_CONTRACT_APPROVAL) {
+    return;
+  }
+  if (typeof repositories.contractApprovalRepository?.listByOpportunity !== 'function') {
+    throw new WorkflowValidationError('Contract approval repository is not configured');
+  }
+  const rejectedAt = latestRejectedContractApprovalTime(
+    await repositories.contractApprovalRepository.listByOpportunity(opportunityId)
+  );
+  if (rejectedAt === null) {
+    return;
+  }
+  const hasRevisedContract = attachments.some((attachment) => {
+    if (attachment.category !== 'contract') {
+      return false;
+    }
+    const uploadedAt = timestampValue(attachment.uploadedAt);
+    return uploadedAt !== null && uploadedAt > rejectedAt && isUnboundAttachment(attachment);
+  });
+  if (!hasRevisedContract) {
+    throw new WorkflowValidationError('Revised Contract attachment is required after rejection');
+  }
+}
+
+async function payloadWithTechnicalDraft({ action, opportunityId, payload, repositories }) {
+  if (action !== ACTIONS.SUBMIT_TECHNICAL_SOLUTION
+      || repositories.opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval !== true) {
+    return payload;
+  }
+  const draftId = numericPayloadValue(payload, 'technicalDraftId');
+  if (!draftId) {
+    throw new WorkflowValidationError('A ready project technical draft is required');
+  }
+  const draft = await repositories.opportunityTechnicalDraftRepository.findSubmissionCandidate(
+    draftId,
+    Number(opportunityId)
+  );
+  if (!draft || draft.status !== 'ready' || (draft.validationIssues || []).length) {
+    throw new WorkflowValidationError('A validated ready project technical draft is required');
+  }
+  let submissionDraft = draft;
+  if (draft.sourceKind === 'uploaded_file') {
+    const submissionFiles = currentTechnicalSubmissionFiles(draft);
+    const attachmentIds = submissionFiles.map((file) => Number(file.id)).filter(Number.isInteger);
+    const files = await Promise.all(attachmentIds.map((attachmentId) => (
+      repositories.attachmentRepository?.findById?.(attachmentId)
+    )));
+    if (!files.length || files.some((file) => !file || file.opportunityId !== Number(opportunityId)
+        || file.category !== 'technical_solution' || file.retiredAt
+        || file.opportunityMaterialVersionId || !file.sha256)) {
+      throw new WorkflowValidationError('Upload valid technical files before submitting this draft');
+    }
+    submissionDraft = {
+      ...draft,
+      uploadedAttachmentId: submissionFiles[0]?.id || null,
+      uploadedFile: submissionFiles[0] || null,
+      uploadedFiles: submissionFiles
+    };
+  }
+  return {
+    ...payload,
+    technicalDraftId: draft.id,
+    solutionSummary: hasNonBlankValue(payload.solutionSummary)
+      ? payload.solutionSummary
+      : technicalDraftSubmissionSummary(submissionDraft),
+    technicalDraft: submissionDraft
+  };
+}
+
+async function payloadWithAcceptedQuotationPackage({ action, opportunityId, payload, repositories }) {
+  if (![ACTIONS.MARK_WON, ACTIONS.SUBMIT_CONTRACT_APPROVAL].includes(action)
+      || repositories.quotationPackageRepository?.supportsQuotationPackages !== true) {
+    return payload;
+  }
+  const acceptedPackage = await repositories.quotationPackageRepository.findAcceptedByOpportunity(
+    Number(opportunityId)
+  );
+  if (!acceptedPackage) {
+    throw new WorkflowValidationError('An accepted quotation package is required before recording a win or submitting a contract');
+  }
+  return { ...payload, acceptedQuotationPackageId: acceptedPackage.id };
+}
+
+async function assertRequiredMaterials({ action, before, opportunityId, payload, repositories }) {
+  let attachments = null;
+  const attachmentRequirement = attachmentRequirements.get(action);
+  if (attachmentRequirement) {
+    attachments = await listAttachmentsForOpportunity(repositories, opportunityId);
+    if (!attachments.some((attachment) => attachment.category === attachmentRequirement.category)) {
+      throw new WorkflowValidationError(attachmentRequirement.message);
+    }
+  }
+
+  await assertRevisedContractAfterRejection({
+    action,
+    opportunityId,
+    attachments: attachments || [],
+    repositories
+  });
+
+  if (action === ACTIONS.SUBMIT_TECHNICAL_SOLUTION) {
+    attachments = attachments || await listAttachmentsForOpportunity(repositories, opportunityId);
+    assertTechnicalSolutionPayload(payload, attachments);
+    assertRevisedTechnicalSolutionAfterRejection({ before, payload, attachments });
+  }
+
+  if (action === ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
+    attachments = attachments || await listAttachmentsForOpportunity(repositories, opportunityId);
+    assertRevisedCommercialQuoteAfterRejection({ before, attachments });
+  }
+}
+
+async function payloadWithConfiguredApprovalAssignee({ action, payload, repositories }) {
+  const configuredAssignee = configuredApprovalAssignees.get(action);
+  if (!configuredAssignee) {
+    return payload;
+  }
+  if (typeof repositories.approvalSettingRepository?.findActiveByKey !== 'function') {
+    throw new WorkflowValidationError('Approval setting repository is not configured');
+  }
+  const setting = await repositories.approvalSettingRepository.findActiveByKey(configuredAssignee.settingKey);
+  if (!setting?.userId) {
+    throw new WorkflowValidationError(`Approval setting is not configured: ${configuredAssignee.settingKey}`);
+  }
+  return {
+    ...payload,
+    [configuredAssignee.payloadField]: setting.userId
+  };
+}
+
+async function persistSubmissionData({ action, actor, opportunityId, payload, repositories }) {
+  if (action === ACTIONS.SUBMIT_TECHNICAL_SOLUTION) {
+    if (typeof repositories.technicalSolutionRepository?.createVersion !== 'function') {
+      throw new WorkflowValidationError('Technical solution repository is not configured');
+    }
+    await repositories.technicalSolutionRepository.createVersion(technicalSolutionInput({
+      opportunityId,
+      actor,
+      payload
+    }));
+    if (payload.technicalDraftId
+        && typeof repositories.opportunityTechnicalDraftRepository?.submitForApproval === 'function') {
+      const submittedDraft = await repositories.opportunityTechnicalDraftRepository.submitForApproval({
+        draftId: Number(payload.technicalDraftId),
+        actorUserId: actor.id
+      });
+      if (!submittedDraft) {
+        throw new WorkflowValidationError('The project technical draft could not be submitted');
+      }
+    }
+    await createPendingMaterialVersion({ action, actor, opportunityId, payload, repositories });
+    return;
+  }
+
+  if (action === ACTIONS.SUBMIT_COMMERCIAL_QUOTE) {
+    if (typeof repositories.commercialQuoteRepository?.createQuote !== 'function') {
+      throw new WorkflowValidationError('Commercial quote repository is not configured');
+    }
+    await repositories.commercialQuoteRepository.createQuote(commercialQuoteInput({
+      opportunityId,
+      actor,
+      payload
+    }));
+    await createPendingMaterialVersion({ action, actor, opportunityId, payload, repositories });
+  }
+}
+
+async function technicalReviewSelfApprovalContext({ action, actor, opportunity, opportunityId, payload, repositories }) {
+  if (![ACTIONS.APPROVE_TECHNICAL_SOLUTION, ACTIONS.REJECT_TECHNICAL_SOLUTION].includes(action)) return null;
+  const draftRepository = repositories.opportunityTechnicalDraftRepository;
+  if (draftRepository?.supportsVersionedTechnicalApproval !== true) return null;
+  const pending = typeof draftRepository.findLatestPendingByOpportunity === 'function'
+    ? await draftRepository.findLatestPendingByOpportunity(Number(opportunityId))
+    : (await draftRepository.listByOpportunity?.(Number(opportunityId)) || []).find((draft) => draft.status === 'pending');
+  if (!pending) throw new WorkflowValidationError('No pending technical draft is available', 409);
+  if (payload.reviewDraftId && Number(payload.reviewDraftId) !== Number(pending.id)) {
+    throw new WorkflowValidationError('The technical draft awaiting review has changed', 409);
+  }
+  if (Number(pending.submittedBy) !== Number(actor.id)) return null;
+  if (isAuthorizedTechnicalSelfReview(actor, opportunity, pending)) {
+    return { mode: 'authorized', draftId: pending.id, submittedBy: pending.submittedBy, until: null };
+  }
+  if (action !== ACTIONS.APPROVE_TECHNICAL_SOLUTION
+      || !isTechnicalAdminSelfApprovalTest(actor, pending, repositories.technicalAdminSelfApprovalTest)) {
+    throw new Error('Action not allowed');
+  }
+  if (payload.testSelfApprovalConfirmed !== 'on' || !String(payload.comment || '').trim()) {
+    throw new WorkflowValidationError('Test self-approval requires confirmation and a recorded reason');
+  }
+  return { mode: 'test', draftId: pending.id, submittedBy: pending.submittedBy,
+    until: repositories.technicalAdminSelfApprovalTest.until };
+}
+
+async function persistTechnicalSolutionReviewData({ action, actor, opportunity, opportunityId, payload, repositories, selfApprovalContext }) {
+  const status = technicalSolutionReviewStatuses.get(action);
+  if (!status) {
+    return;
+  }
+  if (typeof repositories.technicalSolutionRepository?.reviewLatestPending !== 'function') {
+    throw new WorkflowValidationError('Technical solution repository is not configured');
+  }
+  await repositories.technicalSolutionRepository.reviewLatestPending({
+    opportunityId: Number(opportunityId),
+    status,
+    reviewedBy: actor.id,
+    reviewComment: commentFromPayload(payload)
+  });
+  await reviewLatestPendingMaterialVersion({ action, actor, opportunityId, payload, repositories, status });
+  const draftRepository = repositories.opportunityTechnicalDraftRepository;
+  if (draftRepository?.supportsVersionedTechnicalApproval === true
+      && status === 'approved'
+      && typeof draftRepository.approveLatestPending === 'function') {
+    let approvedDraft = await draftRepository.approveLatestPending({
+      opportunityId: Number(opportunityId),
+      actorUserId: actor.id,
+      reviewComment: commentFromPayload(payload),
+      allowSelfApprovalTest: selfApprovalContext?.mode === 'test',
+      allowAuthorizedSelfReview: selfApprovalContext?.mode === 'authorized',
+      selfApprovalTestUntil: selfApprovalContext?.until || null,
+      draftId: selfApprovalContext?.draftId || null
+    });
+    if (!approvedDraft) throw new WorkflowValidationError('The pending technical draft could not be approved', 409);
+    if (approvedDraft) {
+      if (typeof repositories.technicalDocumentService?.generateApprovedDocuments !== 'function'
+          || typeof draftRepository.saveApprovedDocuments !== 'function') {
+        throw new WorkflowValidationError('Technical document generation is not configured');
+      }
+      if (typeof draftRepository.getDraftDetail === 'function') {
+        approvedDraft = await draftRepository.getDraftDetail(approvedDraft.id) || approvedDraft;
+      }
+      const sourceAttachments = approvedDraft.sourceKind === 'uploaded_file'
+        ? await Promise.all(uploadedTechnicalFileIds(approvedDraft).map((attachmentId) => (
+          repositories.attachmentRepository?.findById?.(attachmentId)
+        )))
+        : [];
+      const sourceAttachment = sourceAttachments[0] || null;
+      if (approvedDraft.sourceKind === 'uploaded_file'
+          && (!sourceAttachments.length || sourceAttachments.some((attachment) => (
+            !attachment || attachment.opportunityId !== Number(opportunityId)
+            || attachment.category !== 'technical_solution' || attachment.retiredAt
+          )))) {
+        throw new WorkflowValidationError('Approved technical files are unavailable');
+      }
+      const documents = await repositories.technicalDocumentService.generateApprovedDocuments({
+        draft: approvedDraft,
+        opportunity,
+        reviewer: actor,
+        sourceAttachment,
+        sourceAttachments
+      });
+      await draftRepository.saveApprovedDocuments({
+        draftId: approvedDraft.id,
+        documents,
+        actorUserId: actor.id
+      });
+    }
+  }
+  if (draftRepository?.supportsVersionedTechnicalApproval === true
+      && status === 'rejected'
+      && typeof draftRepository.rejectLatestPending === 'function') {
+    const rejectedDraft = await draftRepository.rejectLatestPending({
+      opportunityId: Number(opportunityId),
+      actorUserId: actor.id,
+      reviewComment: commentFromPayload(payload),
+      allowAuthorizedSelfReview: selfApprovalContext?.mode === 'authorized'
+    });
+    if (rejectedDraft && typeof draftRepository.cloneRejectedDraft === 'function') {
+      await draftRepository.cloneRejectedDraft({
+        sourceDraftId: rejectedDraft.id,
+        actorUserId: rejectedDraft.submittedBy || actor.id
+      });
+    }
+  }
+}
+
+async function persistTechnicalSolutionWithdrawal({ action, actor, opportunityId, repositories }) {
+  if (action !== ACTIONS.WITHDRAW_TECHNICAL_SOLUTION) return;
+  if (typeof repositories.technicalSolutionRepository?.withdrawLatestPending === 'function') {
+    await repositories.technicalSolutionRepository.withdrawLatestPending({ opportunityId: Number(opportunityId) });
+  }
+  if (repositories.opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true
+      && typeof repositories.opportunityTechnicalDraftRepository.withdrawLatestPending === 'function') {
+    await repositories.opportunityTechnicalDraftRepository.withdrawLatestPending({
+      opportunityId: Number(opportunityId),
+      actorUserId: actor.id
+    });
+  }
+  if (typeof repositories.opportunityMaterialVersionRepository?.findLatestByOpportunityAndType === 'function'
+      && typeof repositories.opportunityMaterialVersionRepository?.reviewVersion === 'function') {
+    const latest = await repositories.opportunityMaterialVersionRepository.findLatestByOpportunityAndType(
+      Number(opportunityId),
+      'technical_solution'
+    );
+    if (latest?.status === 'pending') {
+      await repositories.opportunityMaterialVersionRepository.reviewVersion({
+        versionId: latest.id,
+        status: 'withdrawn',
+        reviewedBy: actor.id,
+        reviewComment: null
+      });
+    }
+  }
+}
+
+async function persistCommercialQuoteReviewData({ action, actor, opportunityId, payload, repositories }) {
+  const status = commercialQuoteReviewStatuses.get(action);
+  if (!status) {
+    return;
+  }
+  if (typeof repositories.commercialQuoteRepository?.reviewLatestPending !== 'function') {
+    throw new WorkflowValidationError('Commercial quote repository is not configured');
+  }
+  await repositories.commercialQuoteRepository.reviewLatestPending({
+    opportunityId: Number(opportunityId),
+    status,
+    reviewedBy: actor.id,
+    reviewComment: commentFromPayload(payload)
+  });
+  await reviewLatestPendingMaterialVersion({ action, actor, opportunityId, payload, repositories, status });
+}
+
+async function loadContractApprovalContext(action, opportunityId, repositories) {
+  if (!contractReviewActions.has(action)) {
+    return null;
+  }
+  if (typeof repositories.contractApprovalRepository?.findActiveByOpportunity !== 'function') {
+    return null;
+  }
+  return repositories.contractApprovalRepository.findActiveByOpportunity(opportunityId);
+}
+
+function opportunityWithContractApproval(opportunity, contractApproval) {
+  if (!contractApproval) {
+    return opportunity;
+  }
+  return {
+    ...opportunity,
+    legalReviewerId: contractApproval.reviewerUserId
+  };
+}
+
+async function persistContractApprovalData({ action, actor, opportunityId, payload, repositories, contractApproval }) {
+  if (action === ACTIONS.SUBMIT_CONTRACT_APPROVAL) {
+    if (typeof repositories.contractApprovalRepository?.createApproval !== 'function') {
+      throw new WorkflowValidationError('Contract approval repository is not configured');
+    }
+    const approvalInput = {
+      opportunityId,
+      reviewerUserId: payload.legalReviewerId,
+      submittedBy: actor.id
+    };
+    if (payload.acceptedQuotationPackageId) {
+      approvalInput.quotationPackageVersionId = payload.acceptedQuotationPackageId;
+    }
+    await repositories.contractApprovalRepository.createApproval(approvalInput);
+    await createPendingMaterialVersion({ action, actor, opportunityId, repositories });
+    return;
+  }
+
+  if (action === ACTIONS.APPROVE_CONTRACT) {
+    await repositories.contractApprovalRepository.approveActive({
+      approvalId: contractApproval.id,
+      stepId: contractApproval.stepId,
+      comment: commentFromPayload(payload)
+    });
+    await reviewLatestPendingMaterialVersion({
+      action,
+      actor,
+      opportunityId,
+      payload,
+      repositories,
+      status: 'approved'
+    });
+    return;
+  }
+
+  if (action === ACTIONS.REJECT_CONTRACT) {
+    await repositories.contractApprovalRepository.rejectActive({
+      approvalId: contractApproval.id,
+      stepId: contractApproval.stepId,
+      comment: commentFromPayload(payload)
+    });
+    await reviewLatestPendingMaterialVersion({
+      action,
+      actor,
+      opportunityId,
+      payload,
+      repositories,
+      status: 'rejected'
+    });
+  }
+}
+
+export function buildWorkflowEffects({ actor, action, before, after, payload = {} }) {
+  const closeStatus = withdrawActions.has(action)
+    ? 'withdrawn'
+    : completedTodoActions.has(action)
+      ? 'completed'
+      : null;
+  const todosToClose = closeStatus ? [{ opportunityId: before.id, status: closeStatus }] : [];
+  if (action === ACTIONS.CHANGE_QUOTATION_ENGINEER && before.quotationEngineerId) {
+    todosToClose.push({
+      opportunityId: before.id,
+      assigneeUserId: before.quotationEngineerId,
+      status: 'reassigned'
+    });
+  }
+
+  return {
+    event: {
+      opportunityId: before.id,
+      eventType: action,
+      fromStatus: before.status,
+      toStatus: after.status,
+      actorUserId: actor.id,
+      targetUserId: targetUserForAction(action, before, after, payload),
+      comment: commentFromPayload(payload)
+    },
+    todosToCreate: nextTodosForAction(action, after, payload),
+    todosToClose
+  };
+}
+
+export async function applyWorkflowAction({
+  actor,
+  opportunityId,
+  action,
+  payload = {},
+  repositories
+}) {
+  if (typeof repositories.workflowTransaction === 'function') {
+    return repositories.workflowTransaction((transactionRepositories = {}) => applyWorkflowAction({
+      actor,
+      opportunityId,
+      action,
+      payload,
+      repositories: {
+        ...repositories,
+        ...transactionRepositories,
+        workflowTransaction: null
+      }
+    }));
+  }
+
+  const before = await repositories.opportunityRepository.findById(opportunityId);
+  if (!before) {
+    throw new Error('Opportunity not found');
+  }
+  if (before.archivedAt) {
+    throw new WorkflowValidationError('Archived opportunity is read-only', 409);
+  }
+  const contractApproval = await loadContractApprovalContext(action, opportunityId, repositories);
+  const transitionOpportunity = opportunityWithContractApproval(before, contractApproval);
+  const configuredPayload = await payloadWithConfiguredApprovalAssignee({ action, payload, repositories });
+  const technicalPayload = await payloadWithTechnicalDraft({
+    action,
+    opportunityId,
+    payload: configuredPayload,
+    repositories
+  });
+  const effectivePayload = await payloadWithAcceptedQuotationPackage({
+    action,
+    opportunityId,
+    payload: technicalPayload,
+    repositories
+  });
+  const selfApprovalContext = await technicalReviewSelfApprovalContext({
+    action, actor, opportunity: transitionOpportunity, opportunityId,
+    payload: effectivePayload, repositories
+  });
+  if (action === ACTIONS.REJECT_TECHNICAL_SOLUTION
+      && !String(effectivePayload.reason || effectivePayload.comment || '').trim()) {
+    const reviewDraftId = Number(effectivePayload.reviewDraftId);
+    const hasReviewFile = Number.isInteger(reviewDraftId) && reviewDraftId > 0
+      && typeof repositories.opportunityTechnicalDraftRepository?.hasReviewAttachments === 'function'
+      && await repositories.opportunityTechnicalDraftRepository.hasReviewAttachments({
+        draftId: reviewDraftId,
+        opportunityId: Number(opportunityId)
+      });
+    if (!hasReviewFile) throw new WorkflowValidationError('A text reason or review file is required');
+  }
+  assertTechnicalPlanSubmitDate(action, effectivePayload);
+
+  const after = transition({
+    userId: actor.id,
+    roles: actor.roles,
+    opportunity: transitionOpportunity,
+    technicalAdminSelfApprovalTest: Boolean(selfApprovalContext),
+    technicalDraftSubmittedBy: selfApprovalContext?.submittedBy
+  }, action, effectivePayload);
+  await assertRequiredMaterials({ action, before, opportunityId, payload: effectivePayload, repositories });
+  const changes = changedWorkflowFields(before, after);
+  const updated = await repositories.opportunityRepository.updateWorkflowState(opportunityId, changes);
+  const effectiveAfter = updated || { ...before, ...changes };
+  await persistSubmissionData({ action, actor, opportunityId, payload: effectivePayload, repositories });
+  await persistTechnicalSolutionReviewData({
+    action,
+    actor,
+    opportunity: transitionOpportunity,
+    opportunityId,
+    payload: effectivePayload,
+    repositories,
+    selfApprovalContext
+  });
+  await persistTechnicalSolutionWithdrawal({ action, actor, opportunityId, repositories });
+  await persistCommercialQuoteReviewData({ action, actor, opportunityId, payload: effectivePayload, repositories });
+  await persistContractApprovalData({ action, actor, opportunityId, payload: effectivePayload, repositories, contractApproval });
+  await persistInitiationEngineeringAssignments({
+    action,
+    actor,
+    opportunityId,
+    payload: effectivePayload,
+    repositories
+  });
+  const effects = buildWorkflowEffects({ actor, action, before, after: effectiveAfter, payload: effectivePayload });
+
+  await repositories.workflowEventRepository.create(effects.event);
+  for (const todo of effects.todosToClose) {
+    if (todo.assigneeUserId) {
+      if (typeof repositories.todoRepository.closePendingForOpportunityAndAssignee !== 'function') {
+        throw new WorkflowValidationError('Todo repository is not configured for assignee reassignment');
+      }
+      await repositories.todoRepository.closePendingForOpportunityAndAssignee(
+        todo.opportunityId,
+        todo.assigneeUserId,
+        todo.status,
+        actor.id
+      );
+    } else {
+      await repositories.todoRepository.closePendingForOpportunity(
+        todo.opportunityId,
+        todo.status,
+        actor.id
+      );
+    }
+  }
+  for (const todo of effects.todosToCreate) {
+    await repositories.todoRepository.create(todo, actor.id);
+  }
+
+  return effectiveAfter;
+}

@@ -1,0 +1,41 @@
+<%- include('../partials/app-start', { title: `${language === 'zh' ? '常用条款' : 'Typical Terms'} - BESTCRM`, activeNav: 'quotation-standard-terms' }) %>
+<% const zh = language === 'zh'; %>
+<header class="page-header">
+  <div><h1><%= zh ? '常用条款' : 'Typical Terms' %></h1>
+    <p class="muted"><%= zh ? '按类别维护多个常用选项。已发布且与报价同语种的条款会直接进入报价下拉。' : 'Maintain multiple typical options in each section. Published terms in the quotation language appear directly in quotation selectors.' %></p></div>
+  <% if (canAuthor) { %><a class="quick-action" href="/quotation-standard-terms/new?language=<%= catalogLanguage %>"><%= zh ? '新建条款选项' : 'New typical term' %></a><% } %>
+</header>
+<p><a class="secondary-action" href="/quotation-standard-terms?language=en" aria-current="<%= catalogLanguage === 'en' ? 'page' : 'false' %>">English</a> <a class="secondary-action" href="/quotation-standard-terms?language=zh" aria-current="<%= catalogLanguage === 'zh' ? 'page' : 'false' %>">中文</a></p>
+<div class="typical-terms-grid">
+  <% if (templateGroups.length) { %>
+    <h2 class="typical-term-grid-heading"><%= zh ? '内置标准条款' : 'Built-in typical wording' %></h2>
+    <% for (const group of templateGroups) { %>
+      <section class="typical-term-section typical-term-catalog">
+        <header class="typical-term-section-header"><h2><%= group.number %>. <%= group.title %></h2><span class="muted"><%= group.items.length %> options</span></header>
+        <table class="list-table content-fit-table">
+          <thead><tr><th>No.</th><th><%= group.catalog === 'payment' ? 'Payment Terms' : group.catalog === 'delivery' ? 'Delivery Method' : 'Type' %></th><th>Standard Wording</th></tr></thead>
+          <tbody><% for (const item of group.items) { %><tr><td><%= item.number %></td><td><strong><%= item.type %></strong></td><td><%= item.standardWording || '—' %></td></tr><% } %></tbody>
+        </table>
+      </section>
+    <% } %>
+    <h2 class="typical-term-grid-heading"><%= zh ? '公司自定义条款' : 'Company custom wording' %></h2>
+  <% } %>
+  <% for (const section of sections) { const sectionTerms = terms.filter((term) => term.key === section.key); %>
+    <section class="typical-term-section">
+      <header class="typical-term-section-header">
+        <h2><%= zh ? section.zh : section.en %></h2>
+        <% if (canAuthor) { %><a class="secondary-action" href="/quotation-standard-terms/new?section=<%= section.key %>&language=<%= catalogLanguage %>"><%= zh ? '新增选项' : 'Add option' %></a><% } %>
+      </header>
+      <table class="list-table content-fit-table">
+        <thead><tr><th><%= zh ? '选项' : 'Option' %></th><th><%= zh ? '状态' : 'Status' %></th><th><%= zh ? '修订' : 'Revision' %></th><th><%= zh ? '查看' : 'View' %></th></tr></thead>
+        <tbody>
+          <% for (const term of sectionTerms) { %>
+            <tr><td><strong><%= term.title %></strong><span class="muted typical-term-summary"><%= term.body %></span></td><td><%= term.status %></td><td>R<%= term.revisionNo %></td><td><a href="/quotation-standard-terms/<%= term.id %>"><%= zh ? '详情' : 'Details' %></a></td></tr>
+          <% } %>
+          <% if (!sectionTerms.length) { %><tr><td colspan="4" class="empty"><%= zh ? '暂无条款选项' : 'No term options yet' %></td></tr><% } %>
+        </tbody>
+      </table>
+    </section>
+  <% } %>
+</div>
+<%- include('../partials/app-end') %>

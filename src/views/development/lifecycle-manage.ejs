@@ -1,0 +1,78 @@
+<%- include('../partials/app-start', { title: `${lifecycle.topicNo} - Lifecycle - BESTCRM`, activeNav: 'development' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    back: '返回课题', title: '课题阶段申请与审批', phase: '当前阶段',
+    request: '申请暂停、终止或恢复', note: '只有课题负责人可申请；管理员审批后才改变阶段。历史记录不可删除。',
+    action: '申请类型', pause: '暂停', stop: '终止', resume: '恢复',
+    reason: '申请理由', send: '提交申请', history: '申请与决定记录',
+    pending: '待审批', approved: '已批准', rejected: '已驳回',
+    decision: '管理员决定', approve: '批准', reject: '驳回',
+    decisionReason: '审批理由', selfReason: '自批理由（申请人与审批人为同一人时必填）', save: '记录决定',
+    noHistory: '暂无申请记录'
+  } : {
+    back: 'Back to topic', title: 'Topic lifecycle requests and decisions', phase: 'Current phase',
+    request: 'Request pause, stop or resume', note: 'Only the topic owner may request a transition. The phase changes only after administrator approval. History is retained.',
+    action: 'Action', pause: 'Pause', stop: 'Stop', resume: 'Resume',
+    reason: 'Request reason', send: 'Submit request', history: 'Requests and decisions',
+    pending: 'Pending', approved: 'Approved', rejected: 'Rejected',
+    decision: 'Administrator decision', approve: 'Approve', reject: 'Reject',
+    decisionReason: 'Decision reason', selfReason: 'Self-approval reason (required when you are the requester)', save: 'Record decision',
+    noHistory: 'No requests yet'
+  };
+  const actionLabels = { pause: labels.pause, stop: labels.stop, resume: labels.resume };
+  const canRequest = isOwner && !lifecycle.requests.some((item) => !item.decision);
+  const canResume = ['paused', 'stopped'].includes(lifecycle.phase);
+%>
+<style>
+  .development-lifecycle { width: 100%; margin: 0; }
+  .development-lifecycle .policy-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; margin: 14px 0; }
+  .development-lifecycle .policy-card form { display: grid; gap: 10px; }
+  .development-lifecycle .policy-card label { display: grid; gap: 5px; }
+  .development-lifecycle .policy-card button { justify-self: start; width: auto; }
+  .development-lifecycle .request-row { border-top: 1px solid var(--line); padding: 14px 0; }
+  .development-lifecycle .request-row p { white-space: pre-wrap; overflow-wrap: anywhere; }
+  .development-lifecycle .decision-form { margin-top: 10px; }
+</style>
+<section class="development-lifecycle">
+  <p class="breadcrumb"><a href="/development/topics/<%= lifecycle.topicId %>"><%= labels.back %></a></p>
+  <header class="page-header"><h1><%= labels.title %> · <%= lifecycle.topicNo %></h1></header>
+  <p><strong><%= labels.phase %>:</strong> <%= lifecycle.phase %></p>
+  <p class="muted"><%= labels.note %></p>
+  <% if (canRequest && lifecycle.phase !== 'concluded') { %>
+    <section class="policy-card"><h2><%= labels.request %></h2>
+      <form method="post" action="/development/topics/<%= lifecycle.topicId %>/lifecycle-requests">
+        <%- csrfField() %>
+        <input type="hidden" name="expectedRowVersion" value="<%= lifecycle.rowVersion %>">
+        <input type="hidden" name="idempotencyKey" value="<%= requestKey %>">
+        <label><%= labels.action %><select name="actionCode" required>
+          <% if (canResume) { %><option value="resume"><%= labels.resume %></option><% }
+             else { %><option value="pause"><%= labels.pause %></option><% } %>
+          <% if (lifecycle.phase !== 'stopped') { %><option value="stop"><%= labels.stop %></option><% } %>
+        </select></label>
+        <label><%= labels.reason %><textarea name="reason" maxlength="4000" required></textarea></label>
+        <button type="submit"><%= labels.send %></button>
+      </form>
+    </section>
+  <% } %>
+  <section class="policy-card"><h2><%= labels.history %></h2>
+    <% if (!lifecycle.requests.length) { %><p class="muted"><%= labels.noHistory %></p><% } %>
+    <% for (const item of lifecycle.requests) { %>
+      <div class="request-row">
+        <strong>#<%= item.id %> · <%= actionLabels[item.actionCode] || item.actionCode %> · <%= item.decision ? labels[item.decision.decisionCode] : labels.pending %></strong>
+        <p><%= item.reason %></p>
+        <% if (item.decision) { %><p><%= labels.decisionReason %>: <%= item.decision.reason %></p><% } %>
+        <% if (isAdmin && !item.decision) { %>
+          <form class="decision-form" method="post" action="/development/topics/<%= lifecycle.topicId %>/lifecycle-requests/<%= item.id %>/decision">
+            <%- csrfField() %><input type="hidden" name="idempotencyKey" value="<%= decisionKeys[item.id] %>">
+            <label><%= labels.decision %><select name="decisionCode" required><option value="approved"><%= labels.approve %></option><option value="rejected"><%= labels.reject %></option></select></label>
+            <label><%= labels.decisionReason %><textarea name="reason" maxlength="4000" required></textarea></label>
+            <label><%= labels.selfReason %><textarea name="selfApprovalReason" maxlength="4000"></textarea></label>
+            <button type="submit"><%= labels.save %></button>
+          </form>
+        <% } %>
+      </div>
+    <% } %>
+  </section>
+</section>
+<%- include('../partials/app-end') %>

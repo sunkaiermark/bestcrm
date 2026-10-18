@@ -1,0 +1,2 @@
+ALTER SEQUENCE opportunity_no_seq
+  MAXVALUE 999999;

@@ -1,0 +1,76 @@
+import path from 'node:path';
+import { Pool } from 'pg';
+import { verifyBackupArtifacts } from './verify-backup-artifacts.mjs';
+import { auditEmailRawArchive } from '../src/services/emailRawArchiveAuditService.mjs';
+import { createAttachmentIntegrityRepository } from '../src/repositories/attachmentIntegrityRepository.mjs';
+import { auditAttachmentIntegrity } from '../src/services/attachmentIntegrityAuditService.mjs';
+import { isMainModule } from '../src/utils/moduleEntry.mjs';
+
+export async function verifyEmailRawRestore({
+  backupDir,
+  restoreDir,
+  databaseUrl = '',
+  requireComplete = false
+}) {
+  if (!backupDir || !restoreDir) throw new Error('backupDir and restoreDir are required');
+  const backup = await verifyBackupArtifacts({ backupDir, restoreDir });
+  let databaseAudit = null;
+  let attachmentIntegrityAudit = null;
+  if (databaseUrl) {
+    const pool = new Pool({ connectionString: databaseUrl });
+    try {
+      databaseAudit = await auditEmailRawArchive({
+        queryTarget: pool,
+        uploadDir: path.join(path.resolve(restoreDir), backup.uploadDirectoryName)
+      });
+      if (backup.hasAttachmentEvidenceInventory) {
+        attachmentIntegrityAudit = await auditAttachmentIntegrity({
+          repository: createAttachmentIntegrityRepository(pool),
+          uploadDir: path.join(path.resolve(restoreDir), backup.uploadDirectoryName)
+        });
+      }
+    } finally {
+      await pool.end();
+    }
+    if (databaseAudit.mismatches.length
+      || databaseAudit.unexpectedFiles.length
+      || databaseAudit.rawWithoutCleanScan
+      || databaseAudit.outboundMimeMismatches.length
+      || databaseAudit.outboundMimeUnexpectedFiles.length
+      || databaseAudit.outboundSentWithoutMime
+      || (requireComplete && !databaseAudit.readyToRebuildEmailEvidence)) {
+      throw new Error('Restored email evidence database/file audit failed');
+    }
+    if (attachmentIntegrityAudit && !attachmentIntegrityAudit.ok) {
+      throw new Error('Restored attachment evidence database/file audit failed');
+    }
+  }
+  return { backup, databaseAudit, attachmentIntegrityAudit };
+}
+
+function parseArguments(argv) {
+  const options = { databaseUrl: process.env.DATABASE_URL || '', requireComplete: false };
+  for (let index = 0; index < argv.length; index += 1) {
+    const key = argv[index];
+    if (key === '--require-complete') {
+      options.requireComplete = true;
+      continue;
+    }
+    if (!['--backup-dir', '--restore-dir'].includes(key)) throw new Error(`Unknown argument: ${key}`);
+    const value = argv[index + 1];
+    if (!value || value.startsWith('--')) throw new Error(`Missing value for ${key}`);
+    options[key === '--backup-dir' ? 'backupDir' : 'restoreDir'] = value;
+    index += 1;
+  }
+  return options;
+}
+
+if (isMainModule(import.meta.url)) {
+  try {
+    const result = await verifyEmailRawRestore(parseArguments(process.argv.slice(2)));
+    process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  } catch (error) {
+    process.stderr.write(`${error.message}\n`);
+    process.exitCode = 1;
+  }
+}

@@ -1,0 +1,791 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { ROLES } from '../../src/domain/roles.mjs';
+import {
+  approveInquiryCustomerApproval,
+  canAccessInquiryInbox,
+  canDeleteInquiry,
+  canProcessInquiry,
+  canViewInquiry,
+  convertInquiryToOpportunity,
+  createInquiry,
+  deleteInquiry,
+  inquiryAssignableUsers,
+  markInquiryAsSpam,
+  inquiryListFilterFor,
+  rejectInquiryCustomerApproval,
+  requestInquiryCustomerApproval,
+  saveInquiryRecords,
+  saveInquiryAsContact,
+  saveInquiryAsCustomer,
+  updateInquiryReview
+} from '../../src/services/inquiryService.mjs';
+
+const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
+const inquiryManager = { id: 7, roles: [ROLES.SALES_MANAGER] };
+const salesOwner = { id: 9, roles: [ROLES.SALESPERSON], isActive: true, displayName: 'Sales Owner' };
+const salesManager = { id: 2, roles: [ROLES.SALES_MANAGER] };
+const quotationEngineer = { id: 3, roles: [ROLES.QUOTATION_ENGINEER] };
+const administrator = { id: 99, roles: [ROLES.ADMINISTRATOR] };
+
+test('inquiry service exposes inbox to sales managers and administrators only', () => {
+  assert.equal(canAccessInquiryInbox(salesperson), false);
+  assert.equal(canAccessInquiryInbox(salesManager), true);
+  assert.equal(canAccessInquiryInbox({ id: 99, roles: [ROLES.ADMINISTRATOR] }), true);
+  assert.equal(canAccessInquiryInbox(quotationEngineer), false);
+
+  assert.equal(canViewInquiry(salesperson, { assignedUserId: 7, createdBy: 7 }), false);
+  assert.equal(canViewInquiry(salesManager, { assignedUserId: 8, createdBy: 9 }), true);
+  assert.equal(canDeleteInquiry(salesperson), false);
+  assert.equal(canDeleteInquiry({ id: 99, roles: [ROLES.ADMINISTRATOR] }), true);
+  assert.equal(canProcessInquiry({ status: 'reviewing' }), true);
+  assert.equal(canProcessInquiry({ status: 'customer_approval_pending' }), false);
+  assert.equal(canProcessInquiry({ status: 'customer_saved' }), false);
+});
+
+test('inquiry assignees are limited to active sales managers', () => {
+  const users = [
+    { ...salesperson, displayName: 'Sales One', isActive: true },
+    { id: 8, displayName: 'Sales Two', roles: [ROLES.SALESPERSON], isActive: true },
+    { ...inquiryManager, displayName: 'Inquiry Manager', isActive: true },
+    { ...salesManager, displayName: 'Sales Manager', isActive: true },
+    { ...quotationEngineer, displayName: 'Quotation Engineer', isActive: true },
+    { id: 9, displayName: 'Inactive Sales', roles: [ROLES.SALESPERSON], isActive: false }
+  ];
+
+  assert.deepEqual(inquiryAssignableUsers(salesperson, users), []);
+  assert.deepEqual(inquiryAssignableUsers(salesManager, users).map((user) => user.id), [7, 2]);
+  assert.deepEqual(inquiryAssignableUsers(administrator, users).map((user) => user.id), [7, 2]);
+});
+
+test('inquiry list filter is available only to sales managers and administrators', () => {
+  assert.deepEqual(inquiryListFilterFor(inquiryManager, { status: 'new', source: 'email' }), {
+    leadWorkspaceView: 'work',
+    status: 'new',
+    source: 'email'
+  });
+  assert.deepEqual(inquiryListFilterFor(salesManager, { assignedUserId: '7', status: 'spam', source: 'bad' }), {
+    leadWorkspaceView: 'work',
+    assignedUserId: 7,
+    status: 'spam'
+  });
+  assert.deepEqual(inquiryListFilterFor(salesManager, {
+    query: '  Acme evaporator  ',
+    dateFrom: '2026-07-01',
+    dateTo: '2026-07-31',
+    assignedUserId: 'not-a-user'
+  }), {
+    leadWorkspaceView: 'work',
+    excludeStatuses: ['converted', 'contact_saved', 'customer_saved', 'spam', 'duplicate', 'archived'],
+    searchTerm: 'Acme evaporator',
+    dateFrom: '2026-07-01',
+    dateTo: '2026-07-31'
+  });
+  assert.deepEqual(inquiryListFilterFor(salesManager, {
+    dateFrom: '2026-02-31',
+    dateTo: 'not-a-date'
+  }), {
+    leadWorkspaceView: 'work',
+    excludeStatuses: ['converted', 'contact_saved', 'customer_saved', 'spam', 'duplicate', 'archived']
+  });
+  assert.throws(() => inquiryListFilterFor(salesperson, {}), /Forbidden/);
+});
+
+test('createInquiry normalizes input and requires requirement text', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryRepository: {
+      async createInquiry(input) {
+        calls.push(input);
+        return { id: 10, ...input };
+      }
+    },
+    userRepository: {
+      async listUsersWithRoles() {
+        return [{ ...inquiryManager, isActive: true }];
+      }
+    }
+  };
+
+  const inquiry = await createInquiry(repositories, inquiryManager, {
+    source: 'email',
+    subject: ' RFQ ',
+    companyName: ' Acme ',
+    contactEmail: 'ALICE@EXAMPLE.COM ',
+    productInterest: ' Evaporator ',
+    requirementText: ' Need quote ',
+    priority: 'urgent'
+  });
+
+  assert.equal(inquiry.id, 10);
+  assert.deepEqual(calls, [{
+    source: 'email',
+    submissionType: 'standard',
+    sourceChannel: 'email',
+    sourceAttributionNote: '',
+    sourceReference: '',
+    sourceReceivedAt: null,
+    subject: 'RFQ',
+    companyName: 'Acme',
+    contactName: '',
+    contactEmail: 'alice@example.com',
+    contactPhone: '',
+    country: '',
+    productInterest: 'Evaporator',
+    productCategoryCode: '',
+    confirmedProductCategoryCodes: [],
+    productCategoryReviewedBy: 7,
+    opportunityType: '',
+    requirementText: 'Need quote',
+    rawPayload: {},
+    priority: 'urgent',
+    status: 'new',
+    assignedUserId: 7,
+    recommendedSalespersonId: null,
+    matchedCustomerId: null,
+    matchedContactId: null,
+    createdBy: 7,
+    reviewNote: ''
+  }]);
+
+  await assert.rejects(() => createInquiry(repositories, inquiryManager, {
+    requirementText: ''
+  }), /Requirement is required/);
+  await assert.rejects(() => createInquiry(repositories, inquiryManager, {
+    assignedUserId: '8',
+    requirementText: 'Need quote'
+  }), /Forbidden/);
+});
+
+test('updateInquiryReview validates matched customer and contact', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryRepository: {
+      async updateReview(id, input) {
+        calls.push(['updateReview', id, input]);
+        return { id, ...input };
+      }
+    },
+    customerRepository: {
+      async getCustomerDetail(id) {
+        calls.push(['getCustomer', id]);
+        return { id, ownerUserId: 7 };
+      }
+    },
+    contactRepository: {
+      async getContactDetail(id) {
+        calls.push(['getContact', id]);
+        return { id, customerId: 20 };
+      }
+    },
+    userRepository: {
+      async listUsersWithRoles() {
+        return [{ ...inquiryManager, isActive: true }];
+      }
+    }
+  };
+
+  await updateInquiryReview(repositories, inquiryManager, {
+    id: 11,
+    assignedUserId: 7,
+    status: 'new',
+    priority: 'normal',
+    subject: 'RFQ',
+    companyName: 'Acme',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '123',
+    country: 'Singapore',
+    productInterest: 'Dryer',
+    opportunityType: 'Expansion',
+    requirementText: 'Need a dryer'
+  }, {
+    status: 'reviewing',
+    priority: 'high',
+    assignedUserId: '7',
+    matchedCustomerId: '20',
+    matchedContactId: '30',
+    reviewNote: 'Qualified'
+  });
+
+  assert.deepEqual(calls, [
+    ['getCustomer', 20],
+    ['getContact', 30],
+    ['updateReview', 11, {
+      status: 'reviewing',
+      priority: 'high',
+      assignedUserId: 7,
+      matchedCustomerId: 20,
+      matchedContactId: 30,
+      subject: 'RFQ',
+      companyName: 'Acme',
+      contactName: 'Alice',
+      contactEmail: 'alice@example.com',
+      contactPhone: '123',
+      country: 'Singapore',
+      productInterest: 'Dryer',
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
+      productCategoryReviewedBy: 7,
+      opportunityType: 'Expansion',
+      requirementText: 'Need a dryer',
+      reviewNote: 'Qualified',
+      reviewedBy: 7
+    }]
+  ]);
+});
+
+test('convertInquiryToOpportunity creates draft opportunity and marks inquiry converted', async () => {
+  const calls = [];
+  const repositories = {
+    userRepository: {
+      async listUsersWithRoles() {
+        return [salesOwner];
+      }
+    },
+    inquiryRepository: {
+      async markConverted(id, input) {
+        calls.push(['markConverted', id, input]);
+        return { id, ...input, status: 'converted' };
+      }
+    },
+    customerRepository: {
+      async getCustomerDetail(id) {
+        calls.push(['getCustomer', id]);
+        return { id, ownerUserId: 9 };
+      }
+    },
+    contactRepository: {
+      async getContactDetail(id) {
+        calls.push(['getContact', id]);
+        return { id, customerId: 20, customerOwnerUserId: 9 };
+      }
+    },
+    opportunityRepository: {
+      async createOpportunity(input) {
+        calls.push(['createOpportunity', input]);
+        return { id: 40, ...input };
+      }
+    }
+  };
+
+  const opportunity = await convertInquiryToOpportunity(repositories, inquiryManager, {
+    id: 11,
+    subject: 'Need evaporator quote',
+    productInterest: 'Evaporator',
+    opportunityType: 'Expansion',
+    requirementText: 'Need wastewater evaporation package.',
+    matchedCustomerId: 20,
+    matchedContactId: 30,
+    assignedUserId: 7,
+    status: 'reviewing'
+  }, { salespersonId: '9' });
+
+  assert.equal(opportunity.id, 40);
+  assert.deepEqual(calls, [
+    ['getCustomer', 20],
+    ['getContact', 30],
+    ['createOpportunity', {
+      originInquiryId: 11,
+      opportunityNo: null,
+      title: 'Need evaporator quote',
+      customerId: 20,
+      primaryContactId: 30,
+      requirement: 'Need wastewater evaporation package.',
+      estimatedAmount: null,
+      productInterest: 'Evaporator',
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
+      productCategoryReviewedBy: 7,
+      projectType: 'Expansion',
+      deliveryCycle: '',
+      expectedBidDate: null,
+      status: 'draft',
+      salespersonId: 9
+    }],
+    ['markConverted', 11, {
+      matchedCustomerId: 20,
+      matchedContactId: 30,
+      convertedOpportunityId: 40,
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
+      reviewedBy: 7
+    }]
+  ]);
+});
+
+test('conversion classifies the same project into an existing opportunity and synchronizes the email thread audit', async () => {
+  const calls = [];
+  const existingOpportunity = {
+    id: 41,
+    opportunityNo: 'OPP-000041',
+    customerId: 20,
+    salespersonId: 8,
+    salesManagerId: 7,
+    status: 'draft'
+  };
+  const repositories = {
+    inquiryRepository: {
+      async markConverted(id, input) {
+        calls.push(['markConverted', id, input]);
+        return { id, ...input, status: 'converted' };
+      },
+      async recordOpportunityLink(input) {
+        calls.push(['recordOpportunityLink', input]);
+        return { id: 91, ...input };
+      }
+    },
+    customerRepository: {
+      async getCustomerDetail(id) {
+        calls.push(['getCustomer', id]);
+        return { id, coordinatorUserId: 9 };
+      }
+    },
+    contactRepository: {},
+    opportunityRepository: {
+      async getOpportunityDetail(id) {
+        calls.push(['getOpportunity', id]);
+        return existingOpportunity;
+      },
+      async createOpportunity() {
+        assert.fail('an existing opportunity must not be duplicated');
+      }
+    },
+    emailArchiveRepository: {
+      async findLatestThreadByInquiry(inquiryId) {
+        calls.push(['findThread', inquiryId]);
+        return {
+          id: 70,
+          triageStatus: 'converted_inquiry',
+          archiveDisposition: 'active',
+          triageAssignedUserId: 7,
+          opportunityId: 41
+        };
+      },
+      async linkConvertedInquiryThreadToOpportunity(input) {
+        calls.push(['linkThread', input]);
+        return true;
+      },
+      async transitionThreadTriage(input) {
+        calls.push(['transitionThread', input]);
+        return true;
+      },
+      async createTriageEvent(input) {
+        calls.push(['createTriageEvent', input]);
+        return { id: 92, ...input };
+      }
+    }
+  };
+
+  const opportunity = await convertInquiryToOpportunity(repositories, inquiryManager, {
+    id: 11,
+    status: 'reviewing',
+    subject: 'Existing project follow-up',
+    requirementText: 'Additional specification',
+    matchedCustomerId: 20,
+    matchedContactId: null
+  }, {
+    existingOpportunityId: '41',
+    customerId: '20'
+  }, { copyAttachments: false });
+
+  assert.equal(opportunity, existingOpportunity);
+  assert.equal(calls.some((call) => call[0] === 'createOpportunity'), false);
+  assert.deepEqual(calls.find((call) => call[0] === 'recordOpportunityLink')[1], {
+    inquiryId: 11,
+    customerId: 20,
+    opportunityId: 41,
+    linkKind: 'existing',
+    actorUserId: 7,
+    source: 'inquiry_conversion',
+    note: 'Inquiry classified into an existing opportunity for the same project.'
+  });
+  assert.deepEqual(calls.find((call) => call[0] === 'linkThread')[1], {
+    threadId: 70,
+    inquiryId: 11,
+    opportunityId: 41,
+    customerId: 20,
+    contactId: null
+  });
+  assert.equal(calls.find((call) => call[0] === 'transitionThread')[1].triageStatus, 'linked_opportunity');
+  assert.equal(calls.find((call) => call[0] === 'createTriageEvent')[1].eventType, 'linked_opportunity');
+});
+
+test('existing-opportunity conversion rejects an opportunity outside the inquiry manager visibility scope', async () => {
+  await assert.rejects(() => convertInquiryToOpportunity({
+    opportunityRepository: {
+      async getOpportunityDetail() {
+        return { id: 41, customerId: 20, salespersonId: 8, salesManagerId: 2, status: 'draft' };
+      }
+    }
+  }, inquiryManager, {
+    id: 11,
+    status: 'reviewing',
+    matchedCustomerId: 20,
+    requirementText: 'Need quote'
+  }, {
+    existingOpportunityId: '41',
+    customerId: '20'
+  }, { copyAttachments: false }), /Forbidden/);
+});
+
+test('conversion can create missing customer and contact from extracted inquiry fields', async () => {
+  const calls = [];
+  const repositories = {
+    userRepository: {
+      async listUsersWithRoles() {
+        return [salesOwner];
+      }
+    },
+    inquiryRepository: {
+      async markConverted(id, input) {
+        calls.push(['markConverted', id, input]);
+        return { id, ...input, status: 'converted' };
+      }
+    },
+    customerRepository: {
+      async findDuplicatesByName() {
+        return [];
+      },
+      async createCustomer(input) {
+        calls.push(['createCustomer', input]);
+        return { id: 20, ...input };
+      },
+      async getCustomerDetail(id) {
+        return { id, ownerUserId: 9 };
+      }
+    },
+    contactRepository: {
+      async createContact(input) {
+        calls.push(['createContact', input]);
+        return { id: 30, ...input };
+      },
+      async getContactDetail(id) {
+        return { id, customerId: 20, customerOwnerUserId: 9 };
+      }
+    },
+    opportunityRepository: {
+      async createOpportunity(input) {
+        calls.push(['createOpportunity', input]);
+        return { id: 40, ...input };
+      }
+    }
+  };
+
+  const opportunity = await convertInquiryToOpportunity(repositories, inquiryManager, {
+    id: 11,
+    status: 'new',
+    assignedUserId: 7,
+    subject: 'New line RFQ',
+    companyName: 'Acme',
+    companyWebsite: 'www.acme.example',
+    country: 'United States',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '123',
+    productInterest: 'Evaporator',
+    opportunityType: 'Expansion',
+    requirementText: 'Need quote',
+    matchedCustomerId: null,
+    matchedContactId: null
+  }, { createMissingRecords: '1', salespersonId: '9' });
+
+  assert.equal(opportunity.customerId, 20);
+  assert.equal(opportunity.primaryContactId, 30);
+  assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].name, 'Acme');
+  assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].ownerUserId, 9);
+  assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].website, 'https://www.acme.example');
+  assert.equal(calls.find((call) => call[0] === 'createContact')[1].email, 'alice@example.com');
+  assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].productInterest, 'Evaporator');
+  assert.equal(calls.find((call) => call[0] === 'createOpportunity')[1].projectType, 'Expansion');
+});
+
+test('conversion creates an independent opportunity under a shared customer coordinated by another salesperson', async () => {
+  const calls = [];
+  const repositories = {
+    userRepository: {
+      async listUsersWithRoles() {
+        return [salesOwner];
+      }
+    },
+    inquiryRepository: {
+      async markConverted(id, input) {
+        calls.push(['markConverted', id, input]);
+        return { id, ...input, status: 'converted' };
+      }
+    },
+    customerRepository: {
+      async getCustomerDetail(id) {
+        return { id, name: 'Acme', coordinatorUserId: 8 };
+      }
+    },
+    contactRepository: {},
+    opportunityRepository: {
+      async createOpportunity(input) {
+        calls.push(['createOpportunity', input]);
+        return { id: 40, ...input };
+      }
+    }
+  };
+
+  const opportunity = await convertInquiryToOpportunity(repositories, inquiryManager, {
+    id: 11,
+    status: 'reviewing',
+    assignedUserId: 7,
+    subject: 'Acme project',
+    requirementText: 'Need quote',
+    matchedCustomerId: 20,
+    matchedContactId: null
+  }, { salespersonId: '9' });
+
+  assert.equal(opportunity.customerId, 20);
+  assert.equal(opportunity.salespersonId, 9);
+  assert.equal(calls.filter((call) => call[0] === 'createOpportunity').length, 1);
+  assert.equal(calls.filter((call) => call[0] === 'markConverted').length, 1);
+});
+
+test('legacy cross-sales customer approval requests are retired for shared customers', async () => {
+  await assert.rejects(() => requestInquiryCustomerApproval({}, inquiryManager, {
+    id: 11,
+    status: 'reviewing',
+    assignedUserId: 7,
+    requirementText: 'Need quote'
+  }, { approvalCustomerId: '20' }), /workflow is retired/);
+});
+
+test('sales manager approval creates the opportunity for the requesting inquiry manager', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryCustomerApprovalRepository: {
+      async findById(id) {
+        calls.push(['findApproval', id]);
+        return {
+          id: 80,
+          inquiryId: 11,
+          customerId: 20,
+          requestedBy: 7,
+          reviewerUserId: 2,
+          status: 'pending',
+          requestPayload: {
+            primaryContactId: null,
+            newContactName: 'Alice',
+            title: 'Acme project',
+            requirement: 'Need quote'
+          }
+        };
+      },
+      async completeApproval(id, input) {
+        calls.push(['complete', id, input]);
+        return { id: 40, customerId: 20, salespersonId: 7, title: input.title };
+      }
+    },
+    contactRepository: {}
+  };
+
+  const opportunity = await approveInquiryCustomerApproval(repositories, salesManager, {
+    id: 11,
+    status: 'customer_approval_pending'
+  }, 80, { decisionNote: 'Approved for collaboration' });
+
+  assert.equal(opportunity.id, 40);
+  assert.deepEqual(calls, [
+    ['findApproval', 80],
+    ['complete', 80, {
+      primaryContactId: null,
+      newContactName: 'Alice',
+      title: 'Acme project',
+      requirement: 'Need quote',
+      productCategoryCode: '',
+      confirmedProductCategoryCodes: [],
+      decidedBy: 2,
+      decisionNote: 'Approved for collaboration',
+      allowAnyReviewer: false,
+      inquiryId: 11
+    }]
+  ]);
+});
+
+test('sales manager rejection requires a reason and returns the inquiry to the requester', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryCustomerApprovalRepository: {
+      async rejectAndReturnInquiry(id, input) {
+        calls.push([id, input]);
+        return { id, status: 'rejected' };
+      }
+    }
+  };
+  const pendingInquiry = { id: 11, status: 'customer_approval_pending' };
+
+  await assert.rejects(
+    () => rejectInquiryCustomerApproval(repositories, salesManager, pendingInquiry, 80, {}),
+    /Decision note is required/
+  );
+  await rejectInquiryCustomerApproval(repositories, salesManager, pendingInquiry, 80, {
+    decisionNote: 'Use another customer'
+  });
+
+  assert.deepEqual(calls, [[80, {
+    decidedBy: 2,
+    decisionNote: 'Use another customer',
+    allowAnyReviewer: false,
+    inquiryId: 11
+  }]]);
+});
+
+test('saveInquiryRecords creates one customer and contact then closes the inquiry', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryRepository: {
+      async markDisposition(id, input) {
+        calls.push(['markDisposition', id, input]);
+        return { id, ...input };
+      }
+    },
+    customerRepository: {
+      async findDuplicatesByName() {
+        return [];
+      },
+      async createCustomer(input) {
+        calls.push(['createCustomer', input]);
+        return { id: 20, ownerUserId: 7, ...input };
+      },
+      async getCustomerDetail(id) {
+        return { id, ownerUserId: 7 };
+      }
+    },
+    contactRepository: {
+      async createContact(input) {
+        calls.push(['createContact', input]);
+        return { id: 30, ...input };
+      }
+    }
+  };
+
+  await saveInquiryRecords(repositories, inquiryManager, {
+    id: 11,
+    assignedUserId: 7,
+    status: 'reviewing',
+    companyName: 'Acme',
+    country: 'Oman',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '123',
+    requirementText: 'Original requirement',
+    matchedCustomerId: null,
+    matchedContactId: null,
+    reviewNote: ''
+  }, { requirementText: 'Corrected requirement' });
+
+  assert.equal(calls.find((call) => call[0] === 'createCustomer')[1].notes, 'Corrected requirement');
+  assert.equal(calls.find((call) => call[0] === 'createContact')[1].notes, 'Corrected requirement');
+  assert.equal(calls.find((call) => call[0] === 'markDisposition')[2].status, 'contact_saved');
+});
+
+test('inquiry dispositions save an existing customer, create a contact, and prevent a second action', async () => {
+  const calls = [];
+  const repositories = {
+    inquiryRepository: {
+      async markDisposition(id, input) {
+        calls.push(['markDisposition', id, input]);
+        return { id, ...input };
+      }
+    },
+    customerRepository: {
+      async getCustomerDetail(id) {
+        calls.push(['getCustomer', id]);
+        return { id, ownerUserId: 7 };
+      }
+    },
+    contactRepository: {
+      async createContact(input) {
+        calls.push(['createContact', input]);
+        return { id: 31, ...input };
+      },
+      async getContactDetail() {
+        return null;
+      }
+    }
+  };
+  const inquiry = {
+    id: 11,
+    assignedUserId: 7,
+    status: 'reviewing',
+    companyName: 'Acme',
+    contactName: 'Alice',
+    contactEmail: 'alice@example.com',
+    contactPhone: '123',
+    requirementText: 'Need quote',
+    reviewNote: ''
+  };
+
+  await saveInquiryAsCustomer(repositories, inquiryManager, inquiry, { customerId: '20' });
+  await saveInquiryAsContact(repositories, inquiryManager, inquiry, { customerId: '20' });
+
+  assert.deepEqual(calls.filter((call) => call[0] === 'markDisposition').map((call) => call[2].status), [
+    'customer_saved',
+    'contact_saved'
+  ]);
+  assert.deepEqual(calls.find((call) => call[0] === 'createContact')[1], {
+    customerId: 20,
+    name: 'Alice',
+    title: '',
+    phone: '123',
+    email: 'alice@example.com',
+    wechat: '',
+    educationBackground: '',
+    workExperience: '',
+    keyAchievements: '',
+    notes: 'Need quote'
+  });
+
+  await assert.rejects(
+    () => markInquiryAsSpam(repositories.inquiryRepository, inquiryManager, { ...inquiry, status: 'contact_saved' }),
+    /Inquiry already processed/
+  );
+});
+
+test('markInquiryAsSpam records the final spam disposition', async () => {
+  const calls = [];
+  const inquiryRepository = {
+    async markDisposition(id, input) {
+      calls.push([id, input]);
+      return { id, ...input };
+    }
+  };
+  await markInquiryAsSpam(inquiryRepository, inquiryManager, {
+    id: 12,
+    assignedUserId: 7,
+    status: 'new',
+    reviewNote: ''
+  }, { reviewNote: 'SEO solicitation' });
+  assert.equal(calls[0][1].status, 'spam');
+  assert.equal(calls[0][1].reviewNote, 'SEO solicitation');
+});
+
+test('deleteInquiry plans one durable guarded purge and never deletes files inline', async () => {
+  const calls = [];
+  const result = await deleteInquiry({
+    attachmentIntegrityRepository: {
+      async planInquiryAttachmentPurge(input) {
+        calls.push(input);
+        return { purgeAuditId: 91, fileJobCount: 2, inquiryDeleted: true };
+      }
+    }
+  }, administrator, { id: 21 });
+
+  assert.deepEqual(calls, [{
+    inquiryId: 21,
+    actorUserId: 99,
+    reason: 'administrator_deleted_provisional_inquiry',
+    deleteInquiry: true
+  }]);
+  assert.deepEqual(result, { purgeAuditId: 91, fileJobCount: 2, inquiryDeleted: true });
+});
+
+test('deleteInquiry keeps the administrator permission boundary', async () => {
+  await assert.rejects(
+    () => deleteInquiry({ attachmentIntegrityRepository: {} }, salesManager, { id: 21 }),
+    /Forbidden/
+  );
+});

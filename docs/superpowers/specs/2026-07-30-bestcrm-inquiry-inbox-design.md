@@ -1,0 +1,166 @@
+# BESTCRM Inquiry Inbox Design
+
+## Goal
+
+Create a controlled CRM intake layer for SUNKAIER inquiries and give every pushed record one explicit business disposition.
+
+External inquiries from `sunkaier.com`, `sales@sunkaier.com`, and Chatwoot should first become inquiry inbox records. Sales users review, match, and convert those records into existing BESTCRM customer, contact, opportunity, attachment, and follow-up workflows.
+
+## Scope
+
+Current local implementation:
+
+- Add the inquiry inbox table.
+- Add list, create, detail, review, and convert pages inside BESTCRM.
+- Allow manual inquiry creation for local validation.
+- Extract customer name, contact name, product, and opportunity type from common website fields, nested form data, or labeled message text.
+- Let an operator correct extracted fields before processing.
+- Finish each active inquiry with exactly one disposition: converted to opportunity, saved as contact, saved as customer, or spam.
+- Reuse existing customer/contact records or create missing records from extracted fields while converting.
+- Poll `sales@sunkaier.com` through the mailbox provider for local validation.
+- Keep one customer record per company while allowing multiple opportunities under the same customer.
+- Require Sales Manager approval before a salesperson can add a contact or opportunity under another salesperson's customer.
+
+Out of scope:
+
+- Free-form generative AI classification without deterministic source fields or labels.
+- Automatic quote creation.
+- Production deployment as part of this local change.
+
+## Data Model
+
+Table: `inquiries`
+
+Core columns:
+
+- `id`: primary key.
+- `source`: `manual`, `website`, `email`, or `chatwoot`.
+- `source_reference`: external message id, form submission id, Chatwoot conversation id, or empty string.
+- `source_received_at`: original source timestamp.
+- `subject`: email subject, form title, or short inquiry heading.
+- `company_name`, `contact_name`, `contact_email`, `contact_phone`, `country`: extracted customer/contact fields.
+- `product_interest`: product, service, or project area.
+- `opportunity_type`: business opportunity type, kept separate from product.
+- `requirement_text`: customer requirement summary or full raw requirement.
+- `raw_payload`: original normalized JSON payload for traceability.
+- `priority`: `low`, `normal`, `high`, or `urgent`.
+- `status`: active states `new` and `reviewing`; approval state `customer_approval_pending`; final dispositions `converted`, `contact_saved`, `customer_saved`, and `spam`; legacy intake compatibility states `duplicate` and `archived`.
+- `assigned_user_id`: sales owner currently handling the inquiry.
+- `matched_customer_id`, `matched_contact_id`: reviewed CRM links.
+- `converted_opportunity_id`: created opportunity after conversion.
+- `created_by`, `reviewed_by`, `reviewed_at`, `review_note`: internal audit fields.
+- `created_at`, `updated_at`: standard timestamps.
+
+## Pages
+
+### Inquiry List
+
+Path: `/inquiries`
+
+Purpose:
+
+- Show incoming inquiries.
+- Make source, status, priority, company, contact, and assigned owner scannable.
+- Provide a quick action to create a manual inquiry for local testing.
+
+Access:
+
+- Administrator and Sales Manager see all inquiries.
+- Salesperson sees assigned or self-created inquiries.
+- Other roles do not access the inbox.
+
+### New Inquiry
+
+Path: `/inquiries/new`
+
+Purpose:
+
+- Manual local entry for testing and fallback internal capture.
+- Uses source `manual` by default.
+
+### Inquiry Detail
+
+Path: `/inquiries/:id`
+
+Purpose:
+
+- Use one compact three-step form: customer/contact, inquiry content, then opportunity conversion.
+- Edit each extracted field only once; the same values feed review, customer/contact saving, and conversion.
+- Keep source metadata and raw payload in collapsed secondary sections.
+- Select one final action: save customer/contact records, convert to opportunity, or mark as spam.
+- Show links to the resulting customer, contact, or opportunity after processing.
+- Let administrators delete the inquiry and its inquiry attachments.
+
+Customer handling rules:
+
+- Select an existing customer owned by the salesperson, then select or add a contact.
+- If no customer exists, create the customer and optional contact as part of the final action.
+- If the same customer exists under another salesperson, do not create a duplicate customer.
+- Submit a customer collaboration request to a Sales Manager. While pending, the inquiry is assigned to the reviewer and cannot be processed again.
+- Approval keeps the original customer owner, creates any requested new contact under that customer, and creates a new opportunity owned by the requesting salesperson.
+- Rejection returns the inquiry to the requesting salesperson for revision.
+- The same customer may have multiple opportunities; customer uniqueness does not imply opportunity uniqueness.
+
+### Convert
+
+Action: `POST /inquiries/:id/convert`
+
+Behavior:
+
+- Uses selected customer/contact records when supplied.
+- Can create missing customer/contact records from corrected extracted fields when the operator keeps that option selected.
+- Creates a draft opportunity with customer, contact, product, opportunity type, and requirement kept in their separate destination fields.
+- Marks inquiry as `converted`.
+- Stores the created opportunity id on the inquiry.
+
+Other final actions:
+
+- `POST /inquiries/:id/save-customer`
+- `POST /inquiries/:id/save-contact`
+- `POST /inquiries/:id/spam`
+- `POST /inquiries/:id/delete` (administrator only)
+
+All final disposition updates are conditional on the inquiry still being `new` or `reviewing`, so a processed inquiry cannot be deliberately processed a second time.
+
+### Cross-owner Customer Approval
+
+Actions:
+
+- `POST /inquiries/:id/customer-approval`
+- `POST /inquiries/:id/customer-approval/:requestId/approve`
+- `POST /inquiries/:id/customer-approval/:requestId/reject`
+
+The approval record stores the selected customer, requesting salesperson, reviewer, requested contact/opportunity payload, decision, and resulting opportunity. Approval, optional contact creation, opportunity creation, and inquiry conversion are completed atomically so the same request cannot be approved twice.
+
+## Later Integrations
+
+### Website Form
+
+The signed public endpoint is:
+
+- `POST /api/inquiries/website`
+- HMAC-SHA256 signature using `INQUIRY_INTAKE_SECRET`.
+- Required headers: `x-bestcrm-timestamp` and `x-bestcrm-signature`.
+- Signature payload: `<timestamp>.<raw JSON body>`.
+- `x-bestcrm-signature` format: `sha256=<hex digest>`.
+- Spam protection and payload size limits.
+- Website keeps only submission responsibility; CRM handles review and conversion.
+- Accepted extraction aliases include `companyName`/`customerName`/`company`, `contactName`/`name`, `productInterest`/`product`/`productName`, and `opportunityType`/`projectType`; the same values may be nested under `formData`, `data`, or `fields`.
+- When structured values are absent, labeled lines such as `客户名称：`, `联系人：`, `产品：`, and `商机类型：` are extracted from the requirement message.
+
+### sales@sunkaier.com
+
+Use the mailbox provider as the mail server and let BESTCRM poll it:
+
+- `sales@sunkaier.com` continues receiving mail at the mailbox provider.
+- BESTCRM runs a separate email intake worker, not an SMTP server.
+- IMAP polling is the default generic provider path.
+- Deduplicate by message id, falling back to mailbox UID when needed.
+- Store email body and attachment metadata on the inquiry before conversion.
+- Keep the worker disabled until IMAP host, account, and app password are configured.
+- Classify messages during import. RFQ, quotation, technical inquiry, proposal review, and relevant equipment terms stay `new`; known Google Ads notifications, newsletters, finance/logistics documents, supplier inventory offers, and SEO outreach become `archived` or `spam`.
+- The inquiry inbox default view shows only active work and excludes all final/legacy closed states, while explicit status filters still allow review of processed records.
+
+### Chatwoot
+
+Keep Chatwoot as the conversation layer. Only handoff summaries with inquiry labels should enter the CRM inbox until a human confirms conversion.

@@ -1,0 +1,224 @@
+<%- include('../partials/app-start', { title: `${topic.topicNo} - Research Materials - BESTCRM`, activeNav: 'workbench' }) %>
+<%
+  const zh = language === 'zh';
+  const labels = zh ? {
+    title: '课题研究资料', guidance: '仅显示你有权读取的文件版本。受限文件不会因你是管理员、技术经理或商机成员而自动开放。',
+    newMaterial: '登记研究资料', materialTitle: '资料名称', category: '资料类别',
+    source: '来源或引用（可选）', add: '登记资料', upload: '上传新版本',
+    class: '访问级别', internal: '课题内部', restricted: '客户保密／受限',
+    choose: '选择文件', submit: '上传并扫描', noVersions: '尚无可读取版本',
+    preview: '预览', download: '下载', version: '版本', uploaded: '上传时间',
+    maxSize: '每文件最多 100 MiB；每课题累计全部版本最多 1 GiB。SOLIDWORKS 原生文件不在此上传。',
+    failed: '上传未成功，请稍后重试。',
+    manageAccess: '受限文件授权', manageNote: '仅课题负责人可授予或撤销本课题有效成员的读取权。上传者本人始终按成员资格读取；撤销只停止访问，不删除文件或审计。',
+    noRestricted: '尚无已激活的受限文件。', recipient: '授权给', reason: '原因',
+    grant: '授予读取权', revoke: '撤销读取权', currentGrants: '当前授权',
+    noGrants: '暂无额外授权', noRecipients: '暂无可授权的其他有效成员',
+    grantReason: '请填写授予原因', revokeReason: '请填写撤销原因',
+    accessFailed: '权限操作未成功，请刷新后重试。'
+  } : {
+    title: 'Research materials', guidance: 'Only file versions you may read are listed. Administrator, technical-manager, or opportunity access does not automatically reveal restricted files.',
+    newMaterial: 'Register research material', materialTitle: 'Material title', category: 'Material category',
+    source: 'Source or reference (optional)', add: 'Register material', upload: 'Upload a new version',
+    class: 'Access class', internal: 'Topic internal', restricted: 'Customer confidential / restricted',
+    choose: 'Choose file', submit: 'Upload and scan', noVersions: 'No readable versions yet',
+    preview: 'Preview', download: 'Download', version: 'Version', uploaded: 'Uploaded',
+    maxSize: '100 MiB per file and 1 GiB total across all topic versions. Native SOLIDWORKS files are not uploaded here.',
+    failed: 'Upload failed. Please try again.',
+    manageAccess: 'Restricted-file access', manageNote: 'Only the topic owner can grant or revoke read access for active topic members. The uploader retains self-read while an active member; revocation does not delete files or audit history.',
+    noRestricted: 'No activated restricted versions yet.', recipient: 'Grant to', reason: 'Reason',
+    grant: 'Grant read access', revoke: 'Revoke read access', currentGrants: 'Current grants',
+    noGrants: 'No additional grants', noRecipients: 'No other eligible active members',
+    grantReason: 'State the reason for granting access', revokeReason: 'State the reason for revoking access',
+    accessFailed: 'Access change failed. Refresh and try again.'
+  };
+  const canPreview = (mime) => ['application/pdf', 'image/png', 'image/jpeg'].includes(mime);
+%>
+<style>
+  .development-materials { max-width: 1200px; margin: 0 auto; }
+  .development-materials .materials-note { background: var(--accent-soft); border-left: 5px solid var(--accent); padding: 12px 16px; margin: 12px 0 20px; }
+  .development-materials .materials-card { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 18px; margin: 14px 0; }
+  .development-materials .materials-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 14px; }
+  .development-materials .materials-grid label { margin: 0; }
+  .development-materials .materials-grid .full { grid-column: 1 / -1; }
+  .development-materials .material-heading { display: flex; justify-content: space-between; gap: 12px; flex-wrap: wrap; align-items: baseline; }
+  .development-materials .material-heading h2 { margin: 0; }
+  .development-materials .material-meta { color: var(--muted); margin: 4px 0 12px; overflow-wrap: anywhere; }
+  .development-materials .upload-row { display: grid; grid-template-columns: minmax(0, 1fr) minmax(160px, 220px) auto; gap: 12px; align-items: end; }
+  .development-materials .upload-row button, .development-materials .materials-card > form button { width: auto; }
+  .development-materials .file-name { overflow-wrap: anywhere; }
+  .development-materials .file-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+  .development-materials .file-actions a { color: var(--accent); text-decoration: underline; }
+  .development-materials [data-upload-status] { color: #a61b1b; margin: 8px 0; }
+  .development-materials .restricted-version { border-top: 1px solid var(--line); padding: 14px 0; }
+  .development-materials .restricted-version summary { cursor: pointer; font-weight: 700; overflow-wrap: anywhere; }
+  .development-materials .access-form { display: flex; gap: 10px; flex-wrap: wrap; align-items: end; margin: 10px 0; }
+  .development-materials .access-form label { flex: 1 1 220px; margin: 0; }
+  .development-materials .access-form button { width: auto; }
+  .development-materials .access-form [data-access-status] { flex-basis: 100%; color: #a61b1b; margin: 0; }
+  .development-materials .access-grant { border-left: 3px solid var(--line); padding-left: 12px; margin: 12px 0; }
+  .development-materials .access-grant .access-form { margin: 4px 0; }
+  .development-materials .access-revoke { background: #fff0f0; color: #a61b1b; }
+  @media (max-width: 760px) {
+    .development-materials .materials-grid, .development-materials .upload-row { grid-template-columns: 1fr; }
+    .development-materials .materials-grid .full { grid-column: auto; }
+  }
+</style>
+<section class="development-materials">
+  <header class="page-header">
+    <div><h1><%= labels.title %> · <%= topic.topicNo %></h1><div><%= topic.title %></div></div>
+  </header>
+  <p class="materials-note"><%= labels.guidance %><br><%= labels.maxSize %></p>
+
+  <section class="materials-card">
+    <h2><%= labels.newMaterial %></h2>
+    <form method="post" action="/development/topics/<%= topic.id %>/materials">
+      <%- csrfField() %>
+      <div class="materials-grid">
+        <label><%= labels.materialTitle %><input name="title" maxlength="200" required></label>
+        <label><%= labels.category %><input name="categoryCode" maxlength="64" required></label>
+        <label class="full"><%= labels.source %><input name="sourceReference" maxlength="2000"></label>
+      </div>
+      <button type="submit"><%= labels.add %></button>
+    </form>
+  </section>
+
+  <% if (restrictedAccess) { %>
+    <section class="materials-card" aria-labelledby="restricted-access-heading">
+      <h2 id="restricted-access-heading"><%= labels.manageAccess %></h2>
+      <p class="material-meta"><%= labels.manageNote %></p>
+      <% if (!restrictedAccess.versions.length) { %><p><%= labels.noRestricted %></p><% } %>
+      <% for (const version of restrictedAccess.versions) { %>
+        <details class="restricted-version">
+          <summary><%= version.materialTitle %> · <%= labels.version %> <%= version.versionNo %> · <%= version.originalName %></summary>
+          <p class="material-meta"><%= labels.uploaded %>: <%= new Date(version.recordedAt).toLocaleString(zh ? 'zh-CN' : 'en-SG') %></p>
+          <% const eligibleMembers = restrictedAccess.members.filter((member) =>
+            member.userId !== version.uploadedByUserId
+            && !version.grants.some((grant) => grant.membershipId === member.membershipId)); %>
+          <% if (eligibleMembers.length) { %>
+            <form class="access-form" method="post"
+              action="/development/topics/<%= topic.id %>/materials/versions/<%= version.id %>/grants"
+              data-research-access data-failure-label="<%= labels.accessFailed %>">
+              <%- csrfField() %>
+              <label><%= labels.recipient %>
+                <select name="membershipId" required>
+                  <% for (const member of eligibleMembers) { %>
+                    <option value="<%= member.membershipId %>"><%= member.displayName %> (<%= member.username %>)</option>
+                  <% } %>
+                </select>
+              </label>
+              <label><%= labels.reason %><input name="reason" maxlength="4000" placeholder="<%= labels.grantReason %>" required></label>
+              <button type="submit"><%= labels.grant %></button>
+              <p data-access-status role="status" aria-live="polite"></p>
+            </form>
+          <% } else { %><p class="material-meta"><%= labels.noRecipients %></p><% } %>
+          <h3><%= labels.currentGrants %></h3>
+          <% if (!version.grants.length) { %><p class="material-meta"><%= labels.noGrants %></p><% } %>
+          <% for (const grant of version.grants) { %>
+            <div class="access-grant">
+              <div><%= grant.displayName %> (<%= grant.username %>)</div>
+              <form class="access-form" method="post"
+                action="/development/topics/<%= topic.id %>/materials/grants/<%= grant.id %>/revoke"
+                data-research-access data-failure-label="<%= labels.accessFailed %>">
+                <%- csrfField() %>
+                <label><%= labels.reason %><input name="reason" maxlength="4000" placeholder="<%= labels.revokeReason %>" required></label>
+                <button class="access-revoke" type="submit"><%= labels.revoke %></button>
+                <p data-access-status role="status" aria-live="polite"></p>
+              </form>
+            </div>
+          <% } %>
+        </details>
+      <% } %>
+    </section>
+  <% } %>
+
+  <% for (const material of materials) { %>
+    <section class="materials-card">
+      <div class="material-heading"><h2><%= material.title %></h2><span><%= material.categoryCode %></span></div>
+      <% if (material.sourceReference) { %><p class="material-meta"><%= material.sourceReference %></p><% } %>
+      <form method="post" enctype="multipart/form-data"
+        action="/development/topics/<%= topic.id %>/materials/<%= material.id %>/versions"
+        data-research-upload data-failure-label="<%= labels.failed %>">
+        <div class="upload-row">
+          <label><%= labels.choose %><input type="file" name="attachment" required></label>
+          <label><%= labels.class %><select name="accessClass">
+            <option value="internal"><%= labels.internal %></option>
+            <option value="restricted"><%= labels.restricted %></option>
+          </select></label>
+          <button type="submit"><%= labels.submit %></button>
+        </div>
+        <p data-upload-status role="status" aria-live="polite"></p>
+      </form>
+      <% if (!material.versions.length) { %><p class="material-meta"><%= labels.noVersions %></p><% } %>
+      <% if (material.versions.length) { %>
+        <table><thead><tr><th><%= labels.version %></th><th><%= labels.choose %></th><th><%= labels.uploaded %></th><th></th></tr></thead>
+          <tbody><% for (const version of material.versions) { %>
+            <tr>
+              <td><%= version.versionNo %></td>
+              <td class="file-name"><%= version.originalName %></td>
+              <td><%= new Date(version.recordedAt).toLocaleString(zh ? 'zh-CN' : 'en-SG') %></td>
+              <td><div class="file-actions">
+                <% if (canPreview(version.mimeType)) { %><a href="/development/topics/<%= topic.id %>/materials/versions/<%= version.id %>/preview" target="_blank" rel="noopener"><%= labels.preview %></a><% } %>
+                <a href="/development/topics/<%= topic.id %>/materials/versions/<%= version.id %>/download"><%= labels.download %></a>
+              </div></td>
+            </tr>
+          <% } %></tbody>
+        </table>
+      <% } %>
+    </section>
+  <% } %>
+</section>
+<script>
+  for (const form of document.querySelectorAll('[data-research-upload]')) {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      // This fetch owns its own in-flight state; the global native-submit
+      // guard must not leave the form permanently marked as submitting.
+      event.stopImmediatePropagation();
+      const status = form.querySelector('[data-upload-status]');
+      const button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+      status.textContent = '';
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'x-csrf-token': document.querySelector('meta[name="csrf-token"]').content },
+          body: new FormData(form)
+        });
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          status.textContent = result.error || form.dataset.failureLabel;
+        } else {
+          location.reload();
+        }
+      } catch {
+        status.textContent = form.dataset.failureLabel;
+      } finally { button.disabled = false; }
+    });
+  }
+  for (const form of document.querySelectorAll('[data-research-access]')) {
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      const status = form.querySelector('[data-access-status]');
+      const button = form.querySelector('button[type="submit"]');
+      button.disabled = true;
+      status.textContent = '';
+      try {
+        const response = await fetch(form.action, {
+          method: 'POST', credentials: 'same-origin',
+          body: new URLSearchParams(new FormData(form))
+        });
+        if (!response.ok) {
+          const result = await response.json().catch(() => ({}));
+          status.textContent = result.error || form.dataset.failureLabel;
+        } else {
+          location.reload();
+        }
+      } catch {
+        status.textContent = form.dataset.failureLabel;
+      } finally { button.disabled = false; }
+    });
+  }
+</script>
+<%- include('../partials/app-end') %>

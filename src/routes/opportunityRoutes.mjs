@@ -1,0 +1,1975 @@
+import { Router } from 'express';
+import { mkdirSync } from 'node:fs';
+import { readFile, rm } from 'node:fs/promises';
+import path from 'node:path';
+import { randomUUID } from 'node:crypto';
+import multer from 'multer';
+import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
+import { CUSTOMER_REGIONS } from '../domain/customerRegions.mjs';
+import { ROLES, hasRole } from '../domain/roles.mjs';
+import { STATUSES } from '../domain/statuses.mjs';
+import { ACTIONS, getAllowedActions } from '../domain/workflow.mjs';
+import { requireLogin } from '../middleware/auth.mjs';
+import { canViewCustomer } from '../services/customerService.mjs';
+import {
+  createOpportunityFromEmailThread,
+  EmailArchiveError,
+  getEmailThreadIntakeContext
+} from '../services/emailArchiveService.mjs';
+import { resolveStoredPath } from '../services/attachmentFileService.mjs';
+import { listOpportunityDevelopmentLinks } from '../services/developmentBusinessService.mjs';
+import {
+  persistUploadedOpportunityAttachment,
+  retireOpportunityAttachment
+} from '../services/attachmentIntegrityService.mjs';
+import {
+  archiveOpportunity,
+  canArchiveOpportunity,
+  canContributeOpportunityEngineering,
+  canCreateOpportunityManually,
+  canDeleteOpportunity,
+  canManageOpportunityResponsibility,
+  canManageOpportunityEngineeringTeam,
+  canEditOpportunity,
+  canReopenOpportunity,
+  canViewOpportunity,
+  createOpportunityDraft,
+  deleteOpportunity,
+  isSupportingEngineer,
+  reopenOpportunity,
+  updateOpportunity
+} from '../services/opportunityService.mjs';
+import { createSupplementalRequirementUpdate } from '../services/requirementUpdateService.mjs';
+import {
+  canCreateOpportunityTechnicalDraft,
+  canReviewOpportunityTechnicalDraft,
+  isTechnicalAdminSelfApprovalTest
+} from '../services/opportunityTechnicalDraftService.mjs';
+import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
+import {
+  applyDirectAttachmentPreviewHeaders,
+  attachmentPreviewKind,
+  extractDocxPlainText,
+  extractXlsxPreview,
+  renderDxfPreview
+} from '../utils/attachmentPreview.mjs';
+import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
+import { formatPlainEmailForReading } from '../utils/emailPresentation.mjs';
+import { createMessageLabeler, createWorkflowButtonLabeler, createWorkflowFieldLabeler, createWorkflowTitleLabeler } from '../utils/i18n.mjs';
+
+function opportunityVisibilityFilter(user) {
+  return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { visibleToUserId: user.id };
+}
+
+function customerMasterRecord(opportunity) {
+  return {
+    coordinatorUserId: opportunity.customerCoordinatorUserId,
+    ownerUserId: opportunity.customerOwnerUserId
+  };
+}
+
+function canViewOpportunityCustomerMaster(user, opportunity) {
+  return canViewCustomer(user, customerMasterRecord(opportunity));
+}
+
+function minimumOpportunityReferenceOptions(opportunity) {
+  return {
+    customers: opportunity.customerId
+      ? [{
+          id: opportunity.customerId,
+          customerCode: opportunity.customerCode || '',
+          name: opportunity.customerName || ''
+        }]
+      : [],
+    contacts: opportunity.primaryContactId
+      ? [{
+          id: opportunity.primaryContactId,
+          contactCode: opportunity.primaryContactCode || '',
+          name: opportunity.primaryContactName || '',
+          customerId: opportunity.customerId,
+          customerCode: opportunity.customerCode || '',
+          customerName: opportunity.customerName || ''
+        }]
+      : []
+  };
+}
+
+const opportunityArchiveScopes = new Set(['active', 'archived', 'all']);
+const opportunityEmailScopes = new Set(['all', 'pending']);
+
+function normalizeOpportunityArchiveScope(value) {
+  return opportunityArchiveScopes.has(value) ? value : 'active';
+}
+
+function normalizeOpportunityListId(value) {
+  const normalized = String(value ?? '').trim();
+  if (!/^\d+$/.test(normalized)) {
+    return null;
+  }
+  const id = Number(normalized);
+  return Number.isSafeInteger(id) && id > 0 ? id : null;
+}
+
+function normalizeOpportunityListQuery(query = {}) {
+  return {
+    archiveScope: normalizeOpportunityArchiveScope(query.archiveScope),
+    emailScope: opportunityEmailScopes.has(query.emailScope) ? query.emailScope : 'all',
+    salespersonId: normalizeOpportunityListId(query.salespersonId),
+    customerId: normalizeOpportunityListId(query.customerId),
+    contactId: normalizeOpportunityListId(query.contactId),
+    query: String(query.query ?? '').trim().slice(0, 200)
+  };
+}
+
+function opportunityEmailScopeHref(filters, emailScope) {
+  const params = new URLSearchParams({ archiveScope: filters.archiveScope });
+  if (filters.salespersonId) params.set('salespersonId', String(filters.salespersonId));
+  if (filters.customerId) params.set('customerId', String(filters.customerId));
+  if (filters.contactId) params.set('contactId', String(filters.contactId));
+  if (filters.query) params.set('query', filters.query);
+  if (emailScope === 'pending') params.set('emailScope', 'pending');
+  return `/opportunities?${params.toString()}`;
+}
+
+function hasPendingOpportunityEmail(opportunity) {
+  const indicator = opportunity.emailIndicator;
+  return Boolean(indicator && indicator.newCount + indicator.waitingCount + indicator.overdueCount > 0);
+}
+
+function opportunityListFilter(user, filters) {
+  const filter = {
+    ...opportunityVisibilityFilter(user),
+    archiveScope: filters.archiveScope
+  };
+  if (filters.salespersonId) {
+    filter.salespersonId = filters.salespersonId;
+  }
+  if (filters.customerId) {
+    filter.customerId = filters.customerId;
+  }
+  if (filters.contactId) {
+    filter.contactId = filters.contactId;
+  }
+  if (filters.query) {
+    filter.searchTerm = filters.query;
+  }
+  return filter;
+}
+
+async function loadOpportunityFilterOptions(opportunityRepository, userRepository, filter) {
+  const [opportunityOptions, salespeople] = await Promise.all([
+    typeof opportunityRepository.listOpportunityFilterOptions === 'function'
+      ? opportunityRepository.listOpportunityFilterOptions(filter)
+      : { customers: [], contacts: [] },
+    typeof userRepository?.listUsersByRole === 'function'
+      ? userRepository.listUsersByRole(ROLES.SALESPERSON)
+      : []
+  ]);
+  return {
+    salespeople,
+    customers: opportunityOptions.customers || [],
+    contacts: opportunityOptions.contacts || []
+  };
+}
+
+const assignmentRoles = [
+  ROLES.QUOTATION_ENGINEER
+];
+
+const numericPayloadFields = new Set([
+  'salesManagerId',
+  'quotationEngineerId',
+  'technicalManagerId',
+  'commercialManagerId',
+  'legalReviewerId',
+  'finalDealAmount',
+  'quoteQuantity',
+  'quoteUnitPrice',
+  'totalPrice'
+]);
+
+const attachmentCategories = new Set([
+  'requirement',
+  'technical_solution',
+  'internal_quote',
+  'commercial_quote',
+  'contract',
+  'other'
+]);
+
+const requirementMaterialCategories = new Set([
+  'requirement',
+  'other'
+]);
+
+const requirementMaterialDeleteStatuses = new Set([
+  STATUSES.DRAFT,
+  STATUSES.INITIATION_REJECTED
+]);
+
+const technicalSolutionDeleteStatuses = new Set([
+  STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+  STATUSES.TECHNICAL_SOLUTION_REJECTED
+]);
+
+const commercialQuoteDeleteStatuses = new Set([
+  STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+  STATUSES.COMMERCIAL_QUOTE_REJECTED
+]);
+
+const contractDeleteStatuses = new Set([
+  STATUSES.WON_CONTRACT_PENDING,
+  STATUSES.CONTRACT_REJECTED
+]);
+
+const preSubmissionRequirementUpdateStatuses = new Set([
+  STATUSES.DRAFT,
+  STATUSES.INITIATION_REJECTED
+]);
+
+const supplementalRequirementStatuses = new Set([
+  STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+  STATUSES.TECHNICAL_SOLUTION_PENDING,
+  STATUSES.TECHNICAL_SOLUTION_REJECTED,
+  STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS,
+  STATUSES.COMMERCIAL_QUOTE_PENDING,
+  STATUSES.COMMERCIAL_QUOTE_REJECTED,
+  STATUSES.CUSTOMER_NEGOTIATION,
+  STATUSES.WON_CONTRACT_PENDING,
+  STATUSES.CONTRACT_APPROVAL_IN_PROGRESS,
+  STATUSES.CONTRACT_REJECTED
+]);
+
+const attachmentRequirementsByAction = new Map([
+  [ACTIONS.SUBMIT_COMMERCIAL_QUOTE, {
+    category: 'commercial_quote',
+    message: 'Commercial Quote attachment is required before submission'
+  }],
+  [ACTIONS.SUBMIT_CONTRACT_APPROVAL, {
+    category: 'contract',
+    message: 'Contract attachment is required before submission'
+  }]
+]);
+
+async function loadUsersByRole(userRepository) {
+  const entries = await Promise.all(assignmentRoles.map(async (role) => {
+    if (typeof userRepository?.listUsersByRole !== 'function') {
+      return [role, []];
+    }
+    return [role, await userRepository.listUsersByRole(role)];
+  }));
+  return Object.fromEntries(entries);
+}
+
+async function loadOpportunityCorrespondence(emailArchiveRepository, emailResponseRepository, opportunityId, ownerUserId) {
+  if (emailArchiveRepository?.supportsEmailArchive !== true
+      || typeof emailArchiveRepository.listThreadsByOpportunity !== 'function'
+      || typeof emailArchiveRepository.getThreadDetail !== 'function') {
+    return [];
+  }
+  const threads = await emailArchiveRepository.listThreadsByOpportunity(opportunityId);
+  return Promise.all(threads.map(async (thread) => {
+    const detail = await emailArchiveRepository.getThreadDetail(thread.id) || { ...thread, messages: [] };
+    const states = typeof emailResponseRepository?.listThreadStates === 'function'
+      ? await emailResponseRepository.listThreadStates(thread.id, ownerUserId)
+      : [];
+    const byMessageId = new Map(states.map((state) => [state.messageId, state]));
+    return {
+      ...detail,
+      messages: (detail.messages || []).map((message) => ({
+        ...message,
+        response: byMessageId.get(Number(message.id)) || null
+      }))
+    };
+  }));
+}
+
+function userSelectField(name, label, users, value = null) {
+  return { type: 'userSelect', name, label, users, value };
+}
+
+function multiUserSelectField(name, label, users, values = []) {
+  return { type: 'multiUserSelect', name, label, users, values };
+}
+
+function textareaField(name, label, required = true) {
+  return { type: 'textarea', name, label, required };
+}
+
+function inputField(name, label, inputType = 'text', required = true) {
+  return { type: 'input', name, label, inputType, required };
+}
+
+function timestampValue(value) {
+  if (!value) {
+    return null;
+  }
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) ? timestamp : null;
+}
+
+function formForAction(action, usersByRole, opportunity = {}, teamMembers = []) {
+  switch (action) {
+    case ACTIONS.SUBMIT_INITIATION:
+      return {
+        action,
+        title: 'Submit Initiation',
+        button: 'Submit to Sales Manager',
+        fields: [
+          textareaField('comment', 'Comment', false)
+        ]
+      };
+    case ACTIONS.WITHDRAW_INITIATION:
+      return {
+        action,
+        title: 'Withdraw Initiation',
+        button: 'Withdraw',
+        fields: [textareaField('reason', 'Reason')]
+      };
+    case ACTIONS.APPROVE_INITIATION:
+      return {
+        action,
+        title: 'Project Approval',
+        button: 'Approve',
+        fields: [
+          multiUserSelectField(
+            'quotationEngineerIds',
+            'Engineers',
+            usersByRole[ROLES.QUOTATION_ENGINEER] || [],
+            [
+              opportunity.quotationEngineerId,
+              ...teamMembers
+                .filter((member) => member.roleCode === ROLES.QUOTATION_ENGINEER)
+                .map((member) => member.userId)
+            ].filter(Boolean)
+          ),
+          inputField('technicalPlanSubmitDate', 'Plan to Submit', 'date')
+        ]
+      };
+    case ACTIONS.REJECT_INITIATION:
+      return {
+        action,
+        title: 'Reject Initiation',
+        button: 'Reject',
+        fields: [textareaField('reason', 'Reason')]
+      };
+    case ACTIONS.CHANGE_QUOTATION_ENGINEER:
+      return {
+        action,
+        title: 'Change Quotation Engineer',
+        button: 'Change Quotation Engineer',
+        fields: [
+          userSelectField(
+            'quotationEngineerId',
+            'Quotation Engineer',
+            usersByRole[ROLES.QUOTATION_ENGINEER] || [],
+            opportunity.quotationEngineerId
+          )
+        ]
+      };
+    case ACTIONS.SUBMIT_TECHNICAL_SOLUTION:
+      return {
+        action,
+        title: 'Submit Technical Solution',
+        button: 'Submit to Technical Manager',
+        fields: []
+      };
+    case ACTIONS.WITHDRAW_TECHNICAL_SOLUTION:
+      return {
+        action,
+        title: 'Withdraw Technical Solution',
+        button: 'Withdraw',
+        fields: [textareaField('reason', 'Reason')]
+      };
+    case ACTIONS.APPROVE_TECHNICAL_SOLUTION:
+      return {
+        action,
+        title: 'Approve Technical Solution',
+        button: 'Approve Proposal',
+        fields: []
+      };
+    case ACTIONS.REJECT_TECHNICAL_SOLUTION:
+      return {
+        action,
+        title: 'Reject Technical Solution',
+        button: 'Reject Proposal',
+        fields: [textareaField('reason', 'Reason')]
+      };
+    case ACTIONS.SUBMIT_COMMERCIAL_QUOTE:
+      return {
+        action,
+        title: 'Submit Commercial Quote',
+        button: 'Submit to Commercial Manager',
+        fields: []
+      };
+    case ACTIONS.WITHDRAW_COMMERCIAL_QUOTE:
+      return {
+        action,
+        title: 'Withdraw Commercial Quote',
+        button: 'Withdraw',
+        fields: [textareaField('reason', 'Reason')]
+      };
+    case ACTIONS.APPROVE_COMMERCIAL_QUOTE:
+      return {
+        action,
+        title: 'Approve Commercial Quote',
+        button: 'Approve Proposal',
+        fields: []
+      };
+    case ACTIONS.REJECT_COMMERCIAL_QUOTE:
+      return {
+        action,
+        title: 'Reject Commercial Quote',
+        button: 'Reject Proposal',
+        fields: [textareaField('reason', 'Reason')]
+      };
+    case ACTIONS.MARK_LOST:
+      return {
+        action,
+        title: 'Record Lost Result',
+        button: 'Archive as Lost',
+        fields: [textareaField('lostReason', 'Lost Reason')]
+      };
+    case ACTIONS.MARK_WON:
+      return {
+        action,
+        title: 'Record Won Result',
+        button: 'Mark Won',
+        fields: [
+          textareaField('wonDescription', 'Won Description'),
+          inputField('finalDealAmount', 'Final Deal Amount', 'number')
+        ]
+      };
+    case ACTIONS.SUBMIT_CONTRACT_APPROVAL:
+      return {
+        action,
+        title: 'Submit Contract Approval',
+        button: 'Submit Contract Approval',
+        fields: []
+      };
+    case ACTIONS.WITHDRAW_CONTRACT_APPROVAL:
+      return {
+        action,
+        title: 'Withdraw Contract Approval',
+        button: 'Withdraw',
+        fields: [textareaField('reason', 'Reason')]
+      };
+    case ACTIONS.APPROVE_CONTRACT:
+      return {
+        action,
+        title: 'Approve Contract',
+        button: 'Approve Contract',
+        fields: [textareaField('comment', 'Comment', false)]
+      };
+    case ACTIONS.REJECT_CONTRACT:
+      return {
+        action,
+        title: 'Reject Contract',
+        button: 'Reject Contract',
+        fields: [textareaField('reason', 'Reason')]
+      };
+    default:
+      return null;
+  }
+}
+
+function latestRejectedContractApprovalTime(contractApprovals) {
+  return contractApprovals
+    .filter((approval) => approval.status === 'rejected')
+    .map((approval) => timestampValue(approval.completedAt) || timestampValue(approval.actedAt) || timestampValue(approval.submittedAt))
+    .filter((timestamp) => timestamp !== null)
+    .sort((left, right) => right - left)[0] || null;
+}
+
+function hasContractAttachmentAfter(attachments, rejectedAt) {
+  return attachments.some((attachment) => {
+    if (attachment.category !== 'contract') {
+      return false;
+    }
+    const uploadedAt = timestampValue(attachment.uploadedAt);
+    return rejectedAt !== null && uploadedAt !== null && uploadedAt > rejectedAt;
+  });
+}
+
+function missingMaterialsForAction(action, attachments, opportunity, contractApprovals, quotationPackages = [], quotationPackagesEnabled = false) {
+  if (quotationPackagesEnabled
+      && [ACTIONS.MARK_WON, ACTIONS.SUBMIT_CONTRACT_APPROVAL].includes(action)
+      && !quotationPackages.some((item) => item.status === 'accepted')) {
+    return ['An accepted quotation package is required before recording a win or submitting a contract'];
+  }
+  const requirement = attachmentRequirementsByAction.get(action);
+  if (!requirement) {
+    return [];
+  }
+  const hasAttachment = attachments.some((attachment) => attachment.category === requirement.category);
+  if (!hasAttachment) {
+    return [requirement.message];
+  }
+  if (action === ACTIONS.SUBMIT_CONTRACT_APPROVAL) {
+    const rejectedAt = latestRejectedContractApprovalTime(contractApprovals);
+    if (rejectedAt !== null && !hasContractAttachmentAfter(attachments, rejectedAt)) {
+      return ['Revised Contract attachment is required after rejection'];
+    }
+  }
+  return [];
+}
+
+function activeContractApproval(contractApprovals) {
+  return contractApprovals.find((approval) => approval.status === 'pending' && approval.stepAction === 'pending') || null;
+}
+
+function opportunityWithActiveContractReviewer(opportunity, contractApprovals) {
+  const activeApproval = activeContractApproval(contractApprovals);
+  if (!activeApproval) {
+    return opportunity;
+  }
+  return {
+    ...opportunity,
+    legalReviewerId: activeApproval.reviewerUserId
+  };
+}
+
+function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = [], language = 'en', quotationPackages = [], quotationPackagesEnabled = false, teamMembers = []) {
+  if (opportunity.archivedAt) {
+    return [];
+  }
+  const workflowOpportunity = opportunityWithActiveContractReviewer(opportunity, contractApprovals);
+  const workflowButtonLabel = createWorkflowButtonLabeler(language);
+  const workflowTitleLabel = createWorkflowTitleLabeler(language);
+  const workflowFieldLabel = createWorkflowFieldLabeler(language);
+  const workflowMessageLabel = createMessageLabeler(language);
+  const allowedActions = getAllowedActions({
+    userId: user.id,
+    roles: user.roles,
+    opportunity: workflowOpportunity
+  });
+  return allowedActions
+    .map((action) => formForAction(action, usersByRole, opportunity, teamMembers))
+    .filter(Boolean)
+    .map((form) => {
+      const missingRequirements = missingMaterialsForAction(form.action, attachments, opportunity, contractApprovals, quotationPackages, quotationPackagesEnabled)
+        .map((requirement) => workflowMessageLabel(requirement));
+      return {
+        ...form,
+        title: workflowTitleLabel(form.action, form.title),
+        button: workflowButtonLabel(form.action, form.button),
+        fields: form.fields.map((field) => ({
+          ...field,
+          label: workflowFieldLabel(field.name, field.label)
+        })),
+        missingRequirements,
+        blocked: missingRequirements.length > 0
+      };
+    });
+}
+
+function parseWorkflowPayload(body) {
+  const payload = {};
+  const rawEngineerIds = Array.isArray(body.quotationEngineerIds)
+    ? body.quotationEngineerIds
+    : String(body.quotationEngineerIds || '').split(',');
+  const quotationEngineerIds = [...new Set(rawEngineerIds
+    .map((value) => Number(value))
+    .filter((value) => Number.isSafeInteger(value) && value > 0))];
+  if (quotationEngineerIds.length > 0) {
+    const preferredLeadId = Number(body.quotationEngineerLeadId);
+    payload.quotationEngineerIds = quotationEngineerIds;
+    payload.quotationEngineerId = quotationEngineerIds.includes(preferredLeadId)
+      ? preferredLeadId
+      : quotationEngineerIds[0];
+  }
+  for (const [key, value] of Object.entries(body)) {
+    if (['action', 'quotationEngineerIds', 'quotationEngineerLeadId'].includes(key)
+        || value === undefined || value === null || value === '') {
+      continue;
+    }
+    payload[key] = numericPayloadFields.has(key) ? Number(value) : String(value).trim();
+  }
+  return payload;
+}
+
+async function loadOpportunityActivity({ opportunityId, workflowEventRepository, contractApprovalRepository }) {
+  const [timelineEvents, contractApprovals] = await Promise.all([
+    typeof workflowEventRepository?.listByOpportunity === 'function'
+      ? workflowEventRepository.listByOpportunity(opportunityId)
+      : [],
+    typeof contractApprovalRepository?.listByOpportunity === 'function'
+      ? contractApprovalRepository.listByOpportunity(opportunityId)
+      : []
+  ]);
+  return { timelineEvents, contractApprovals };
+}
+
+async function canViewOpportunityWithContractApproval(user, opportunity, contractApprovalRepository) {
+  if (canViewOpportunity(user, opportunity)) {
+    return true;
+  }
+  if (typeof contractApprovalRepository?.listByOpportunity !== 'function') {
+    return false;
+  }
+  const approvals = await contractApprovalRepository.listByOpportunity(opportunity.id);
+  return approvals.some((approval) => approval.reviewerUserId === user.id);
+}
+
+async function loadOpportunityOrSend({
+  req,
+  res,
+  opportunityRepository,
+  contractApprovalRepository,
+  opportunityResponsibilityRepository
+}) {
+  const opportunity = await opportunityRepository.getOpportunityDetail(req.params.id);
+  if (!opportunity) {
+    res.status(404).send('Opportunity not found');
+    return null;
+  }
+  let opportunityForAccess = opportunity;
+  if (typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function') {
+    opportunityForAccess = {
+      ...opportunity,
+      teamMembers: await opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
+    };
+  }
+  if (!await canViewOpportunityWithContractApproval(req.currentUser, opportunityForAccess, contractApprovalRepository)) {
+    res.status(404).send('Opportunity not found');
+    return null;
+  }
+  return opportunityForAccess;
+}
+
+function currentUploadSubdir() {
+  const now = new Date();
+  return path.join(String(now.getUTCFullYear()), String(now.getUTCMonth() + 1).padStart(2, '0'));
+}
+
+function createUploadMiddleware(uploadDir, maxUploadMb) {
+  const resolvedUploadDir = path.resolve(uploadDir);
+  const storage = multer.diskStorage({
+    destination(req, file, callback) {
+      const relativeDir = currentUploadSubdir();
+      const destination = path.join(resolvedUploadDir, relativeDir);
+      mkdirSync(destination, { recursive: true });
+      callback(null, destination);
+    },
+    filename(req, file, callback) {
+      const extension = path.extname(file.originalname || '');
+      callback(null, `${randomUUID()}${extension}`);
+    }
+  });
+  return multer({
+    storage,
+    limits: { fileSize: maxUploadMb * 1024 * 1024 }
+  });
+}
+
+function uploadAttachmentOrSendLimitError(upload, maxUploadMb) {
+  return (req, res, next) => {
+    upload.single('attachment')(req, res, (error) => {
+      if (error instanceof multer.MulterError && error.code === 'LIMIT_FILE_SIZE') {
+        const message = req.language === 'zh'
+          ? `\u6587\u4ef6\u8d85\u8fc7 ${maxUploadMb} MB \u4e0a\u4f20\u9650\u5236`
+          : `File exceeds the ${maxUploadMb} MB upload limit`;
+        res.status(413).send(message);
+        return;
+      }
+      next(error);
+    });
+  };
+}
+
+function normalizeAttachmentCategory(category) {
+  return attachmentCategories.has(category) ? category : 'other';
+}
+
+function canDeleteAttachment(user, opportunity, attachment) {
+  if (!canUploadAttachment(user, opportunity, attachment.category)) {
+    return false;
+  }
+  if (requirementMaterialCategories.has(attachment.category)) {
+    return requirementMaterialDeleteStatuses.has(opportunity.status);
+  }
+  if (attachment.category === 'technical_solution') {
+    if (!technicalSolutionDeleteStatuses.has(opportunity.status)) {
+      return false;
+    }
+    return !isSupportingEngineer(user, opportunity)
+      || Number(attachment.uploadedBy) === Number(user.id);
+  }
+  if (attachment.category === 'commercial_quote') {
+    return commercialQuoteDeleteStatuses.has(opportunity.status);
+  }
+  if (attachment.category === 'internal_quote') {
+    return commercialQuoteDeleteStatuses.has(opportunity.status);
+  }
+  if (attachment.category === 'contract') {
+    return contractDeleteStatuses.has(opportunity.status);
+  }
+  return false;
+}
+
+function canCreateRequirementUpdate(user, opportunity) {
+  if (opportunity.archivedAt) {
+    return false;
+  }
+  const canAdd = hasRole(user, ROLES.ADMINISTRATOR) || Number(opportunity.salespersonId) === Number(user.id);
+  if (!canAdd) {
+    return false;
+  }
+  if (preSubmissionRequirementUpdateStatuses.has(opportunity.status)) {
+    return true;
+  }
+  return supplementalRequirementStatuses.has(opportunity.status) && Boolean(opportunity.quotationEngineerId);
+}
+
+function canUploadAttachment(user, opportunity, category) {
+  if (opportunity.archivedAt) {
+    return false;
+  }
+  if (hasRole(user, ROLES.ADMINISTRATOR)) {
+    return true;
+  }
+  const isSalesOwner = hasRole(user, ROLES.SALESPERSON)
+    && Number(opportunity.salespersonId) === Number(user.id);
+  const isQuotationEngineer = hasRole(user, ROLES.QUOTATION_ENGINEER)
+    && Number(opportunity.quotationEngineerId) === Number(user.id);
+  const isSupportingTechnicalEngineer = isSupportingEngineer(user, opportunity);
+
+  switch (category) {
+    case 'requirement':
+    case 'other':
+      return isSalesOwner;
+    case 'technical_solution':
+      return technicalSolutionDeleteStatuses.has(opportunity.status)
+        && (isQuotationEngineer || isSupportingTechnicalEngineer);
+    case 'commercial_quote':
+      return commercialQuoteDeleteStatuses.has(opportunity.status) && isQuotationEngineer;
+    case 'internal_quote':
+      return commercialQuoteDeleteStatuses.has(opportunity.status)
+        && (isQuotationEngineer || isSupportingTechnicalEngineer);
+    case 'contract':
+      return contractDeleteStatuses.has(opportunity.status) && isSalesOwner;
+    default:
+      return false;
+  }
+}
+
+function uploadPermissionsFor(user, opportunity) {
+  return Object.fromEntries([...attachmentCategories].map((category) => [
+    category,
+    canUploadAttachment(user, opportunity, category)
+  ]));
+}
+
+function requiredText(value) {
+  return String(value || '').trim();
+}
+
+function normalizedRequirementText(value) {
+  return requiredText(value).replace(/\s+/g, ' ').toLowerCase();
+}
+
+function requiredPositiveInteger(value) {
+  const number = Number(value);
+  return Number.isInteger(number) && number > 0 ? number : null;
+}
+
+function requiredIsoDate(value) {
+  const normalized = requiredText(value);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+    return null;
+  }
+  const date = new Date(`${normalized}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) || date.toISOString().slice(0, 10) !== normalized
+    ? null
+    : normalized;
+}
+
+function optionalIsoDate(value) {
+  const normalized = requiredText(value);
+  return normalized ? requiredIsoDate(normalized) : null;
+}
+
+function collaborationPlanKind(value) {
+  return ['technical_solution', 'internal_quote'].includes(value) ? value : null;
+}
+
+function canSubmitCollaborationWorkPackage(user, opportunity, workPackage) {
+  return canManageOpportunityEngineeringTeam(user, opportunity)
+    || (canContributeOpportunityEngineering(user, opportunity)
+      && Number(workPackage.assigneeUserId) === Number(user.id));
+}
+
+function canReviewCollaborationWorkPackage(user, opportunity, workPackage) {
+  if (canManageOpportunityEngineeringTeam(user, opportunity)) return true;
+  const isProjectEngineer = hasRole(user, ROLES.QUOTATION_ENGINEER)
+    && Number(opportunity.quotationEngineerId) === Number(user.id);
+  if (isProjectEngineer) return true;
+  return workPackage.planKind === 'technical_solution'
+    ? Number(opportunity.technicalManagerId) === Number(user.id)
+    : Number(opportunity.commercialManagerId) === Number(user.id);
+}
+
+async function listResponsibilityUsers(userRepository) {
+  if (typeof userRepository?.listUsersWithRoles !== 'function') {
+    return [];
+  }
+  const users = await userRepository.listUsersWithRoles();
+  return users.filter((user) => user.isActive);
+}
+
+async function findActiveResponsibilityUser(userRepository, userId) {
+  const users = await listResponsibilityUsers(userRepository);
+  return users.find((user) => Number(user.id) === Number(userId)) || null;
+}
+
+function userHasRole(user, roleCode) {
+  return Array.isArray(user?.roles) && user.roles.includes(roleCode);
+}
+
+function redirectToOpportunity(opportunityId) {
+  return `/opportunities/${opportunityId}`;
+}
+
+export function opportunityRoutes({
+  customerRepository,
+  contactRepository,
+  attachmentRepository,
+  emailArchiveRepository,
+  emailResponseRepository = null,
+  emailArchiveTransaction = null,
+  sharedAddress = 'sales@sunkaier.com',
+  emailCenterEnabled = false,
+  commercialQuoteRepository,
+  technicalSolutionRepository,
+  opportunityTechnicalDraftRepository,
+  quotationPackageRepository,
+  technicalDocumentService,
+  requirementUpdateRepository,
+  opportunityMaterialVersionRepository,
+  contractApprovalRepository,
+  opportunityResponsibilityRepository,
+  opportunityCollaborationRepository,
+  approvalSettingRepository,
+  opportunityRepository,
+  developmentBusinessRepository = null,
+  userRepository,
+  workflowEventRepository,
+  todoRepository,
+  workflowTransaction,
+  uploadDir = './var/uploads',
+  maxUploadMb = 3072,
+  technicalAdminSelfApprovalTest = {}
+}) {
+  const router = Router();
+  const upload = createUploadMiddleware(uploadDir, maxUploadMb);
+  const uploadAttachment = uploadAttachmentOrSendLimitError(upload, maxUploadMb);
+
+  router.use('/opportunities', requireLogin);
+  router.use('/api/opportunities', requireLogin);
+
+  router.get('/opportunities', async (req, res, next) => {
+    try {
+      const filters = normalizeOpportunityListQuery(req.query);
+      const emailIndicatorsAvailable = emailCenterEnabled
+        && typeof emailResponseRepository?.listOpportunityEmailIndicators === 'function';
+      if (!emailIndicatorsAvailable) filters.emailScope = 'all';
+      const baseFilter = opportunityListFilter(req.currentUser, {
+        archiveScope: filters.archiveScope
+      });
+      const [opportunities, filterOptions] = await Promise.all([
+        opportunityRepository.listOpportunities(opportunityListFilter(req.currentUser, filters)),
+        loadOpportunityFilterOptions(opportunityRepository, userRepository, baseFilter)
+      ]);
+      const indicators = emailIndicatorsAvailable && opportunities.length
+        ? await emailResponseRepository.listOpportunityEmailIndicators(opportunities.map((opportunity) => opportunity.id))
+        : [];
+      const indicatorByOpportunityId = new Map(indicators.map((indicator) => [indicator.opportunityId, indicator]));
+      const opportunitiesWithEmail = opportunities.map((opportunity) => ({
+        ...opportunity,
+        emailIndicator: indicatorByOpportunityId.get(Number(opportunity.id)) || null
+      }));
+      const pendingOpportunityCount = opportunitiesWithEmail.filter(hasPendingOpportunityEmail).length;
+      res.render('opportunities/index', {
+        opportunities: filters.emailScope === 'pending'
+          ? opportunitiesWithEmail.filter(hasPendingOpportunityEmail)
+          : opportunitiesWithEmail,
+        archiveScope: filters.archiveScope,
+        filters,
+        emailIndicatorsAvailable,
+        pendingOpportunityCount,
+        opportunityEmailScopeHrefs: {
+          all: opportunityEmailScopeHref(filters, 'all'),
+          pending: opportunityEmailScopeHref(filters, 'pending')
+        },
+        salespeople: filterOptions.salespeople,
+        customers: filterOptions.customers,
+        contacts: filterOptions.contacts
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.get('/opportunities/new', async (req, res, next) => {
+    try {
+      if (hasRole(req.currentUser, ROLES.SALESPERSON)) {
+        res.redirect('/lead-submissions/new');
+        return;
+      }
+      if (!canCreateOpportunityManually(req.currentUser)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const [customers, contacts, salespeople] = await Promise.all([
+        customerRepository.listCustomers({}),
+        contactRepository.listContacts({}),
+        userRepository.listUsersByRole(ROLES.SALESPERSON)
+      ]);
+      const emailThreadId = Number(req.query.emailThreadId || 0);
+      const emailContext = Number.isInteger(emailThreadId) && emailThreadId > 0
+        ? await getEmailThreadIntakeContext({
+            emailArchiveRepository,
+            opportunityRepository,
+            opportunityResponsibilityRepository,
+            sharedAddress
+          }, req.currentUser, emailThreadId)
+        : null;
+      const matchedCustomer = emailContext?.draft.customerId
+        ? customers.find((customer) => Number(customer.id) === Number(emailContext.draft.customerId))
+        : null;
+      const opportunity = emailContext
+        ? {
+            title: emailContext.draft.title,
+            requirement: emailContext.draft.requirement,
+            customerId: matchedCustomer?.id || null,
+            primaryContactId: matchedCustomer ? emailContext.draft.primaryContactId : null,
+            productInterest: emailContext.draft.productInterest,
+            productCategoryCode: emailContext.draft.productCategoryCode,
+            salespersonId: emailContext.draft.salespersonId || salespeople[0]?.id || null
+          }
+        : { salespersonId: salespeople[0]?.id || null };
+      res.render('opportunities/form', {
+        pageTitle: res.locals.t('newOpportunity'),
+        submitLabel: res.locals.t('newOpportunity'),
+        allowInlineCreate: false,
+        allowSalesOwnerChoice: true,
+        directEntryNotice: res.locals.t('directOpportunityNotice'),
+        opportunity,
+        emailThreadId: emailContext?.thread.id || null,
+        customers,
+        contacts,
+        salespeople,
+        countryOptions: CUSTOMER_COUNTRIES,
+        regionOptions: CUSTOMER_REGIONS,
+        action: '/opportunities'
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/customers', (req, res) => {
+    res.status(403).send(res.locals.t('createInquiryFirst'));
+  });
+
+  router.post('/opportunities/contacts', (req, res) => {
+    res.status(403).send(res.locals.t('createInquiryFirst'));
+  });
+
+  router.post('/opportunities', async (req, res, next) => {
+    try {
+      if (!canCreateOpportunityManually(req.currentUser)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const emailThreadId = Number(req.body.emailThreadId || 0);
+      const opportunity = Number.isInteger(emailThreadId) && emailThreadId > 0
+        ? (await createOpportunityFromEmailThread({
+            customerRepository,
+            contactRepository,
+            emailArchiveRepository,
+            opportunityRepository,
+            opportunityResponsibilityRepository,
+            userRepository,
+            emailArchiveTransaction,
+            sharedAddress
+          }, req.currentUser, emailThreadId, req.body)).opportunity
+        : await createOpportunityDraft({
+            customerRepository,
+            contactRepository,
+            opportunityRepository,
+            userRepository
+          }, req.currentUser, req.body, {
+            manualEntry: true,
+            salespersonId: req.body.salespersonId
+          });
+      res.redirect(`/opportunities/${opportunity.id}`);
+    } catch (error) {
+      if (error instanceof EmailArchiveError) {
+        res.status(error.statusCode || 400).send(error.message);
+        return;
+      }
+      if (['Forbidden', 'Customer not found', 'Contact not found', 'Contact does not belong to customer', 'Opportunity title is required', 'Requirement is required', 'Invalid product category'].includes(error.message)) {
+        res.status(error.message === 'Forbidden' ? 403 : 400).send(error.message);
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.get('/opportunities/:id/edit', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canEditOpportunity(req.currentUser, opportunity)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const canViewMaster = canViewOpportunityCustomerMaster(req.currentUser, opportunity);
+      const referenceOptions = canViewMaster
+        ? await Promise.all([
+            customerRepository.listCustomers(hasRole(req.currentUser, ROLES.ADMINISTRATOR)
+              ? {}
+              : { coordinatorUserId: req.currentUser.id }),
+            contactRepository.listContacts(hasRole(req.currentUser, ROLES.ADMINISTRATOR)
+              ? {}
+              : { coordinatorUserId: req.currentUser.id })
+          ]).then(([customers, contacts]) => ({ customers, contacts }))
+        : minimumOpportunityReferenceOptions(opportunity);
+      res.render('opportunities/form', {
+        pageTitle: 'Edit Opportunity',
+        submitLabel: 'Save changes',
+        isEditMode: true,
+        allowInlineCreate: false,
+        opportunity,
+        customers: referenceOptions.customers,
+        contacts: referenceOptions.contacts,
+        countryOptions: CUSTOMER_COUNTRIES,
+        regionOptions: CUSTOMER_REGIONS,
+        action: `/opportunities/${opportunity.id}`
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canEditOpportunity(req.currentUser, opportunity)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const updated = await updateOpportunity({
+        customerRepository,
+        contactRepository,
+        opportunityRepository
+      }, req.currentUser, opportunity, req.body);
+      res.redirect(`/opportunities/${updated?.id || opportunity.id}`);
+    } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Invalid product category') {
+        res.status(400).send(error.message);
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/archive', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      await archiveOpportunity(opportunityRepository, req.currentUser, opportunity, req.body.reason);
+      res.redirect('/opportunities');
+    } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Opportunity not found or already archived') {
+        res.status(404).send('Opportunity not found');
+        return;
+      }
+      if (error.message === 'Archive reason is required') {
+        res.status(400).send(error.message);
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/reopen', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      await reopenOpportunity(opportunityRepository, req.currentUser, opportunity, req.body.reason);
+      res.redirect(`/opportunities/${opportunity.id}`);
+    } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Opportunity not found or not archived') {
+        res.status(404).send('Opportunity not found');
+        return;
+      }
+      if (error.message === 'Reopen reason is required') {
+        res.status(400).send(error.message);
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/delete', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      await deleteOpportunity(opportunityRepository, req.currentUser, opportunity, {
+        confirmation: req.body.confirmation,
+        reason: req.body.reason
+      });
+      res.redirect('/opportunities');
+    } catch (error) {
+      if (error.message === 'Forbidden') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error.message === 'Opportunity not found or already deleted') {
+        res.status(404).send('Opportunity not found');
+        return;
+      }
+      if (['Delete reason is required', 'Type DELETE to confirm opportunity deletion'].includes(error.message)) {
+        res.status(400).send(error.message);
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.get('/opportunities/:id', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      const [
+        usersByRole,
+        activity,
+        attachments,
+        requirementUpdates,
+        materialVersions,
+        teamMembers,
+        quotationPackages,
+        correspondenceThreads,
+        technicalDrafts,
+        technicalReviewAttachments,
+        collaborationWorkPackages,
+        developmentLinks
+      ] = await Promise.all([
+        loadUsersByRole(userRepository),
+        loadOpportunityActivity({
+          opportunityId: opportunity.id,
+          workflowEventRepository,
+          contractApprovalRepository
+        }),
+        typeof attachmentRepository?.listByOpportunity === 'function'
+          ? attachmentRepository.listByOpportunity(opportunity.id)
+          : [],
+        typeof requirementUpdateRepository?.listByOpportunity === 'function'
+          ? requirementUpdateRepository.listByOpportunity(opportunity.id)
+          : [],
+        typeof opportunityMaterialVersionRepository?.listByOpportunity === 'function'
+          ? opportunityMaterialVersionRepository.listByOpportunity(opportunity.id)
+          : [],
+        Array.isArray(opportunity.teamMembers)
+          ? opportunity.teamMembers
+          : typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
+          ? opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
+          : [],
+        quotationPackageRepository?.supportsQuotationPackages === true
+          ? quotationPackageRepository.listByOpportunity(opportunity.id)
+          : [],
+        emailCenterEnabled ? loadOpportunityCorrespondence(
+          emailArchiveRepository, emailResponseRepository, opportunity.id, opportunity.salespersonId
+        ) : [],
+        opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true
+          && typeof opportunityTechnicalDraftRepository.listByOpportunity === 'function'
+          ? opportunityTechnicalDraftRepository.listByOpportunity(opportunity.id)
+          : [],
+        opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true
+          && typeof opportunityTechnicalDraftRepository.listReviewAttachmentsByOpportunity === 'function'
+          ? opportunityTechnicalDraftRepository.listReviewAttachmentsByOpportunity(opportunity.id)
+          : [],
+        opportunityCollaborationRepository?.supportsWorkPackages === true
+          && typeof opportunityCollaborationRepository.listByOpportunity === 'function'
+          ? opportunityCollaborationRepository.listByOpportunity(opportunity.id)
+          : [],
+        developmentBusinessRepository
+          ? listOpportunityDevelopmentLinks(developmentBusinessRepository,
+            req.currentUser, opportunity.id) : []
+      ]);
+      const opportunityWithTeam = { ...opportunity, teamMembers };
+      const activeTechnicalDraft = technicalDrafts.find((draft) => ['draft', 'ready', 'pending'].includes(draft.status)) || null;
+      const activeTechnicalDraftFiles = Array.isArray(activeTechnicalDraft?.uploadedFiles) && activeTechnicalDraft.uploadedFiles.length
+        ? activeTechnicalDraft.uploadedFiles
+        : (activeTechnicalDraft?.uploadedFile ? [activeTechnicalDraft.uploadedFile] : []);
+      const isTechnicalPreparationStage = ['technical_solution_in_progress', 'technical_solution_rejected'].includes(opportunity.status);
+      const workflowForms = buildWorkflowForms(
+        req.currentUser,
+        opportunity,
+        usersByRole,
+        attachments,
+        activity.contractApprovals,
+        req.language,
+        quotationPackages,
+        quotationPackageRepository?.supportsQuotationPackages === true,
+        teamMembers
+      );
+      res.render('opportunities/detail', {
+        opportunity,
+        canViewCustomerMaster: canViewOpportunityCustomerMaster(req.currentUser, opportunity),
+        canViewContactMaster: canViewOpportunityCustomerMaster(req.currentUser, opportunity),
+        selectedEmailMessageId: normalizeOpportunityListId(req.query.emailMessageId),
+        workflowForms,
+        timelineEvents: activity.timelineEvents,
+        attachments,
+        requirementUpdates,
+        correspondenceThreads,
+        canAcknowledgeCustomerEmail: Number(opportunity.salespersonId) === Number(req.currentUser.id),
+        formatPlainEmailForReading,
+        materialVersions,
+        teamMembers,
+        technicalFileLimitMb: Math.min(maxUploadMb, 25),
+        technicalDrafts,
+        technicalReviewAttachments,
+        collaborationWorkPackages,
+        collaborationWorkPackagesEnabled: opportunityCollaborationRepository?.supportsWorkPackages === true,
+        canManageCollaborationWorkPackages: canManageOpportunityEngineeringTeam(req.currentUser, opportunityWithTeam),
+        canContributeCollaborationWorkPackages: canContributeOpportunityEngineering(req.currentUser, opportunityWithTeam),
+        developmentLinks,
+        activeTechnicalDraft,
+        canCreateUploadedTechnicalDraft: isTechnicalPreparationStage
+          && !activeTechnicalDraft
+          && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
+        canManageUploadedTechnicalDraft: isTechnicalPreparationStage
+          && activeTechnicalDraft?.sourceKind === 'uploaded_file'
+          && ['draft', 'ready'].includes(activeTechnicalDraft.status)
+          && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
+        canSubmitUploadedTechnicalDraft: isTechnicalPreparationStage
+          && activeTechnicalDraft?.sourceKind === 'uploaded_file'
+          && activeTechnicalDraft.status === 'ready'
+          && activeTechnicalDraftFiles.some((file) => !file.materialVersionId)
+          && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
+        canWithdrawTechnicalDraft: activeTechnicalDraft?.status === 'pending'
+          && opportunity.status === 'technical_solution_pending'
+          && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
+        canReviewTechnicalDraft: activeTechnicalDraft
+          ? canReviewOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam, activeTechnicalDraft, technicalAdminSelfApprovalTest)
+          : false,
+        isTestSelfApproval: isTechnicalAdminSelfApprovalTest(req.currentUser, activeTechnicalDraft, technicalAdminSelfApprovalTest),
+        versionedTechnicalDraftsEnabled: opportunityTechnicalDraftRepository?.supportsVersionedTechnicalApproval === true,
+        currentUserId: req.currentUser.id,
+        currentUserIsSupportingEngineer: isSupportingEngineer(req.currentUser, {
+          ...opportunity,
+          teamMembers
+        }),
+        canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity),
+        requirementSaveState: req.query.requirement === 'duplicate' ? 'duplicate' : '',
+        canUploadAttachments: uploadPermissionsFor(req.currentUser, opportunity),
+        canEditOpportunity: canEditOpportunity(req.currentUser, opportunity),
+        canReviewProductCategories: (
+          hasRole(req.currentUser, ROLES.ADMINISTRATOR)
+          || hasRole(req.currentUser, ROLES.SALES_MANAGER)
+          || (!opportunity.archivedAt
+            && Number(opportunity.salespersonId) === Number(req.currentUser.id))
+        ),
+        canArchiveOpportunity: canArchiveOpportunity(req.currentUser, opportunity),
+        canDeleteOpportunity: canDeleteOpportunity(req.currentUser),
+        canReopenOpportunity: canReopenOpportunity(req.currentUser, opportunity)
+      });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/team-members', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canManageOpportunityEngineeringTeam(req.currentUser, opportunity)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const userId = requiredPositiveInteger(req.body.userId);
+      const assignmentScope = requiredText(req.body.assignmentScope);
+      const taskDescription = requiredText(req.body.taskDescription);
+      const dueDate = requiredIsoDate(req.body.dueDate);
+      if (!userId || !assignmentScope || !taskDescription || !dueDate) {
+        res.status(400).send('Supporting Engineer, section, task and due date are required');
+        return;
+      }
+      if (Number(opportunity.quotationEngineerId) === Number(userId)) {
+        res.status(400).send('Project Lead Engineer cannot also be a Supporting Engineer');
+        return;
+      }
+      const teamUser = await findActiveResponsibilityUser(userRepository, userId);
+      if (!teamUser || !userHasRole(teamUser, ROLES.QUOTATION_ENGINEER)) {
+        res.status(400).send('Supporting Engineer must be an active Quotation Engineer');
+        return;
+      }
+      await opportunityResponsibilityRepository.addTeamMember({
+        opportunityId: opportunity.id,
+        userId,
+        roleCode: ROLES.QUOTATION_ENGINEER,
+        permissionLevel: 'edit',
+        addedBy: req.currentUser.id,
+        assignmentScope,
+        taskDescription,
+        dueDate,
+        canSendExternalEmail: req.body.canSendExternalEmail === 'on'
+      });
+      res.redirect(redirectToOpportunity(opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/team-members/:memberId/remove', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canManageOpportunityEngineeringTeam(req.currentUser, opportunity)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const memberId = requiredPositiveInteger(req.params.memberId);
+      if (!memberId) {
+        res.status(400).send('Supporting Engineer is required');
+        return;
+      }
+      const activeMembers = typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
+        ? await opportunityResponsibilityRepository.listTeamMembersByOpportunity(opportunity.id)
+        : [];
+      const supportingEngineer = activeMembers.find((member) => (
+        Number(member.id) === Number(memberId)
+        && member.roleCode === ROLES.QUOTATION_ENGINEER
+        && member.isActive !== false
+      ));
+      if (!supportingEngineer) {
+        res.status(404).send('Supporting Engineer not found');
+        return;
+      }
+      await opportunityResponsibilityRepository.removeTeamMember({
+        opportunityId: opportunity.id,
+        memberId,
+        removedBy: req.currentUser.id
+      });
+      res.redirect(redirectToOpportunity(opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/engineering-contributions', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canContributeOpportunityEngineering(req.currentUser, opportunity)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const contributionSummary = requiredText(req.body.contributionSummary);
+      if (!contributionSummary) {
+        res.status(400).send('Contribution summary is required');
+        return;
+      }
+      await opportunityResponsibilityRepository.createEngineeringContribution({
+        opportunityId: opportunity.id,
+        contributorUserId: req.currentUser.id,
+        contributionSummary,
+        createdBy: req.currentUser.id
+      });
+      res.redirect(redirectToOpportunity(opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/owner-transfer', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canManageOpportunityResponsibility(req.currentUser, opportunity)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const toOwnerUserId = requiredPositiveInteger(req.body.toOwnerUserId);
+      const reason = requiredText(req.body.reason);
+      if (!toOwnerUserId || !reason) {
+        res.status(400).send('New owner and reason are required');
+        return;
+      }
+      if (Number(opportunity.salespersonId) === Number(toOwnerUserId)) {
+        res.status(400).send('New owner must be different from current owner');
+        return;
+      }
+      const newOwner = await findActiveResponsibilityUser(userRepository, toOwnerUserId);
+      if (!newOwner || !userHasRole(newOwner, ROLES.SALESPERSON)) {
+        res.status(400).send('New owner must be an active Sales user');
+        return;
+      }
+      await opportunityResponsibilityRepository.transferOwner({
+        opportunityId: opportunity.id,
+        fromOwnerUserId: opportunity.salespersonId,
+        toOwnerUserId,
+        changedBy: req.currentUser.id,
+        reason,
+        keepPreviousOwnerAsMember: req.body.keepPreviousOwnerAsMember === 'on'
+      });
+      res.redirect(redirectToOpportunity(opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/requirement-updates', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      if (!canCreateRequirementUpdate(req.currentUser, opportunity)) {
+        res.status(403).send('Supplemental requirement can only be added after initiation approval');
+        return;
+      }
+      const requirementText = requiredText(req.body.requirementText);
+      const reason = requiredText(req.body.reason);
+      if (!requirementText || !reason) {
+        res.status(400).send('Requirement update and reason are required');
+        return;
+      }
+      const existingRequirementUpdates = typeof requirementUpdateRepository?.listByOpportunity === 'function'
+        ? await requirementUpdateRepository.listByOpportunity(opportunity.id)
+        : [];
+      const duplicateRequirement = [
+        opportunity.requirement,
+        ...existingRequirementUpdates.map((update) => update.requirementText)
+      ].some((existingText) => normalizedRequirementText(existingText) === normalizedRequirementText(requirementText));
+      if (duplicateRequirement) {
+        res.redirect(`/opportunities/${opportunity.id}?requirement=duplicate#requirement-materials`);
+        return;
+      }
+      if (preSubmissionRequirementUpdateStatuses.has(opportunity.status)) {
+        await requirementUpdateRepository.create({
+          opportunityId: opportunity.id,
+          requirementText,
+          reason,
+          createdBy: req.currentUser.id
+        });
+      } else {
+        await createSupplementalRequirementUpdate({
+          actor: req.currentUser,
+          opportunity,
+          input: { requirementText, reason },
+          repositories: {
+            requirementUpdateRepository,
+            opportunityRepository,
+            workflowEventRepository,
+            todoRepository
+          }
+        });
+      }
+      res.redirect(`/opportunities/${opportunity.id}`);
+    } catch (error) {
+      if (error instanceof WorkflowValidationError) {
+        res.status(error.statusCode).send(res.locals.messageLabel(error.message));
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/collaboration-work-packages', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req, res, opportunityRepository, contractApprovalRepository, opportunityResponsibilityRepository
+      });
+      if (!opportunity) return;
+      if (!canManageOpportunityEngineeringTeam(req.currentUser, opportunity)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const planKind = collaborationPlanKind(req.body.planKind);
+      const title = requiredText(req.body.title);
+      const assigneeUserId = requiredPositiveInteger(req.body.assigneeUserId);
+      const plannedStartDate = optionalIsoDate(req.body.plannedStartDate);
+      const plannedSubmitDate = optionalIsoDate(req.body.plannedSubmitDate);
+      const eligibleAssigneeIds = new Set([
+        Number(opportunity.quotationEngineerId),
+        ...(opportunity.teamMembers || [])
+          .filter((member) => member.roleCode === ROLES.QUOTATION_ENGINEER && member.isActive !== false)
+          .map((member) => Number(member.userId))
+      ]);
+      if (!planKind || !title || !assigneeUserId || !eligibleAssigneeIds.has(assigneeUserId)
+        || (requiredText(req.body.plannedStartDate) && !plannedStartDate)
+        || (requiredText(req.body.plannedSubmitDate) && !plannedSubmitDate)) {
+        res.status(400).send('Work package, responsible engineer and valid dates are required');
+        return;
+      }
+      await opportunityCollaborationRepository.createWorkPackage({
+        opportunityId: opportunity.id,
+        planKind,
+        title,
+        assigneeUserId,
+        plannedStartDate,
+        plannedSubmitDate,
+        createdByUserId: req.currentUser.id
+      });
+      res.redirect(redirectToOpportunity(opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/collaboration-work-packages/:workPackageId/versions', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req, res, opportunityRepository, contractApprovalRepository, opportunityResponsibilityRepository
+      });
+      if (!opportunity) return;
+      req.opportunity = opportunity;
+      req.workPackage = await opportunityCollaborationRepository.findWorkPackageById(req.params.workPackageId);
+      if (!req.workPackage || Number(req.workPackage.opportunityId) !== Number(opportunity.id)) {
+        res.status(404).send('Work package not found');
+        return;
+      }
+      if (!canSubmitCollaborationWorkPackage(req.currentUser, opportunity, req.workPackage)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      next();
+    } catch (error) {
+      next(error);
+    }
+  }, uploadAttachment, async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        if (req.file?.path) await rm(req.file.path, { force: true });
+        res.status(403).send('Invalid CSRF token');
+        return;
+      }
+      if (!req.file) {
+        res.status(400).send('Attachment file is required');
+        return;
+      }
+      const category = req.workPackage.planKind === 'technical_solution' ? 'technical_solution' : 'internal_quote';
+      if (!canUploadAttachment(req.currentUser, req.opportunity, category)) {
+        await rm(req.file.path, { force: true });
+        res.status(403).send('Attachment upload is not allowed for this work package');
+        return;
+      }
+      const attachment = await persistUploadedOpportunityAttachment({
+        attachmentRepository,
+        uploadDir,
+        file: req.file,
+        opportunityId: req.opportunity.id,
+        category,
+        actorUserId: req.currentUser.id
+      });
+      await opportunityCollaborationRepository.submitVersion({
+        workPackageId: req.workPackage.id,
+        submittedByUserId: req.currentUser.id,
+        attachmentIds: [attachment.id]
+      });
+      res.redirect(redirectToOpportunity(req.opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/collaboration-work-packages/:workPackageId/versions/:versionId/review', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req, res, opportunityRepository, contractApprovalRepository, opportunityResponsibilityRepository
+      });
+      if (!opportunity) return;
+      const workPackage = await opportunityCollaborationRepository.findWorkPackageById(req.params.workPackageId);
+      const status = req.body.status === 'accepted' ? 'accepted' : req.body.status === 'returned' ? 'returned' : null;
+      if (!workPackage || Number(workPackage.opportunityId) !== Number(opportunity.id)) {
+        res.status(404).send('Work package not found');
+        return;
+      }
+      if (!status || !canReviewCollaborationWorkPackage(req.currentUser, opportunity, workPackage)) {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      const note = requiredText(req.body.note);
+      if (status === 'returned' && !note) {
+        res.status(400).send('Return reason is required');
+        return;
+      }
+      await opportunityCollaborationRepository.reviewVersion({
+        versionId: requiredPositiveInteger(req.params.versionId),
+        reviewedByUserId: req.currentUser.id,
+        status,
+        note
+      });
+      res.redirect(redirectToOpportunity(opportunity.id));
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/attachments', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      req.opportunity = opportunity;
+      next();
+    } catch (error) {
+      next(error);
+    }
+  }, uploadAttachment, async (req, res, next) => {
+    try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        if (req.file?.path) {
+          await rm(req.file.path, { force: true });
+        }
+        res.status(403).send('Invalid CSRF token');
+        return;
+      }
+      if (!req.file) {
+        res.status(400).send('Attachment file is required');
+        return;
+      }
+      const category = normalizeAttachmentCategory(req.body.category);
+      if (!canUploadAttachment(req.currentUser, req.opportunity, category)) {
+        await rm(req.file.path, { force: true });
+        res.status(403).send('Attachment upload is not allowed for this section');
+        return;
+      }
+      await persistUploadedOpportunityAttachment({
+        attachmentRepository,
+        uploadDir,
+        file: req.file,
+        opportunityId: req.opportunity.id,
+        category,
+        actorUserId: req.currentUser.id
+      });
+      res.redirect(`/opportunities/${req.opportunity.id}`);
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/opportunities/:id/attachments/:attachmentId/delete', async (req, res, next) => {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      const attachment = await attachmentRepository.findById(req.params.attachmentId);
+      if (!attachment || attachment.opportunityId !== opportunity.id) {
+        res.status(404).send('Attachment not found');
+        return;
+      }
+      if (!canDeleteAttachment(req.currentUser, opportunity, attachment)) {
+        res.status(403).send('Attachment cannot be deleted after submission');
+        return;
+      }
+      if (await opportunityTechnicalDraftRepository?.isAttachmentLinked?.(attachment.id)) {
+        res.status(403).send('Technical draft files cannot be deleted');
+        return;
+      }
+      if (await opportunityCollaborationRepository?.isAttachmentLinked?.(attachment.id)) {
+        res.status(403).send('Work package files cannot be deleted');
+        return;
+      }
+      await retireOpportunityAttachment({
+        attachmentRepository,
+        attachmentId: attachment.id,
+        actorUserId: req.currentUser.id,
+        reason: String(req.body.reason || 'removed_from_active_view').trim() || 'removed_from_active_view'
+      });
+      res.redirect(`/opportunities/${opportunity.id}`);
+    } catch (error) {
+      if (Number.isInteger(error?.statusCode)) {
+        res.status(error.statusCode).send(error.message);
+        return;
+      }
+      next(error);
+    }
+  });
+
+  async function sendAttachment(req, res, next, disposition) {
+    try {
+      const opportunity = await loadOpportunityOrSend({
+        req,
+        res,
+        opportunityRepository,
+        contractApprovalRepository,
+        opportunityResponsibilityRepository
+      });
+      if (!opportunity) {
+        return;
+      }
+      const attachment = await attachmentRepository.findById(req.params.attachmentId);
+      if (!attachment || attachment.opportunityId !== opportunity.id) {
+        res.status(404).send('Attachment not found');
+        return;
+      }
+      const filePath = resolveStoredPath(uploadDir, attachment.storedPath);
+      if (!filePath) {
+        res.status(404).send('Attachment not found');
+        return;
+      }
+      if (disposition === 'download') {
+        res.type(attachment.mimeType || 'application/octet-stream');
+        res.setHeader('Content-Disposition', attachmentContentDisposition(attachment.originalName));
+        res.sendFile(filePath);
+        return;
+      }
+      const kind = attachmentPreviewKind(attachment);
+      const downloadUrl = `/opportunities/${opportunity.id}/attachments/${attachment.id}/download`;
+      if (kind === 'unsupported-dwg') {
+        res.status(200).render('attachments/unsupported-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          messageKey: 'dwgPreviewRequiresDxfOrPdf'
+        });
+        return;
+      }
+      if (kind === 'unsupported-doc') {
+        res.status(200).render('attachments/unsupported-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          messageKey: 'docPreviewRequiresDocx'
+        });
+        return;
+      }
+      if (kind === 'dxf') {
+        const dxfText = await readFile(filePath, 'utf8');
+        res.status(200).render('attachments/dxf-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          preview: renderDxfPreview(dxfText)
+        });
+        return;
+      }
+      if (kind === 'docx') {
+        const docxBuffer = await readFile(filePath);
+        res.status(200).render('attachments/docx-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          paragraphs: extractDocxPlainText(docxBuffer)
+        });
+        return;
+      }
+      if (kind === 'spreadsheet') {
+        const spreadsheetBuffer = await readFile(filePath);
+        res.status(200).render('attachments/spreadsheet-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          preview: extractXlsxPreview(spreadsheetBuffer)
+        });
+        return;
+      }
+      if (kind === 'download-only') {
+        res.status(200).render('attachments/unsupported-preview', {
+          activeNav: 'opportunities',
+          opportunity,
+          attachment,
+          downloadUrl,
+          messageKey: 'previewNotAvailableDownload'
+        });
+        return;
+      }
+      applyDirectAttachmentPreviewHeaders(res, attachment);
+      res.setHeader('Content-Disposition', inlineContentDisposition(attachment.originalName));
+      res.sendFile(filePath);
+    } catch (error) {
+      next(error);
+    }
+  }
+
+  router.get('/opportunities/:id/attachments/:attachmentId/download', (req, res, next) => {
+    sendAttachment(req, res, next, 'download');
+  });
+
+  router.get('/opportunities/:id/attachments/:attachmentId/preview', (req, res, next) => {
+    sendAttachment(req, res, next, 'preview');
+  });
+
+  router.post('/opportunities/:id/workflow', async (req, res, next) => {
+    try {
+      await applyWorkflowAction({
+        actor: req.currentUser,
+        opportunityId: req.params.id,
+        action: req.body.action,
+        payload: parseWorkflowPayload(req.body),
+        repositories: {
+          opportunityRepository,
+          workflowEventRepository,
+          todoRepository,
+          attachmentRepository,
+          commercialQuoteRepository,
+          technicalSolutionRepository,
+          opportunityTechnicalDraftRepository,
+          quotationPackageRepository,
+          technicalDocumentService,
+          opportunityMaterialVersionRepository,
+          contractApprovalRepository,
+          approvalSettingRepository,
+          opportunityResponsibilityRepository,
+          workflowTransaction,
+          technicalAdminSelfApprovalTest
+        }
+      });
+      res.redirect(`/opportunities/${req.params.id}`);
+    } catch (error) {
+      if (error.message === 'Opportunity not found') {
+        res.status(404).send('Opportunity not found');
+        return;
+      }
+      if (error.message === 'Action not allowed') {
+        res.status(403).send('Forbidden');
+        return;
+      }
+      if (error instanceof WorkflowValidationError) {
+        res.status(error.statusCode).send(res.locals.messageLabel(error.message));
+        return;
+      }
+      next(error);
+    }
+  });
+
+  router.get('/api/opportunities', async (req, res, next) => {
+    try {
+      const filters = normalizeOpportunityListQuery(req.query);
+      const opportunities = await opportunityRepository.listOpportunities(opportunityListFilter(req.currentUser, filters));
+      res.json({ opportunities });
+    } catch (error) {
+      next(error);
+    }
+  });
+
+  router.post('/api/opportunities', (req, res) => {
+    res.status(403).json({ error: res.locals.t('createInquiryFirst') });
+  });
+
+  return router;
+}

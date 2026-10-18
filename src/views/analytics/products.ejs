@@ -1,0 +1,99 @@
+<%- include('../partials/app-start', { title: `${t('productCategoryReport')} - BESTCRM`, activeNav: 'analytics' }) %>
+
+<p class="breadcrumb"><a href="/analytics">← <%= t('analytics') %></a></p>
+<header class="page-header"><div><h1><%= t('productCategoryReport') %></h1><p class="muted"><%= t('categoryReportHint') %></p></div></header>
+
+<form class="form-panel compact-form-panel" method="get" action="/analytics/products">
+  <label><%= t('categoryYear') %><input type="number" name="year" min="1900" max="2100" placeholder="<%= t('categoryAllYears') %>" value="<%= selectedYear || '' %>"></label>
+  <label><%= t('productCategory') %>
+    <select name="category">
+      <option value=""><%= t('selectProductCategory') %></option>
+      <% for (const category of categories) { %>
+        <option value="<%= category.code %>"<% if (selectedCategory === category.code) { %> selected<% } %>><%= category.label %></option>
+      <% } %>
+    </select>
+  </label>
+  <button type="submit"><%= t('search') %></button>
+</form>
+
+<section class="content-section">
+  <h2><%= t('productCategories') %></h2>
+  <div class="table-wrap"><table>
+    <thead><tr><th><%= t('productCategory') %></th><th><%= t('categoryCustomers') %></th><th><%= t('categoryOpportunities') %></th><th><%= t('categoryInquiries') %></th><th><%= t('categoryEmailThreads') %></th><th><%= t('categoryUnlinked') %></th></tr></thead>
+    <tbody>
+      <% for (const category of categories) { const row = summary.find((item) => item.code === category.code) || {}; const params = new URLSearchParams({ category: category.code }); if (selectedYear) params.set('year', String(selectedYear)); %>
+        <tr><td><a href="/analytics/products?<%= params.toString() %>"><%= category.label %></a></td><td><%= row.customerCount || 0 %></td><td><%= row.opportunityCount || 0 %></td><td><%= row.inquiryCount || 0 %></td><td><%= row.emailThreadCount || 0 %></td><td><%= row.unlinkedCount || 0 %></td></tr>
+      <% } %>
+    </tbody>
+  </table></div>
+</section>
+
+<% if (selectedCategory) { %>
+  <section class="content-section">
+    <h2><%= t('categoryCustomers') %> · <%= productCategoryLabel(selectedCategory) %></h2>
+    <div class="table-wrap"><table>
+      <thead><tr><th><%= t('customer') %></th><th><%= t('categoryOpportunities') %></th><th><%= t('categoryInquiries') %></th><th><%= t('categoryEmailThreads') %></th><th><%= t('categoryLastActivity') %></th></tr></thead>
+      <tbody>
+        <% for (const customer of customers) { %>
+          <tr><td><a href="/customers/<%= customer.customerId %>"><%= customer.customerCode ? `${customer.customerCode} · ` : '' %><%= customer.customerName %></a></td><td><%= customer.opportunityCount %></td><td><%= customer.inquiryCount %></td><td><%= customer.emailThreadCount %></td><td><%= customer.lastActivityAt ? new Date(customer.lastActivityAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-GB', { timeZone: 'Asia/Singapore' }) : '' %></td></tr>
+        <% } %>
+        <% if (!customers.length) { %><tr><td colspan="5" class="muted">—</td></tr><% } %>
+      </tbody>
+    </table></div>
+  </section>
+<% } %>
+
+<section class="content-section">
+  <h2><%= t('categoryReviewBusiness') %> · <%= pendingBusinessReview.total %></h2>
+  <p class="muted"><%= t('categoryReviewBusinessHint') %></p>
+  <% if (pendingBusinessReview.rows.length) { %>
+    <div class="table-wrap"><table>
+      <thead><tr><th><%= t('categoryReviewRecordType') %></th><th><%= t('subject') %></th><th><%= t('suggestedCategories') %></th><th><%= t('categoryLastActivity') %></th><th><%= t('actions') %></th></tr></thead>
+      <tbody>
+        <% for (const record of pendingBusinessReview.rows) { const recordUrl = record.recordType === 'opportunity' ? `/opportunities/${record.id}` : record.submissionType === 'sales_lead' ? `/lead-submissions/${record.id}` : `/inquiries/${record.id}`; %>
+          <tr>
+            <td><%= t(record.recordType === 'opportunity' ? 'categoryReviewOpportunity' : record.submissionType === 'sales_lead' ? 'categoryReviewLead' : 'categoryReviewInquiry') %></td>
+            <td><%= record.subject || '—' %></td>
+            <td><% if (record.suggestedCodes.length) { for (const suggestedCode of record.suggestedCodes) { %><span class="status"><%= productCategoryLabel(suggestedCode) %></span> <% } } else { %><span class="muted"><%= t('categoryReviewNoSuggestion') %></span><% } %></td>
+            <td><%= record.occurredAt ? new Date(record.occurredAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-GB', { timeZone: 'Asia/Singapore' }) : '' %></td>
+            <td><a href="<%= recordUrl %>"><%= t('categoryReviewOpenRecord') %></a></td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table></div>
+    <div class="pagination">
+      <% if (businessPage > 1) { const previous = new URLSearchParams({ businessPage: String(businessPage - 1), reviewPage: String(reviewPage) }); if (selectedYear) previous.set('year', String(selectedYear)); if (selectedCategory) previous.set('category', selectedCategory); %><a href="/analytics/products?<%= previous.toString() %>"><%= t('previousPage') %></a><% } %>
+      <% if (businessPage * reviewPageSize < pendingBusinessReview.total) { const next = new URLSearchParams({ businessPage: String(businessPage + 1), reviewPage: String(reviewPage) }); if (selectedYear) next.set('year', String(selectedYear)); if (selectedCategory) next.set('category', selectedCategory); %><a href="/analytics/products?<%= next.toString() %>"><%= t('nextPage') %></a><% } %>
+    </div>
+  <% } else { %>
+    <p class="muted"><%= pendingBusinessReview.total ? t('categoryReviewPageEmpty') : t('categoryReviewBusinessNone') %></p>
+  <% } %>
+</section>
+
+<section class="content-section">
+  <h2><%= t('categoryReviewPending') %> · <%= pendingEmailReview.total %></h2>
+  <p class="muted"><%= t('categoryReviewPendingHint') %></p>
+  <% if (pendingEmailReview.rows.length) { %>
+    <div class="table-wrap"><table>
+      <thead><tr><th><%= t('subject') %></th><th><%= t('suggestedCategories') %></th><th><%= t('categoryLastActivity') %></th><th><%= t('actions') %></th></tr></thead>
+      <tbody>
+        <% for (const thread of pendingEmailReview.rows) { %>
+          <tr>
+            <td><%= thread.subject || '—' %></td>
+            <td><% if (thread.suggestedCodes.length) { for (const suggestedCode of thread.suggestedCodes) { %><span class="status"><%= productCategoryLabel(suggestedCode) %></span> <% } } else { %><span class="muted"><%= t('categoryReviewNoSuggestion') %></span><% } %></td>
+            <td><%= thread.lastMessageAt ? new Date(thread.lastMessageAt).toLocaleDateString(language === 'zh' ? 'zh-CN' : 'en-GB', { timeZone: 'Asia/Singapore' }) : '' %></td>
+            <td><a href="/email-center/threads/<%= thread.id %>"><%= t('categoryReviewOpen') %></a></td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table></div>
+    <div class="pagination">
+      <% if (reviewPage > 1) { const previous = new URLSearchParams({ reviewPage: String(reviewPage - 1), businessPage: String(businessPage) }); if (selectedYear) previous.set('year', String(selectedYear)); if (selectedCategory) previous.set('category', selectedCategory); %><a href="/analytics/products?<%= previous.toString() %>"><%= t('previousPage') %></a><% } %>
+      <% if (reviewPage * reviewPageSize < pendingEmailReview.total) { const next = new URLSearchParams({ reviewPage: String(reviewPage + 1), businessPage: String(businessPage) }); if (selectedYear) next.set('year', String(selectedYear)); if (selectedCategory) next.set('category', selectedCategory); %><a href="/analytics/products?<%= next.toString() %>"><%= t('nextPage') %></a><% } %>
+    </div>
+  <% } else { %>
+    <p class="muted"><%= pendingEmailReview.total ? t('categoryReviewPageEmpty') : t('categoryReviewNone') %></p>
+  <% } %>
+</section>
+
+<%- include('../partials/app-end') %>

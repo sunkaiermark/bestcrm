@@ -1,0 +1,416 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { ROLES } from '../../src/domain/roles.mjs';
+import {
+  assignOpportunityTechnicalDraftSection,
+  canCreateOpportunityTechnicalDraft,
+  canEditOpportunityTechnicalDraftSection,
+  canReviewOpportunityTechnicalDraft,
+  isAuthorizedTechnicalSelfReview,
+  createUploadedOpportunityTechnicalDraft,
+  generateOpportunityTechnicalDraft,
+  markOpportunityTechnicalDraftReady,
+  prefillTechnicalDraftVariables,
+  renderTechnicalDraftContent,
+  technicalDraftSubmissionSummary,
+  updateOpportunityTechnicalDraftSection,
+  updateOpportunityTechnicalDraftVariables,
+  validateTechnicalDraftVariables
+} from '../../src/services/opportunityTechnicalDraftService.mjs';
+
+const lead = { id: 3, roles: [ROLES.QUOTATION_ENGINEER] };
+const support = { id: 4, roles: [ROLES.QUOTATION_ENGINEER] };
+const salesperson = { id: 7, roles: [ROLES.SALESPERSON] };
+
+test('technical draft submission summary uses only the frozen document language', () => {
+  const draft = {
+    language: 'zh',
+    draftRevisionNo: 2,
+    templateCodeSnapshot: 'MX-100',
+    templateRevisionNoSnapshot: 3,
+    renderedContent: {
+      sections: [{
+        key: 'design_parameters',
+        labelEn: 'Design Parameters',
+        labelZh: '设计参数',
+        included: true
+      }]
+    }
+  };
+
+  const summary = technicalDraftSubmissionSummary(draft);
+  assert.match(summary, /TS-D2 由 MX-100 TPL-R3 生成；章节：设计参数/);
+  assert.doesNotMatch(summary, /Design Parameters|generated from|sections:/);
+});
+
+function opportunity() {
+  return {
+    id: 20,
+    opportunityNo: 'OPP-20',
+    title: 'MX Project',
+    customerId: 8,
+    primaryContactId: 9,
+    salespersonId: 7,
+    quotationEngineerId: 3,
+    teamMembers: [{
+      id: 11,
+      userId: 4,
+      roleCode: ROLES.QUOTATION_ENGINEER,
+      isActive: true
+    }]
+  };
+}
+
+function variable(overrides = {}) {
+  return {
+    variableKey: 'capacity',
+    labelEn: 'Capacity',
+    labelZh: '处理能力',
+    dataType: 'number',
+    sourceField: 'capacity',
+    sectionKey: 'design_parameters',
+    isRequired: true,
+    defaultValue: '',
+    validationRules: { min: 1, max: 100 },
+    ...overrides
+  };
+}
+
+function section(overrides = {}) {
+  return {
+    key: 'design_parameters',
+    labelEn: 'Design Parameters',
+    labelZh: '设计参数',
+    enabled: true,
+    sortOrder: 1,
+    sectionType: 'parameter_table',
+    bodyEn: 'Standard values',
+    bodyZh: '标准参数',
+    tableRowsEn: [['Item', 'Value']],
+    tableRowsZh: [['项目', '数值']],
+    condition: { operator: 'always', variableKey: '', value: '' },
+    defaultClauseIds: [30],
+    blocks: [],
+    layout: {
+      pageBreakBefore: false,
+      table: { headerRow: true, columnWidths: [40, 60], columnAlignments: ['left', 'right'], merges: [] },
+      image: null
+    },
+    ...overrides
+  };
+}
+
+function draft(overrides = {}) {
+  const contentSchemaSnapshot = { schemaVersion: 1, sections: [section(), section({
+    key: 'utilities',
+    labelEn: 'Utilities',
+    labelZh: '公用工程',
+    sortOrder: 2,
+    defaultClauseIds: []
+  })] };
+  const variableSchemaSnapshot = [variable()];
+  const variableValues = { capacity: '' };
+  return {
+    id: 41,
+    opportunityId: 20,
+    language: 'en',
+    status: 'draft',
+    contentSchemaSnapshot,
+    variableSchemaSnapshot,
+    variableValues,
+    selectedClauses: [],
+    renderedContent: renderTechnicalDraftContent({
+      contentSchema: contentSchemaSnapshot,
+      variableSchema: variableSchemaSnapshot,
+      variableValues,
+      selectedClauses: []
+    }),
+    assignments: [{ id: 5, assigneeUserId: 4, sectionKey: 'design_parameters', isActive: true }],
+    ...overrides
+  };
+}
+
+test('only the appointed Project Lead Engineer can generate a project draft', () => {
+  assert.equal(canCreateOpportunityTechnicalDraft(lead, opportunity()), true);
+  assert.equal(canCreateOpportunityTechnicalDraft(support, opportunity()), false);
+  assert.equal(canCreateOpportunityTechnicalDraft(salesperson, opportunity()), false);
+});
+
+test('only the assigned Technical Manager can review a pending technical draft', () => {
+  const pending = draft({ status: 'pending' });
+  const technicalManager = { id: 6, roles: [ROLES.TECHNICAL_MANAGER] };
+  const otherManager = { id: 8, roles: [ROLES.TECHNICAL_MANAGER] };
+  const assignedOpportunity = { ...opportunity(), technicalManagerId: 6 };
+  assert.equal(canReviewOpportunityTechnicalDraft(technicalManager, assignedOpportunity, pending), true);
+  assert.equal(canReviewOpportunityTechnicalDraft(otherManager, assignedOpportunity, pending), false);
+  assert.equal(canReviewOpportunityTechnicalDraft(technicalManager, assignedOpportunity, draft()), false);
+});
+
+test('assigned administrator Technical Manager may review their own pending technical submission', () => {
+  const pending = draft({ status: 'pending', submittedBy: 3 });
+  const assignedOpportunity = { ...opportunity(), technicalManagerId: 3 };
+  const authorized = {
+    id: 3,
+    roles: [ROLES.ADMINISTRATOR, ROLES.TECHNICAL_MANAGER, ROLES.QUOTATION_ENGINEER]
+  };
+  assert.equal(isAuthorizedTechnicalSelfReview(authorized, assignedOpportunity, pending), true);
+  assert.equal(canReviewOpportunityTechnicalDraft(authorized, assignedOpportunity, pending), true);
+  assert.equal(isAuthorizedTechnicalSelfReview(
+    { ...authorized, roles: [ROLES.TECHNICAL_MANAGER, ROLES.QUOTATION_ENGINEER] },
+    assignedOpportunity,
+    pending
+  ), false);
+  assert.equal(isAuthorizedTechnicalSelfReview(authorized, {
+    ...assignedOpportunity,
+    technicalManagerId: 6
+  }, pending), false);
+});
+
+test('temporary administrator self-review is limited to the submitter and expires', () => {
+  const pending = draft({ status: 'pending', submittedBy: 3 });
+  const ownAdmin = { id: 3, roles: [ROLES.ADMINISTRATOR, ROLES.QUOTATION_ENGINEER] };
+  const ordinaryEngineer = { id: 3, roles: [ROLES.QUOTATION_ENGINEER] };
+  const otherAdmin = { id: 4, roles: [ROLES.ADMINISTRATOR] };
+  const policy = { enabled: true, until: new Date(Date.now() + 60_000).toISOString() };
+  assert.equal(canReviewOpportunityTechnicalDraft(ownAdmin, opportunity(), pending, policy), true);
+  assert.equal(canReviewOpportunityTechnicalDraft(ordinaryEngineer, opportunity(), pending, policy), false);
+  assert.equal(canReviewOpportunityTechnicalDraft(otherAdmin, opportunity(), pending, policy), false);
+  assert.equal(canReviewOpportunityTechnicalDraft(ownAdmin, opportunity(), pending, { enabled: false, until: policy.until }), false);
+  assert.equal(canReviewOpportunityTechnicalDraft(ownAdmin, opportunity(), pending,
+    { enabled: true, until: new Date(Date.now() - 60_000).toISOString() }), false);
+});
+
+test('archived opportunities keep technical drafts readable but block preparation and review', async () => {
+  const archived = { ...opportunity(), status: 'technical_solution_in_progress', archivedAt: new Date() };
+  const pending = draft({ status: 'pending', submittedBy: 3 });
+  const ownAdmin = { id: 3, roles: [ROLES.ADMINISTRATOR, ROLES.QUOTATION_ENGINEER] };
+  const policy = { enabled: true, until: new Date(Date.now() + 60_000).toISOString() };
+  assert.equal(canCreateOpportunityTechnicalDraft(lead, archived), false);
+  assert.equal(canEditOpportunityTechnicalDraftSection(lead, archived, draft(), 'design_parameters'), false);
+  assert.equal(canReviewOpportunityTechnicalDraft(ownAdmin, archived, pending, policy), false);
+  const repository = { async createDraft() { throw new Error('archived draft must not persist'); } };
+  await assert.rejects(
+    createUploadedOpportunityTechnicalDraft(repository, lead, archived, 'datasheet'),
+    (error) => error.statusCode === 409 && error.message === 'Archived opportunities are read-only'
+  );
+  await assert.rejects(
+    generateOpportunityTechnicalDraft({ technicalTemplateRepository: repository }, lead, archived, 1),
+    (error) => error.statusCode === 409 && error.message === 'Archived opportunities are read-only'
+  );
+  await assert.rejects(
+    updateOpportunityTechnicalDraftVariables(repository, lead, archived, draft(), {}),
+    (error) => error.statusCode === 409 && error.message === 'Archived opportunities are read-only'
+  );
+});
+
+test('generation freezes the current published template and prefills known project data', async () => {
+  const created = [];
+  const template = {
+    id: 5,
+    templateCode: 'MX-100',
+    name: 'Mixer Agreement',
+    nameEn: 'Mixer Agreement',
+    nameZh: '搅拌机协议',
+    productModel: 'MX-100',
+    language: 'bilingual',
+    isActive: true,
+    currentPublishedRevisionId: 9,
+    revisions: [{
+      id: 9,
+      revisionNo: 2,
+      status: 'published',
+      contentSchema: { schemaVersion: 1, sections: [section()] },
+      variables: [
+        variable({ variableKey: 'customer_name', dataType: 'text', sourceField: 'customer_name', sectionKey: 'cover_and_parties', validationRules: {} }),
+        variable({ variableKey: 'product_model', dataType: 'text', sourceField: 'product_model', validationRules: {} }),
+        variable()
+      ]
+    }]
+  };
+  const repositories = {
+    technicalTemplateRepository: {
+      async getTemplateDetail() { return template; },
+      async listClauses() {
+        return [{ id: 30, clauseCode: 'FAT-01', revisionNo: 1, revisionLabel: 'FAT-01-R1', title: 'FAT', language: 'en', content: 'FAT required', conditionSchema: {}, status: 'published' }];
+      }
+    },
+    opportunityTechnicalDraftRepository: {
+      async getGenerationContext() {
+        return {
+          customerName: 'Acme',
+          contactName: 'Lee',
+          opportunityTitle: 'MX Project',
+          requirementSummary: '10 t/h mixer',
+          productName: 'Mixer',
+          deliveryDestination: 'Singapore',
+          opportunityOwner: 'Sales One',
+          capacity: ''
+        };
+      },
+      async createDraft(input) { created.push(input); return { id: 41, draftRevisionNo: 1, ...input }; }
+    }
+  };
+
+  const result = await generateOpportunityTechnicalDraft(repositories, lead, opportunity(), 5);
+
+  assert.equal(result.id, 41);
+  assert.equal(created[0].templateRevisionId, 9);
+  assert.equal(created[0].templateRevisionNoSnapshot, 2);
+  assert.equal(created[0].language, 'en');
+  assert.equal(created[0].variableValues.customer_name, 'Acme');
+  assert.equal(created[0].variableValues.product_model, 'MX-100');
+  assert.equal(created[0].selectedClauses[0].revisionLabel, 'FAT-01-R1');
+  assert.equal(created[0].validationIssues[0].variableKey, 'capacity');
+  assert.notEqual(created[0].contentSchemaSnapshot, template.revisions[0].contentSchema);
+});
+
+test('one dual-language template generates only the selected login language', async () => {
+  for (const language of ['en', 'zh']) {
+    const created = [];
+    const repositories = {
+      technicalTemplateRepository: {
+        async getTemplateDetail() {
+          return {
+            id: 5,
+            templateCode: `MX-${language}`,
+            name: 'Agreement',
+            nameEn: 'Agreement',
+            nameZh: '协议',
+            productModel: '',
+            language: 'bilingual',
+            isActive: true,
+            currentPublishedRevisionId: 9,
+            revisions: [{ id: 9, revisionNo: 1, status: 'published', contentSchema: { schemaVersion: 1, sections: [section()] }, variables: [] }]
+          };
+        },
+        async listClauses() { return []; }
+      },
+      opportunityTechnicalDraftRepository: {
+        async getGenerationContext() { return {}; },
+        async createDraft(input) { created.push(input); return input; }
+      }
+    };
+    await generateOpportunityTechnicalDraft(repositories, lead, opportunity(), 5, language);
+    assert.equal(created[0].language, language);
+    assert.equal(created[0].templateNameSnapshot, language === 'zh' ? '协议' : 'Agreement');
+    assert.equal(created[0].renderedContent.sections.length, 1);
+  }
+});
+
+test('variable validation reports required, range and approved-list issues', () => {
+  const schema = [
+    variable(),
+    variable({ variableKey: 'pressure', labelEn: 'Pressure', labelZh: '压力', sourceField: 'pressure', validationRules: { min: 1, max: 10 } }),
+    variable({ variableKey: 'material', labelEn: 'Material', labelZh: '材质', dataType: 'text', sourceField: 'material', validationRules: { allowedValues: ['SS304', 'SS316L'] } })
+  ];
+  const issues = validateTechnicalDraftVariables(schema, { capacity: '', pressure: 20, material: 'CS' });
+  assert.deepEqual(issues.map((issue) => issue.code), ['required', 'maximum', 'allowed_values']);
+});
+
+test('technical variable validation rejects invalid booleans and impossible calendar dates', () => {
+  const schema = [
+    variable({ variableKey: 'confirmed', dataType: 'boolean', sourceField: 'manual', validationRules: {} }),
+    variable({ variableKey: 'due_date', dataType: 'date', sourceField: 'manual', validationRules: {} })
+  ];
+  const issues = validateTechnicalDraftVariables(schema, { confirmed: 'yes', due_date: '2026-02-30' });
+  assert.deepEqual(issues.map((issue) => issue.code), ['type', 'type']);
+});
+
+test('conditions alter inclusion without executing template expressions', () => {
+  const conditional = section({
+    key: 'utilities',
+    condition: { operator: 'equals', variableKey: 'material', value: 'SS316L' },
+    defaultClauseIds: []
+  });
+  const content = renderTechnicalDraftContent({
+    contentSchema: { schemaVersion: 1, sections: [conditional] },
+    variableSchema: [],
+    variableValues: { material: 'CS' },
+    selectedClauses: []
+  });
+  assert.equal(content.sections[0].included, false);
+  assert.deepEqual(content.sections[0].layout.table.columnWidths, [40, 60]);
+});
+
+test('Supporting Engineers edit only assigned sections and attributed changes differ from the standard', async () => {
+  const calls = [];
+  const currentDraft = draft();
+  const repository = {
+    async updateSection(input) { calls.push(input); return input; }
+  };
+  assert.equal(canEditOpportunityTechnicalDraftSection(support, opportunity(), currentDraft, 'design_parameters'), true);
+  assert.equal(canEditOpportunityTechnicalDraftSection(support, opportunity(), currentDraft, 'utilities'), false);
+
+  await updateOpportunityTechnicalDraftSection(repository, support, opportunity(), currentDraft, 'design_parameters', {
+    body: 'Project-specific 50 t/h',
+    tableRows: 'Capacity | 50 t/h'
+  });
+  assert.equal(calls[0].standardChanged, true);
+  assert.equal(calls[0].actorUserId, 4);
+  assert.equal(calls[0].renderedContent.sections[0].lastEditedBy, 4);
+  assert.equal(calls[0].renderedContent.sections[0].bodyZh, '标准参数');
+  assert.deepEqual(calls[0].renderedContent.sections[0].tableRowsZh, [['项目', '数值']]);
+
+  await assert.rejects(
+    updateOpportunityTechnicalDraftSection(repository, support, opportunity(), currentDraft, 'utilities', {}),
+    (error) => error.statusCode === 403
+  );
+});
+
+test('submitted and approved technical drafts reject all content mutations', async () => {
+  const repository = { async updateSection() { throw new Error('should not persist'); } };
+  for (const status of ['pending', 'approved', 'rejected']) {
+    assert.equal(canEditOpportunityTechnicalDraftSection(lead, opportunity(), draft({ status }), 'design_parameters'), false);
+    await assert.rejects(
+      updateOpportunityTechnicalDraftSection(repository, lead, opportunity(), draft({ status }), 'design_parameters', {}),
+      (error) => error.statusCode === 409
+    );
+  }
+});
+
+test('Supporting Engineers update only variables belonging to their assigned section', async () => {
+  const calls = [];
+  const currentDraft = draft({
+    variableSchemaSnapshot: [variable(), variable({ variableKey: 'voltage', sourceField: 'voltage_frequency', sectionKey: 'electrical_requirements' })],
+    variableValues: { capacity: 10, voltage: 400 }
+  });
+  const repository = { async updateVariables(input) { calls.push(input); return input; } };
+  await updateOpportunityTechnicalDraftVariables(repository, support, opportunity(), currentDraft, { capacity: '50' });
+  assert.equal(calls[0].variableValues.capacity, 50);
+  await assert.rejects(
+    updateOpportunityTechnicalDraftVariables(repository, support, opportunity(), currentDraft, { voltage: '480' }),
+    (error) => error.statusCode === 403
+  );
+});
+
+test('readiness is blocked until required values and engineering ranges pass', async () => {
+  const repository = { async markReady(input) { return input; } };
+  await assert.rejects(
+    markOpportunityTechnicalDraftReady(repository, lead, opportunity(), draft()),
+    (error) => error.statusCode === 409 && error.details[0].code === 'required'
+  );
+  const ready = await markOpportunityTechnicalDraftReady(repository, lead, opportunity(), draft({ variableValues: { capacity: 50 } }));
+  assert.equal(ready.actorUserId, 3);
+});
+
+test('section assignment accepts only active Supporting Engineers on the opportunity', async () => {
+  const calls = [];
+  const repository = { async addAssignment(input) { calls.push(input); return input; } };
+  await assignOpportunityTechnicalDraftSection(repository, lead, opportunity(), draft(), {
+    sectionKey: 'utilities',
+    assigneeUserId: 4,
+    dueDate: '2026-09-10'
+  });
+  assert.equal(calls[0].assigneeUserId, 4);
+  await assert.rejects(
+    assignOpportunityTechnicalDraftSection(repository, lead, opportunity(), draft(), { sectionKey: 'utilities', assigneeUserId: 99 }),
+    (error) => error.statusCode === 400
+  );
+});
+
+test('prefill uses defaults when an approved CRM source is unavailable', () => {
+  const values = prefillTechnicalDraftVariables([
+    variable({ variableKey: 'pressure', sourceField: 'pressure', defaultValue: '6', validationRules: {} })
+  ], { pressure: '' }, { productModel: '' });
+  assert.equal(values.pressure, 6);
+});

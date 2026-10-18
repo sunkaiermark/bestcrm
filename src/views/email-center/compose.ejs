@@ -1,0 +1,186 @@
+<% const formatFileSize = (bytes) => { const value = Number(bytes || 0); if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`; if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`; return `${value} B`; }; %>
+<%- include('../partials/app-start', { title: `${t('composeCustomerEmail')} - BESTCRM`, activeNav: 'email-center', mainClass: context.opportunity ? 'opportunity-email-page' : '' }) %>
+        <div class="<%= context.opportunity ? 'opportunity-email-heading' : '' %>">
+          <p class="breadcrumb"><a href="/email-center"><%= t('emailCenter') %></a> / <%= t('composeCustomerEmail') %></p>
+          <header class="page-header">
+            <div>
+              <h1><%= t('composeCustomerEmail') %></h1>
+              <div class="muted"><%= context.opportunity ? `${t('opportunity')} ${context.opportunity.opportunityNo} · ${context.opportunity.title}` : `${t('inquiry')} #${context.inquiry.id}` %></div>
+            </div>
+          </header>
+        </div>
+
+        <div class="<%= context.opportunity ? 'opportunity-email-workspace' : '' %>">
+        <% if (context.opportunity) { %>
+          <section class="opportunity-email-conversation<%= context.opportunityThreads.length ? '' : ' is-empty' %>" aria-label="<%= t('emailConversation') %>">
+            <h2><%= t('emailConversation') %></h2>
+            <% if (context.opportunityThreads.length) { %>
+              <nav class="opportunity-email-thread-list">
+              <% for (const thread of context.opportunityThreads) { %>
+                <a class="opportunity-email-thread" href="/email-center/compose?threadId=<%= thread.id %>" aria-current="<%= Number(context.thread?.id) === Number(thread.id) ? 'true' : 'false' %>">
+                  <strong><%= thread.subject || t('noSubject') %></strong>
+                  <span class="opportunity-email-thread-meta"><%= thread.lastMessageAt || '' %> · <%= thread.messageCount %> <%= t('messages') %></span>
+                  <span><%= thread.lastFromAddress || '' %></span>
+                  <span class="muted"><%= thread.lastTextPreview || '' %></span>
+                </a>
+              <% } %>
+              </nav>
+            <% } else { %>
+              <p class="empty opportunity-email-empty-state"><%= t('noEmailThreads') %></p>
+            <% } %>
+            <% if (context.conversation?.messages?.length) { %>
+              <div class="opportunity-email-timeline">
+                <% for (const message of context.conversation.messages) { %>
+                  <article class="opportunity-email-message opportunity-email-message-<%= message.direction %>">
+                    <header class="opportunity-email-message-header">
+                      <strong><%= t(`emailDirection.${message.direction}`) %> · <%= message.fromName || message.fromAddress %></strong>
+                      <span class="opportunity-email-message-meta"><%= message.receivedAt || message.sentAt || message.createdAt %></span>
+                    </header>
+                    <h3><%= message.subject || t('noSubject') %></h3>
+                    <%- include('_message-content', { message, formatPlainEmailForReading }) %>
+                  </article>
+                <% } %>
+              </div>
+            <% } %>
+          </section>
+        <% } %>
+        <div class="<%= context.opportunity ? 'opportunity-email-compose' : '' %>">
+        <% if (context.threadSelectionRequired) { %>
+        <section class="form-panel opportunity-email-thread-selection" aria-live="polite">
+          <h2><%= t('replyCustomer') %></h2>
+          <p><%= t('selectEmailConversationBeforeReply') %></p>
+        </section>
+        <% } else { %>
+        <form class="form-panel" method="post" action="/email-center/messages" enctype="multipart/form-data">
+          <%- csrfField() %>
+          <% if (context.thread) { %><input type="hidden" name="threadId" value="<%= context.thread.id %>"><% } %>
+          <% if (context.inquiry) { %><input type="hidden" name="inquiryId" value="<%= context.inquiry.id %>"><% } %>
+          <% if (context.opportunity) { %><input type="hidden" name="opportunityId" value="<%= context.opportunity.id %>"><% } %>
+          <% if (context.defaults.replyToMessageId) { %><input type="hidden" name="replyToMessageId" value="<%= context.defaults.replyToMessageId %>"><% } %>
+          <div class="customer-email-header-fields">
+            <label class="customer-email-header-field">
+              <span class="customer-email-field-label"><%= t('emailTo') %></span>
+              <input type="text" name="to" value="<%= context.defaults.to %>" required>
+            </label>
+            <label class="customer-email-header-field">
+              <span class="customer-email-field-label"><%= t('emailCc') %></span>
+              <input type="text" name="cc">
+            </label>
+            <label class="customer-email-header-field">
+              <span class="customer-email-field-label"><%= t('subject') %></span>
+              <input type="text" name="subject" value="<%= context.defaults.subject %>" maxlength="300" required>
+            </label>
+          </div>
+          <% if (context.opportunity) { %>
+            <label class="customer-email-header-field customer-email-quotation-field">
+              <span class="customer-email-field-label"><%= t('quotationPackageEmail') %></span>
+              <select name="quotationPackageVersionId">
+                <option value=""><%= t('noQuotationPackage') %></option>
+                <% for (const item of context.packages) { %><option value="<%= item.id %>" <%= Number(context.defaults.quotationPackageVersionId) === Number(item.id) ? 'selected' : '' %>><%= item.label %> · <%= item.currency %> <%= item.totalPrice %></option><% } %>
+              </select>
+            </label>
+            <% if (context.salesQuotationVersions?.length) { %>
+              <label class="customer-email-header-field customer-email-quotation-field">
+                <span class="customer-email-field-label"><%= language === 'zh' ? '已签发正式报价 PDF' : 'Issued formal quotation PDF' %></span>
+                <select name="salesQuotationVersionId" data-email-quotation-select>
+                  <option value=""><%= language === 'zh' ? '不附加正式报价 PDF' : 'No issued quotation PDF' %></option>
+                  <% for (const item of context.salesQuotationVersions) { %><option value="<%= item.id %>" <%= Number(context.defaults.salesQuotationVersionId) === Number(item.id) ? 'selected' : '' %>><%= item.quotationNo %> · V<%= item.versionNo %><%= item.snapshot?.missingFields?.length ? (language === 'zh' ? ` · 省略 ${item.snapshot.missingFields.length} 项` : ` · ${item.snapshot.missingFields.length} omissions`) : '' %></option><% } %>
+                </select>
+              </label>
+            <% } %>
+          <% } %>
+          <div class="customer-email-editor-field" data-email-editor>
+            <label id="customer-email-body-label" for="customer-email-body"><%= t('emailBody') %></label>
+            <textarea id="customer-email-body" name="body" rows="12" required></textarea>
+            <input type="hidden" name="bodyHtml" value="">
+            <div class="customer-email-rich-controls" hidden>
+              <div class="customer-email-editor-toolbar" role="toolbar" aria-label="<%= t('emailFormatting') %>">
+                <button type="button" class="secondary-action" data-email-format="bold" aria-label="<%= t('emailBold') %>" title="<%= t('emailBold') %>"><strong>B</strong></button>
+                <button type="button" class="secondary-action" data-email-format="italic" aria-label="<%= t('emailItalic') %>" title="<%= t('emailItalic') %>"><em>I</em></button>
+                <button type="button" class="secondary-action" data-email-format="underline" aria-label="<%= t('emailUnderline') %>" title="<%= t('emailUnderline') %>"><u>U</u></button>
+                <button type="button" class="secondary-action" data-email-format="insertUnorderedList" aria-label="<%= t('emailBullets') %>" title="<%= t('emailBullets') %>">•</button>
+                <button type="button" class="secondary-action" data-email-format="insertOrderedList" aria-label="<%= t('emailNumbers') %>" title="<%= t('emailNumbers') %>">1.</button>
+                <button type="button" class="secondary-action" data-email-insert-table><%= t('emailInsertTable') %></button>
+                <button type="button" class="secondary-action" data-email-set-column-widths aria-controls="email-column-width-panel" aria-expanded="false"><%= t('emailSetColumnWidths') %></button>
+              </div>
+              <div class="customer-email-column-width-panel" id="email-column-width-panel" data-email-column-width-panel
+                data-column-label="<%= t('emailColumnWidthColumn') %>"
+                data-no-table-label="<%= t('emailColumnWidthNoTable') %>"
+                data-merged-label="<%= t('emailColumnWidthMergedUnsupported') %>"
+                data-invalid-label="<%= t('emailColumnWidthInvalid') %>" hidden>
+                <p class="customer-email-editor-hint"><%= t('emailColumnWidthHint') %></p>
+                <div class="customer-email-column-width-inputs" data-email-column-width-inputs></div>
+                <div class="customer-email-column-width-actions">
+                  <button type="button" data-email-apply-column-widths><%= t('emailColumnWidthApply') %></button>
+                  <button type="button" class="secondary-action" data-email-cancel-column-widths><%= t('emailColumnWidthCancel') %></button>
+                </div>
+              </div>
+              <p class="customer-email-editor-error" role="alert" data-email-column-width-error hidden></p>
+              <div class="customer-email-rich-body" contenteditable="true" role="textbox" aria-multiline="true" aria-labelledby="customer-email-body-label" aria-describedby="customer-email-editor-error" data-email-rich-body></div>
+              <p class="customer-email-editor-error" id="customer-email-editor-error" role="alert" data-email-editor-error hidden><%= t('emailBodyRequired') %></p>
+              <p class="muted customer-email-editor-hint"><%= t('emailPasteTableHint') %></p>
+            </div>
+          </div>
+          <div class="customer-email-signature-field">
+            <span class="customer-email-field-label" id="customer-email-signature-label"><%= t('emailSignaturePreview') %></span>
+            <div class="customer-email-signature-preview<%= context.signatureHtmlPreview ? '' : ' is-empty' %>" role="textbox" aria-readonly="true" aria-labelledby="customer-email-signature-label" tabindex="0" data-email-signature-preview data-empty-label="<%= t('emailSignaturePreviewUnavailable') %>"><% if (context.signatureHtmlPreview) { %><%- context.signatureHtmlPreview %><% } else { %><%= t('emailSignaturePreviewUnavailable') %><% } %></div>
+            <% if (context.salesQuotationVersions?.length) { %>
+              <template data-email-signature-default><%- context.defaultSignatureHtmlPreview %></template>
+              <% for (const item of context.salesQuotationVersions) { %>
+                <template data-email-signature-quotation="<%= item.id %>"><%- context.salesQuotationSignaturePreviews[item.id] %></template>
+              <% } %>
+            <% } %>
+          </div>
+          <div class="customer-email-attachment-field">
+            <span class="customer-email-field-label" id="customer-email-attachments-label"><%= t('emailAttachments') %></span>
+            <div class="customer-email-attachment-controls">
+              <div class="customer-email-file-picker" data-customer-email-file-picker data-empty-label="<%= t('noFilesSelected') %>">
+                <input class="customer-email-file-input" id="customer-email-attachments" type="file" name="attachments" multiple aria-labelledby="customer-email-attachments-label" aria-describedby="customer-email-attachments-status customer-email-attachments-limit">
+                <label class="secondary-action customer-email-file-button" for="customer-email-attachments"><%= t('chooseLocalFiles') %></label>
+                <span class="customer-email-file-status" id="customer-email-attachments-status" data-customer-email-file-status><%= t('noFilesSelected') %></span>
+              </div>
+              <% if (context.opportunity) { %>
+                <details class="customer-email-approved-file-picker" data-approved-file-picker data-selected-label="<%= t('approvedOpportunityFilesSelected') %>">
+                  <summary class="secondary-action customer-email-approved-file-summary">
+                    <span><%= t('chooseFromOpportunityFiles') %></span>
+                    <span class="customer-email-approved-file-count" data-approved-file-count>0 <%= t('approvedOpportunityFilesSelected') %></span>
+                  </summary>
+                  <div class="customer-email-approved-file-panel">
+                    <% if (context.approvedOpportunityFiles.length) { %>
+                      <% for (const group of [
+                        { category: 'technical', label: t('approvedTechnicalFiles') },
+                        { category: 'commercial', label: t('approvedCommercialFiles') }
+                      ]) { const files = context.approvedOpportunityFiles.filter((file) => file.category === group.category); %>
+                        <% if (files.length) { %>
+                          <fieldset class="customer-email-approved-file-group">
+                            <legend><%= group.label %></legend>
+                            <% for (const file of files) { %>
+                              <label class="customer-email-approved-file-row">
+                                <input type="checkbox" name="approvedOpportunityFileTokens" value="<%= file.token %>">
+                                <span class="customer-email-approved-file-name"><%= file.originalName %></span>
+                                <span class="muted customer-email-approved-file-meta"><%= file.versionLabel %> · <%= file.category === 'technical' ? t(`technicalDocumentType.${file.fileType}`) : t('commercialQuote') %> · <%= formatFileSize(file.byteSize) %></span>
+                              </label>
+                            <% } %>
+                          </fieldset>
+                        <% } %>
+                      <% } %>
+                    <% } else { %>
+                      <p class="empty customer-email-approved-file-empty"><%= t('noApprovedOpportunityFiles') %></p>
+                    <% } %>
+                  </div>
+                </details>
+              <% } %>
+              <span class="muted customer-email-file-limit" id="customer-email-attachments-limit"><%= maxUploadMb %> <%= t('emailAttachmentTotalLimit') %></span>
+            </div>
+          </div>
+          <div class="inline-actions customer-email-actions">
+            <button type="submit" name="action" value="draft" class="secondary-action"><%= t('saveEmailDraft') %></button>
+            <% if (context.canSend) { %><button type="submit" name="action" value="send"><%= t('sendCustomerEmail') %></button><% } %>
+          </div>
+        </form>
+        <% } %>
+        </div>
+        </div>
+        <script src="/assets/email-purify.js" defer></script>
+        <script src="/assets/email-compose.js" defer></script>
+<%- include('../partials/app-end') %>

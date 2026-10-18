@@ -1,0 +1,106 @@
+<%- include('../partials/app-start', { title: (language === 'zh' ? '全员任务统计' : 'Team Task Statistics') + ' - BESTCRM', activeNav: 'analytics' }) %>
+<%
+  const zh = language === 'zh';
+  const statusLabels = zh ? {
+    pending: '待办', in_progress: '进行中', waiting: '等待中', review_pending: '待审核',
+    completed: '已完成', cancelled: '已取消', planned: '计划中'
+  } : {
+    pending: 'Pending', in_progress: 'In progress', waiting: 'Waiting',
+    review_pending: 'Review pending', completed: 'Completed', cancelled: 'Cancelled',
+    planned: 'Planned'
+  };
+  const pageHref = page => {
+    const params = new URLSearchParams({ period: filters.period,
+      startYear: String(filters.startYear), endYear: String(filters.endYear),
+      page: String(page) });
+    if (filters.startUnit) params.set('startUnit', String(filters.startUnit));
+    if (filters.endUnit) params.set('endUnit', String(filters.endUnit));
+    if (filters.userId) params.set('userId', String(filters.userId));
+    return '/analytics/tasks?' + params.toString();
+  };
+  const pageCount = Math.ceil(summary.total / filters.pageSize);
+%>
+<style>
+  .task-statistics { width: 100%; }
+  .task-statistics .statistics-filters { display: flex; flex-wrap: wrap; align-items: end; gap: 12px; }
+  .task-statistics .statistics-filters label { display: grid; gap: 5px; min-width: 140px; margin-bottom: 0; }
+  .task-statistics .statistics-range { display: flex; gap: 8px; }
+  .task-statistics .statistics-range select:first-child { width: 128px; }
+  .task-statistics .statistics-range select:last-child:not(:first-child) { width: 94px; }
+  .task-statistics .statistics-filters select,
+  .task-statistics .statistics-filters input { min-height: 42px; }
+  .task-statistics .statistics-filters button { width: auto; min-height: 42px; }
+  .task-statistics .statistics-summary { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 12px; margin: 16px 0; }
+  .task-statistics .statistics-card { background: var(--panel); border: 1px solid var(--line); border-radius: 7px; padding: 14px; }
+  .task-statistics .statistics-card span { display: block; color: var(--muted); }
+  .task-statistics .statistics-card strong { display: block; font-size: 24px; margin-top: 4px; }
+  .task-statistics .statistics-table-wrap { overflow-x: auto; background: var(--panel); border: 1px solid var(--line); border-radius: 7px; }
+  .task-statistics table { width: 100%; min-width: 1400px; table-layout: fixed; border-collapse: collapse; }
+  .task-statistics th:nth-child(1) { width: 8%; }
+  .task-statistics th:nth-child(2) { width: 20%; }
+  .task-statistics th:nth-child(3) { width: 31%; }
+  .task-statistics th:nth-child(4), .task-statistics th:nth-child(5), .task-statistics th:nth-child(6) { width: 12%; }
+  .task-statistics th:nth-child(7) { width: 5%; }
+  .task-statistics th, .task-statistics td { padding: 11px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+  .task-statistics th { white-space: nowrap; background: #f4f7f9; }
+  .task-statistics td time { white-space: nowrap; }
+  .task-statistics .task-summary { overflow-wrap: anywhere; }
+  .task-statistics .task-source { display: block; color: var(--muted); font-size: .85em; margin-top: 3px; }
+  .task-statistics .statistics-pager { display: flex; align-items: center; gap: 14px; margin: 14px 0; }
+  @media (max-width: 850px) { .task-statistics .statistics-summary { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+</style>
+<section class="task-statistics">
+  <header class="page-header"><div><h1><%= zh ? '全员任务统计' : 'Team Task Statistics' %></h1></div></header>
+  <form class="form-panel statistics-filters" method="get" action="/analytics/tasks">
+    <label><%= zh ? '统计周期' : 'Period' %><select name="period">
+      <option value="month" <%= filters.period === 'month' ? 'selected' : '' %>><%= zh ? '月度' : 'Month' %></option>
+      <option value="quarter" <%= filters.period === 'quarter' ? 'selected' : '' %>><%= zh ? '季度' : 'Quarter' %></option>
+      <option value="year" <%= filters.period === 'year' ? 'selected' : '' %>><%= zh ? '年度' : 'Year' %></option>
+    </select></label>
+    <% for (const boundary of ['start', 'end']) { const boundaryYear = filters[`${boundary}Year`]; const boundaryUnit = filters[`${boundary}Unit`]; %>
+      <label><%= boundary === 'start' ? (zh ? '开始' : 'Start') : (zh ? '结束' : 'End') %>
+        <span class="statistics-range">
+          <select name="<%= boundary %>Year" data-range-field aria-label="<%= boundary === 'start' ? (zh ? '开始年份' : 'Start year') : (zh ? '结束年份' : 'End year') %>"><% for (let year = 2100; year >= 1900; year -= 1) { %>
+            <option value="<%= year %>" <%= boundaryYear === year ? 'selected' : '' %>><%= year %></option>
+          <% } %></select>
+          <% if (filters.period !== 'year') { %><select name="<%= boundary %>Unit" data-range-field aria-label="<%= boundary === 'start' ? (zh ? '开始月份或季度' : 'Start month or quarter') : (zh ? '结束月份或季度' : 'End month or quarter') %>"><% for (let unit = 1; unit <= (filters.period === 'month' ? 12 : 4); unit += 1) { %>
+            <option value="<%= unit %>" <%= boundaryUnit === unit ? 'selected' : '' %>><%= filters.period === 'month' ? (zh ? `${unit}月` : String(unit)) : `Q${unit}` %></option>
+          <% } %></select><% } %>
+        </span>
+      </label>
+    <% } %>
+    <label><%= zh ? '人员' : 'Person' %><select name="userId"><option value=""><%= zh ? '全部人员' : 'All people' %></option>
+      <% for (const user of users) { %><option value="<%= user.id %>" <%= filters.userId === user.id ? 'selected' : '' %>><%= user.name %><%= user.isActive ? '' : (zh ? '（已离职）' : ' (inactive)') %></option><% } %>
+    </select></label>
+    <button type="submit"><%= zh ? '筛选' : 'Filter' %></button>
+  </form>
+  <p class="muted"><%= zh ? '按计划开始日期归属统计周期；未设置计划开始时间的工作任务按创建时间归属。研发子项目尚无实际完工记录，完成时间留空。' : 'Periods use planned start dates; work without a planned start uses its creation date. R&D subprojects have no actual completion record yet.' %></p>
+  <div class="statistics-summary">
+    <div class="statistics-card"><span><%= zh ? '记录总数' : 'Records' %></span><strong><%= summary.total %></strong></div>
+    <div class="statistics-card"><span><%= zh ? '已完成任务' : 'Completed tasks' %></span><strong><%= summary.completed %></strong></div>
+    <div class="statistics-card"><span><%= zh ? '研发子项目' : 'R&D subprojects' %></span><strong><%= summary.subprojects %></strong></div>
+    <div class="statistics-card"><span><%= zh ? '待指定责任人' : 'Unassigned' %></span><strong><%= summary.unassigned %></strong></div>
+  </div>
+  <div class="statistics-table-wrap"><table>
+    <thead><tr><th><%= zh ? '人员' : 'Person' %></th><th><%= zh ? '项目' : 'Project' %></th><th><%= zh ? '任务与内容摘要' : 'Task and summary' %></th><th><%= zh ? '计划开始' : 'Planned start' %></th><th><%= zh ? '计划结束' : 'Planned finish' %></th><th><%= zh ? '实际完成' : 'Actual completion' %></th><th><%= zh ? '状态' : 'Status' %></th></tr></thead>
+    <tbody><% for (const row of rows) { %><tr>
+      <td><%= row.userName || (zh ? '待指定' : 'Unassigned') %><% if (row.userId && !row.userIsActive) { %><span class="task-source"><%= zh ? '已离职' : 'Inactive' %></span><% } %></td>
+      <td><% if (row.opportunityId) { %><a href="/opportunities/<%= row.opportunityId %>"><%= row.projectNo || '' %> · <%= row.projectName || '' %></a><% } else { %><%= row.projectNo ? `${row.projectNo} · ` : '' %><%= row.projectName || '—' %><% } %></td>
+      <td class="task-summary"><strong><%= row.taskTitle %></strong><span class="task-source"><%= row.sourceType === 'development_subproject' ? (zh ? '研发子项目' : 'R&D subproject') : (zh ? '工作任务' : 'Work item') %></span><% if (row.taskSummary) { %><div><%= row.taskSummary %></div><% } %></td>
+      <td><time><%= row.plannedStart %></time></td><td><time><%= row.plannedEnd || '—' %></time></td><td><time><%= row.actualCompleted || '—' %></time></td>
+      <td><%= statusLabels[row.status] || row.status %></td>
+    </tr><% } %><% if (!rows.length) { %><tr><td colspan="7"><%= zh ? '该统计周期暂无记录。' : 'No records for this period.' %></td></tr><% } %></tbody>
+  </table></div>
+  <% if (pageCount > 1) { %><nav class="statistics-pager" aria-label="<%= zh ? '分页' : 'Pagination' %>">
+    <% if (filters.page > 1) { %><a href="<%= pageHref(filters.page - 1) %>"><%= zh ? '上一页' : 'Previous' %></a><% } %>
+    <span><%= filters.page %> / <%= pageCount %></span>
+    <% if (filters.page < pageCount) { %><a href="<%= pageHref(filters.page + 1) %>"><%= zh ? '下一页' : 'Next' %></a><% } %>
+  </nav><% } %>
+</section>
+<script>
+  document.querySelector('.statistics-filters select[name="period"]')?.addEventListener('change', function () {
+    for (const control of this.form.querySelectorAll('[data-range-field]')) control.disabled = true;
+    this.form.requestSubmit();
+  });
+</script>
+<%- include('../partials/app-end') %>

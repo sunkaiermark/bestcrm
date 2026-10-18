@@ -1,0 +1,1590 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { readFile } from 'node:fs/promises';
+
+const schemaPath = new URL('../../src/db/migrations/001_initial_schema.sql', import.meta.url);
+const opportunityNumberMigrationPath = new URL('../../src/db/migrations/003_opportunity_number_sequence.sql', import.meta.url);
+const opportunityNumberMaxMigrationPath = new URL('../../src/db/migrations/004_opportunity_number_maxvalue.sql', import.meta.url);
+const rolesMetadataMigrationPath = new URL('../../src/db/migrations/005_roles_metadata.sql', import.meta.url);
+const requirementUpdatesMigrationPath = new URL('../../src/db/migrations/006_requirement_updates.sql', import.meta.url);
+const technicalSolutionVersionsMigrationPath = new URL('../../src/db/migrations/007_technical_solution_versions.sql', import.meta.url);
+const commercialQuoteVersionsMigrationPath = new URL('../../src/db/migrations/008_commercial_quote_versions.sql', import.meta.url);
+const contractVersionsMigrationPath = new URL('../../src/db/migrations/009_contract_versions.sql', import.meta.url);
+const opportunityResponsibilityMigrationPath = new URL('../../src/db/migrations/010_opportunity_responsibility.sql', import.meta.url);
+const customerCountryMigrationPath = new URL('../../src/db/migrations/011_customer_country.sql', import.meta.url);
+const contactProfileMigrationPath = new URL('../../src/db/migrations/012_contact_profile_fields.sql', import.meta.url);
+const customerProfileMigrationPath = new URL('../../src/db/migrations/013_customer_profile_fields.sql', import.meta.url);
+const opportunityMaterialVersionsMigrationPath = new URL('../../src/db/migrations/014_opportunity_material_versions.sql', import.meta.url);
+const attachmentMaterialVersionMigrationPath = new URL('../../src/db/migrations/015_attachment_material_version.sql', import.meta.url);
+const loginSecurityMigrationPath = new URL('../../src/db/migrations/016_login_security.sql', import.meta.url);
+const salesWorkMigrationPath = new URL('../../src/db/migrations/017_sales_work.sql', import.meta.url);
+const inquiryInboxMigrationPath = new URL('../../src/db/migrations/018_inquiry_inbox.sql', import.meta.url);
+const inquirySourceReferenceUniqueMigrationPath = new URL('../../src/db/migrations/019_inquiry_source_reference_unique.sql', import.meta.url);
+const notificationCenterMigrationPath = new URL('../../src/db/migrations/020_notification_center.sql', import.meta.url);
+const notificationWorkflowRecipientsMigrationPath = new URL('../../src/db/migrations/021_notification_workflow_recipients.sql', import.meta.url);
+const customerWebsiteMigrationPath = new URL('../../src/db/migrations/022_customer_website.sql', import.meta.url);
+const inquiryDispositionMigrationPath = new URL('../../src/db/migrations/023_inquiry_disposition_workflow.sql', import.meta.url);
+const inquiryCustomerCollaborationMigrationPath = new URL('../../src/db/migrations/024_inquiry_customer_collaboration.sql', import.meta.url);
+const salesLeadSubmissionsMigrationPath = new URL('../../src/db/migrations/025_sales_lead_submissions.sql', import.meta.url);
+const opportunityEngineeringCollaborationMigrationPath = new URL('../../src/db/migrations/026_opportunity_engineering_collaboration.sql', import.meta.url);
+const productTechnicalTemplatesMigrationPath = new URL('../../src/db/migrations/029_product_technical_templates.sql', import.meta.url);
+const opportunityTechnicalDraftsMigrationPath = new URL('../../src/db/migrations/030_opportunity_technical_drafts.sql', import.meta.url);
+const technicalSolutionDocumentsMigrationPath = new URL('../../src/db/migrations/031_technical_solution_versions_and_documents.sql', import.meta.url);
+const quotationPackageVersionsMigrationPath = new URL('../../src/db/migrations/032_quotation_package_versions.sql', import.meta.url);
+const emailCenterArchiveMigrationPath = new URL('../../src/db/migrations/033_email_center_archive.sql', import.meta.url);
+const customerEmailSendingMigrationPath = new URL('../../src/db/migrations/034_customer_email_sending.sql', import.meta.url);
+const bidCenterFoundationMigrationPath = new URL('../../src/db/migrations/035_bid_center_foundation.sql', import.meta.url);
+const opportunityBidWorkspacesMigrationPath = new URL('../../src/db/migrations/036_opportunity_bid_workspaces.sql', import.meta.url);
+const quotationPackageDocumentsMigrationPath = new URL('../../src/db/migrations/037_quotation_package_documents.sql', import.meta.url);
+const bidPackageEditorsMigrationPath = new URL('../../src/db/migrations/038_bid_package_editors.sql', import.meta.url);
+const bidPackageApprovalsMigrationPath = new URL('../../src/db/migrations/039_bid_package_approvals.sql', import.meta.url);
+const bidPackageOutputIdentityMigrationPath = new URL('../../src/db/migrations/040_bid_package_output_identity.sql', import.meta.url);
+const authenticatorMfaMigrationPath = new URL('../../src/db/migrations/041_authenticator_mfa.sql', import.meta.url);
+const googleWorkspaceCustomerCenterMigrationPath = new URL('../../src/db/migrations/042_google_workspace_customer_center.sql', import.meta.url);
+const customerCodeMigrationPath = new URL('../../src/db/migrations/043_customer_code.sql', import.meta.url);
+const contactCodeMigrationPath = new URL('../../src/db/migrations/044_contact_code.sql', import.meta.url);
+const contactCodeLPrefixMigrationPath = new URL('../../src/db/migrations/052_contact_code_l_prefix.sql', import.meta.url);
+const imapSyncAndEmailTriageMigrationPath = new URL('../../src/db/migrations/045_imap_sync_and_email_triage.sql', import.meta.url);
+const customerContactUniquenessMigrationPath = new URL('../../src/db/migrations/046_customer_contact_uniqueness.sql', import.meta.url);
+const opportunityRecordGuardrailsMigrationPath = new URL('../../src/db/migrations/047_opportunity_record_guardrails.sql', import.meta.url);
+const opportunityActivitySpineMigrationPath = new URL('../../src/db/migrations/048_opportunity_activity_spine.sql', import.meta.url);
+const emailRawArchiveFoundationMigrationPath = new URL('../../src/db/migrations/049_email_raw_archive_foundation.sql', import.meta.url);
+const emailRawBackfillCheckpointMigrationPath = new URL('../../src/db/migrations/050_email_raw_backfill_checkpoint.sql', import.meta.url);
+const emailRawMalwareEventsMigrationPath = new URL('../../src/db/migrations/051_email_raw_malware_events.sql', import.meta.url);
+const opportunityTechnicalPlanSubmitDateMigrationPath = new URL('../../src/db/migrations/053_opportunity_technical_plan_submit_date.sql', import.meta.url);
+const formSubmissionIdempotencyMigrationPath = new URL('../../src/db/migrations/054_form_submission_idempotency.sql', import.meta.url);
+const userPersonalMailboxAssignmentsMigrationPath = new URL('../../src/db/migrations/055_user_personal_mailbox_assignments.sql', import.meta.url);
+const emailMailboxDeliveriesMigrationPath = new URL('../../src/db/migrations/056_email_mailbox_deliveries.sql', import.meta.url);
+const emailCenterTriageWorkflowMigrationPath = new URL('../../src/db/migrations/057_email_center_triage_workflow.sql', import.meta.url);
+const emailSpamRetentionAndPurgeMigrationPath = new URL('../../src/db/migrations/058_email_spam_retention_and_purge.sql', import.meta.url);
+const humanConfirmedEmailSpamSendersMigrationPath = new URL('../../src/db/migrations/104_human_confirmed_email_spam_senders.sql', import.meta.url);
+const unifiedWorkItemsMigrationPath = new URL('../../src/db/migrations/059_unified_work_items.sql', import.meta.url);
+const projectExecutionsMigrationPath = new URL('../../src/db/migrations/060_project_executions.sql', import.meta.url);
+const opportunityTechnicalDocumentsMigrationPath = new URL('../../src/db/migrations/061_opportunity_technical_documents.sql', import.meta.url);
+const localizedTechnicalTemplateContentMigrationPath = new URL('../../src/db/migrations/062_localized_technical_template_content.sql', import.meta.url);
+const emailCenterLeadTriageMigrationPath = new URL('../../src/db/migrations/063_email_center_lead_triage.sql', import.meta.url);
+const emailReimportResetAuditsMigrationPath = new URL('../../src/db/migrations/064_email_reimport_reset_audits.sql', import.meta.url);
+const emailPurgeFileJobsMigrationPath = new URL('../../src/db/migrations/065_email_purge_file_jobs.sql', import.meta.url);
+const emailOutboundMimeArtifactsMigrationPath = new URL('../../src/db/migrations/066_email_outbound_mime_artifacts.sql', import.meta.url);
+const legacyAttachmentIntegrityMigrationPath = new URL('../../src/db/migrations/067_legacy_attachment_integrity.sql', import.meta.url);
+const inquiryAttachmentPurgeJobsMigrationPath = new URL('../../src/db/migrations/068_inquiry_attachment_purge_jobs.sql', import.meta.url);
+const salesLeadReviewWorkflowMigrationPath = new URL('../../src/db/migrations/069_sales_lead_review_workflow.sql', import.meta.url);
+const emailInlineAttachmentMetadataMigrationPath = new URL('../../src/db/migrations/070_email_inline_attachment_metadata.sql', import.meta.url);
+const emailMessageCanonicalIdentityMigrationPath = new URL('../../src/db/migrations/071_email_message_canonical_identity.sql', import.meta.url);
+const leadCreatorEditAuditMigrationPath = new URL('../../src/db/migrations/072_lead_creator_edit_audit.sql', import.meta.url);
+const uploadedTechnicalDraftVersionsMigrationPath = new URL('../../src/db/migrations/073_uploaded_technical_draft_versions.sql', import.meta.url);
+const technicalReviewAttachmentsMigrationPath = new URL('../../src/db/migrations/074_technical_review_attachments.sql', import.meta.url);
+const unrestrictedAdministratorEmailPurgeMigrationPath = new URL('../../src/db/migrations/075_unrestricted_administrator_email_purge.sql', import.meta.url);
+const administratorOpportunityDeletionMigrationPath = new URL('../../src/db/migrations/076_administrator_opportunity_deletion.sql', import.meta.url);
+const multiFileTechnicalDraftsMigrationPath = new URL('../../src/db/migrations/077_multi_file_technical_drafts.sql', import.meta.url);
+const emailAttachmentBusinessSourcesMigrationPath = new URL('../../src/db/migrations/078_email_attachment_business_sources.sql', import.meta.url);
+const technicalDraftFileControlsMigrationPath = new URL('../../src/db/migrations/079_technical_draft_file_controls.sql', import.meta.url);
+const leadCustomerWebsiteMigrationPath = new URL('../../src/db/migrations/080_lead_customer_website.sql', import.meta.url);
+const productCategoryMigrationPath = new URL('../../src/db/migrations/081_lead_opportunity_product_category.sql', import.meta.url);
+const reviewedProductCategoriesMigrationPath = new URL('../../src/db/migrations/082_reviewed_product_categories.sql', import.meta.url);
+const temporaryAdminTechnicalSelfApprovalMigrationPath = new URL('../../src/db/migrations/098_temporary_admin_technical_self_approval.sql', import.meta.url);
+const technicalDocumentCustomerReleaseMigrationPath = new URL('../../src/db/migrations/099_technical_document_customer_release.sql', import.meta.url);
+const salesCommercialQuotationDraftMigrationPath = new URL('../../src/db/migrations/100_sales_commercial_quotation_drafts.sql', import.meta.url);
+const quotationSellerEntityMigrationPath = new URL('../../src/db/migrations/102_quotation_draft_seller_entity.sql', import.meta.url);
+const userRepresentedCompanyMigrationPath = new URL('../../src/db/migrations/108_user_represented_company.sql', import.meta.url);
+const sharedCustomersMigrationPath = new URL('../../src/db/migrations/109_shared_customers_and_opportunity_links.sql', import.meta.url);
+const authorizedTechnicalSelfReviewMigrationPath = new URL('../../src/db/migrations/110_authorized_technical_self_review.sql', import.meta.url);
+const salesQuotationCustomerContactMigrationPath = new URL('../../src/db/migrations/111_sales_quotation_customer_contact.sql', import.meta.url);
+const salesQuotationTaxTotalsMigrationPath = new URL('../../src/db/migrations/112_sales_quotation_tax_totals.sql', import.meta.url);
+const salesCommercialQuotationWorkflowMigrationPath = new URL('../../src/db/migrations/113_sales_commercial_quotation_workflow.sql', import.meta.url);
+const markYangCommercialQuoteSelfApprovalMigrationPath = new URL('../../src/db/migrations/114_markyang_commercial_quote_self_approval.sql', import.meta.url);
+const markYangCanonicalAccountMigrationPath = new URL('../../src/db/migrations/115_markyang_actual_account_self_approval.sql', import.meta.url);
+const quotationStandardTermsMigrationPath = new URL('../../src/db/migrations/103_quotation_draft_standard_terms.sql', import.meta.url);
+const uploadedTechnicalFileWithdrawalEventMigrationPath = new URL('../../src/db/migrations/101_uploaded_technical_file_withdrawal_event.sql', import.meta.url);
+const projectExecutionDeliveryPlanMigrationPath = new URL('../../src/db/migrations/117_project_execution_v1_delivery_plan.sql', import.meta.url);
+const projectExecutionControlledWorkflowMigrationPath = new URL('../../src/db/migrations/118_project_execution_controlled_workflow.sql', import.meta.url);
+const leadSourceAttributionLifecycleMigrationPath = new URL('../../src/db/migrations/120_lead_source_attribution_and_lifecycle.sql', import.meta.url);
+
+test('lead source attribution and lifecycle preserve origin without changing opportunity approval', async () => {
+  const sql = await readFile(leadSourceAttributionLifecycleMigrationPath, 'utf8');
+
+  assert.match(sql, /source_attribution_channel text NOT NULL DEFAULT ''/);
+  assert.match(sql, /source_attribution_owner_user_id bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /source_attribution_note text NOT NULL DEFAULT ''/);
+  assert.match(sql, /lead_lifecycle_state text NOT NULL DEFAULT 'active'/);
+  assert.match(sql, /\('active', 'nurture', 'closed', 'duplicate'\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_lead_follow_up_events/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_lead_management_events/);
+  assert.match(sql, /Inquiry source attribution is immutable/);
+  assert.match(sql, /Lead management events are immutable/);
+  assert.match(sql, /WHERE NOT \([\s\S]*submission_type = 'sales_lead'[\s\S]*converted_opportunity_id IS NOT NULL/);
+  assert.match(sql, /must not create or alter[\s\S]*opportunity/);
+});
+
+test('early sales commercial quotation draft stays separate from formal approval and snapshots exact source file', async () => {
+  const sql = await readFile(salesCommercialQuotationDraftMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE sales_commercial_quotation_drafts/);
+  assert.match(sql, /source_attachment_id bigint NOT NULL REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /source_sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /opportunity_technical_draft_attachments link/);
+  assert.match(sql, /source_kind IS DISTINCT FROM 'uploaded_file'/);
+  assert.match(sql, /CREATE TABLE sales_commercial_quotation_draft_events/);
+  assert.match(sql, /audit events are immutable/);
+  assert.doesNotMatch(sql, /quotation_package_versions|commercial_quotes/);
+});
+
+test('quotation draft records the selected seller identity and only approved standard wording snapshots', async () => {
+  const sellerSql = await readFile(quotationSellerEntityMigrationPath, 'utf8');
+  const termsSql = await readFile(quotationStandardTermsMigrationPath, 'utf8');
+  assert.match(sellerSql, /seller_entity_code text/);
+  assert.match(sellerSql, /seller_entity_name text/);
+  assert.match(sellerSql, /江苏胜开尔工业技术有限公司/);
+  assert.match(sellerSql, /SUNKAIER ASIA PACIFIC PTE\. LTD\./);
+  assert.match(termsSql, /CREATE TABLE sales_quotation_standard_terms/);
+  assert.match(termsSql, /approved_by bigint REFERENCES users\(id\)/);
+  assert.match(termsSql, /Published standard commercial term content is immutable/);
+  assert.match(termsSql, /ADD COLUMN term_selections jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.doesNotMatch(termsSql, /INSERT INTO sales_quotation_standard_terms/);
+});
+
+test('quotation attention is selected from the opportunity customer and snapshotted per revision', async () => {
+  const sql = await readFile(salesQuotationCustomerContactMigrationPath, 'utf8');
+  assert.match(sql, /ADD COLUMN customer_contact_id bigint REFERENCES contacts\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /ADD COLUMN customer_contact_name text NOT NULL DEFAULT ''/);
+  assert.match(sql, /ADD COLUMN customer_contact_phone text NOT NULL DEFAULT ''/);
+  assert.match(sql, /ADD COLUMN customer_contact_email text NOT NULL DEFAULT ''/);
+  assert.match(sql, /contact\.customer_id = opportunity\.customer_id/);
+  assert.match(sql, /contact\.archived_at IS NULL/);
+  assert.match(sql, /customer_contact_name/);
+  assert.match(sql, /contact_record\.phone IS DISTINCT FROM NEW\.customer_contact_phone/);
+  assert.match(sql, /contact_record\.email IS DISTINCT FROM NEW\.customer_contact_email/);
+  assert.match(sql, /draft_revision_no = draft\.draft_revision_no \+ 1/);
+  assert.match(sql, /technical_draft\.status IN \('ready', 'pending', 'approved'\)/);
+  const auditFunction = sql.indexOf('CREATE OR REPLACE FUNCTION bestcrm_log_sales_commercial_quotation_draft');
+  const backfill = sql.indexOf('UPDATE sales_commercial_quotation_drafts draft');
+  assert.ok(auditFunction >= 0 && auditFunction < backfill);
+});
+
+test('quotation tax rate is constrained and snapshotted on every draft revision', async () => {
+  const sql = await readFile(salesQuotationTaxTotalsMigrationPath, 'utf8');
+  assert.match(sql, /ADD COLUMN tax_rate numeric\(5,2\) NOT NULL DEFAULT 0/);
+  assert.match(sql, /tax_rate >= 0 AND tax_rate <= 100/);
+  assert.match(sql, /sales_commercial_quotation_draft_events/);
+  assert.match(sql, /NEW\.currency, NEW\.tax_rate/);
+  assert.match(sql, /NEW\.customer_contact_phone, NEW\.customer_contact_email/);
+});
+
+test('formal quotation workflow creates direct manager work, synchronizes status, and restricts self-review to MarkYang', async () => {
+  const sql = await readFile(salesCommercialQuotationWorkflowMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE workflow_events[\s\S]*ADD COLUMN IF NOT EXISTS action_url/);
+  assert.match(sql, /ALTER TABLE todos[\s\S]*ADD COLUMN IF NOT EXISTS action_url/);
+  assert.match(sql, /ALTER TABLE work_items[\s\S]*ADD COLUMN IF NOT EXISTS action_url/);
+  assert.match(sql, /role\.code = 'commercial_manager'[\s\S]*role\.is_active = true/);
+  assert.match(sql, /manager_row\.username IS DISTINCT FROM 'MarkYang'/);
+  assert.match(sql, /manager_row\.is_active IS DISTINCT FROM true/);
+  assert.match(sql, /notification_action_url := COALESCE\(NULLIF\(NEW\.action_url, ''\)/);
+  assert.match(sql, /CREATE TEMP TABLE bestcrm_pending_formal_quote_backfill/);
+  assert.match(sql, /SET status = 'commercial_quote_pending'/);
+  assert.match(sql, /'Approve commercial quote'/);
+  assert.match(sql, /'review_commercial_quote'/);
+  assert.match(sql, /commercial-quotation-draft#quotation-version-/);
+  assert.doesNotMatch(sql, /DELETE FROM|TRUNCATE/);
+});
+
+test('active MarkYang remains the controlled commercial quotation self-review exception without a role assignment', async () => {
+  const sql = await readFile(markYangCommercialQuoteSelfApprovalMigrationPath, 'utf8');
+  assert.match(sql, /CREATE OR REPLACE FUNCTION bestcrm_guard_sales_commercial_quotation_version/);
+  assert.match(sql, /manager_row\.has_commercial_manager_role IS DISTINCT FROM true[\s\S]*manager_row\.username IS DISTINCT FROM 'MarkYang'/);
+  assert.match(sql, /manager_row\.is_active IS DISTINCT FROM true/);
+  assert.match(sql, /manager_row\.commercial_manager_id = NEW\.submitted_by[\s\S]*manager_row\.username IS DISTINCT FROM 'MarkYang'/);
+  assert.doesNotMatch(sql, /DELETE FROM|TRUNCATE/);
+});
+
+test('MarkYang exception is bound to the canonical production login and permits its self-assignment notification', async () => {
+  const sql = await readFile(markYangCanonicalAccountMigrationPath, 'utf8');
+  assert.match(sql, /CREATE OR REPLACE FUNCTION bestcrm_guard_sales_commercial_quotation_version/);
+  assert.match(sql, /manager_row\.username IS DISTINCT FROM '杨胜华'/);
+  assert.match(sql, /\(SELECT username FROM users WHERE id = NEW\.signed_by\) IS DISTINCT FROM '杨胜华'/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION create_workflow_notification/);
+  assert.match(sql, /username = '杨胜华'/);
+  assert.doesNotMatch(sql, /DELETE FROM|TRUNCATE/);
+});
+
+test('users have one constrained represented company with a safe existing-user default', async () => {
+  const sql = await readFile(userRepresentedCompanyMigrationPath, 'utf8');
+  assert.match(sql, /represented_company_code text NOT NULL DEFAULT 'sunkaier_apac'/);
+  assert.match(sql, /represented_company_code IN \('sunkaier_apac', 'sunkaier_china'\)/);
+});
+
+test('shared customer migration separates coordination from opportunity ownership and audits inquiry links', async () => {
+  const sql = await readFile(sharedCustomersMigrationPath, 'utf8');
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS coordinator_user_id bigint/);
+  assert.match(sql, /SET coordinator_user_id = owner_user_id/);
+  assert.match(sql, /bestcrm_sync_customer_coordinator/);
+  assert.match(sql, /It is not customer ownership or an opportunity access boundary/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS customer_coordination_events/);
+  assert.match(sql, /'coordinator_assigned'/);
+  assert.match(sql, /'coordinator_changed'/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_opportunity_link_events/);
+  assert.match(sql, /link_kind text NOT NULL CHECK \(link_kind IN \('created', 'existing'\)\)/);
+  assert.match(sql, /status IN \('pending', 'approved', 'rejected', 'superseded'\)/);
+  assert.match(sql, /status = 'superseded'/);
+  assert.match(sql, /events are append-only/);
+  assert.doesNotMatch(sql, /DELETE FROM customers|DELETE FROM opportunities|DELETE FROM inquiries/);
+});
+
+test('technical-file customer release defaults old files to internal and guards exact-version external use', async () => {
+  const sql = await readFile(technicalDocumentCustomerReleaseMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE technical_document_customer_releases/);
+  assert.match(sql, /technical_document_id bigint NOT NULL UNIQUE/);
+  assert.match(sql, /file_sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /reviewed_by IS NULL OR reviewed_by <> requested_by/);
+  assert.match(sql, /source_record\.self_approval_test/);
+  assert.match(sql, /customer_id IS DISTINCT FROM NEW\.customer_id/);
+  assert.match(sql, /Invalid customer-file release transition/);
+  assert.match(sql, /Technical file lacks customer-release approval/);
+  assert.doesNotMatch(sql, /INSERT INTO technical_document_customer_releases[\s\S]*SELECT[\s\S]*FROM technical_solution_documents/);
+});
+
+test('temporary administrator technical self-approval remains explicit and auditable in PostgreSQL', async () => {
+  const sql = await readFile(temporaryAdminTechnicalSelfApprovalMigrationPath, 'utf8');
+  assert.match(sql, /self_approval_test boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /reviewed_by <> submitted_by/);
+  assert.match(sql, /status = 'approved' AND self_approval_test/);
+  assert.match(sql, /reviewed_at <= self_approval_test_until/);
+  assert.match(sql, /NOT self_approval_test/);
+});
+
+test('authorized technical self-review is explicit, role-gated in application code, and auditable in PostgreSQL', async () => {
+  const sql = await readFile(authorizedTechnicalSelfReviewMigrationPath, 'utf8');
+  assert.match(sql, /authorized_self_review boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /reviewed_by <> submitted_by[\s\S]*OR authorized_self_review/);
+  assert.match(sql, /status IN \('approved', 'rejected'\)/);
+  assert.match(sql, /reviewed_by = submitted_by/);
+  assert.match(sql, /NOT self_approval_test/);
+  assert.match(sql, /administrator and technical-manager roles/);
+});
+
+test('reviewed product classifications are fixed, multi-valued, auditable, and separate from email content', async () => {
+  const sql = await readFile(reviewedProductCategoriesMigrationPath, 'utf8');
+  assert.match(sql, /CREATE OR REPLACE FUNCTION bestcrm_valid_reviewed_product_categories/);
+  assert.match(sql, /'process-line'/);
+  assert.match(sql, /cardinality\(codes\) = \(SELECT count\(DISTINCT code\)/);
+  assert.match(sql, /ALTER TABLE inquiries[\s\S]*confirmed_product_category_codes text\[\]/);
+  assert.match(sql, /ALTER TABLE opportunities[\s\S]*confirmed_product_category_codes text\[\]/);
+  assert.match(sql, /ALTER TABLE email_threads[\s\S]*confirmed_product_category_codes text\[\]/);
+  assert.match(sql, /CREATE TABLE product_category_review_events/);
+  assert.match(sql, /Product category review events are immutable/);
+  assert.match(sql, /actor_user_id bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /product_category_review_pending_idx/);
+  assert.doesNotMatch(sql, /ALTER TABLE email_messages/);
+});
+
+test('lead and opportunity product category migration keeps the fixed taxonomy and legacy rows', async () => {
+  const sql = await readFile(productCategoryMigrationPath, 'utf8');
+  assert.match(sql, /ALTER TABLE inquiries[\s\S]*product_category_code text NOT NULL DEFAULT ''/);
+  assert.match(sql, /ALTER TABLE opportunities[\s\S]*product_category_code text NOT NULL DEFAULT ''/);
+  assert.match(sql, /inquiries_product_category_code_check/);
+  assert.match(sql, /opportunities_product_category_code_check/);
+  assert.match(sql, /'custom-machines'[\s\S]*'separation'/);
+  assert.equal((sql.match(/'process-line'/g) || []).length, 2);
+  assert.doesNotMatch(sql, /UPDATE\s+inquiries|UPDATE\s+opportunities/i);
+});
+
+test('outbound email attachments retain an immutable link to the approved business source', async () => {
+  const sql = await readFile(emailAttachmentBusinessSourcesMigrationPath, 'utf8');
+  assert.match(sql, /source_opportunity_attachment_id bigint/);
+  assert.match(sql, /REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /source_technical_document_id bigint/);
+  assert.match(sql, /REFERENCES technical_solution_documents\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /num_nonnulls\(/);
+  assert.match(sql, /email_attachments_single_business_source_check/);
+  assert.match(sql, /email_attachments_source_opportunity_attachment_idx/);
+  assert.match(sql, /email_attachments_source_technical_document_idx/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
+});
+
+test('multi-file technical drafts keep one immutable version relationship for every uploaded file', async () => {
+  const sql = await readFile(multiFileTechnicalDraftsMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_draft_attachments/);
+  assert.match(sql, /attachment_id bigint NOT NULL UNIQUE REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /INSERT INTO opportunity_technical_draft_attachments/);
+  assert.match(sql, /draft_row\.status NOT IN \('draft', 'ready'\)/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON opportunity_technical_draft_attachments/);
+  assert.match(sql, /A submitted technical draft file cannot be retired/);
+  assert.match(sql, /technical_solution_documents_uploaded_file_idx/);
+});
+
+test('technical draft file controls reject only new same-version duplicates while retaining historical files', async () => {
+  const sql = await readFile(technicalDraftFileControlsMigrationPath, 'utf8');
+  assert.match(sql, /CREATE OR REPLACE FUNCTION validate_opportunity_technical_draft_attachment/);
+  assert.match(sql, /lower\(btrim\(existing_attachment\.original_name\)\) = lower\(btrim\(attachment_row\.original_name\)\)/);
+  assert.match(sql, /existing_attachment\.sha256 = attachment_row\.sha256/);
+  assert.match(sql, /existing_attachment\.retired_at IS NULL/);
+  assert.match(sql, /opportunity_technical_draft_attachments_unique_file/);
+  assert.doesNotMatch(sql, /DELETE FROM|UPDATE attachments/);
+});
+
+test('administrator email purge migration permits dependency cleanup only inside the guarded purge transaction', async () => {
+  const sql = await readFile(unrestrictedAdministratorEmailPurgeMigrationPath, 'utf8');
+
+  assert.match(sql, /file_kind IN \('attachment', 'raw_email', 'outbound_email'\)/);
+  for (const trigger of [
+    'email_messages_protect_content',
+    'quotation_package_sent_email_guard',
+    'quotation_package_immutable_guard',
+    'opportunity_activity_links_append_only_guard',
+    'email_outbound_mime_artifacts_no_change'
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TRIGGER ${trigger}`));
+  }
+  assert.equal((sql.match(/current_setting\('bestcrm\.email_purge', true\) IS DISTINCT FROM 'enabled'/g) || []).length, 5);
+  assert.doesNotMatch(sql, /DELETE FROM opportunities|DROP TRIGGER IF EXISTS opportunities_prevent_delete/);
+});
+
+test('administrator opportunity deletion is logical, audited, and retains database guardrails', async () => {
+  const sql = await readFile(administratorOpportunityDeletionMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS deleted_at timestamptz/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS deleted_by bigint/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS delete_reason text/);
+  assert.match(sql, /FOREIGN KEY \(deleted_by\) REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /opportunities_deleted_state_check/);
+  assert.match(sql, /event_type IN \('archive', 'reopen', 'merge', 'delete'\)/);
+  assert.match(sql, /current_setting\('bestcrm\.opportunity_delete', true\) = 'enabled'/);
+  assert.match(sql, /An indexed email thread cannot be unlinked from its opportunity/);
+  assert.doesNotMatch(sql, /DELETE FROM opportunities|DROP TRIGGER IF EXISTS opportunities_prevent_delete|ON DELETE CASCADE/);
+});
+
+test('technical review attachment migration binds immutable rejection files to pending uploaded drafts', async () => {
+  const sql = await readFile(technicalReviewAttachmentsMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_review_attachments/);
+  assert.match(sql, /attachment_id bigint NOT NULL UNIQUE REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /draft_row\.status IS DISTINCT FROM 'pending'/);
+  assert.match(sql, /attachment_row\.category IS DISTINCT FROM 'technical_review'/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON opportunity_technical_review_attachments/);
+  assert.match(sql, /A technical review file cannot be retired while linked to the review/);
+});
+
+test('uploaded technical draft migration preserves file-backed versions and approved bytes', async () => {
+  const sql = await readFile(uploadedTechnicalDraftVersionsMigrationPath, 'utf8');
+  assert.match(sql, /source_kind IN \('template', 'uploaded_file'\)/);
+  assert.match(sql, /deliverable_type IN \('datasheet', 'technical_agreement', 'bidding_document'\)/);
+  assert.match(sql, /uploaded_attachment_id bigint REFERENCES attachments\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CHECK \(format IN \('docx', 'pdf', 'uploaded'\)\)/);
+  assert.match(sql, /Submitted technical solution content is immutable/);
+  assert.match(sql, /A technical draft file cannot be retired while linked to the draft/);
+});
+
+test('uploaded technical file withdrawal audit event is accepted without dropping existing event types', async () => {
+  const sql = await readFile(uploadedTechnicalFileWithdrawalEventMigrationPath, 'utf8');
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS opportunity_technical_draft_events_event_type_check/);
+  assert.match(sql, /ADD CONSTRAINT opportunity_technical_draft_events_event_type_check/);
+  for (const eventType of [
+    'created', 'variables_updated', 'section_updated', 'clauses_updated',
+    'assignment_added', 'assignment_removed', 'readiness_checked',
+    'submitted', 'withdrawn', 'approved', 'rejected', 'revision_created',
+    'documents_generated', 'file_uploaded', 'file_replaced', 'file_withdrawn'
+  ]) {
+    assert.match(sql, new RegExp(`'${eventType}'`));
+  }
+});
+
+test('initial schema declares first-version tables', async () => {
+  const sql = await readFile(schemaPath, 'utf8');
+  for (const table of [
+    'users',
+    'roles',
+    'user_roles',
+    'customers',
+    'contacts',
+    'opportunities',
+    'technical_solutions',
+    'commercial_quotes',
+    'quote_items',
+    'contract_approvals',
+    'contract_approval_steps',
+    'attachments',
+    'workflow_events',
+    'todos',
+    'approval_settings'
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TABLE ${table}`));
+  }
+  assert.match(sql, /sales_manager_id/);
+  assert.doesNotMatch(sql, /department_manager_id/);
+});
+
+test('Authenticator MFA migration creates the three frozen secret-safe tables', async () => {
+  const sql = await readFile(authenticatorMfaMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS user_mfa_settings/);
+  assert.match(sql, /user_id bigint NOT NULL UNIQUE REFERENCES users\(id\) ON DELETE CASCADE/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'disabled'/);
+  assert.match(sql, /CHECK \(status IN \('pending', 'active', 'disabled'\)\)/);
+  assert.match(sql, /secret_ciphertext text/);
+  assert.match(sql, /secret_nonce text/);
+  assert.match(sql, /secret_auth_tag text/);
+  assert.match(sql, /secret_key_version integer/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS user_mfa_recovery_codes/);
+  assert.match(sql, /code_hash char\(64\) NOT NULL/);
+  assert.match(sql, /generation integer NOT NULL/);
+  assert.match(sql, /used_at timestamptz/);
+  assert.match(sql, /invalidated_at timestamptz/);
+  assert.match(sql, /FOREIGN KEY \(mfa_setting_id, user_id\)/);
+  assert.match(sql, /REFERENCES user_mfa_settings\(id, user_id\) ON DELETE CASCADE/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS user_trusted_devices/);
+  assert.match(sql, /token_hash char\(64\) NOT NULL UNIQUE/);
+  assert.match(sql, /expires_at timestamptz NOT NULL/);
+  assert.match(sql, /revoked_at timestamptz/);
+  assert.match(sql, /user_mfa_settings_active_lookup_idx/);
+  assert.match(sql, /user_mfa_recovery_codes_available_idx/);
+  assert.match(sql, /user_trusted_devices_expiry_cleanup_idx/);
+});
+
+test('opportunity number migration creates six digit sequence starting at 800000', async () => {
+  const sql = await readFile(opportunityNumberMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE SEQUENCE IF NOT EXISTS opportunity_no_seq/);
+  assert.match(sql, /START WITH 800000/);
+  assert.match(sql, /opportunity_no ~ '\^\[0-9\]\{6\}\$'/);
+  assert.match(sql, /setval\(\s*'opportunity_no_seq'/);
+});
+
+test('opportunity number sequence is capped at six digits', async () => {
+  const sql = await readFile(opportunityNumberMaxMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER SEQUENCE opportunity_no_seq/);
+  assert.match(sql, /MAXVALUE 999999/);
+});
+
+test('roles metadata migration adds role descriptions and active flag', async () => {
+  const sql = await readFile(rolesMetadataMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE roles/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS description text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS is_active boolean NOT NULL DEFAULT true/);
+});
+
+test('requirement updates migration creates supplemental requirement records', async () => {
+  const sql = await readFile(requirementUpdatesMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS requirement_updates/);
+  assert.match(sql, /opportunity_id bigint NOT NULL REFERENCES opportunities\(id\) ON DELETE CASCADE/);
+  assert.match(sql, /requirement_text text NOT NULL/);
+  assert.match(sql, /reason text NOT NULL/);
+  assert.match(sql, /created_by bigint NOT NULL REFERENCES users\(id\)/);
+});
+
+test('technical solution versions migration adds version and review fields', async () => {
+  const sql = await readFile(technicalSolutionVersionsMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE technical_solutions/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS version_no integer/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS reviewed_by bigint REFERENCES users\(id\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS reviewed_at timestamptz/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS review_comment text/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS technical_solutions_opportunity_version_idx/);
+});
+
+test('commercial quote versions migration adds version and review fields', async () => {
+  const sql = await readFile(commercialQuoteVersionsMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE commercial_quotes/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS version_no integer/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS reviewed_by bigint REFERENCES users\(id\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS reviewed_at timestamptz/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS review_comment text/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS commercial_quotes_opportunity_version_idx/);
+});
+
+test('contract versions migration adds version number fields', async () => {
+  const sql = await readFile(contractVersionsMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE contract_approvals/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS version_no integer/);
+  assert.match(sql, /ROW_NUMBER\(\) OVER/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS contract_approvals_opportunity_version_idx/);
+});
+
+test('opportunity responsibility migration adds team members and owner transfer history', async () => {
+  const sql = await readFile(opportunityResponsibilityMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_members/);
+  assert.match(sql, /opportunity_id bigint NOT NULL REFERENCES opportunities\(id\) ON DELETE CASCADE/);
+  assert.match(sql, /user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /role_code text NOT NULL/);
+  assert.match(sql, /permission_level text NOT NULL DEFAULT 'view'/);
+  assert.match(sql, /added_by bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /removed_by bigint REFERENCES users\(id\)/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS opportunity_members_active_unique_idx/);
+  assert.match(sql, /WHERE is_active = true/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_owner_transfers/);
+  assert.match(sql, /from_owner_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /to_owner_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /changed_by bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /reason text NOT NULL/);
+  assert.match(sql, /keep_previous_owner_as_member boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS opportunity_owner_transfers_opportunity_idx/);
+});
+
+test('opportunity engineering collaboration migration adds tasks audit and contributions', async () => {
+  const sql = await readFile(opportunityEngineeringCollaborationMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE opportunity_members/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS assignment_scope text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS task_description text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS due_date date/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS can_send_external_email boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_member_events/);
+  assert.match(sql, /event_type text NOT NULL CHECK \(event_type IN \('assigned', 'updated', 'removed'\)\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_engineering_contributions/);
+  assert.match(sql, /contributor_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /contribution_summary text NOT NULL/);
+});
+
+test('product technical template migration creates controlled immutable revision tables', async () => {
+  const sql = await readFile(productTechnicalTemplatesMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_agreement_templates/);
+  assert.match(sql, /language text NOT NULL CHECK \(language IN \('en', 'zh', 'bilingual'\)\)/);
+  assert.match(sql, /current_published_revision_id bigint/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_agreement_template_revisions/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'draft' CHECK \(status IN \('draft', 'review_pending', 'published', 'retired'\)\)/);
+  assert.match(sql, /UNIQUE \(template_id, revision_no\)/);
+  assert.match(sql, /technical_agreement_template_open_revision_idx/);
+  assert.match(sql, /technical_agreement_template_published_revision_idx/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_agreement_variable_definitions/);
+  assert.match(sql, /variable_key text NOT NULL UNIQUE CHECK/);
+  assert.match(sql, /source_field text NOT NULL DEFAULT 'manual' CHECK/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_agreement_revision_variables/);
+  assert.match(sql, /variable_key text NOT NULL CHECK/);
+  assert.match(sql, /validation_rules jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_agreement_clause_blocks/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_template_events/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION protect_technical_template_revision_content/);
+  assert.match(sql, /Submitted or published template revision content is immutable/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION require_draft_technical_template_revision/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION protect_technical_clause_content/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('opportunity technical draft migration freezes generated snapshots and attributes section work', async () => {
+  const sql = await readFile(opportunityTechnicalDraftsMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS section_key text NOT NULL DEFAULT 'design_parameters'/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_drafts/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'draft' CHECK \(status IN \('draft', 'ready'\)\)/);
+  assert.match(sql, /content_schema_snapshot jsonb NOT NULL/);
+  assert.match(sql, /variable_schema_snapshot jsonb NOT NULL/);
+  assert.match(sql, /variable_values jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.match(sql, /selected_clauses jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
+  assert.match(sql, /rendered_content jsonb NOT NULL/);
+  assert.match(sql, /UNIQUE \(opportunity_id, draft_revision_no\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_section_assignments/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_draft_events/);
+  assert.match(sql, /require_current_published_technical_template_revision/);
+  assert.match(sql, /Opportunity technical draft source snapshots are immutable/);
+  assert.match(sql, /Opportunity technical draft events are append-only/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('technical solution version migration adds immutable approval versions and checksum-bound files', async () => {
+  const sql = await readFile(technicalSolutionDocumentsMigrationPath, 'utf8');
+
+  assert.match(sql, /CHECK \(status IN \('draft', 'ready', 'pending', 'approved', 'rejected'\)\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS source_draft_id bigint/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS formal_version_no integer/);
+  assert.match(sql, /opportunity_technical_drafts_formal_version_idx/);
+  assert.match(sql, /opportunity_technical_drafts_pending_idx/);
+  assert.match(sql, /opportunity_technical_drafts_formal_version_check/);
+  assert.match(sql, /opportunity_technical_drafts_submission_metadata_check/);
+  assert.match(sql, /opportunity_technical_drafts_review_metadata_check/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS opportunity_technical_draft_id bigint/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS technical_solution_documents/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /content bytea NOT NULL/);
+  assert.match(sql, /Approved technical solution documents are immutable/);
+  assert.match(sql, /Submitted and approved technical solution content is immutable/);
+  assert.match(sql, /Revision drafts must preserve the rejected source snapshot/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('quotation package migration creates immutable customer-facing package versions', async () => {
+  const sql = await readFile(quotationPackageVersionsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS quotation_package_versions/);
+  assert.match(sql, /draft_revision_no integer NOT NULL CHECK \(draft_revision_no > 0\)/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'draft' CHECK \(status IN \('draft', 'pending', 'approved', 'rejected', 'sent', 'superseded', 'accepted'\)\)/);
+  assert.match(sql, /technical_solution_version_id bigint NOT NULL REFERENCES opportunity_technical_drafts\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /commercial_quote_id bigint NOT NULL REFERENCES commercial_quotes\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /commercial_line_items jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
+  assert.match(sql, /quotation_package_versions_formal_version_idx/);
+  assert.match(sql, /quotation_package_versions_pending_idx/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS quotation_package_attachments/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS quotation_package_events/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS accepted_quotation_package_id bigint/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS quotation_package_version_id bigint/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION validate_quotation_package_components/);
+  assert.match(sql, /Quotation packages require approved technical solution and commercial quote versions/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION protect_quotation_package_version/);
+  assert.match(sql, /Sent, superseded, and accepted quotation packages are immutable/);
+  assert.match(sql, /Quotation package status transition is invalid/);
+  assert.match(sql, /Accepted quotation package link cannot be cleared/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION protect_quotation_package_attachment/);
+  assert.match(sql, /Quotation package attachments are immutable after submission/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION validate_accepted_quotation_package_link/);
+  assert.match(sql, /Contract approval requires an accepted quotation package from the same opportunity/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('bid center foundation migration creates governed commercial templates, content blocks, and output profiles', async () => {
+  const sql = await readFile(bidCenterFoundationMigrationPath, 'utf8');
+
+  for (const table of [
+    'commercial_package_templates',
+    'commercial_package_template_revisions',
+    'bid_content_blocks',
+    'bid_content_block_revisions',
+    'bid_output_profiles'
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  assert.match(sql, /commercial_package_templates_current_revision_owner_fk/);
+  assert.match(sql, /bid_content_blocks_current_revision_owner_fk/);
+  assert.match(sql, /commercial_package_template_open_revision_idx/);
+  assert.match(sql, /commercial_package_template_published_revision_idx/);
+  assert.match(sql, /bid_content_block_open_revision_idx/);
+  assert.match(sql, /bid_content_block_published_revision_idx/);
+  assert.match(sql, /bid_output_profile_open_revision_idx/);
+  assert.match(sql, /bid_output_profile_published_revision_idx/);
+  assert.match(sql, /applicable_sections jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
+  assert.match(sql, /owner_role_code text NOT NULL REFERENCES roles\(code\) ON DELETE RESTRICT/);
+  assert.match(sql, /allowed_variables jsonb NOT NULL DEFAULT '\[\]'::jsonb/);
+  assert.match(sql, /source_metadata jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.match(sql, /controlled_attachment/);
+  assert.match(sql, /attachment_sha256 char\(64\)/);
+  assert.match(sql, /Commercial template revisions must be created as drafts/);
+  assert.match(sql, /commercial_package_template_revisions_lifecycle_check/);
+  assert.match(sql, /bid_content_block_revisions_lifecycle_check/);
+  assert.match(sql, /bid_output_profiles_lifecycle_check/);
+  assert.match(sql, /Commercial template revision status transition is invalid/);
+  assert.match(sql, /Bid content revision status transition is invalid/);
+  assert.match(sql, /Bid output profile status transition is invalid/);
+  assert.match(sql, /Published commercial template revisions can only be retired/);
+  assert.match(sql, /Published bid content revisions can only be retired/);
+  assert.match(sql, /Published bid output profiles can only be retired/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('bid workspace migration freezes project sources and enforces one open version per opportunity', async () => {
+  const sql = await readFile(opportunityBidWorkspacesMigrationPath, 'utf8');
+
+  assert.match(sql, /opportunity_technical_drafts_open_idx/);
+  assert.match(sql, /WHERE status IN \('draft', 'ready', 'pending'\)/);
+  assert.match(sql, /quotation_package_versions_combined_open_idx/);
+  assert.match(sql, /WHERE status IN \('draft', 'pending'\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_bid_workspaces/);
+  assert.match(sql, /opportunity_id bigint NOT NULL UNIQUE REFERENCES opportunities\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /technical_template_revision_id bigint NOT NULL/);
+  assert.match(sql, /commercial_template_revision_id bigint NOT NULL/);
+  assert.match(sql, /output_profile_id bigint NOT NULL REFERENCES bid_output_profiles\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /Bid workspace requires an active current published technical template revision/);
+  assert.match(sql, /Opportunity bid workspace source snapshots are immutable/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_commercial_drafts/);
+  assert.match(sql, /opportunity_commercial_drafts_open_idx/);
+  assert.match(sql, /opportunity_commercial_drafts_formal_version_idx/);
+  assert.match(sql, /Commercial draft versions must be created as drafts/);
+  assert.match(sql, /template_content_schema IS DISTINCT FROM NEW\.content_schema_snapshot/);
+  assert.match(sql, /Approved and rejected commercial draft versions are immutable/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS bid_section_changes/);
+  assert.match(sql, /package_type IN \('technical', 'commercial', 'complete'\)/);
+  assert.match(sql, /Bid section change source does not belong to its workspace/);
+  assert.match(sql, /Bid section changes are append-only/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('quotation package document migration binds immutable generated files to approved bid versions', async () => {
+  const sql = await readFile(quotationPackageDocumentsMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS workspace_id bigint/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS commercial_draft_id bigint/);
+  assert.match(sql, /quotation_package_versions_bid_center_binding_check/);
+  assert.match(sql, /Bid center quotation package requires an approved commercial version from the same workspace/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS quotation_package_documents/);
+  assert.match(sql, /content bytea NOT NULL/);
+  assert.match(sql, /byte_size bigint NOT NULL CHECK \(byte_size > 0\)/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /UNIQUE \(quotation_package_version_id, document_type\)/);
+  assert.match(sql, /Quotation package documents require matching approved frozen source versions/);
+  assert.match(sql, /Generated quotation package documents are immutable/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION protect_quotation_package_version/);
+  assert.match(sql, /NEW\.workspace_id IS NOT DISTINCT FROM OLD\.workspace_id/);
+  assert.match(sql, /NEW\.commercial_draft_id IS NOT DISTINCT FROM OLD\.commercial_draft_id/);
+  assert.match(sql, /NEW\.sent_email_message_id IS NOT DISTINCT FROM OLD\.sent_email_message_id/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('bid package editor migration preserves project edits, attachments, suggestions, and actor audit', async () => {
+  const sql = await readFile(bidPackageEditorsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS bid_package_events/);
+  assert.match(sql, /event_type IN \(/);
+  assert.match(sql, /'variables_saved'/);
+  assert.match(sql, /'section_restored'/);
+  assert.match(sql, /'assignment_added'/);
+  assert.match(sql, /Bid package events are append-only/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS bid_package_attachments/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /removed_by bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /one soft removal/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS bid_library_suggestions/);
+  assert.match(sql, /target_kind IN \('content_block', 'template_revision'\)/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'draft'/);
+  assert.match(sql, /content_snapshot jsonb NOT NULL/);
+  assert.match(sql, /Bid package source does not belong to its workspace/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('bid package approval migration adds completeness audit, reviewer separation, and immutable revisions', async () => {
+  const sql = await readFile(bidPackageApprovalsMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS bid_package_completeness_checks/);
+  assert.match(sql, /package_type IN \('technical', 'commercial', 'complete'\)/);
+  assert.match(sql, /snapshot_sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /Bid package completeness checks are append-only/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS review_source_package_id bigint/);
+  assert.match(sql, /reviewed_by <> submitted_by/);
+  assert.match(sql, /Submitted technical package attachments are immutable/);
+  assert.match(sql, /Submitted commercial package attachments are immutable/);
+  assert.match(sql, /Complete bid review revisions require a rejected source from the same workspace/);
+});
+
+test('bid package output identity migration binds all outputs to one generator and source snapshot', async () => {
+  const sql = await readFile(bidPackageOutputIdentityMigrationPath, 'utf8');
+  assert.match(sql, /output_profile_revision_no integer/);
+  assert.match(sql, /source_snapshot_sha256 char\(64\)/);
+  assert.match(sql, /generation_key char\(64\)/);
+  assert.match(sql, /validate_quotation_package_document_identity/);
+  assert.match(sql, /generated_bid_package_outputs/);
+  assert.match(sql, /downloaded_bid_output/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('customer country migration adds country to customer records', async () => {
+  const sql = await readFile(customerCountryMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE customers/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS country text/);
+});
+
+test('contact profile migration adds education work experience and achievement fields', async () => {
+  const sql = await readFile(contactProfileMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE contacts/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS education_background text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS work_experience text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS key_achievements text/);
+});
+
+test('customer profile migration adds parent company enterprise nature and highlights fields', async () => {
+  const sql = await readFile(customerProfileMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE customers/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS parent_company text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS enterprise_nature text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS company_highlights text/);
+});
+
+test('customer website migration adds website to customer records', async () => {
+  const sql = await readFile(customerWebsiteMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE customers/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS website text/);
+});
+
+test('inquiry disposition migration separates product and opportunity type and adds final outcomes', async () => {
+  const sql = await readFile(inquiryDispositionMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS opportunity_type text NOT NULL DEFAULT ''/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS product_interest text NOT NULL DEFAULT ''/);
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS inquiries_status_check/);
+  assert.match(sql, /'contact_saved'/);
+  assert.match(sql, /'customer_saved'/);
+});
+
+test('inquiry customer collaboration migration adds a pending state and auditable approval records', async () => {
+  const sql = await readFile(inquiryCustomerCollaborationMigrationPath, 'utf8');
+
+  assert.match(sql, /'customer_approval_pending'/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_customer_approvals/);
+  assert.match(sql, /customer_id bigint NOT NULL REFERENCES customers\(id\)/);
+  assert.match(sql, /requested_by bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /customer_owner_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /reviewer_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /request_payload jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.match(sql, /converted_opportunity_id bigint REFERENCES opportunities\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /WHERE status = 'pending'/);
+});
+
+test('sales lead submissions migration enforces inquiry-first opportunity creation', async () => {
+  const sql = await readFile(salesLeadSubmissionsMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS submission_type text NOT NULL DEFAULT 'standard'/);
+  assert.match(sql, /CHECK \(submission_type IN \('standard', 'sales_lead'\)\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS source_channel text NOT NULL DEFAULT 'other'/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS recommended_salesperson_id bigint REFERENCES users\(id\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS origin_inquiry_id bigint REFERENCES inquiries\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS opportunities_origin_inquiry_unique_idx/);
+});
+
+test('lead customer website migration adds an optional persistent inquiry field', async () => {
+  const sql = await readFile(leadCustomerWebsiteMigrationPath, 'utf8');
+  assert.match(sql, /ALTER TABLE inquiries/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS company_website text NOT NULL DEFAULT ''/);
+});
+
+test('sales lead review workflow adds returned and rejected states with immutable review history', async () => {
+  const sql = await readFile(salesLeadReviewWorkflowMigrationPath, 'utf8');
+
+  assert.match(sql, /'returned'/);
+  assert.match(sql, /'rejected'/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS lead_review_events/);
+  assert.match(sql, /inquiry_id bigint NOT NULL REFERENCES inquiries\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /inquiries_sales_lead_status_check/);
+  assert.match(sql, /inquiries_sales_lead_opportunity_check/);
+  assert.match(sql, /assigned_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /'reviewer_reassigned'/);
+  assert.match(sql, /lead_review_events_transition_check/);
+  assert.match(sql, /lead_review_events_opportunity_check/);
+  assert.match(sql, /Lead review events are immutable/);
+  assert.match(sql, /Converted sales leads are immutable and cannot be deleted/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON inquiries/);
+});
+
+test('lead creator edit audit permits only a pending-to-pending creator edit event', async () => {
+  const sql = await readFile(leadCreatorEditAuditMigrationPath, 'utf8');
+
+  assert.match(sql, /'creator_edited'/);
+  assert.match(sql, /event_type = 'creator_edited' AND from_status = 'new' AND to_status = 'new'/);
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS lead_review_events_transition_check/);
+});
+
+test('opportunity material versions migration creates unified approval version records', async () => {
+  const sql = await readFile(opportunityMaterialVersionsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_material_versions/);
+  assert.match(sql, /opportunity_id bigint NOT NULL REFERENCES opportunities\(id\) ON DELETE CASCADE/);
+  assert.match(sql, /material_type text NOT NULL/);
+  assert.match(sql, /material_type IN \('technical_solution', 'commercial_quote', 'contract'\)/);
+  assert.match(sql, /version_no integer NOT NULL/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'draft'/);
+  assert.match(sql, /status IN \('draft', 'pending', 'approved', 'rejected', 'withdrawn'\)/);
+  assert.match(sql, /submitted_by bigint REFERENCES users\(id\)/);
+  assert.match(sql, /reviewed_by bigint REFERENCES users\(id\)/);
+  assert.match(sql, /UNIQUE \(opportunity_id, material_type, version_no\)/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS opportunity_material_versions_opportunity_type_idx/);
+});
+
+test('attachment material version migration links attachments to unified material versions', async () => {
+  const sql = await readFile(attachmentMaterialVersionMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE attachments/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS opportunity_material_version_id bigint/);
+  assert.match(sql, /REFERENCES opportunity_material_versions\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS attachments_material_version_idx/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS attachments_unbound_material_idx/);
+  assert.match(sql, /WHERE opportunity_material_version_id IS NULL/);
+});
+
+test('login security migration creates lockout state and audit log tables', async () => {
+  const sql = await readFile(loginSecurityMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS login_attempt_states/);
+  assert.match(sql, /identity_key text PRIMARY KEY/);
+  assert.match(sql, /failed_count integer NOT NULL DEFAULT 0/);
+  assert.match(sql, /locked_until timestamptz/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS login_audit_events/);
+  assert.match(sql, /username text NOT NULL/);
+  assert.match(sql, /user_id bigint REFERENCES users\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /ip_address text/);
+  assert.match(sql, /user_agent text/);
+  assert.match(sql, /result text NOT NULL/);
+  assert.match(sql, /reason text/);
+});
+
+test('sales work migration creates plan and log records', async () => {
+  const sql = await readFile(salesWorkMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS sales_work_plans/);
+  assert.match(sql, /salesperson_user_id bigint NOT NULL REFERENCES users\(id\)/);
+  assert.match(sql, /plan_date date NOT NULL/);
+  assert.match(sql, /customer_id bigint REFERENCES customers\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /contact_id bigint REFERENCES contacts\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /opportunity_id bigint REFERENCES opportunities\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /activity_type text NOT NULL/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'planned'/);
+  assert.match(sql, /status IN \('planned', 'completed', 'cancelled'\)/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS sales_work_plans_salesperson_date_idx/);
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS sales_work_logs/);
+  assert.match(sql, /log_date date NOT NULL/);
+  assert.match(sql, /content text NOT NULL/);
+  assert.match(sql, /next_plan_date date/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS sales_work_logs_salesperson_date_idx/);
+});
+
+test('inquiry inbox migration creates controlled intake records', async () => {
+  const sql = await readFile(inquiryInboxMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiries/);
+  assert.match(sql, /source text NOT NULL DEFAULT 'manual'/);
+  assert.match(sql, /source IN \('manual', 'website', 'email', 'chatwoot'\)/);
+  assert.match(sql, /requirement_text text NOT NULL/);
+  assert.match(sql, /raw_payload jsonb NOT NULL DEFAULT '\{\}'::jsonb/);
+  assert.match(sql, /priority IN \('low', 'normal', 'high', 'urgent'\)/);
+  assert.match(sql, /status IN \('new', 'reviewing', 'converted', 'duplicate', 'spam', 'archived'\)/);
+  assert.match(sql, /assigned_user_id bigint REFERENCES users\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /matched_customer_id bigint REFERENCES customers\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /converted_opportunity_id bigint REFERENCES opportunities\(id\) ON DELETE SET NULL/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS inquiries_status_created_idx/);
+  assert.match(sql, /CREATE INDEX IF NOT EXISTS inquiries_source_reference_idx/);
+});
+
+test('inquiry source reference migration prevents duplicate external intake', async () => {
+  const sql = await readFile(inquirySourceReferenceUniqueMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS inquiries_source_reference_unique_idx/);
+  assert.match(sql, /ON inquiries\(source, source_reference\)/);
+  assert.match(sql, /WHERE source_reference <> ''/);
+});
+
+test('notification center migration creates inbox, channel queue, push subscriptions, and workflow trigger', async () => {
+  const sql = await readFile(notificationCenterMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS notification_preferences/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS notifications/);
+  assert.match(sql, /priority IN \('normal', 'high', 'critical'\)/);
+  assert.match(sql, /UNIQUE \(user_id, source_type, source_id\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS notification_deliveries/);
+  assert.match(sql, /channel IN \('web_push', 'email', 'sms'\)/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS web_push_subscriptions/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION create_workflow_notification/);
+  assert.match(sql, /AFTER INSERT ON workflow_events/);
+  assert.match(sql, /NEW\.target_user_id IS NULL OR NEW\.target_user_id = NEW\.actor_user_id/);
+  assert.match(sql, /notification_priority = 'critical'/);
+  assert.match(sql, /pg_notify\('bestcrm_notifications'/);
+});
+
+test('workflow notification recipients migration also notifies the salesperson after manager approvals', async () => {
+  const sql = await readFile(notificationWorkflowRecipientsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE OR REPLACE FUNCTION create_workflow_secondary_notifications/);
+  assert.match(sql, /NEW\.event_type NOT IN \('approve_initiation', 'approve_technical_solution'\)/);
+  assert.match(sql, /SELECT\s+salesperson_id,/);
+  assert.match(sql, /recipient_user_id = NEW\.actor_user_id/);
+  assert.match(sql, /recipient_user_id = NEW\.target_user_id/);
+  assert.match(sql, /CREATE TRIGGER workflow_event_secondary_notification_trigger/);
+  assert.match(sql, /AFTER INSERT ON workflow_events/);
+  assert.match(sql, /EXECUTE FUNCTION create_workflow_secondary_notifications/);
+});
+
+test('email center migration creates immutable threaded business mail archive', async () => {
+  const sql = await readFile(emailCenterArchiveMigrationPath, 'utf8');
+
+  for (const table of ['email_threads', 'email_messages', 'email_attachments', 'email_delivery_attempts']) {
+    assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS email_messages_message_id_idx/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS email_messages_provider_uid_idx/);
+  assert.match(sql, /provider_uid_validity/);
+  assert.match(sql, /in_reply_to/);
+  assert.match(sql, /reference_ids jsonb/);
+  assert.match(sql, /sha256 char\(64\)/);
+  assert.match(sql, /ON DELETE RESTRICT/);
+  assert.match(sql, /Business email archive records cannot be deleted/);
+  assert.match(sql, /Inbound email messages are immutable/);
+  assert.match(sql, /Archived email attachments are immutable/);
+  assert.match(sql, /inquiries_link_email_threads_after_conversion/);
+});
+
+test('email inline attachment metadata migration preserves MIME disposition for complete rendering', async () => {
+  const sql = await readFile(emailInlineAttachmentMetadataMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE email_attachments/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS content_disposition text NOT NULL DEFAULT ''/);
+  assert.match(sql, /content_disposition IN \('', 'attachment', 'inline'\)/);
+});
+
+test('email canonical identity migration preserves duplicate evidence behind one visible message', async () => {
+  const sql = await readFile(emailMessageCanonicalIdentityMigrationPath, 'utf8');
+
+  assert.match(sql, /bestcrm_canonical_email_message_id/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS canonical_message_id bigint/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_message_merge_audits/);
+  assert.match(sql, /canonical_rfc_message_id_match/);
+  assert.match(sql, /mailboxDeliveryIds/);
+  assert.match(sql, /attachmentIds/);
+  assert.match(sql, /deliveryAttemptIds/);
+  assert.match(sql, /activityLinkIds/);
+  assert.match(sql, /outboundMimeArtifactIds/);
+  assert.match(sql, /CREATE UNIQUE INDEX email_messages_message_id_idx/);
+  assert.match(sql, /canonical_message_id IS NULL/);
+  assert.doesNotMatch(sql, /DELETE FROM email_messages/);
+});
+
+test('customer email sending migration binds immutable outbound mail to approved quotation versions', async () => {
+  const sql = await readFile(customerEmailSendingMigrationPath, 'utf8');
+
+  assert.match(sql, /email_signature_name text NOT NULL DEFAULT ''/);
+  assert.match(sql, /email_signature_title text NOT NULL DEFAULT ''/);
+  assert.match(sql, /delivery_status IN \('received', 'draft', 'pending', 'sent', 'failed'\)/);
+  assert.match(sql, /reply_to_message_id bigint/);
+  assert.match(sql, /quotation_package_version_id bigint/);
+  assert.match(sql, /sent_email_message_id bigint/);
+  assert.match(sql, /ON DELETE RESTRICT/);
+  assert.match(sql, /Formal quotation email requires an approved quotation package from the same opportunity/);
+  assert.match(sql, /Sent quotation package requires its accepted outbound email record/);
+  assert.match(sql, /Sent email delivery state is immutable/);
+});
+
+test('Google Workspace customer center migration adds secret-safe mailbox and Gmail archive identity', async () => {
+  const sql = await readFile(googleWorkspaceCustomerCenterMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS mailbox_connections/);
+  assert.match(sql, /provider text NOT NULL/);
+  assert.match(sql, /mailbox_address text NOT NULL/);
+  assert.match(sql, /encrypted_refresh_token jsonb/);
+  assert.match(sql, /token_key_version integer/);
+  assert.match(sql, /granted_scopes text\[\]/);
+  assert.match(sql, /connection_status IN \('disconnected', 'connected', 'degraded', 'revoked'\)/);
+  assert.match(sql, /mailbox_connections_token_state_check/);
+  assert.match(sql, /octet_length\(decode\(encrypted_refresh_token ->> 'tokenNonce', 'base64'\)\) = 12/);
+  assert.match(sql, /octet_length\(decode\(encrypted_refresh_token ->> 'tokenAuthTag', 'base64'\)\) = 16/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS mailbox_connections_provider_mailbox_idx/);
+  assert.match(sql, /Mailbox connections cannot be deleted; revoke them instead/);
+  assert.doesNotMatch(sql, /google_password|client_secret|access_token/i);
+
+  for (const column of [
+    'mailbox_connection_id',
+    'workflow_status',
+    'assigned_user_id',
+    'assigned_at',
+    'assigned_by',
+    'completed_at',
+    'completed_by',
+    'last_inbound_at',
+    'last_outbound_at',
+    'provider_thread_id'
+  ]) {
+    assert.match(sql, new RegExp(`ADD COLUMN IF NOT EXISTS ${column}`));
+  }
+  assert.match(sql, /workflow_status IN \('unassigned', 'assigned', 'waiting_customer', 'completed'\)/);
+  assert.match(sql, /email_threads_assignment_state_check/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS email_threads_provider_thread_identity_idx/);
+
+  for (const column of [
+    'provider_name',
+    'provider_history_id',
+    'raw_eml_stored_path',
+    'raw_eml_file_size',
+    'raw_eml_sha256',
+    'imported_at',
+    'provider_labels'
+  ]) {
+    assert.match(sql, new RegExp(`ADD COLUMN IF NOT EXISTS ${column}`));
+  }
+  assert.match(sql, /email_messages_raw_eml_state_check/);
+  assert.match(sql, /imported_at IS NULL OR raw_eml_stored_path IS NOT NULL/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS email_messages_provider_message_identity_idx/);
+  assert.match(sql, /CREATE UNIQUE INDEX IF NOT EXISTS email_messages_raw_eml_path_idx/);
+  assert.match(sql, /Email message mailbox connection must match its thread/);
+  assert.match(sql, /Inbound email messages are immutable/);
+  assert.match(sql, /Archived raw email identity is immutable/);
+});
+
+test('Google Workspace customer center migration creates an append-only assignment event stream', async () => {
+  const sql = await readFile(googleWorkspaceCustomerCenterMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_thread_assignment_events/);
+  assert.match(sql, /previous_assigned_user_id bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /new_assigned_user_id bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /action IN \('claim', 'assign', 'transfer', 'release', 'wait_customer', 'reopen', 'complete'\)/);
+  assert.match(sql, /acted_by bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /email_thread_assignment_events_transition_check/);
+  assert.match(sql, /action NOT IN \('transfer', 'release'\) OR btrim\(reason\) <> ''/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON email_thread_assignment_events/);
+  assert.match(sql, /Email thread assignment events are append-only/);
+});
+
+test('unified work item migration creates auditable role work without changing opportunity workflow state', async () => {
+  const sql = await readFile(unifiedWorkItemsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS work_items/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS work_item_events/);
+  assert.match(sql, /planned_start_at timestamptz/);
+  assert.match(sql, /due_at timestamptz/);
+  assert.match(sql, /estimated_hours numeric\(8, 2\)/);
+  assert.match(sql, /workload_level text CHECK/);
+  assert.match(sql, /'low', 'medium', 'high'/);
+  assert.match(sql, /kpi_code text NOT NULL/);
+  assert.match(sql, /kpi_target text NOT NULL/);
+  assert.match(sql, /work_items_active_business_key_idx/);
+  assert.match(sql, /business_type text CHECK/);
+  assert.match(sql, /business_record_id bigint/);
+  assert.match(sql, /bestcrm_record_work_item_event/);
+  assert.match(sql, /'estimation_changed'/);
+  assert.match(sql, /FROM todos todo/);
+  assert.match(sql, /'workflow_todo'/);
+  assert.doesNotMatch(sql, /UPDATE opportunities/);
+});
+
+test('project execution migration enforces one audited post-contract record per opportunity', async () => {
+  const sql = await readFile(projectExecutionsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS project_executions/);
+  assert.match(sql, /opportunity_id bigint NOT NULL UNIQUE REFERENCES opportunities\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /contract_signed_on date NOT NULL/);
+  assert.match(sql, /confirmed_by_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS project_execution_events/);
+  assert.match(sql, /bestcrm_record_project_execution_event/);
+  assert.match(sql, /AFTER INSERT OR UPDATE OF status/);
+  assert.doesNotMatch(sql, /UPDATE opportunities/);
+});
+
+test('project execution delivery plan retains accountable work, dates and a blocker reason', async () => {
+  const sql = await readFile(projectExecutionDeliveryPlanMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS project_execution_work_packages/);
+  assert.match(sql, /responsible_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /planned_start_on date/);
+  assert.match(sql, /due_on date/);
+  assert.match(sql, /completed_on date/);
+  assert.match(sql, /blocker_note text NOT NULL DEFAULT ''/);
+  assert.match(sql, /due_on IS NULL OR planned_start_on IS NULL OR due_on >= planned_start_on/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('project execution controlled workflow is role-separated and append-only auditable', async () => {
+  const sql = await readFile(projectExecutionControlledWorkflowMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS project_execution_release_workflows/);
+  assert.match(sql, /project_engineer_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /process_engineer_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /technical_manager_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /approver_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /publisher_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS project_execution_audit_events/);
+  assert.match(sql, /Append-only project execution facts/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('opportunity technical document migration creates the controlled template matrix and immutable version files', async () => {
+  const sql = await readFile(opportunityTechnicalDocumentsMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS document_type text/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS product_category_code text/);
+  assert.match(sql, /technical_templates_active_document_category_idx/);
+  assert.match(sql, /bestcrm_protect_technical_template_classification/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_equipment_items/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_documents/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_document_versions/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_document_version_items/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_technical_document_files/);
+  assert.match(sql, /octet_length\(content\) = byte_size/);
+  assert.match(sql, /bestcrm_validate_technical_document_identity/);
+  assert.match(sql, /bestcrm_validate_technical_document_version_item/);
+  assert.match(sql, /Uploaded versions must preserve the complete prior equipment and template snapshot/);
+  assert.match(sql, /CREATE CONSTRAINT TRIGGER opportunity_technical_document_version_items_source_trigger/);
+  assert.match(sql, /DEFERRABLE INITIALLY DEFERRED/);
+  assert.match(sql, /bestcrm_validate_technical_document_version_completeness/);
+  assert.match(sql, /Technical document version requires one DOCX and one PDF file/);
+  assert.match(sql, /bestcrm_reject_technical_document_history_mutation/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON opportunity_technical_document_files/);
+  assert.match(sql, /BEFORE DELETE ON opportunity_equipment_items/);
+});
+
+test('localized technical template migration stores English and Chinese without combining rendered content', async () => {
+  const sql = await readFile(localizedTechnicalTemplateContentMigrationPath, 'utf8');
+  for (const column of ['name_en', 'name_zh', 'application_en', 'application_zh']) {
+    assert.match(sql, new RegExp(`ADD COLUMN IF NOT EXISTS ${column} text`));
+  }
+  assert.match(sql, /language = 'bilingual'/);
+  assert.match(sql, /CRM selects this field only for an English login session/);
+  assert.match(sql, /stored alongside but never rendered together with Chinese/);
+});
+
+test('opportunity technical plan migration stores the planned proposal submission date', async () => {
+  const sql = await readFile(opportunityTechnicalPlanSubmitDateMigrationPath, 'utf8');
+
+  assert.match(sql, /ALTER TABLE opportunities/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS technical_plan_submit_date date/);
+});
+
+test('customer code migration backfills stable immutable C000001-style codes', async () => {
+  const sql = await readFile(customerCodeMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE SEQUENCE IF NOT EXISTS customer_code_seq/);
+  assert.match(sql, /MAXVALUE 999999/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS customer_code text/);
+  assert.match(sql, /row_number\(\) OVER \(ORDER BY id\)/);
+  assert.match(sql, /nextval\('customer_code_seq'\)/);
+  assert.match(sql, /'C' \|\| lpad/);
+  assert.match(sql, /customers_customer_code_unique_idx/);
+  assert.match(sql, /customer_code ~ '\^C\[0-9\]\{6\}\$'/);
+  assert.match(sql, /ALTER COLUMN customer_code SET NOT NULL/);
+  assert.match(sql, /bestcrm_protect_customer_code/);
+  assert.match(sql, /customer_code is immutable/);
+});
+
+test('contact code migration backfills stable immutable CT000001-style codes', async () => {
+  const sql = await readFile(contactCodeMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE SEQUENCE IF NOT EXISTS contact_code_seq/);
+  assert.match(sql, /MAXVALUE 999999/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS contact_code text/);
+  assert.match(sql, /row_number\(\) OVER \(ORDER BY id\)/);
+  assert.match(sql, /substring\(contact_code FROM 3\)/);
+  assert.match(sql, /nextval\('contact_code_seq'\)/);
+  assert.match(sql, /'CT' \|\| lpad/);
+  assert.match(sql, /contacts_contact_code_unique_idx/);
+  assert.match(sql, /contact_code ~ '\^CT\[0-9\]\{6\}\$'/);
+  assert.match(sql, /ALTER COLUMN contact_code SET NOT NULL/);
+  assert.match(sql, /bestcrm_protect_contact_code/);
+  assert.match(sql, /contact_code is immutable/);
+});
+
+test('contact code prefix migration converts existing codes and configures immutable L000001-style codes', async () => {
+  const sql = await readFile(contactCodeLPrefixMigrationPath, 'utf8');
+
+  assert.match(sql, /contact_code !~ '\^CT\[0-9\]\{6\}\$'/);
+  assert.match(sql, /UPDATE contacts\s+SET contact_code = 'L' \|\| substring\(contact_code FROM 3\)/);
+  assert.match(sql, /ALTER COLUMN contact_code SET DEFAULT \('L' \|\| lpad\(nextval\('contact_code_seq'\)::text, 6, '0'\)\)/);
+  assert.match(sql, /contact_code ~ '\^L\[0-9\]\{6\}\$'/);
+
+  const triggerDrop = sql.indexOf('DROP TRIGGER IF EXISTS contacts_protect_contact_code');
+  const conversion = sql.search(/UPDATE contacts\r?\nSET contact_code = 'L'/);
+  const triggerRestore = sql.lastIndexOf('CREATE TRIGGER contacts_protect_contact_code');
+  assert.ok(triggerDrop >= 0 && triggerDrop < conversion);
+  assert.ok(triggerRestore > conversion);
+});
+
+test('IMAP sync migration separates realtime and historical cursors and preserves triage evidence', async () => {
+  const sql = await readFile(imapSyncAndEmailTriageMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_imap_sync_states/);
+  assert.match(sql, /UNIQUE \(mailbox_key, mailbox_name\)/);
+  assert.match(sql, /incremental_last_uid bigint NOT NULL DEFAULT 0/);
+  assert.match(sql, /backfill_before_uid bigint/);
+  assert.match(sql, /backfill_complete boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /archive_disposition IN \('active', 'archived', 'spam'\)/);
+  assert.match(sql, /classification_category text NOT NULL/);
+  assert.match(sql, /classification_reason text NOT NULL/);
+  assert.match(sql, /NEW\.archive_disposition IS DISTINCT FROM OLD\.archive_disposition/);
+  const triggerDrop = sql.indexOf('DROP TRIGGER IF EXISTS email_messages_protect_content');
+  const legacyBackfill = sql.indexOf('UPDATE email_messages message');
+  const triggerRestore = sql.lastIndexOf('CREATE TRIGGER email_messages_protect_content');
+  assert.ok(triggerDrop >= 0 && triggerDrop < legacyBackfill);
+  assert.ok(triggerRestore > legacyBackfill);
+  assert.doesNotMatch(sql, /password|authorization_code|refresh_token/i);
+});
+
+test('customer and contact uniqueness migration enforces the approved business identities', async () => {
+  const sql = await readFile(customerContactUniquenessMigrationPath, 'utf8');
+
+  assert.match(sql, /bestcrm_normalize_identity_text/);
+  assert.match(sql, /bestcrm_normalize_phone/);
+  assert.match(sql, /\^0086\[1-9\]\[0-9\]\{10\}\$/);
+  assert.match(sql, /\^86\[1-9\]\[0-9\]\{10\}\$/);
+  assert.match(sql, /Duplicate customer unit names exist/);
+  assert.match(sql, /Duplicate contact identities exist/);
+  assert.match(sql, /customers_normalized_name_unique_idx/);
+  assert.match(sql, /contacts_customer_name_phone_unique_idx/);
+  assert.match(sql, /WHERE bestcrm_normalize_phone\(phone\) <> ''/);
+});
+
+test('opportunity record guardrails migration makes core records stable, archivable, and non-deletable', async () => {
+  const sql = await readFile(opportunityRecordGuardrailsMigrationPath, 'utf8');
+
+  for (const table of ['customers', 'contacts', 'opportunities']) {
+    assert.match(sql, new RegExp(`ALTER TABLE ${table}\\s+[\\s\\S]*ADD COLUMN IF NOT EXISTS record_uid uuid`));
+    assert.match(sql, new RegExp(`${table}_record_uid_unique_idx`));
+    assert.match(sql, new RegExp(`CREATE TRIGGER ${table}_prevent_delete`));
+    assert.match(sql, new RegExp(`CREATE TRIGGER ${table}_protect_record_uid`));
+  }
+  assert.match(sql, /CREATE TABLE record_lifecycle_events/);
+  assert.match(sql, /event_type IN \('archive', 'reopen', 'merge'\)/);
+  assert.match(sql, /BEFORE UPDATE OR DELETE ON record_lifecycle_events/);
+  assert.match(sql, /Core CRM records cannot be deleted/);
+  assert.match(sql, /Stable record UID cannot be changed/);
+  assert.match(sql, /ON DELETE RESTRICT/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+  assert.doesNotMatch(sql, /ON DELETE SET NULL/);
+});
+
+test('opportunity activity spine migration creates typed append-only links and transaction-local indexing', async () => {
+  const sql = await readFile(opportunityActivitySpineMigrationPath, 'utf8');
+
+  for (const table of [
+    'opportunity_contacts',
+    'activity_types',
+    'opportunity_activities',
+    'opportunity_activity_links',
+    'opportunity_activity_participants',
+    'opportunity_activity_backfill_state'
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TABLE ${table}`));
+  }
+  for (const type of [
+    'email', 'meeting', 'call', 'channel_message', 'note', 'task', 'file',
+    'workflow', 'approval', 'technical', 'quotation', 'contract', 'ownership', 'outcome'
+  ]) {
+    assert.match(sql, new RegExp(`\\('${type}'`));
+  }
+  assert.match(sql, /num_nonnulls\([\s\S]*engineering_contribution_id[\s\S]*\) = 1/);
+  assert.match(sql, /UNIQUE \(source_system, source_external_key\)/);
+  assert.match(sql, /Opportunity activity spine records are append-only/);
+  assert.match(sql, /bestcrm_index_activity_source\(p_source_table text, p_source_id bigint\)/);
+  assert.match(sql, /AFTER INSERT ON email_messages/);
+  assert.match(sql, /AFTER UPDATE OF opportunity_id ON email_threads/);
+  assert.match(sql, /bestcrm_protect_indexed_source_opportunity/);
+  assert.match(sql, /AFTER UPDATE OF opportunity_id ON sales_work_plans/);
+  assert.match(sql, /AFTER UPDATE OF opportunity_id ON sales_work_logs/);
+  assert.match(sql, /rawEmlSha256/);
+  assert.doesNotMatch(sql, /text_body|html_body|password|secret|token/i);
+});
+
+test('raw email archive migration creates immutable evidence, scan indexes, and transitional message binding', async () => {
+  const sql = await readFile(emailRawArchiveFoundationMigrationPath, 'utf8');
+
+  for (const table of [
+    'email_raw_messages',
+    'email_raw_scan_attempts',
+    'email_raw_processing_attempts',
+    'email_attachment_scan_attempts',
+    'email_classification_events'
+  ]) {
+    assert.match(sql, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
+  }
+  assert.match(sql, /UNIQUE \(mailbox_key, provider_mailbox, provider_uid_validity, provider_uid\)/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL CHECK \(sha256 ~ '\^\[0-9a-f\]\{64\}\$'\)/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS raw_message_id bigint/);
+  assert.match(sql, /REFERENCES email_raw_messages\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /email_messages_raw_message_idx/);
+  assert.match(sql, /Nullable only during the historical raw-email backfill transition/);
+  assert.match(sql, /Email evidence records are immutable and append-only/);
+  assert.match(sql, /Raw email compatibility fields must match authoritative evidence/);
+  assert.match(sql, /OLD\.raw_message_id IS NULL[\s\S]*NEW\.raw_message_id IS NOT NULL/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE/);
+});
+
+test('raw email backfill migration creates an independent resumable cursor', async () => {
+  const sql = await readFile(emailRawBackfillCheckpointMigrationPath, 'utf8');
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS raw_backfill_before_uid bigint/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS raw_backfill_complete boolean NOT NULL DEFAULT false/);
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS last_raw_backfill_sync_at timestamptz/);
+  assert.match(sql, /email_imap_sync_states_raw_backfill_idx/);
+  assert.match(sql, /never reuse the parsed-email backfill cursor/);
+});
+
+test('raw malware event migration stores metadata only and remains append-only', async () => {
+  const sql = await readFile(emailRawMalwareEventsMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_raw_malware_events/);
+  assert.match(sql, /provider_uid bigint NOT NULL CHECK \(provider_uid > 0\)/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL CHECK \(sha256 ~ '\^\[0-9a-f\]\{64\}\$'\)/);
+  assert.match(sql, /verdict text NOT NULL CHECK \(verdict = 'malware'\)/);
+  assert.match(sql, /email_raw_malware_events_no_change/);
+  assert.match(sql, /raw bytes and CRM records are intentionally not stored/);
+  assert.doesNotMatch(sql, /subject|from_address|to_recipients|text_body|html_body|stored_path|bytea/i);
+});
+
+test('form submission idempotency migration creates one actor-scoped processing record per action token', async () => {
+  const sql = await readFile(formSubmissionIdempotencyMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS form_submission_idempotency/);
+  assert.match(sql, /token text PRIMARY KEY/);
+  assert.match(sql, /actor_user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CHECK \(state IN \('processing', 'completed', 'uncertain'\)\)/);
+  assert.match(sql, /CHECK \(request_method IN \('POST', 'PUT', 'PATCH', 'DELETE'\)\)/);
+  assert.match(sql, /form_submission_idempotency_expires_idx/);
+});
+
+test('personal mailbox assignment migration links one active company mailbox to one user with immutable history', async () => {
+  const sql = await readFile(userPersonalMailboxAssignmentsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS user_personal_mailbox_assignments/);
+  assert.match(sql, /user_id bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /mailbox_address ~ '\^\[\^\[:space:\]@<>\]\+@sunkaier\[\.\]com\$'/);
+  assert.match(sql, /mailbox_address <> 'sales@sunkaier\.com'/);
+  assert.match(sql, /user_personal_mailbox_active_user_idx/);
+  assert.match(sql, /user_personal_mailbox_active_address_idx/);
+  assert.match(sql, /WHERE unassigned_at IS NULL/);
+  assert.match(sql, /Personal mailbox assignments cannot be deleted/);
+  assert.match(sql, /Personal mailbox assignment history is immutable/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
+});
+
+test('mailbox delivery migration deduplicates messages while retaining each mailbox observation', async () => {
+  const sql = await readFile(emailMailboxDeliveriesMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_message_mailbox_deliveries/);
+  assert.match(sql, /UNIQUE \(mailbox_key, provider_mailbox, provider_uid_validity, provider_uid\)/);
+  assert.match(sql, /message_id bigint NOT NULL REFERENCES email_messages\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /raw_message_id bigint REFERENCES email_raw_messages\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CHECK \(direction IN \('inbound', 'outbound'\)\)/);
+  assert.match(sql, /INSERT INTO email_message_mailbox_deliveries/);
+  assert.match(sql, /DROP INDEX IF EXISTS email_messages_provider_uid_idx/);
+  assert.match(sql, /Email mailbox delivery records are immutable/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
+});
+
+test('email center triage migration adds frozen pending workflow and immutable audit events', async () => {
+  const sql = await readFile(emailCenterTriageWorkflowMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS triage_status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /triage_assigned_user_id bigint REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_thread_triage_events/);
+  for (const status of [
+    'pending',
+    'linked_opportunity',
+    'linked_inquiry',
+    'converted_inquiry',
+    'archived',
+    'spam',
+    'outbound_only'
+  ]) {
+    assert.match(sql, new RegExp(`'${status}'`));
+  }
+  assert.match(sql, /Email triage events are immutable/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
+});
+
+test('email center lead triage migration replaces new email inquiries with lead workflow states', async () => {
+  const sql = await readFile(emailCenterLeadTriageMigrationPath, 'utf8');
+
+  assert.match(sql, /DROP CONSTRAINT IF EXISTS email_threads_triage_status_check/);
+  assert.match(sql, /'linked_lead'/);
+  assert.match(sql, /'converted_lead'/);
+  assert.match(sql, /email_thread_triage_events_event_type_check/);
+  assert.match(sql, /email_thread_triage_events_from_status_check/);
+  assert.match(sql, /email_thread_triage_events_to_status_check/);
+  assert.doesNotMatch(sql, /DELETE FROM|TRUNCATE/);
+});
+
+test('email purge migration keeps a permanent non-content audit and narrow delete guard', async () => {
+  const sql = await readFile(emailSpamRetentionAndPurgeMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_purge_audits/);
+  assert.match(sql, /subject_sha256 char\(64\)/);
+  assert.match(sql, /triage_status text NOT NULL/);
+  assert.match(sql, /archive_disposition text NOT NULL/);
+  assert.match(sql, /last_message_at timestamptz NOT NULL/);
+  assert.match(sql, /purged_by bigint NOT NULL REFERENCES users\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /Email purge audit records are immutable/);
+  assert.match(sql, /current_setting\('bestcrm\.email_purge', true\) = 'enabled'/);
+  assert.doesNotMatch(sql, /subject text|text_body|html_body/);
+});
+
+test('human-confirmed sender rules survive email purge and keep an immutable audit', async () => {
+  const sql = await readFile(humanConfirmedEmailSpamSendersMigrationPath, 'utf8');
+  assert.match(sql, /CREATE TABLE email_sender_spam_rules/);
+  assert.match(sql, /sender_address text PRIMARY KEY/);
+  assert.match(sql, /source_thread_id bigint NOT NULL/);
+  assert.match(sql, /CREATE TABLE email_sender_spam_rule_events/);
+  assert.match(sql, /Email sender spam rule events are immutable/);
+  assert.doesNotMatch(sql, /source_thread_id bigint[^\n]*REFERENCES email_threads/);
+  assert.doesNotMatch(sql, /subject text|text_body|html_body|to_recipients/);
+});
+
+test('email reimport reset migration keeps an immutable non-content operation audit', async () => {
+  const sql = await readFile(emailReimportResetAuditsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_reimport_reset_audits/);
+  assert.match(sql, /operation_id uuid PRIMARY KEY/);
+  assert.match(sql, /plan_sha256 char\(64\) NOT NULL UNIQUE/);
+  assert.match(sql, /backup_id text NOT NULL/);
+  assert.match(sql, /retained_email_inquiries bigint NOT NULL/);
+  assert.match(sql, /deleted_threads bigint NOT NULL/);
+  assert.match(sql, /reset_sync_states bigint NOT NULL/);
+  assert.match(sql, /Email reimport reset audit records are immutable/);
+  assert.doesNotMatch(sql, /subject text|text_body|html_body|from_address|to_recipients/);
+});
+
+test('email purge file jobs survive process failure and expose only guarded cleanup state', async () => {
+  const sql = await readFile(emailPurgeFileJobsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_purge_file_jobs/);
+  assert.match(sql, /purge_audit_id bigint NOT NULL REFERENCES email_purge_audits\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /stored_path text NOT NULL/);
+  assert.match(sql, /expected_size bigint NOT NULL/);
+  assert.match(sql, /expected_sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /lease_owner text/);
+  assert.match(sql, /lease_expires_at timestamptz/);
+  assert.match(sql, /WHERE status = 'pending'/);
+  assert.match(sql, /WHERE status = 'processing'/);
+  assert.match(sql, /current_setting\('bestcrm\.email_purge_file_cleanup', true\) = 'enabled'/);
+  assert.match(sql, /Email purge file job identity is immutable/);
+  assert.doesNotMatch(sql, /subject text|text_body|html_body|from_address|to_recipients/);
+});
+
+test('outbound MIME artifact migration creates one immutable hash-bound file identity per message', async () => {
+  const sql = await readFile(emailOutboundMimeArtifactsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS email_outbound_mime_artifacts/);
+  assert.match(sql, /message_id bigint NOT NULL UNIQUE REFERENCES email_messages\(id\) ON DELETE RESTRICT/);
+  assert.match(sql, /stored_path LIKE 'email-outbound\/%'/);
+  assert.match(sql, /file_size bigint NOT NULL CHECK \(file_size > 0\)/);
+  assert.match(sql, /sha256 char\(64\) NOT NULL CHECK \(sha256 ~ '\^\[0-9a-f\]\{64\}\$'\)/);
+  assert.match(sql, /rfc_message_id text NOT NULL CHECK \(btrim\(rfc_message_id\) <> ''\)/);
+  assert.match(sql, /CREATE OR REPLACE FUNCTION bestcrm_validate_email_outbound_mime_artifact/);
+  assert.match(sql, /SELECT direction, message_id/);
+  assert.match(sql, /Only outbound messages can own generated MIME artifacts/);
+  assert.match(sql, /Outbound MIME Message-ID must match the canonical message/);
+  assert.match(sql, /CREATE TRIGGER email_outbound_mime_artifacts_validate/);
+  assert.match(sql, /CREATE TRIGGER email_outbound_mime_artifacts_no_change/);
+  assert.match(sql, /Outbound MIME artifacts are immutable/);
+  assert.doesNotMatch(sql, /ON DELETE CASCADE|ON DELETE SET NULL/);
+});
+
+test('legacy attachment integrity migration protects hashes and opportunity history', async () => {
+  const sql = await readFile(legacyAttachmentIntegrityMigrationPath, 'utf8');
+
+  assert.match(sql, /ADD COLUMN IF NOT EXISTS sha256 char\(64\)/);
+  assert.match(sql, /attachments_sha256_required[\s\S]*NOT VALID/);
+  assert.match(sql, /inquiry_attachments_sha256_required[\s\S]*NOT VALID/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS opportunity_attachment_events/);
+  assert.match(sql, /event_type IN \('created', 'legacy_hash_verified', 'retired', 'replaced'\)/);
+  assert.match(sql, /Opportunity attachments cannot be deleted/);
+  assert.match(sql, /Inquiry attachment identity is immutable/);
+  assert.match(sql, /current_setting\('bestcrm\.attachment_hash_backfill', true\) = 'enabled'/);
+  assert.match(sql, /current_setting\('bestcrm\.inquiry_attachment_purge', true\) = 'enabled'/);
+  assert.match(sql, /Opportunity attachment events are append-only/);
+});
+
+test('inquiry attachment purge migration preserves permanent audit and guarded cleanup jobs', async () => {
+  const sql = await readFile(inquiryAttachmentPurgeJobsMigrationPath, 'utf8');
+
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_attachment_purge_audits/);
+  assert.match(sql, /operation_id uuid NOT NULL UNIQUE/);
+  assert.match(sql, /identity_digest char\(64\) NOT NULL/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_attachment_purge_events/);
+  assert.match(sql, /event_type text NOT NULL CHECK \(event_type IN \('planned', 'completed', 'failed'\)\)/);
+  assert.match(sql, /Inquiry attachment purge audits are immutable/);
+  assert.match(sql, /Inquiry attachment purge events are append-only/);
+  assert.match(sql, /CREATE TABLE IF NOT EXISTS inquiry_attachment_purge_file_jobs/);
+  assert.match(sql, /expected_size bigint NOT NULL CHECK \(expected_size >= 0\)/);
+  assert.match(sql, /expected_sha256 char\(64\) NOT NULL/);
+  assert.match(sql, /status text NOT NULL DEFAULT 'pending'/);
+  assert.match(sql, /lease_owner text/);
+  assert.match(sql, /lease_expires_at timestamptz/);
+  assert.match(sql, /Inquiry attachment purge file job identity is immutable/);
+  assert.match(sql, /current_setting\('bestcrm\.inquiry_attachment_file_cleanup', true\) = 'enabled'/);
+  assert.match(sql, /stored_path NOT LIKE '\/\%'/);
+  assert.match(sql, /stored_path NOT LIKE '\\\\\%'/);
+  assert.doesNotMatch(sql, /original_name|file_content|bytea/i);
+});

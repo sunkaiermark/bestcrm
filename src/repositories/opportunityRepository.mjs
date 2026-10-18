@@ -1,0 +1,625 @@
+import { ARCHIVED_STATUSES } from '../domain/statuses.mjs';
+
+function numberOrNull(value) {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return Number(value);
+}
+
+function mapOpportunityRow(row) {
+  if (!row) {
+    return null;
+  }
+  return {
+    id: Number(row.id),
+    originInquiryId: numberOrNull(row.origin_inquiry_id),
+    opportunityNo: row.opportunity_no,
+    title: row.title,
+    customerId: Number(row.customer_id),
+    customerCode: row.customer_code || '',
+    customerName: row.customer_name || '',
+    customerCoordinatorUserId: numberOrNull(row.customer_coordinator_user_id),
+    customerOwnerUserId: numberOrNull(row.customer_coordinator_user_id),
+    primaryContactId: numberOrNull(row.primary_contact_id),
+    primaryContactCode: row.primary_contact_code || '',
+    primaryContactName: row.primary_contact_name || '',
+    requirement: row.requirement,
+    estimatedAmount: numberOrNull(row.estimated_amount),
+    productInterest: row.product_interest || '',
+    productCategoryCode: row.product_category_code || '',
+    confirmedProductCategoryCodes: row.confirmed_product_category_codes || [],
+    productCategoryReviewedBy: numberOrNull(row.product_category_reviewed_by),
+    productCategoryReviewedAt: row.product_category_reviewed_at || null,
+    projectType: row.project_type,
+    deliveryCycle: row.delivery_cycle,
+    expectedBidDate: row.expected_bid_date,
+    status: row.status,
+    salespersonId: Number(row.salesperson_id),
+    salespersonUsername: row.salesperson_username || '',
+    salespersonDisplayName: row.salesperson_display_name || '',
+    salesManagerId: numberOrNull(row.sales_manager_id),
+    quotationEngineerId: numberOrNull(row.quotation_engineer_id),
+    quotationEngineerUsername: row.quotation_engineer_username || '',
+    quotationEngineerDisplayName: row.quotation_engineer_display_name || '',
+    technicalManagerId: numberOrNull(row.technical_manager_id),
+    commercialManagerId: numberOrNull(row.commercial_manager_id),
+    technicalPlanSubmitDate: row.technical_plan_submit_date || null,
+    acceptedQuotationPackageId: numberOrNull(row.accepted_quotation_package_id),
+    finalDealAmount: numberOrNull(row.final_deal_amount),
+    lostReason: row.lost_reason,
+    wonDescription: row.won_description,
+    archivedAt: row.archived_at,
+    ...(Object.hasOwn(row, 'record_uid') ? { recordUid: row.record_uid } : {}),
+    ...(Object.hasOwn(row, 'archived_by') ? { archivedBy: numberOrNull(row.archived_by) } : {}),
+    ...(Object.hasOwn(row, 'archive_reason') ? { archiveReason: row.archive_reason || '' } : {})
+  };
+}
+
+const opportunitySelect = `
+  SELECT
+    o.id,
+    o.origin_inquiry_id,
+    o.opportunity_no,
+    o.title,
+    o.customer_id,
+    c.customer_code,
+    c.name AS customer_name,
+    COALESCE(c.coordinator_user_id, c.owner_user_id) AS customer_coordinator_user_id,
+    o.primary_contact_id,
+    pc.contact_code AS primary_contact_code,
+    pc.name AS primary_contact_name,
+    o.requirement,
+    o.estimated_amount,
+    o.product_interest,
+    o.product_category_code,
+    o.confirmed_product_category_codes,
+    o.product_category_reviewed_by,
+    o.product_category_reviewed_at,
+    o.project_type,
+    o.delivery_cycle,
+    o.expected_bid_date,
+    o.status,
+    o.salesperson_id,
+    salesperson.username AS salesperson_username,
+    salesperson.display_name AS salesperson_display_name,
+    o.sales_manager_id,
+    o.quotation_engineer_id,
+    quotation_engineer.username AS quotation_engineer_username,
+    quotation_engineer.display_name AS quotation_engineer_display_name,
+    o.technical_manager_id,
+    o.commercial_manager_id,
+    o.technical_plan_submit_date,
+    o.accepted_quotation_package_id,
+    o.final_deal_amount,
+    o.lost_reason,
+    o.won_description,
+    o.archived_at,
+    o.record_uid,
+    o.archived_by,
+    o.archive_reason
+  FROM opportunities o
+  JOIN customers c ON c.id = o.customer_id
+  LEFT JOIN contacts pc ON pc.id = o.primary_contact_id
+  JOIN users salesperson ON salesperson.id = o.salesperson_id
+  LEFT JOIN users quotation_engineer ON quotation_engineer.id = o.quotation_engineer_id
+`;
+
+const workflowFieldColumns = new Map([
+  ['status', 'status'],
+  ['salesManagerId', 'sales_manager_id'],
+  ['quotationEngineerId', 'quotation_engineer_id'],
+  ['technicalManagerId', 'technical_manager_id'],
+  ['commercialManagerId', 'commercial_manager_id'],
+  ['technicalPlanSubmitDate', 'technical_plan_submit_date'],
+  ['finalDealAmount', 'final_deal_amount'],
+  ['lostReason', 'lost_reason'],
+  ['wonDescription', 'won_description'],
+  ['archivedAt', 'archived_at']
+]);
+
+function visibleOpportunityPredicate(userParam) {
+  return `(
+    COALESCE(c.coordinator_user_id, c.owner_user_id) = ${userParam}
+    OR o.salesperson_id = ${userParam}
+    OR o.sales_manager_id = ${userParam}
+    OR o.quotation_engineer_id = ${userParam}
+    OR o.technical_manager_id = ${userParam}
+    OR o.commercial_manager_id = ${userParam}
+    OR EXISTS (
+      SELECT 1
+      FROM opportunity_members om
+      WHERE om.opportunity_id = o.id
+        AND om.user_id = ${userParam}
+        AND om.is_active = true
+    )
+    OR EXISTS (
+      SELECT 1
+      FROM contract_approvals ca
+      JOIN contract_approval_steps cas ON cas.contract_approval_id = ca.id
+      WHERE ca.opportunity_id = o.id
+        AND cas.reviewer_user_id = ${userParam}
+    )
+  )`;
+}
+
+function statusPlaceholders(params, statuses) {
+  return statuses.map((status) => {
+    params.push(status);
+    return `$${params.length}`;
+  }).join(', ');
+}
+
+function addArchiveScopeFilter(where, params, filter) {
+  if (filter.archiveScope === 'all') {
+    return;
+  }
+  if (filter.archiveScope === 'archived') {
+    where.push(`(o.archived_at IS NOT NULL OR o.status IN (${statusPlaceholders(params, ARCHIVED_STATUSES)}))`);
+    return;
+  }
+  if (!filter.status) {
+    where.push('o.archived_at IS NULL');
+    where.push(`o.status NOT IN (${statusPlaceholders(params, ARCHIVED_STATUSES)})`);
+  }
+}
+
+function opportunityListConditions(filter = {}) {
+  const where = [];
+  const params = [];
+  if (filter.salespersonId) {
+    params.push(filter.salespersonId);
+    where.push(`o.salesperson_id = $${params.length}`);
+  }
+  if (filter.status) {
+    params.push(filter.status);
+    where.push(`o.status = $${params.length}`);
+  }
+  if (filter.customerId) {
+    params.push(filter.customerId);
+    where.push(`o.customer_id = $${params.length}`);
+  }
+  if (filter.contactId) {
+    params.push(filter.contactId);
+    where.push(`o.primary_contact_id = $${params.length}`);
+  }
+  if (filter.visibleToUserId) {
+    params.push(filter.visibleToUserId);
+    where.push(visibleOpportunityPredicate(`$${params.length}`));
+  }
+  if (filter.searchTerm) {
+    params.push(`%${String(filter.searchTerm).replace(/[\\%_]/g, '\\$&')}%`);
+    const searchParam = `$${params.length}`;
+    where.push(`(
+      o.opportunity_no ILIKE ${searchParam} ESCAPE '\\'
+      OR o.title ILIKE ${searchParam} ESCAPE '\\'
+      OR c.customer_code ILIKE ${searchParam} ESCAPE '\\'
+      OR c.name ILIKE ${searchParam} ESCAPE '\\'
+      OR salesperson.username ILIKE ${searchParam} ESCAPE '\\'
+      OR salesperson.display_name ILIKE ${searchParam} ESCAPE '\\'
+      OR pc.contact_code ILIKE ${searchParam} ESCAPE '\\'
+      OR pc.name ILIKE ${searchParam} ESCAPE '\\'
+    )`);
+  }
+  addArchiveScopeFilter(where, params, filter);
+  where.push('o.deleted_at IS NULL');
+  return { where, params };
+}
+
+function mapOpportunityFilterOptions(rows) {
+  const salespeopleById = new Map();
+  const customersById = new Map();
+  const contactsById = new Map();
+  for (const row of rows) {
+    const salespersonId = Number(row.salesperson_id);
+    if (!salespeopleById.has(salespersonId)) {
+      salespeopleById.set(salespersonId, {
+        id: salespersonId,
+        username: row.salesperson_username || '',
+        displayName: row.salesperson_display_name || ''
+      });
+    }
+    const customerId = Number(row.customer_id);
+    if (!customersById.has(customerId)) {
+      customersById.set(customerId, {
+        id: customerId,
+        customerCode: row.customer_code || '',
+        name: row.customer_name || ''
+      });
+    }
+    if (row.primary_contact_id) {
+      const contactId = Number(row.primary_contact_id);
+      if (!contactsById.has(contactId)) {
+        contactsById.set(contactId, {
+          id: contactId,
+          contactCode: row.primary_contact_code || '',
+          name: row.primary_contact_name || '',
+          customerId,
+          customerCode: row.customer_code || '',
+          customerName: row.customer_name || ''
+        });
+      }
+    }
+  }
+  const label = (item) => item.displayName || item.username || item.name || '';
+  const compare = (left, right) => label(left).localeCompare(label(right), undefined, {
+    numeric: true,
+    sensitivity: 'base'
+  });
+  return {
+    salespeople: [...salespeopleById.values()].sort(compare),
+    customers: [...customersById.values()].sort(compare),
+    contacts: [...contactsById.values()].sort(compare)
+  };
+}
+
+export function createOpportunityRepository(queryTarget) {
+  return {
+    async listOpportunities(filter = {}) {
+      const { where, params } = opportunityListConditions(filter);
+      const result = await queryTarget.query(`
+        ${opportunitySelect}
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+        ORDER BY o.created_at DESC, o.id DESC
+      `, params);
+      return result.rows.map(mapOpportunityRow);
+    },
+
+    async listOpportunityFilterOptions(filter = {}) {
+      const { where, params } = opportunityListConditions(filter);
+      const result = await queryTarget.query(`
+        SELECT DISTINCT
+          o.salesperson_id,
+          salesperson.username AS salesperson_username,
+          salesperson.display_name AS salesperson_display_name,
+          o.customer_id,
+          c.customer_code,
+          c.name AS customer_name,
+          o.primary_contact_id,
+          pc.contact_code AS primary_contact_code,
+          pc.name AS primary_contact_name
+        FROM opportunities o
+        JOIN customers c ON c.id = o.customer_id
+        LEFT JOIN contacts pc ON pc.id = o.primary_contact_id
+        JOIN users salesperson ON salesperson.id = o.salesperson_id
+        ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
+      `, params);
+      return mapOpportunityFilterOptions(result.rows);
+    },
+
+    async getOpportunityDetail(id) {
+      const result = await queryTarget.query(`
+        ${opportunitySelect}
+        WHERE o.id = $1
+          AND o.deleted_at IS NULL
+        LIMIT 1
+      `, [id]);
+      return mapOpportunityRow(result.rows[0]);
+    },
+
+    async createOpportunity(input) {
+      const result = await queryTarget.query(`
+        INSERT INTO opportunities (
+          origin_inquiry_id,
+          opportunity_no,
+          title,
+          customer_id,
+          primary_contact_id,
+          requirement,
+          estimated_amount,
+          product_interest,
+          project_type,
+          delivery_cycle,
+          expected_bid_date,
+          status,
+          salesperson_id,
+          product_category_code,
+          confirmed_product_category_codes,
+          product_category_reviewed_by,
+          product_category_reviewed_at
+        )
+        VALUES ($1, COALESCE($2, nextval('opportunity_no_seq')::text), $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15::text[], $16, CASE WHEN cardinality($15::text[]) > 0 THEN now() ELSE NULL END)
+        RETURNING *
+      `, [
+        input.originInquiryId,
+        input.opportunityNo,
+        input.title,
+        input.customerId,
+        input.primaryContactId,
+        input.requirement,
+        input.estimatedAmount,
+        input.productInterest,
+        input.projectType,
+        input.deliveryCycle,
+        input.expectedBidDate,
+        input.status,
+        input.salespersonId,
+        input.productCategoryCode || '',
+        input.confirmedProductCategoryCodes || [],
+        input.productCategoryReviewedBy || null
+      ]);
+      return mapOpportunityRow(result.rows[0]);
+    },
+
+    async updateOpportunity(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE opportunities
+        SET
+          title = $1,
+          customer_id = $2,
+          primary_contact_id = $3,
+          requirement = $4,
+          estimated_amount = $5,
+          product_interest = $6,
+          product_category_code = $11,
+          confirmed_product_category_codes = $12::text[],
+          product_category_reviewed_by = $13,
+          product_category_reviewed_at = CASE WHEN confirmed_product_category_codes IS DISTINCT FROM $12::text[] THEN now() ELSE product_category_reviewed_at END,
+          project_type = $7,
+          delivery_cycle = $8,
+          expected_bid_date = $9,
+          updated_at = now()
+        WHERE id = $10
+          AND deleted_at IS NULL
+        RETURNING *
+      `, [
+        input.title,
+        input.customerId,
+        input.primaryContactId,
+        input.requirement,
+        input.estimatedAmount,
+        input.productInterest,
+        input.projectType,
+        input.deliveryCycle,
+        input.expectedBidDate,
+        id,
+        input.productCategoryCode || '',
+        input.confirmedProductCategoryCodes || [],
+        input.productCategoryReviewedBy || null
+      ]);
+      return mapOpportunityRow(result.rows[0]);
+    },
+
+    async archiveById(id, input) {
+      const result = await queryTarget.query(`
+        WITH archived AS (
+          UPDATE opportunities
+          SET archived_at = now(), archived_by = $2, archive_reason = $3, updated_at = now()
+          WHERE id = $1
+            AND archived_at IS NULL
+            AND deleted_at IS NULL
+          RETURNING id, record_uid, archived_at
+        ), lifecycle_event AS (
+          INSERT INTO record_lifecycle_events (
+            record_type, record_id, record_uid, event_type, actor_user_id, reason, event_data
+          )
+          SELECT 'opportunity', id, record_uid, 'archive', $2, $3,
+            jsonb_build_object('archivedAt', archived_at)
+          FROM archived
+          RETURNING id
+        )
+        SELECT archived.id, archived.record_uid
+        FROM archived
+        JOIN lifecycle_event ON true
+      `, [id, input.actorUserId, input.reason]);
+      return result.rowCount > 0;
+    },
+
+    async deleteById(id, input) {
+      const result = await queryTarget.query(`
+        WITH delete_context AS MATERIALIZED (
+          SELECT set_config('bestcrm.opportunity_delete', 'enabled', true)
+        ), target AS (
+          SELECT opportunity.id, opportunity.record_uid, opportunity.opportunity_no, opportunity.title
+          FROM opportunities opportunity
+          CROSS JOIN delete_context
+          WHERE opportunity.id = $1
+            AND opportunity.deleted_at IS NULL
+          FOR UPDATE OF opportunity
+        ), linked_email_threads AS MATERIALIZED (
+          SELECT thread.id, thread.triage_status
+          FROM email_threads thread
+          JOIN target ON target.id = thread.opportunity_id
+        ), deleted AS (
+          UPDATE opportunities opportunity
+          SET deleted_at = now(),
+              deleted_by = $2,
+              delete_reason = $3,
+              updated_at = now()
+          FROM target
+          WHERE opportunity.id = target.id
+          RETURNING
+            opportunity.id,
+            opportunity.record_uid,
+            opportunity.deleted_at,
+            target.opportunity_no,
+            target.title
+        ), unlinked_email_threads AS (
+          UPDATE email_threads thread
+          SET opportunity_id = NULL,
+              triage_status = CASE
+                WHEN linked_thread.triage_status = 'linked_opportunity' THEN 'pending'
+                ELSE linked_thread.triage_status
+              END,
+              archive_disposition = CASE
+                WHEN linked_thread.triage_status = 'linked_opportunity' THEN 'active'
+                ELSE thread.archive_disposition
+              END,
+              triaged_by = CASE
+                WHEN linked_thread.triage_status = 'linked_opportunity' THEN $2
+                ELSE thread.triaged_by
+              END,
+              triaged_at = CASE
+                WHEN linked_thread.triage_status = 'linked_opportunity' THEN now()
+                ELSE thread.triaged_at
+              END,
+              triage_note = CASE
+                WHEN linked_thread.triage_status = 'linked_opportunity' THEN 'Opportunity deleted by administrator'
+                ELSE thread.triage_note
+              END,
+              updated_at = now()
+          FROM deleted, linked_email_threads linked_thread
+          WHERE thread.id = linked_thread.id
+          RETURNING thread.id
+        ), triage_events AS (
+          INSERT INTO email_thread_triage_events (
+            thread_id,
+            event_type,
+            from_status,
+            to_status,
+            actor_user_id,
+            opportunity_id,
+            note
+          )
+          SELECT
+            unlinked_thread.id,
+            'reopened',
+            'linked_opportunity',
+            'pending',
+            $2,
+            deleted.id,
+            'Opportunity deleted by administrator: ' || $3
+          FROM unlinked_email_threads unlinked_thread
+          JOIN linked_email_threads linked_thread ON linked_thread.id = unlinked_thread.id
+          CROSS JOIN deleted
+          WHERE linked_thread.triage_status = 'linked_opportunity'
+          RETURNING id
+        ), lifecycle_event AS (
+          INSERT INTO record_lifecycle_events (
+            record_type, record_id, record_uid, event_type, actor_user_id, reason, event_data
+          )
+          SELECT
+            'opportunity',
+            deleted.id,
+            deleted.record_uid,
+            'delete',
+            $2,
+            $3,
+            jsonb_build_object(
+              'deletedAt', deleted.deleted_at,
+              'opportunityNo', deleted.opportunity_no,
+              'title', deleted.title,
+              'unlinkedEmailThreadCount', (SELECT count(*) FROM unlinked_email_threads),
+              'emailTriageEventCount', (SELECT count(*) FROM triage_events)
+            )
+          FROM deleted
+          RETURNING id
+        )
+        SELECT
+          deleted.id,
+          lifecycle_event.id AS lifecycle_event_id,
+          (SELECT count(*) FROM unlinked_email_threads)::integer AS unlinked_email_thread_count
+        FROM deleted
+        JOIN lifecycle_event ON true
+      `, [id, input.actorUserId, input.reason]);
+      const row = result.rows[0];
+      if (!row) return null;
+      return {
+        id: Number(row.id),
+        lifecycleEventId: Number(row.lifecycle_event_id),
+        unlinkedEmailThreadCount: Number(row.unlinked_email_thread_count || 0)
+      };
+    },
+
+    async reopenById(id, input) {
+      const result = await queryTarget.query(`
+        WITH previous AS (
+          SELECT id, record_uid, archived_at, archived_by, archive_reason
+          FROM opportunities
+          WHERE id = $1
+            AND archived_at IS NOT NULL
+            AND deleted_at IS NULL
+          FOR UPDATE
+        ), reopened AS (
+          UPDATE opportunities opportunity
+          SET archived_at = NULL, archived_by = NULL, archive_reason = NULL, updated_at = now()
+          FROM previous
+          WHERE opportunity.id = previous.id
+          RETURNING opportunity.id, opportunity.record_uid
+        ), lifecycle_event AS (
+          INSERT INTO record_lifecycle_events (
+            record_type, record_id, record_uid, event_type, actor_user_id, reason, event_data
+          )
+          SELECT 'opportunity', id, record_uid, 'reopen', $2, $3,
+            jsonb_build_object(
+              'previousArchivedAt', archived_at,
+              'previousArchivedBy', archived_by,
+              'previousArchiveReason', archive_reason
+            )
+          FROM previous
+          RETURNING id
+        )
+        SELECT reopened.id, reopened.record_uid
+        FROM reopened
+        JOIN lifecycle_event ON true
+      `, [id, input.actorUserId, input.reason]);
+      return result.rowCount > 0;
+    },
+
+    async findById(id) {
+      const result = await queryTarget.query(`
+        SELECT
+          id,
+          opportunity_no,
+          title,
+          customer_id,
+          primary_contact_id,
+          requirement,
+          estimated_amount,
+          product_interest,
+          product_category_code,
+          project_type,
+          delivery_cycle,
+          expected_bid_date,
+          status,
+          salesperson_id,
+          '' AS salesperson_username,
+          '' AS salesperson_display_name,
+          sales_manager_id,
+          quotation_engineer_id,
+          technical_manager_id,
+          commercial_manager_id,
+          technical_plan_submit_date,
+          accepted_quotation_package_id,
+          final_deal_amount,
+          lost_reason,
+          won_description,
+          archived_at,
+          record_uid,
+          archived_by,
+          archive_reason
+        FROM opportunities
+        WHERE id = $1
+          AND deleted_at IS NULL
+        LIMIT 1
+      `, [id]);
+      return mapOpportunityRow(result.rows[0]);
+    },
+
+    async updateWorkflowState(id, changes) {
+      const assignments = [];
+      const params = [];
+
+      for (const [field, column] of workflowFieldColumns.entries()) {
+        if (Object.hasOwn(changes, field)) {
+          params.push(changes[field]);
+          assignments.push(`${column} = $${params.length}`);
+        }
+      }
+
+      if (assignments.length === 0) {
+        throw new Error('No workflow fields to update');
+      }
+
+      params.push(id);
+      const result = await queryTarget.query(`
+        UPDATE opportunities
+        SET ${assignments.join(', ')}, updated_at = now()
+        WHERE id = $${params.length}
+          AND deleted_at IS NULL
+        RETURNING *
+      `, params);
+      return mapOpportunityRow(result.rows[0]);
+    }
+  };
+}

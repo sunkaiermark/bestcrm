@@ -1,0 +1,1962 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "SUNKAIER AI Source integration",
+    "version": "1.0.0",
+    "description": "Default disabled. Source intake only; human CRM processing. No customer/opportunity browsing. URL path is included in the signature. Query strings are rejected."
+  },
+  "servers": [
+    {
+      "url": "/api/integrations/sunkaier-ai/v1"
+    }
+  ],
+  "paths": {
+    "/sources": {
+      "post": {
+        "summary": "Receive an AI Source, never create a Lead automatically",
+        "parameters": [
+          {
+            "name": "X-Sunkaier-Key-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Environment-managed key ID"
+          },
+          {
+            "name": "X-Sunkaier-Timestamp",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unix epoch seconds, within 300 seconds"
+          },
+          {
+            "name": "X-Sunkaier-Nonce",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "16 to 128 URL-safe characters; fresh for every HTTP attempt"
+          },
+          {
+            "name": "X-Sunkaier-Content-SHA256",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lowercase SHA-256 of exact raw HTTP body; empty-body digest for GET"
+          },
+          {
+            "name": "X-Sunkaier-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "HMAC-SHA256 hex over METHOD, full path, timestamp, nonce, body hash joined by LF"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Submission"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted or replayed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "submission_reference",
+                    "status",
+                    "reason_code"
+                  ],
+                  "properties": {
+                    "submission_reference": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "received"
+                    },
+                    "reason_code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "First receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "submission_reference",
+                    "status",
+                    "reason_code"
+                  ],
+                  "properties": {
+                    "submission_reference": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "received"
+                    },
+                    "reason_code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources/{externalLeadId}/interactions": {
+      "post": {
+        "summary": "Append an immutable interaction",
+        "parameters": [
+          {
+            "name": "X-Sunkaier-Key-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Environment-managed key ID"
+          },
+          {
+            "name": "X-Sunkaier-Timestamp",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unix epoch seconds, within 300 seconds"
+          },
+          {
+            "name": "X-Sunkaier-Nonce",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "16 to 128 URL-safe characters; fresh for every HTTP attempt"
+          },
+          {
+            "name": "X-Sunkaier-Content-SHA256",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lowercase SHA-256 of exact raw HTTP body; empty-body digest for GET"
+          },
+          {
+            "name": "X-Sunkaier-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "HMAC-SHA256 hex over METHOD, full path, timestamp, nonce, body hash joined by LF"
+          },
+          {
+            "name": "externalLeadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 160
+            }
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Interaction"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted or replayed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "submission_reference",
+                    "status",
+                    "reason_code"
+                  ],
+                  "properties": {
+                    "submission_reference": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "received"
+                    },
+                    "reason_code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "First receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "submission_reference",
+                    "status",
+                    "reason_code"
+                  ],
+                  "properties": {
+                    "submission_reference": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "received"
+                    },
+                    "reason_code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources/{externalLeadId}/status": {
+      "get": {
+        "summary": "Read own minimum processing status",
+        "parameters": [
+          {
+            "name": "X-Sunkaier-Key-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Environment-managed key ID"
+          },
+          {
+            "name": "X-Sunkaier-Timestamp",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unix epoch seconds, within 300 seconds"
+          },
+          {
+            "name": "X-Sunkaier-Nonce",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "16 to 128 URL-safe characters; fresh for every HTTP attempt"
+          },
+          {
+            "name": "X-Sunkaier-Content-SHA256",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lowercase SHA-256 of exact raw HTTP body; empty-body digest for GET"
+          },
+          {
+            "name": "X-Sunkaier-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "HMAC-SHA256 hex over METHOD, full path, timestamp, nonce, body hash joined by LF"
+          },
+          {
+            "name": "externalLeadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 160
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted or replayed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "submission_reference": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": [
+                        "pending_review",
+                        "archived",
+                        "deleted",
+                        "lead_created",
+                        "linked_to_opportunity"
+                      ]
+                    },
+                    "version": {
+                      "type": "integer"
+                    },
+                    "updated_at": {
+                      "type": "string",
+                      "format": "date-time"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/reconciliation": {
+      "post": {
+        "summary": "Reconcile at most 100 own event IDs",
+        "parameters": [
+          {
+            "name": "X-Sunkaier-Key-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Environment-managed key ID"
+          },
+          {
+            "name": "X-Sunkaier-Timestamp",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unix epoch seconds, within 300 seconds"
+          },
+          {
+            "name": "X-Sunkaier-Nonce",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "16 to 128 URL-safe characters; fresh for every HTTP attempt"
+          },
+          {
+            "name": "X-Sunkaier-Content-SHA256",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lowercase SHA-256 of exact raw HTTP body; empty-body digest for GET"
+          },
+          {
+            "name": "X-Sunkaier-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "HMAC-SHA256 hex over METHOD, full path, timestamp, nonce, body hash joined by LF"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/Reconciliation"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted or replayed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "results": {
+                      "type": "array",
+                      "maxItems": 100,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "external_event_id": {
+                            "type": "string"
+                          },
+                          "received": {
+                            "type": "boolean"
+                          },
+                          "submission_reference": {
+                            "type": "string"
+                          },
+                          "status": {
+                            "type": "string"
+                          },
+                          "version": {
+                            "type": "integer"
+                          }
+                        }
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "First receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "submission_reference",
+                    "status",
+                    "reason_code"
+                  ],
+                  "properties": {
+                    "submission_reference": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "received"
+                    },
+                    "reason_code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/sources/{externalLeadId}/evidence": {
+      "post": {
+        "summary": "Upload bounded private evidence after source receipt",
+        "parameters": [
+          {
+            "name": "X-Sunkaier-Key-Id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Environment-managed key ID"
+          },
+          {
+            "name": "X-Sunkaier-Timestamp",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Unix epoch seconds, within 300 seconds"
+          },
+          {
+            "name": "X-Sunkaier-Nonce",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "16 to 128 URL-safe characters; fresh for every HTTP attempt"
+          },
+          {
+            "name": "X-Sunkaier-Content-SHA256",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Lowercase SHA-256 of exact raw HTTP body; empty-body digest for GET"
+          },
+          {
+            "name": "X-Sunkaier-Signature",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "HMAC-SHA256 hex over METHOD, full path, timestamp, nonce, body hash joined by LF"
+          },
+          {
+            "name": "externalLeadId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "maxLength": 160
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Accepted or replayed result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "submission_reference",
+                    "status",
+                    "reason_code"
+                  ],
+                  "properties": {
+                    "submission_reference": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "received"
+                    },
+                    "reason_code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "201": {
+            "description": "First clean evidence receipt",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "submission_reference",
+                    "status",
+                    "reason_code"
+                  ],
+                  "properties": {
+                    "submission_reference": {
+                      "type": "string",
+                      "format": "uuid"
+                    },
+                    "status": {
+                      "type": "string",
+                      "const": "received"
+                    },
+                    "reason_code": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "413": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "415": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "500": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "503": {
+            "description": "Machine-readable error only",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "error": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "requestBody": {
+          "required": true,
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "type": "object",
+                "required": [
+                  "metadata",
+                  "file"
+                ],
+                "additionalProperties": false,
+                "properties": {
+                  "metadata": {
+                    "type": "string",
+                    "description": "JSON string matching EvidenceMetadata"
+                  },
+                  "file": {
+                    "type": "string",
+                    "format": "binary"
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Submission": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "external_event_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "discovered",
+              "updated",
+              "consultation",
+              "follow_up"
+            ]
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_channel": {
+            "type": "string",
+            "enum": [
+              "ai_project_search",
+              "website_form",
+              "web_chat",
+              "phone_consultation",
+              "email_reference"
+            ]
+          },
+          "source_detail": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "original_session_id": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "summary": {
+            "type": "string",
+            "maxLength": 8000
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 35,
+            "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$"
+          },
+          "ai": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "intent": {
+                "type": "string",
+                "enum": [
+                  "project_intelligence",
+                  "product_interest",
+                  "technical_question",
+                  "purchase_request",
+                  "other"
+                ]
+              },
+              "urgency": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "normal",
+                  "high",
+                  "urgent"
+                ]
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 8000
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "follow_up_suggestion": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "inferred_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "maxItems": 30
+              }
+            },
+            "required": []
+          },
+          "external_lead_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          },
+          "title": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "company_name": {
+            "type": "string",
+            "maxLength": 240
+          },
+          "contact_name": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "job_title": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "email": {
+            "type": "string",
+            "format": "email",
+            "maxLength": 254
+          },
+          "phone": {
+            "type": "string",
+            "pattern": "^\\+[1-9]\\d{6,14}$"
+          },
+          "country_or_region": {
+            "type": "string",
+            "maxLength": 100
+          },
+          "preferred_language": {
+            "type": "string",
+            "maxLength": 35
+          },
+          "interested_products": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "maxLength": 160
+            },
+            "maxItems": 30
+          },
+          "requirement_summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 12000
+          },
+          "estimated_value": {
+            "anyOf": [
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "properties": {
+                  "amount": {
+                    "type": "string",
+                    "pattern": "^\\d{1,12}(\\.\\d{1,2})?$"
+                  },
+                  "currency": {
+                    "type": "string",
+                    "pattern": "^[A-Z]{3}$"
+                  }
+                },
+                "required": [
+                  "amount",
+                  "currency"
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "expected_timing": {
+            "anyOf": [
+              {
+                "type": "string",
+                "maxLength": 240
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "consent_status": {
+            "type": "string",
+            "enum": [
+              "unknown",
+              "granted",
+              "denied",
+              "not_applicable"
+            ]
+          },
+          "consent_captured_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "data_origin": {
+            "type": "string",
+            "enum": [
+              "public_search",
+              "customer_provided",
+              "synthetic"
+            ]
+          },
+          "attribution": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "campaign": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "source": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "contributor": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "landing_page": {
+                "type": "string",
+                "format": "uri",
+                "maxLength": 1500
+              }
+            },
+            "required": []
+          },
+          "project": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "name": {
+                "type": "string",
+                "maxLength": 240
+              },
+              "stage": {
+                "type": "string",
+                "maxLength": 160
+              },
+              "registration_id": {
+                "type": "string",
+                "maxLength": 100
+              },
+              "website_domain": {
+                "type": "string",
+                "maxLength": 253,
+                "pattern": "^[a-z0-9.-]+\\.[a-z]{2,}$"
+              },
+              "discovered_at": {
+                "type": "string",
+                "format": "date-time"
+              },
+              "published_at": {
+                "anyOf": [
+                  {
+                    "type": "string",
+                    "format": "date-time"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "search_task_id": {
+                "type": "string",
+                "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+              },
+              "verification": {
+                "type": "string",
+                "enum": [
+                  "unverified",
+                  "corroborated",
+                  "conflicting"
+                ]
+              },
+              "sources": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "properties": {
+                    "title": {
+                      "type": "string",
+                      "maxLength": 240
+                    },
+                    "url": {
+                      "type": "string",
+                      "format": "uri",
+                      "maxLength": 1500
+                    },
+                    "published_at": {
+                      "anyOf": [
+                        {
+                          "type": "string",
+                          "format": "date-time"
+                        },
+                        {
+                          "type": "null"
+                        }
+                      ]
+                    }
+                  },
+                  "required": [
+                    "title",
+                    "url"
+                  ]
+                },
+                "maxItems": 30
+              }
+            },
+            "required": []
+          }
+        },
+        "required": [
+          "external_event_id",
+          "idempotency_key",
+          "event_type",
+          "occurred_at",
+          "source_channel",
+          "external_lead_id",
+          "title",
+          "requirement_summary",
+          "consent_status",
+          "data_origin"
+        ]
+      },
+      "Interaction": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "external_event_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          },
+          "event_type": {
+            "type": "string",
+            "enum": [
+              "discovered",
+              "updated",
+              "consultation",
+              "follow_up"
+            ]
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "source_channel": {
+            "type": "string",
+            "enum": [
+              "ai_project_search",
+              "website_form",
+              "web_chat",
+              "phone_consultation",
+              "email_reference"
+            ]
+          },
+          "source_detail": {
+            "type": "string",
+            "maxLength": 500
+          },
+          "original_session_id": {
+            "type": "string",
+            "maxLength": 160
+          },
+          "summary": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 8000
+          },
+          "language": {
+            "type": "string",
+            "maxLength": 35,
+            "pattern": "^[A-Za-z]{2,8}(?:-[A-Za-z0-9]{1,8})*$"
+          },
+          "ai": {
+            "type": "object",
+            "additionalProperties": false,
+            "properties": {
+              "intent": {
+                "type": "string",
+                "enum": [
+                  "project_intelligence",
+                  "product_interest",
+                  "technical_question",
+                  "purchase_request",
+                  "other"
+                ]
+              },
+              "urgency": {
+                "type": "string",
+                "enum": [
+                  "low",
+                  "normal",
+                  "high",
+                  "urgent"
+                ]
+              },
+              "summary": {
+                "type": "string",
+                "maxLength": 8000
+              },
+              "confidence": {
+                "type": "number",
+                "minimum": 0,
+                "maximum": 1
+              },
+              "follow_up_suggestion": {
+                "type": "string",
+                "maxLength": 2000
+              },
+              "inferred_fields": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "maxLength": 120
+                },
+                "maxItems": 30
+              }
+            },
+            "required": []
+          }
+        },
+        "required": [
+          "external_event_id",
+          "idempotency_key",
+          "event_type",
+          "occurred_at",
+          "source_channel",
+          "summary"
+        ]
+      },
+      "EvidenceMetadata": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "external_event_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          },
+          "idempotency_key": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "interaction_event_id": {
+            "type": "string",
+            "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+          },
+          "sha256": {
+            "type": "string",
+            "pattern": "^[a-f0-9]{64}$"
+          },
+          "file_name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 180
+          },
+          "mime_type": {
+            "type": "string",
+            "enum": [
+              "application/pdf",
+              "image/png",
+              "image/jpeg",
+              "text/plain",
+              "audio/wav",
+              "audio/mpeg"
+            ]
+          },
+          "file_size": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 26214400
+          }
+        },
+        "required": [
+          "external_event_id",
+          "idempotency_key",
+          "occurred_at",
+          "sha256",
+          "file_name",
+          "mime_type",
+          "file_size"
+        ]
+      },
+      "Reconciliation": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "external_event_ids": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "pattern": "^[A-Za-z0-9][A-Za-z0-9_.:-]{0,159}$"
+            },
+            "minItems": 1,
+            "maxItems": 100
+          }
+        },
+        "required": [
+          "external_event_ids"
+        ]
+      },
+      "Receipt": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "submission_reference",
+          "status",
+          "reason_code"
+        ],
+        "properties": {
+          "submission_reference": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "const": "received"
+          },
+          "reason_code": {
+            "type": "string"
+          }
+        }
+      },
+      "Status": {
+        "type": "object",
+        "properties": {
+          "submission_reference": {
+            "type": "string",
+            "format": "uuid"
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "pending_review",
+              "archived",
+              "deleted",
+              "lead_created",
+              "linked_to_opportunity"
+            ]
+          },
+          "version": {
+            "type": "integer"
+          },
+          "updated_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
+      }
+    }
+  }
+}

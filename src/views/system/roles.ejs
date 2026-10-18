@@ -1,0 +1,51 @@
+<%- include('../partials/app-start', { title: `${t('systemRoles')} - BESTCRM`, activeNav: 'system-roles' }) %>
+        <header class="page-header">
+          <div>
+            <h1><%= t('systemRoles') %></h1>
+          </div>
+          <% if (canManageRoles) { %>
+            <a class="quick-action" href="/system/roles/new"><%= t('newRole') %></a>
+          <% } %>
+        </header>
+
+        <section class="list-section">
+          <div class="list-body">
+            <table class="list-table content-fit-table">
+              <thead>
+                <tr>
+                  <th><%= t('role') %></th>
+                  <th><%= t('code') %></th>
+                  <th><%= t('description') %></th>
+                  <th><%= t('status') %></th>
+                  <% if (canManageRoles) { %>
+                    <th><%= t('actions') %></th>
+                  <% } %>
+                </tr>
+              </thead>
+              <tbody>
+                <% for (const role of roles) { %>
+                  <tr>
+                    <td><%= role.name %></td>
+                    <td><%= role.code %></td>
+                    <td><%= role.description || '-' %></td>
+                    <td><span class="status"><%= role.isActive ? t('active') : t('inactive') %></span></td>
+                    <% if (canManageRoles) { %>
+                      <td class="actions-cell">
+                        <div class="inline-actions system-actions">
+                          <a class="secondary-action" href="/system/roles/<%= role.id %>/edit"><%= t('edit') %></a>
+                          <% if (role.isActive) { %>
+                            <form method="post" action="/system/roles/<%= role.id %>/delete" onsubmit="return confirm('<%= t('deleteRoleConfirm') %>')">
+                              <%- csrfField() %>
+                              <button class="danger-action" type="submit"><%= t('delete') %></button>
+                            </form>
+                          <% } %>
+                        </div>
+                      </td>
+                    <% } %>
+                  </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        </section>
+<%- include('../partials/app-end') %>

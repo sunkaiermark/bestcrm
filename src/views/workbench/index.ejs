@@ -1,0 +1,35 @@
+<%- include('../partials/app-start', { title: `${t('workbench')} - BESTCRM`, activeNav: 'workbench' }) %>
+        <header class="topbar">
+        <div>
+          <h1><%= t('workbench') %></h1>
+        </div>
+        <div class="inline-actions">
+          <a class="secondary-action" href="/notifications"><%= t('notificationSettings') %><% if (summary.unreadNotificationCount) { %> (<%= summary.unreadNotificationCount %>)<% } %></a>
+        </div>
+        </header>
+
+        <%- include('_shortcut-nav', { canAccessSalesPlans: summary.canAccessSalesPlans, activeShortcut: '' }) %>
+
+        <section aria-labelledby="state-counts">
+          <h2 id="state-counts" class="muted workbench-state-heading"><%= t('countsByWorkflowState') %></h2>
+          <div class="state-strip">
+            <% if (summary.stateCounts.length === 0) { %>
+              <div class="state-item empty"><%= t('noVisibleOpportunities') %></div>
+            <% } %>
+            <% for (const item of summary.stateCounts) { %>
+              <div class="state-item">
+                <span class="state-label"><%= statusLabel(item.status) %></span>
+                <span class="state-count"><%= item.count %></span>
+              </div>
+            <% } %>
+          </div>
+        </section>
+
+        <section class="list-section workbench-dashboard-action-section" aria-labelledby="pending-work-items-title">
+          <h2 id="pending-work-items-title"><%= t('needsMyAction') %></h2>
+          <div class="list-body record-list-body workbench-action-list-body workbench-dashboard-action-list-body">
+            <%- include('_action-table', { actionItems: summary.actionItems, tableClass: 'workbench-dashboard-action-table' }) %>
+          </div>
+        </section>
+
+<%- include('../partials/app-end') %>
