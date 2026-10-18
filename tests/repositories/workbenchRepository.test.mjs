@@ -191,7 +191,7 @@ test('workbench repository lists draft and rejected opportunities as initiation 
   assert.deepEqual(queryTarget.queries[0].params, [7, STATUSES.DRAFT, STATUSES.INITIATION_REJECTED, 5]);
 });
 
-test('workbench repository exposes Project Execution confirmation only to the configured authorized user', async () => {
+test('workbench repository exposes Project Execution start only to the assigned salesperson', async () => {
   const queryTarget = createFakeQueryTarget([[
     {
       opportunity_id: '30',
@@ -209,11 +209,11 @@ test('workbench repository exposes Project Execution confirmation only to the co
 
   assert.equal(items.length, 1);
   assert.equal(items[0].sourceType, 'project_execution_confirmation');
-  assert.equal(items[0].actionUrl, '/opportunities/30/project-execution/confirm');
+  assert.equal(items[0].actionUrl, '/opportunities/30/project-execution/start');
   assert.equal(items[0].kpiCode, 'confirm_project_execution_creation');
   assert.equal(items[0].dueAt, '2026-09-15T23:59:59+08:00');
-  assert.match(queryTarget.queries[0].sql, /aps\.setting_key = 'project_execution_creation'/);
-  assert.match(queryTarget.queries[0].sql, /configured\.user_id = \$1/);
+  assert.doesNotMatch(queryTarget.queries[0].sql, /approval_settings/);
+  assert.match(queryTarget.queries[0].sql, /o\.salesperson_id = \$1/);
   assert.match(queryTarget.queries[0].sql, /pe\.id IS NULL/);
   assert.deepEqual(queryTarget.queries[0].params, [7, STATUSES.CONTRACT_ARCHIVED, 8]);
 });

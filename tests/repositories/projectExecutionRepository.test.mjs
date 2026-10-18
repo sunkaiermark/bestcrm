@@ -48,7 +48,7 @@ test('project execution repository creates once and returns the joined record', 
   assert.equal(result.projectExecution.opportunityId, 30);
   assert.equal(result.projectExecution.confirmedByDisplayName, 'Manager One');
   assert.match(target.calls[0].sql, /ON CONFLICT \(opportunity_id\) DO NOTHING/);
-  assert.deepEqual(target.calls[0].params, [30, '2026-09-14', 7, 2]);
+  assert.deepEqual(target.calls[0].params, [30, '2026-09-14', 7, 2, null]);
   assert.match(target.calls[1].sql, /WHERE pe\.opportunity_id = \$1/);
 });
 

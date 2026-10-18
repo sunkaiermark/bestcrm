@@ -45,6 +45,7 @@ import {
   canReviewOpportunityTechnicalDraft,
   isTechnicalAdminSelfApprovalTest
 } from '../services/opportunityTechnicalDraftService.mjs';
+import { canConfirmProjectExecution } from '../services/projectExecutionService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import {
   applyDirectAttachmentPreviewHeaders,
@@ -194,6 +195,7 @@ const attachmentCategories = new Set([
   'internal_quote',
   'commercial_quote',
   'contract',
+  'signed_contract',
   'other'
 ]);
 
@@ -722,6 +724,7 @@ function canCreateRequirementUpdate(user, opportunity) {
 }
 
 function canUploadAttachment(user, opportunity, category) {
+  if (category === 'signed_contract') return opportunity.status === STATUSES.CONTRACT_ARCHIVED && canConfirmProjectExecution(user, opportunity);
   if (opportunity.archivedAt) {
     return false;
   }
@@ -831,6 +834,7 @@ function redirectToOpportunity(opportunityId) {
 }
 
 export function opportunityRoutes({
+  projectExecutionRepository,
   customerRepository,
   contactRepository,
   attachmentRepository,
@@ -1277,7 +1281,10 @@ export function opportunityRoutes({
         quotationPackageRepository?.supportsQuotationPackages === true,
         teamMembers
       );
+      const projectExecution=await projectExecutionRepository?.findByOpportunity(opportunity.id) || null;
       res.render('opportunities/detail', {
+        projectExecution,
+        canStartProjectExecution: canConfirmProjectExecution(req.currentUser,opportunity) && opportunity.status===STATUSES.CONTRACT_ARCHIVED,
         opportunity,
         canViewCustomerMaster: canViewOpportunityCustomerMaster(req.currentUser, opportunity),
         canViewContactMaster: canViewOpportunityCustomerMaster(req.currentUser, opportunity),
@@ -1754,7 +1761,9 @@ export function opportunityRoutes({
         category,
         actorUserId: req.currentUser.id
       });
-      res.redirect(`/opportunities/${req.opportunity.id}`);
+      res.redirect(category === 'signed_contract' && req.body.returnTo === 'project-start'
+        ? '/opportunities/'+req.opportunity.id+'/project-execution/start'
+        : '/opportunities/'+req.opportunity.id);
     } catch (error) {
       next(error);
     }

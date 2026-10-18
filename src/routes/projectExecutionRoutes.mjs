@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { requireLogin } from '../middleware/auth.mjs';
 import {
   confirmProjectExecution,
+  configureProjectExecutionWorkflow,
   createProjectMilestone,
   createProjectWorkPackage,
   advanceProjectReleaseWorkflow,
@@ -33,6 +34,7 @@ export function projectExecutionRoutes({
   opportunityRepository,
   projectExecutionRepository,
   approvalSettingRepository,
+  attachmentRepository,
   userRepository
 }) {
   const router = Router();
@@ -40,6 +42,7 @@ export function projectExecutionRoutes({
     opportunityRepository,
     projectExecutionRepository,
     approvalSettingRepository,
+    attachmentRepository,
     userRepository
   };
 
@@ -68,7 +71,7 @@ export function projectExecutionRoutes({
     }
   });
 
-  router.get('/opportunities/:opportunityId/project-execution/confirm', async (req, res, next) => {
+  router.get(['/opportunities/:opportunityId/project-execution/start','/opportunities/:opportunityId/project-execution/confirm'], async (req, res, next) => {
     try {
       const context = await loadProjectExecutionConfirmationContext(
         repositories,
@@ -79,13 +82,13 @@ export function projectExecutionRoutes({
         res.redirect(`/project-executions/${context.projectExecution.id}`);
         return;
       }
-      res.render('project-executions/confirm', { opportunity: context.opportunity, users: context.users });
+      res.render('project-executions/start.html', context);
     } catch (error) {
       respondProjectExecutionError(error, res, next);
     }
   });
 
-  router.post('/opportunities/:opportunityId/project-execution/confirm', async (req, res, next) => {
+  router.post(['/opportunities/:opportunityId/project-execution/start','/opportunities/:opportunityId/project-execution/confirm'], async (req, res, next) => {
     try {
       const result = await confirmProjectExecution(
         repositories,
@@ -132,6 +135,13 @@ export function projectExecutionRoutes({
       await updateProjectWorkPackage(repositories, req.currentUser, req.params.id, req.params.workPackageId, req.body);
       res.redirect(`/project-executions/${req.params.id}#work-packages`);
     } catch (error) { respondProjectExecutionError(error, res, next); }
+  });
+
+  router.post('/project-executions/:id/workflow-setup', async (req,res,next) => {
+    try {
+      await configureProjectExecutionWorkflow(repositories,req.currentUser,req.params.id,req.body);
+      res.redirect('/project-executions/'+req.params.id+'#release-workflow');
+    } catch(error) { respondProjectExecutionError(error,res,next); }
   });
 
   router.post('/project-executions/:id/release-workflow', async (req, res, next) => {

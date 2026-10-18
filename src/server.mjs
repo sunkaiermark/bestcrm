@@ -1,3 +1,4 @@
+import ejs from 'ejs';
 import { loadAiSourceConfig } from './integrations/sunkaier-ai/config.mjs';
 import { createAiSourceRepository } from './integrations/sunkaier-ai/repository.mjs';
 import { integrationRoutes, integrationPrefix } from './integrations/sunkaier-ai/routes.mjs';
@@ -815,6 +816,7 @@ export function createApp(options = {}) {
     || (config.customerEmail?.enabled ? createCustomerEmailTransport(config.customerEmail.smtp) : null);
   const sessionStore = 'sessionStore' in options ? options.sessionStore : createSessionStore(pool);
   const app = express();
+  app.engine('html',ejs.renderFile);
   const aiConfig = options.aiSourceConfig || loadAiSourceConfig();
   const aiRepository = options.aiSourceRepository || (pool ? createAiSourceRepository(pool) : null);
   const purgeFileCleanupStarter = options.startEmailPurgeFileCleanupLoop
@@ -1081,6 +1083,7 @@ export function createApp(options = {}) {
     opportunityRepository
   }));
   app.use(projectExecutionRoutes({
+    attachmentRepository,
     opportunityRepository,
     projectExecutionRepository,
     approvalSettingRepository,
@@ -1137,6 +1140,7 @@ export function createApp(options = {}) {
   }));
   app.use(salesQuotationStandardTermRoutes({ salesQuotationStandardTermRepository }));
   app.use(opportunityRoutes({
+    projectExecutionRepository,
     customerRepository,
     contactRepository,
     attachmentRepository,

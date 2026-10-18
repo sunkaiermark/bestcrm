@@ -39,6 +39,7 @@ export function createApprovalSettingRepository(pool) {
     async listApprovalSettings() {
       const result = await pool.query(`
         ${approvalSettingSelect}
+        WHERE aps.setting_key <> 'project_execution_creation'
         ORDER BY aps.is_active DESC, aps.setting_key ASC, aps.sort_order ASC, u.display_name ASC
       `);
       return result.rows.map(mapApprovalSettingRow);

@@ -16,6 +16,7 @@ export const WORK_ITEM_SLA_BUSINESS_DAYS = Object.freeze({
   'Submit contract approval': 2,
   'Review contract': 1,
   'Revise contract': 2,
+  'Start Project Execution': 1,
   'Confirm Project Execution creation': 1
 });
 

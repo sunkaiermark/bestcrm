@@ -1,3 +1,5 @@
+function dateOnly(value) { return value instanceof Date ? value.toISOString().slice(0,10) : value; }
+
 function numberOrNull(value) {
   return value === null || value === undefined ? null : Number(value);
 }
@@ -15,14 +17,15 @@ function mapProjectExecutionRow(row) {
     opportunityNo: row.opportunity_no || '',
     opportunityTitle: row.opportunity_title || '',
     customerName: row.customer_name || '',
-    contractSignedOn: row.contract_signed_on,
+    contractSignedOn: dateOnly(row.contract_signed_on),
+    signedContractAttachmentId: numberOrNull(row.signed_contract_attachment_id),
     status: row.status,
     projectOwnerUserId: numberOrNull(row.project_owner_user_id),
     projectOwnerDisplayName: row.project_owner_display_name || '',
-    plannedStartOn: row.planned_start_on || null,
-    plannedCompletionOn: row.planned_completion_on || null,
-    actualDeliveryOn: row.actual_delivery_on || null,
-    actualAcceptanceOn: row.actual_acceptance_on || null,
+    plannedStartOn: dateOnly(row.planned_start_on) || null,
+    plannedCompletionOn: dateOnly(row.planned_completion_on) || null,
+    actualDeliveryOn: dateOnly(row.actual_delivery_on) || null,
+    actualAcceptanceOn: dateOnly(row.actual_acceptance_on) || null,
     riskSummary: row.risk_summary || '',
     confirmedByUserId: Number(row.confirmed_by_user_id),
     confirmedByDisplayName: row.confirmed_by_display_name || '',
@@ -44,7 +47,7 @@ function mapMilestone(row) {
   if (!row) return null;
   return {
     id: Number(row.id), title: row.title, milestoneType: row.milestone_type,
-    plannedOn: row.planned_on, actualOn: row.actual_on || null, status: row.status,
+    plannedOn: dateOnly(row.planned_on), actualOn: dateOnly(row.actual_on) || null, status: row.status,
     responsibleUserId: numberOrNull(row.responsible_user_id),
     responsibleDisplayName: row.responsible_display_name || '', note: row.note || ''
   };
@@ -56,8 +59,8 @@ function mapWorkPackage(row) {
     id: Number(row.id), projectExecutionId: Number(row.project_execution_id), title: row.title, instruction: row.instruction || '',
     responsibleUserId: Number(row.responsible_user_id),
     responsibleDisplayName: row.responsible_display_name || '',
-    plannedStartOn: row.planned_start_on || null, dueOn: row.due_on || null,
-    completedOn: row.completed_on || null, status: row.status,
+    plannedStartOn: dateOnly(row.planned_start_on) || null, dueOn: dateOnly(row.due_on) || null,
+    completedOn: dateOnly(row.completed_on) || null, status: row.status,
     blockerNote: row.blocker_note || '', acceptanceNote: row.acceptance_note || '',
     acceptedByUserId: numberOrNull(row.accepted_by_user_id), acceptedAt: row.accepted_at || null
   };
@@ -125,6 +128,22 @@ export function createProjectExecutionRepository(queryTarget) {
   }
 
   return {
+    async withTransaction(work) {
+      const client=queryTarget.connect ? await queryTarget.connect() : queryTarget;
+      try {
+        await client.query('BEGIN');
+        const result=await work(createProjectExecutionRepository(client),client);
+        await client.query('COMMIT');
+        return result;
+      } catch(error) { await client.query('ROLLBACK'); throw error; }
+      finally { if(client!==queryTarget) client.release(); }
+    },
+    async lockOpportunity(id) { await queryTarget.query('SELECT id FROM opportunities WHERE id=$1 FOR UPDATE',[Number(id)]); },
+    async lockProject(id) { await queryTarget.query('SELECT id FROM project_executions WHERE id=$1 FOR UPDATE',[Number(id)]); },
+    async lockSignedContract(id,opportunityId) {
+      const result=await queryTarget.query("SELECT id FROM attachments WHERE id=$1 AND opportunity_id=$2 AND category='signed_contract' AND retired_at IS NULL FOR SHARE",[Number(id),Number(opportunityId)]);
+      if(!result.rows.length) throw new Error('Valid signed contract attachment is required');
+    },
     async findById(id) {
       const result = await queryTarget.query(`
         ${projectExecutionSelect}
@@ -150,16 +169,17 @@ export function createProjectExecutionRepository(queryTarget) {
           opportunity_id,
           contract_signed_on,
           confirmed_by_user_id,
-          project_owner_user_id
+          project_owner_user_id, signed_contract_attachment_id
         )
-        VALUES ($1, $2, $3, $4)
+        VALUES ($1, $2, $3, $4, $5)
         ON CONFLICT (opportunity_id) DO NOTHING
         RETURNING id
       `, [
         Number(input.opportunityId),
         input.contractSignedOn,
         Number(input.confirmedByUserId),
-        input.projectOwnerUserId ? Number(input.projectOwnerUserId) : null
+        input.projectOwnerUserId ? Number(input.projectOwnerUserId) : null,
+        input.signedContractAttachmentId || null
       ]);
 
       const projectExecution = await findByOpportunity(input.opportunityId);

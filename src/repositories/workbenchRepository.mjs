@@ -69,20 +69,20 @@ function mapProjectExecutionConfirmationRow(row) {
     opportunityNo: row.opportunity_no,
     opportunityTitle: row.opportunity_title,
     customerName: row.customer_name,
-    title: 'Confirm Project Execution creation',
-    description: 'Confirm that the contract is signed and record the signing date.',
+    title: 'Start Project Execution',
+    description: 'Upload the mutually signed contract and start delivery directly. No additional approval.',
     status: 'pending',
     sourceType: 'project_execution_confirmation',
     sourceKey: 'confirm_project_execution_creation',
     roleContext: row.role_code || '',
     plannedStartAt: row.archived_at || row.updated_at,
-    dueAt: defaultWorkItemDueAt('Confirm Project Execution creation', row.archived_at || row.updated_at),
+    dueAt: defaultWorkItemDueAt('Start Project Execution', row.archived_at || row.updated_at),
     estimatedHours: null,
     workloadLevel: null,
     kpiCode: 'confirm_project_execution_creation',
     kpiTarget: '',
     createdAt: row.archived_at || row.updated_at,
-    actionUrl: `/opportunities/${row.opportunity_id}/project-execution/confirm`
+    actionUrl: `/opportunities/${row.opportunity_id}/project-execution/start`
   };
 }
 
@@ -265,26 +265,13 @@ export function createWorkbenchRepository(queryTarget) {
           c.name AS customer_name,
           o.archived_at,
           o.updated_at,
-          configured.role_code
+          'salesperson' AS role_code
         FROM opportunities o
         JOIN customers c ON c.id = o.customer_id
-        CROSS JOIN LATERAL (
-          SELECT aps.user_id, aps.role_code
-          FROM approval_settings aps
-          JOIN roles role ON role.code = aps.role_code
-          JOIN user_roles assignment
-            ON assignment.role_id = role.id
-           AND assignment.user_id = aps.user_id
-          JOIN users configured_user ON configured_user.id = aps.user_id
-          WHERE aps.setting_key = 'project_execution_creation'
-            AND aps.is_active = true
-            AND configured_user.is_active = true
-          ORDER BY aps.sort_order ASC, aps.id ASC
-          LIMIT 1
-        ) configured
         LEFT JOIN project_executions pe ON pe.opportunity_id = o.id
         WHERE o.status = $2
-          AND configured.user_id = $1
+          AND o.salesperson_id = $1
+          AND EXISTS (SELECT 1 FROM user_roles ur JOIN roles r ON r.id=ur.role_id JOIN users u ON u.id=ur.user_id WHERE ur.user_id=$1 AND r.code='salesperson' AND u.is_active=true)
           AND pe.id IS NULL
         ORDER BY o.archived_at DESC NULLS LAST, o.updated_at DESC, o.id DESC
         LIMIT $3

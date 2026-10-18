@@ -13,7 +13,7 @@ async function setup(options = {}) {
     passwordHash: await hashPassword('ChangeMe123!'),
     displayName: 'Manager One',
     isActive: true,
-    roles: options.roles || [ROLES.SALES_MANAGER]
+    roles: options.roles || [ROLES.SALESPERSON]
   };
   const opportunity = {
     id: 30,
@@ -21,7 +21,7 @@ async function setup(options = {}) {
     title: 'Factory upgrade',
     customerName: 'Acme Co',
     status: options.status || STATUSES.CONTRACT_ARCHIVED,
-    salespersonId: 2,
+    salespersonId: 7,
     salesManagerId: 7
   };
   const workflowUsers = [
@@ -41,6 +41,7 @@ async function setup(options = {}) {
       async findByUsernameWithRoles(username) { return username === user.username ? user : null; },
       async listUsersWithRoles() { return workflowUsers; }
     },
+    attachmentRepository:{async listByOpportunity(){return [{id:90,category:'signed_contract',originalName:'signed.pdf',sha256:'a'.repeat(64),fileSize:100}];}},
     opportunityRepository: {
       async getOpportunityDetail(id) { return Number(id) === opportunity.id ? opportunity : null; }
     },
@@ -58,6 +59,7 @@ async function setup(options = {}) {
       async listMilestones() { return []; },
       async listWorkPackages() { return []; },
       async createContractKickoffTemplate() {},
+      async appendAuditEvent() {},
       async createForOpportunity(input) {
         creates += 1;
         projectExecution = {
@@ -81,19 +83,19 @@ async function setup(options = {}) {
   return { agent, getCreates: () => creates };
 }
 
-test('configured authorized user sees confirmation and creates the one Project Execution record', async () => {
+test('assigned Sales starts the one execution record with no second approval', async () => {
   const { agent, getCreates } = await setup();
 
   const form = await agent.get('/opportunities/30/project-execution/confirm');
   assert.equal(form.status, 200);
-  assert.match(form.text, /Confirm Project Execution creation/);
+  assert.match(form.text, /Start Project Execution/);
   assert.match(form.text, /Contract signing date/);
 
   const created = await agent
     .post('/opportunities/30/project-execution/confirm')
     .type('form')
     .send({
-      contractSignedOn: '2026-09-14', projectOwnerUserId: 7, projectEngineerUserId: 12,
+      contractSignedOn: '2026-09-14', signedContractAttachmentId:90, projectOwnerUserId: 7, projectEngineerUserId: 12,
       processEngineerUserId: 13, technicalManagerUserId: 14, approverUserId: 15, publisherUserId: 16
     });
   assert.equal(created.status, 302);
@@ -137,6 +139,7 @@ test('project execution detail renders the delivery-plan workspace for an author
 
 test('mismatched user receives 403 on direct confirmation URL', async () => {
   const { agent } = await setup({
+    roles: [ROLES.SALES_MANAGER],
     setting: { userId: 8, roleCode: ROLES.SALES_MANAGER, isActive: true }
   });
 

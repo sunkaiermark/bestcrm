@@ -12,12 +12,12 @@ import {
 function setup(overrides = {}) {
   const actor = {
     id: 7,
-    roles: [ROLES.SALES_MANAGER]
+    roles: [ROLES.SALESPERSON]
   };
   const opportunity = {
     id: 30,
     status: STATUSES.CONTRACT_ARCHIVED,
-    salespersonId: 2,
+    salespersonId: 7,
     salesManagerId: 7
   };
   const setting = {
@@ -36,6 +36,7 @@ function setup(overrides = {}) {
     { id: 16, displayName: 'Publisher', isActive: true, roles: [] }
   ];
   const repositories = {
+    attachmentRepository:{async listByOpportunity(){return [{id:90,category:'signed_contract',sha256:'a'.repeat(64),fileSize:100}];}},
     userRepository: {
       async listUsersWithRoles() { return users; },
       async findByIdWithRoles(id) { return users.find((user) => user.id === Number(id)) || null; }
@@ -51,6 +52,7 @@ function setup(overrides = {}) {
     },
     projectExecutionRepository: {
       async findByOpportunity() { return overrides.existing || null; },
+      async appendAuditEvent(input) { calls.push(['audit', input]); },
       async createContractKickoffTemplate(input) { calls.push(['kickoff', input]); },
       async createForOpportunity(input) {
         calls.push(['create', input]);
@@ -73,35 +75,21 @@ const workflowParticipants = {
   publisherUserId: '16'
 };
 
-test('authorized user explicitly creates Project Execution after contract signing', async () => {
+test('assigned Sales starts execution with signed contract without any creation approval setting', async () => {
   const { actor, repositories, calls } = setup();
 
   const result = await confirmProjectExecution(
     repositories,
     actor,
     30,
-    { contractSignedOn: '2026-09-14', ...workflowParticipants }
+    { contractSignedOn: '2026-09-14', signedContractAttachmentId:90, ...workflowParticipants }
   );
 
   assert.equal(result.created, true);
-  assert.deepEqual(calls, [
-    ['setting', 'project_execution_creation'],
-    ['create', { opportunityId: 30, contractSignedOn: '2026-09-14', confirmedByUserId: 7, projectOwnerUserId: 11 }],
-    ['kickoff', {
-      projectExecutionId: 5,
-      referenceDate: '2026-09-14',
-      projectOwnerUserId: 11,
-      projectEngineerUserId: 12,
-      processEngineerUserId: 13,
-      technicalManagerUserId: 14,
-      approverUserId: 15,
-      publisherUserId: 16,
-      technicalResponsibleUserId: 12,
-      technicalApproverUserId: 14,
-      kickoffParticipantNote: '参与人：销售负责人、技术负责人、项目执行人。',
-      actorUserId: 7
-    }]
-  ]);
+  assert.equal(calls.some(([name])=>name==='setting'),false);
+  assert.deepEqual(calls[0],['create',{opportunityId:30,contractSignedOn:'2026-09-14',confirmedByUserId:7,projectOwnerUserId:11,signedContractAttachmentId:90}]);
+  assert.equal(calls[1][1].eventType,'sales_project_started');
+  assert.equal(calls.some(([name])=>name==='kickoff'),false);
 });
 
 test('repeated confirmation reopens the existing record and never inserts a duplicate', async () => {
@@ -114,25 +102,25 @@ test('repeated confirmation reopens the existing record and never inserts a dupl
   assert.equal(calls.some(([name]) => name === 'create'), false);
 });
 
-test('unconfigured or mismatched user cannot confirm Project Execution creation', async () => {
+test('a different salesperson cannot start this Opportunity even with the old approval setting', async () => {
   const { actor, repositories } = setup({
     setting: { userId: 8, roleCode: ROLES.SALES_MANAGER, isActive: true }
   });
 
   await assert.rejects(
-    () => loadProjectExecutionConfirmationContext(repositories, actor, 30),
+    () => loadProjectExecutionConfirmationContext(repositories, {...actor,id:8}, 30),
     /Forbidden/
   );
 });
 
 test('contract approval states before contract archive cannot create Project Execution', async () => {
   const { actor, repositories } = setup({
-    opportunity: { id: 30, status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS }
+    opportunity: { id: 30, salespersonId:7, status: STATUSES.CONTRACT_APPROVAL_IN_PROGRESS }
   });
 
   await assert.rejects(
     () => confirmProjectExecution(repositories, actor, 30, { contractSignedOn: '2026-09-14', ...workflowParticipants }),
-    /only be created after contract signing/
+    /only be created after contract approval/
   );
 });
 
@@ -187,4 +175,14 @@ test('work package cannot be marked blocked without a blocker reason', async () 
     () => updateProjectWorkPackage(repositories, { id: 12, roles: [] }, 5, 51, { status: 'blocked', blockerNote: '' }),
     /blocker reason is required/
   );
+});
+
+test('signed contract selection is required and an ordinary contract cannot be substituted',async()=>{
+ const {actor,repositories}=setup();
+ await assert.rejects(()=>confirmProjectExecution(repositories,actor,30,{contractSignedOn:'2026-09-14',projectOwnerUserId:11,signedContractAttachmentId:999}),/signed contract attachment is required/);
+});
+test('inactive project owners and future signing dates cannot start execution',async()=>{
+ const {actor,repositories}=setup();
+ await assert.rejects(()=>confirmProjectExecution(repositories,actor,30,{contractSignedOn:'2099-01-01',projectOwnerUserId:11,signedContractAttachmentId:90}),/future/);
+ await assert.rejects(()=>confirmProjectExecution(repositories,actor,30,{contractSignedOn:'2026-09-14',projectOwnerUserId:999,signedContractAttachmentId:90}),/Active project owner/);
 });

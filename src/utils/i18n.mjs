@@ -700,7 +700,7 @@ const dictionaries = {
     primaryContact: 'Primary Contact',
     primaryNavigation: 'Primary navigation',
     projectExecution: 'Project Execution',
-    confirmProjectExecution: 'Confirm Project Execution creation',
+    confirmProjectExecution: 'Start Project Execution',
     businessTypeWorkflowEvent: 'Workflow status',
     businessTypeOpportunity: 'Opportunity',
     contractSigningDate: 'Contract signing date',
@@ -1370,7 +1370,7 @@ const dictionaries = {
     'workKpi.resubmit_opportunity_initiation': 'Complete requested initiation revisions and resubmit',
     'workKpi.complete_assigned_work': 'Complete the assigned work and record the result by the deadline',
     'workKpi.complete_sales_work_plan': 'Complete the planned customer activity and record the result',
-    'workKpi.confirm_project_execution_creation': 'Verify the signed contract date and create or reopen the single Project Execution record',
+    'workKpi.confirm_project_execution_creation': 'Upload the mutually signed contract and start execution; repeated starts open the existing project',
     'projectExecutionStatus.planning': 'Planning',
     'projectExecutionStatus.in_progress': 'In progress',
     'projectExecutionStatus.on_hold': 'On hold',
@@ -2312,7 +2312,7 @@ const dictionaries = {
     primaryContact: '\u4e3b\u8981\u8054\u7cfb\u4eba',
     primaryNavigation: '\u4e3b\u5bfc\u822a',
     projectExecution: '\u9879\u76ee\u6267\u884c',
-    confirmProjectExecution: '\u786e\u8ba4\u521b\u5efa\u9879\u76ee\u6267\u884c',
+    confirmProjectExecution: '启动项目执行',
     businessTypeWorkflowEvent: '\u6d41\u7a0b\u72b6\u6001',
     businessTypeOpportunity: '\u5546\u673a',
     contractSigningDate: '\u5408\u540c\u7b7e\u8ba2\u65e5\u671f',
@@ -3254,6 +3254,7 @@ const todoTitleKeys = new Map([
   ['Send approved quote to customer', 'todoTitle.sendApprovedQuote'],
   ['Submit contract approval', 'todoTitle.submitContractApproval'],
   ['Submit opportunity initiation', 'todoTitle.submitOpportunityInitiation'],
+  ['Start Project Execution', 'confirmProjectExecution'],
   ['Confirm Project Execution creation', 'confirmProjectExecution']
 ]);
 
