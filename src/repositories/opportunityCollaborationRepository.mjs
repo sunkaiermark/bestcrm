@@ -38,7 +38,7 @@ function mapVersion(row) {
   };
 }
 
-export function createOpportunityCollaborationRepository(queryTarget) {
+export function createOpportunityCollaborationRepository(queryTarget, { inTransaction = false } = {}) {
   return {
     supportsWorkPackages: true,
 
@@ -180,8 +180,8 @@ export function createOpportunityCollaborationRepository(queryTarget) {
 
     async reviewVersion(input) {
       if(input.status==='returned'&&!String(input.note||'').trim())throw Error('Return reason is required');
-      if(typeof queryTarget.connect==='function'){
-        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client).reviewVersion(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      if(!inTransaction && typeof queryTarget.connect==='function'){
+        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client, { inTransaction: true }).reviewVersion(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
       }
       await queryTarget.query('SELECT id FROM opportunity_collaboration_work_packages WHERE id=$1 FOR UPDATE',[input.workPackageId]);
       const result = await queryTarget.query(`
@@ -216,8 +216,8 @@ export function createOpportunityCollaborationRepository(queryTarget) {
 
     async listTechnicalTeam(opportunityId){return (await queryTarget.query('SELECT * FROM opportunity_technical_team_assignments WHERE opportunity_id=$1 AND is_active=true ORDER BY position,user_id',[opportunityId])).rows;},
     async saveTechnicalTeam(input){
-      if(typeof queryTarget.connect==='function'){
-        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client).saveTechnicalTeam(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      if(!inTransaction && typeof queryTarget.connect==='function'){
+        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client, { inTransaction: true }).saveTechnicalTeam(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
       }
       const opportunity=(await queryTarget.query('SELECT * FROM opportunities WHERE id=$1 FOR UPDATE',[input.opportunityId])).rows[0];
       const rows=input.assignments;const leads=rows.filter(row=>row.position==='lead');
@@ -237,8 +237,8 @@ export function createOpportunityCollaborationRepository(queryTarget) {
       await queryTarget.query('INSERT INTO opportunity_technical_team_events(opportunity_id,actor_user_id,before_state,after_state) VALUES($1,$2,$3::jsonb,$4::jsonb)',[input.opportunityId,input.actorUserId,JSON.stringify(before),JSON.stringify(rows)]);
     },
     async applyTechnicalLifecycle(input){
-      if(typeof queryTarget.connect==='function'){
-        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client).applyTechnicalLifecycle(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      if(!inTransaction && typeof queryTarget.connect==='function'){
+        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client, { inTransaction: true }).applyTechnicalLifecycle(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
       }
       const wp=(await queryTarget.query("SELECT * FROM opportunity_collaboration_work_packages WHERE id=$1 AND opportunity_id=$2 AND plan_kind IN ('technical_solution','internal_quote') AND deleted_at IS NULL FOR UPDATE",[input.workPackageId,input.opportunityId])).rows[0];
       if(!wp)throw Error('Technical work package not found');
