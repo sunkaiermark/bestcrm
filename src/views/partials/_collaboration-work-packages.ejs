@@ -1,4 +1,6 @@
+<% if(planKind==='internal_quote'){ %><%- include('_internal-collaboration-work-packages') %><% }else{ %>
 <%
+  const dateValue = value => !value ? '' : value instanceof Date ? value.toISOString().slice(0,10) : String(value).slice(0,10);
   const isTechnicalPlan = planKind === 'technical_solution';
   const displayTitle = isTechnicalPlan
     ? (language === 'zh' ? '技术方案' : 'Technical solution')
@@ -8,9 +10,11 @@
   const packageStatusLabel = (status) => ({
     not_started: language === 'zh' ? '未开始' : 'Not started',
     in_progress: language === 'zh' ? '进行中' : 'In progress',
-    submitted: language === 'zh' ? '已提交' : 'Submitted',
-    returned: language === 'zh' ? '已拆回' : 'Returned',
-    accepted: language === 'zh' ? '已确认' : 'Accepted'
+    uploaded: language === 'zh' ? '已上传，待提交' : 'Uploaded, not submitted',
+    submitted: language === 'zh' ? '待审批' : 'Awaiting approval',
+    returned: language === 'zh' ? '已退回' : 'Returned',
+    withdrawn: language === 'zh' ? '已撤销提交' : 'Withdrawn',
+    accepted: language === 'zh' ? '已批准' : 'Approved'
   }[status] || status);
   const assignedUsers = [
     { id: opportunity.quotationEngineerId, name: opportunity.quotationEngineerDisplayName || opportunity.quotationEngineerUsername },
@@ -18,73 +22,73 @@
       .map((member) => ({ id: member.userId, name: member.userDisplayName || member.username }))
   ].filter((user, index, list) => user.id && user.name && list.findIndex((item) => Number(item.id) === Number(user.id)) === index);
 %>
-<section class="content-section business-section opportunity-workflow-section business-section-<%= isTechnicalPlan ? 'technical' : 'quote' %> collaboration-plan-section">
-  <h2><%= displayTitle %></h2>
+<% if(isTechnicalPlan){ %><div class="collaboration-plan-section collaboration-embedded"><% }else{ %><section class="content-section business-section opportunity-workflow-section business-section-quote collaboration-plan-section"><h2><%= displayTitle %></h2><% } %>
   <div class="section-body">
+    <%- include('_technical-engineering-team',{teamMembers,opportunity,canManageCollaborationWorkPackages}) %>
+
     <div class="collaboration-work-package-scroll">
       <table class="collaboration-work-package-table">
-        <colgroup><col class="collaboration-package-title"><col class="collaboration-package-owner"><col class="collaboration-package-date"><col class="collaboration-package-date"><col><col class="collaboration-package-version"><col class="collaboration-package-status"><col class="collaboration-package-actions"></colgroup>
+        <colgroup><col class="collaboration-package-title"><col class="collaboration-package-owner"><col class="collaboration-package-date"><col class="collaboration-package-date"><col class="collaboration-package-file"><col class="collaboration-package-submit-time"><col class="collaboration-package-version"><col class="collaboration-package-status"><col class="collaboration-package-actions"></colgroup>
         <thead><tr>
           <th><%= language === 'zh' ? '工作包' : 'Work package' %></th>
           <th><%= language === 'zh' ? '负责人' : 'Owner' %></th>
           <th><%= language === 'zh' ? '开始时间' : 'Start' %></th>
           <th><%= language === 'zh' ? '目标时间' : 'Target' %></th>
           <th><%= language === 'zh' ? '提交文件' : 'Submitted file' %></th>
-          <th><%= language === 'zh' ? '时间 · 版本' : 'Time · version' %></th>
+          <th><%= language === 'zh' ? '提交时间' : 'Submitted at' %></th>
+          <th><%= language === 'zh' ? '版本号' : 'Version' %></th>
           <th><%= language === 'zh' ? '状态' : 'Status' %></th>
           <th><%= language === 'zh' ? '操作' : 'Actions' %></th>
         </tr></thead>
         <tbody>
           <% if (!planPackages.length) { %>
-            <tr><td class="empty" colspan="8"><%= language === 'zh' ? '暂无工作包。由项目工程师或销售经理按已分配团队建立。' : 'No work packages yet.' %></td></tr>
+            <tr><td class="empty" colspan="9"><%= language === 'zh' ? '暂无工作包。' : 'No work packages yet.' %></td></tr>
           <% } %>
-          <% for (const workPackage of planPackages) { const latest = workPackage.latestVersion; const latestFile = latest?.files?.[0]; %>
+          <% for (const workPackage of planPackages) { const latest = workPackage.latestVersion; const latestFile = latest?.files?.[0]; const locked=workPackage.versionHistory.some(version=>version.status==='accepted'); %>
             <tr>
-              <td><strong><%= workPackage.title %></strong><% if (workPackage.versionHistory.length > 1) { %><span class="muted"> · <%= language === 'zh' ? `${workPackage.versionHistory.length} 个版本` : `${workPackage.versionHistory.length} versions` %></span><% } %></td>
-              <td><%= workPackage.assigneeDisplayName %></td>
-              <td><%= workPackage.plannedStartDate || '—' %></td>
-              <td><%= workPackage.plannedSubmitDate || '—' %></td>
-              <td><%= latestFile ? latestFile.originalName : '—' %></td>
-              <td><%= latest ? `${formatShortDate(latest.submittedAt)} · V${latest.versionNo}` : '—' %></td>
-              <td><span class="status"><%= packageStatusLabel(workPackage.status) %></span><% if (latest?.reviewNote) { %><span class="muted"> · <%= latest.reviewNote %></span><% } %></td>
-              <td><div class="collaboration-package-actions">
-                <% if (latestFile) { %>
-                  <a class="technical-file-action technical-file-preview-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= latestFile.id %>/preview"><%= t('preview') %></a>
-                  <a class="technical-file-action technical-file-download-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= latestFile.id %>/download"><%= t('download') %></a>
-                <% } else { %>
-                  <span class="technical-file-action collaboration-action-disabled"><%= t('preview') %></span>
-                  <span class="technical-file-action collaboration-action-disabled"><%= t('download') %></span>
-                <% } %>
-                <% if (latest?.status === 'submitted' && canManageCollaborationWorkPackages) { %>
-                  <form method="post" action="/opportunities/<%= opportunity.id %>/collaboration-work-packages/<%= workPackage.id %>/versions/<%= latest.id %>/review"><%- csrfField() %><input type="hidden" name="status" value="returned"><input type="hidden" name="note" value="<%= language === 'zh' ? '需要修订' : 'Revision required' %>"><button class="technical-file-action technical-file-withdraw-action" type="submit"><%= language === 'zh' ? '拆回' : 'Return' %></button></form>
-                  <form method="post" action="/opportunities/<%= opportunity.id %>/collaboration-work-packages/<%= workPackage.id %>/versions/<%= latest.id %>/review"><%- csrfField() %><input type="hidden" name="status" value="accepted"><button class="technical-file-action collaboration-action-accept" type="submit"><%= language === 'zh' ? '确认' : 'Accept' %></button></form>
-                <% } %>
-              </div></td>
+              <td title="<%= workPackage.title %>"><strong><%= workPackage.title %></strong><% if (workPackage.versionHistory.length > 1) { %><span class="muted"> · <%= language === 'zh' ? `${workPackage.versionHistory.length} 个版本` : `${workPackage.versionHistory.length} versions` %></span><% } %></td>
+              <td title="<%= workPackage.assigneeDisplayName %>"><%= workPackage.assigneeDisplayName %></td>
+              <td><%= dateValue(workPackage.plannedStartDate) || '—' %></td>
+              <td><%= dateValue(workPackage.plannedSubmitDate) || '—' %></td>
+              <td class="technical-submitted-file" title="<%= latestFile ? latestFile.originalName : '' %>"><%= latestFile ? latestFile.originalName : '—' %></td>
+              <td><%= latest?.submittedAt ? formatShortDate(latest.submittedAt) : '—' %></td>
+              <td><%= latest?.status==='accepted'&&latest.approvedVersionNo ? 'V'+latest.approvedVersionNo : '—' %></td>
+              <td><span class="status"><%= packageStatusLabel(latest?.status||workPackage.status) %></span></td>
+              <td><div class="technical-direct-links"><%- include('_collaboration-approval-button',{workPackage,latest}) %><% if(latestFile&&latest.status!=='uploaded'){ %><span class="technical-file-link-pair"><a class="technical-file-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= latestFile.id %>/preview"><%= t('preview') %></a><a class="technical-file-action" href="/opportunities/<%= opportunity.id %>/attachments/<%= latestFile.id %>/download"><%= t('download') %></a></span><% }else if(!latestFile&&canManageCollaborationWorkPackages&&!locked&&latest?.status!=='submitted'){ %><form method="post" action="/opportunities/<%= opportunity.id %>/technical-work-packages/<%= workPackage.id %>/delete"><%- csrfField() %><button type="submit"><%= language==='zh'?'删除':'Delete' %></button></form><% }else if(!latestFile){ %>—<% } %><% if(latest && (canManageCollaborationWorkPackages||Number(latest.submittedByUserId)===Number(currentUser.id))){ %>
+      <% if(latest.status==='uploaded'||(latest.status==='submitted'&&Number(latest.submittedByUserId)===Number(currentUser.id))){ %><form method="post" action="/opportunities/<%= opportunity.id %>/technical-work-packages/<%= workPackage.id %>/withdraw"><%- csrfField() %><input type="hidden" name="versionId" value="<%= latest.id %>"><button type="submit"><%= language==='zh'?(latest.status==='submitted'?'撤回':'撤销'):'Withdraw' %></button></form><% } %>
+      <% if(latest.status==='uploaded'&&latestFile){ %><form method="post" action="/opportunities/<%= opportunity.id %>/technical-work-packages/<%= workPackage.id %>/submit" onsubmit="return confirm('<%= language==='zh'?'请再次确认：提交此文件？':'Confirm submission of this file?' %>')"><%- csrfField() %><input type="hidden" name="versionId" value="<%= latest.id %>"><input type="hidden" name="confirmSubmission" value="yes"><button type="submit"><%= language==='zh'?'提交':'Submit' %></button></form><% } %>
+      <% if(['withdrawn','returned'].includes(latest.status)&&latestFile){ %><form method="post" action="/opportunities/<%= opportunity.id %>/technical-work-packages/<%= workPackage.id %>/delete-file"><%- csrfField() %><input type="hidden" name="versionId" value="<%= latest.id %>"><input type="hidden" name="attachmentId" value="<%= latestFile.id %>"><button type="submit"><%= language==='zh'?'删除文件':'Delete file' %></button></form><% } %>
+<% } %></div></td>
             </tr>
+            <%- include('_collaboration-review-row',{workPackage,latest}) %>
           <% } %>
         </tbody>
       </table>
     </div>
 
+
     <% if (canManageCollaborationWorkPackages) { %>
-      <form class="collaboration-work-package-form" method="post" action="/opportunities/<%= opportunity.id %>/collaboration-work-packages">
+      <details class="technical-add-package"><summary><%= language==='zh'?'新增工作包':'New work package' %></summary>
+      <form class="collaboration-control-form" method="post" action="/opportunities/<%= opportunity.id %>/collaboration-work-packages">
         <%- csrfField() %><input type="hidden" name="planKind" value="<%= planKind %>">
-        <label><%= language === 'zh' ? '新增工作包' : 'New work package' %><input name="title" required maxlength="200"></label>
-        <label><%= language === 'zh' ? '负责人' : 'Owner' %><select name="assigneeUserId" required><option value=""><%= language === 'zh' ? '选择负责人' : 'Select owner' %></option><% for (const engineer of assignedUsers) { %><option value="<%= engineer.id %>"><%= engineer.name %></option><% } %></select></label>
-        <label><%= language === 'zh' ? '开始时间' : 'Start' %><input type="date" name="plannedStartDate"></label>
-        <label><%= language === 'zh' ? '目标时间' : 'Target' %><input type="date" name="plannedSubmitDate"></label>
-        <button type="submit"><%= language === 'zh' ? '添加工作包' : 'Add work package' %></button>
+        <table class="collaboration-control-table"><colgroup><col style="width:30%"><col style="width:24%"><col style="width:17%"><col style="width:17%"><col style="width:12%"></colgroup>
+          <thead><tr><th><%= language==='zh'?'新增工作包':'New work package' %></th><th><%= language==='zh'?'负责人':'Owner' %></th><th><%= language==='zh'?'开始日期':'Start' %></th><th><%= language==='zh'?'目标日期':'Target' %></th><th><%= language==='zh'?'操作':'Action' %></th></tr></thead>
+          <tbody><tr><td><input name="title" aria-label="<%= language==='zh'?'新增工作包':'New work package' %>" required maxlength="200"></td>
+          <td><select name="assigneeUserId" aria-label="<%= language==='zh'?'负责人':'Owner' %>" required><option value=""><%= language==='zh'?'选择负责人':'Select owner' %></option><% for(const engineer of assignedUsers){ %><option value="<%= engineer.id %>"><%= engineer.name %></option><% } %></select></td>
+          <td><input type="date" name="plannedStartDate" aria-label="<%= language==='zh'?'开始日期':'Start' %>"></td><td><input type="date" name="plannedSubmitDate" aria-label="<%= language==='zh'?'目标日期':'Target' %>"></td><td><button type="submit"><%= language==='zh'?'添加':'Add' %></button></td></tr></tbody></table>
+      </form>
+      </details>
+    <% } %>
+    <% if (canContributeCollaborationWorkPackages && uploadPermissions[category] && planPackages.length) { %>
+      <form class="collaboration-control-form" method="post" action="/opportunities/<%= opportunity.id %>/collaboration-work-packages/0/versions" enctype="multipart/form-data" data-work-package-upload-form>
+        <%- csrfField() %><table class="collaboration-control-table"><colgroup><col style="width:30%"><col style="width:58%"><col style="width:12%"></colgroup>
+          <thead><tr><th><%= language==='zh'?'技术方案上传':'Technical proposal upload' %></th><th><%= language==='zh'?'方案文件':'Submission file' %></th><th><%= language==='zh'?'操作':'Action' %></th></tr></thead>
+          <tbody><tr><td><select name="workPackageId" required data-work-package-selector aria-label="<%= language==='zh'?'上传至工作包':'Work package' %>"><option value=""><%= language==='zh'?'选择工作包':'Select work package' %></option><% for(const workPackage of planPackages){ %><option value="<%= workPackage.latestVersion?.status==='accepted' ? 'revision-'+workPackage.id : (workPackage.id) %>"><%= workPackage.title %><%= workPackage.latestVersion?.status==='accepted'?(language==='zh'?'（新修订）':' (new revision)'):'' %></option><% } %></select></td>
+          <td><%- include('_localized-file-picker',{pickerId:`collaboration-${planKind}-file-${opportunity.id}`,inputName:'attachment',labelText:language==='zh'?'选择文件':'Select file'}) %></td><td><button type="submit"><%= language==='zh'?'上传':'Upload' %></button></td></tr></tbody></table>
       </form>
     <% } %>
 
-    <% if (canContributeCollaborationWorkPackages && uploadPermissions[category] && planPackages.length) { %>
-      <form class="collaboration-work-package-form collaboration-upload-form" method="post" action="/opportunities/<%= opportunity.id %>/collaboration-work-packages/0/versions" enctype="multipart/form-data" data-work-package-upload-form>
-        <%- csrfField() %>
-        <label><%= language === 'zh' ? '上传方案' : 'Upload submission' %><select name="workPackageId" required data-work-package-selector><option value=""><%= language === 'zh' ? '选择工作包' : 'Select work package' %></option><% for (const workPackage of planPackages) { %><option value="<%= workPackage.id %>"><%= workPackage.title %></option><% } %></select></label>
-        <%- include('_localized-file-picker', { pickerId: `collaboration-${planKind}-file-${opportunity.id}`, inputName: 'attachment', labelText: language === 'zh' ? '选择文件' : 'Select file' }) %>
-        <span class="muted"><%= language === 'zh' ? '系统按工作包自动递增版本。' : 'Version increases automatically per work package.' %></span>
-        <button type="submit"><%= language === 'zh' ? '提交文件' : 'Submit file' %></button>
-      </form>
-    <% } %>
+
   </div>
-</section>
+<% if(isTechnicalPlan){ %></div><% }else{ %></section><% } %>
+<% } %>

@@ -192,7 +192,7 @@ function quotationEngineerTodoForStatus(after) {
   }
 }
 
-function nextTodosForAction(action, after, payload) {
+function nextTodosForAction(action, after, payload, before) {
   switch (action) {
     case ACTIONS.SUBMIT_INITIATION:
       return [{ opportunityId: after.id, assigneeUserId: after.salesManagerId, title: 'Approve opportunity initiation' }];
@@ -210,6 +210,7 @@ function nextTodosForAction(action, after, payload) {
           : {})
       }));
     case ACTIONS.CHANGE_QUOTATION_ENGINEER: {
+      if(Number(before.quotationEngineerId)===Number(after.quotationEngineerId)) return [];
       const todo = quotationEngineerTodoForStatus(after);
       return todo ? [todo] : [];
     }
@@ -280,7 +281,7 @@ function assertTechnicalPlanSubmitDate(action, payload) {
 }
 
 async function persistInitiationEngineeringAssignments({ action, actor, opportunityId, payload, repositories }) {
-  if (action !== ACTIONS.APPROVE_INITIATION || !Array.isArray(payload.quotationEngineerIds)) {
+  if (![ACTIONS.APPROVE_INITIATION,ACTIONS.CHANGE_QUOTATION_ENGINEER].includes(action) || !Array.isArray(payload.quotationEngineerIds)) {
     return;
   }
   const repository = repositories.opportunityResponsibilityRepository;
@@ -307,6 +308,7 @@ async function persistInitiationEngineeringAssignments({ action, actor, opportun
     }
   }
   for (const userId of supportingEngineerIds) {
+    if(action===ACTIONS.CHANGE_QUOTATION_ENGINEER && currentSupportingEngineers.some(member=>Number(member.userId)===userId && member.isActive!==false)) continue;
     await repository.addTeamMember({
       opportunityId: Number(opportunityId),
       userId,
@@ -890,7 +892,7 @@ export function buildWorkflowEffects({ actor, action, before, after, payload = {
       ? 'completed'
       : null;
   const todosToClose = closeStatus ? [{ opportunityId: before.id, status: closeStatus }] : [];
-  if (action === ACTIONS.CHANGE_QUOTATION_ENGINEER && before.quotationEngineerId) {
+  if (action === ACTIONS.CHANGE_QUOTATION_ENGINEER && before.quotationEngineerId && Number(before.quotationEngineerId)!==Number(after.quotationEngineerId)) {
     todosToClose.push({
       opportunityId: before.id,
       assigneeUserId: before.quotationEngineerId,
@@ -908,7 +910,7 @@ export function buildWorkflowEffects({ actor, action, before, after, payload = {
       targetUserId: targetUserForAction(action, before, after, payload),
       comment: commentFromPayload(payload)
     },
-    todosToCreate: nextTodosForAction(action, after, payload),
+    todosToCreate: nextTodosForAction(action, after, payload, before),
     todosToClose
   };
 }
@@ -938,7 +940,7 @@ export async function applyWorkflowAction({
   if (!before) {
     throw new Error('Opportunity not found');
   }
-  if (before.archivedAt) {
+  if (before.archivedAt && !(action===ACTIONS.CHANGE_QUOTATION_ENGINEER && actor.roles?.includes('technical_manager') && Number(before.technicalManagerId)===Number(actor.id))) {
     throw new WorkflowValidationError('Archived opportunity is read-only', 409);
   }
   const contractApproval = await loadContractApprovalContext(action, opportunityId, repositories);
@@ -982,7 +984,7 @@ export async function applyWorkflowAction({
   }, action, effectivePayload);
   await assertRequiredMaterials({ action, before, opportunityId, payload: effectivePayload, repositories });
   const changes = changedWorkflowFields(before, after);
-  const updated = await repositories.opportunityRepository.updateWorkflowState(opportunityId, changes);
+  const updated = Object.keys(changes).length ? await repositories.opportunityRepository.updateWorkflowState(opportunityId, changes) : before;
   const effectiveAfter = updated || { ...before, ...changes };
   await persistSubmissionData({ action, actor, opportunityId, payload: effectivePayload, repositories });
   await persistTechnicalSolutionReviewData({

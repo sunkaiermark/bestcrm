@@ -1,0 +1,19 @@
+<%
+const zh=language==='zh';
+const assignments=typeof technicalTeamAssignments!=='undefined'?technicalTeamAssignments:[];
+const optionUsers=typeof technicalEngineerOptions!=='undefined'?technicalEngineerOptions:[];
+const activeMembers=(teamMembers||[]).filter(m=>m.roleCode==='quotation_engineer'&&m.isActive!==false);
+const selectedIds=new Set([Number(opportunity.quotationEngineerId),...activeMembers.map(m=>Number(m.userId))].filter(Boolean));
+const users=[...optionUsers,{id:opportunity.quotationEngineerId,displayName:opportunity.quotationEngineerDisplayName||opportunity.quotationEngineerUsername},...activeMembers.map(m=>({id:m.userId,displayName:m.userDisplayName||m.username}))].filter((u,i,a)=>u.id&&u.displayName&&a.findIndex(x=>Number(x.id)===Number(u.id))===i);
+const assignment=id=>assignments.find(a=>Number(a.user_id)===Number(id));
+const position=id=>assignment(id)?.position||(Number(id)===Number(opportunity.quotationEngineerId)?'lead':'support');
+const specialty=id=>assignment(id)?.specialty||activeMembers.find(m=>Number(m.userId)===Number(id))?.taskDescription||'';
+%>
+<table class="collaboration-control-table technical-team-table"><colgroup><col style="width:20%"><col style="width:25%"><col style="width:55%"></colgroup><thead><tr><th><%= zh?'项目职位':'Project position' %></th><th><%= zh?'工程师':'Engineer' %></th><th><%= zh?'专业内容 / 分工':'Specialty / responsibility' %></th></tr></thead><tbody>
+<% for(const user of users.filter(u=>selectedIds.has(Number(u.id)))){ %><tr><td><%= position(user.id)==='lead'?(zh?'主任工程师':'Lead engineer'):(zh?'参与工程师':'Supporting engineer') %></td><td><%= user.displayName %></td><td><%= specialty(user.id)||(zh?'待填写':'Not specified') %></td></tr><% } %>
+</tbody></table>
+<% if(canManageCollaborationWorkPackages){ %><details class="technical-team-editor"><summary><%= zh?'设置工程师职位与专业内容':'Set engineering positions and specialties' %></summary><form method="post" action="/opportunities/<%= opportunity.id %>/technical-team"><%- csrfField() %>
+<div style="max-height:300px;overflow:auto"><table class="collaboration-control-table"><colgroup><col style="width:8%"><col style="width:22%"><col style="width:25%"><col style="width:45%"></colgroup><thead><tr><th><%= zh?'参与':'Include' %></th><th><%= zh?'项目职位':'Project position' %></th><th><%= zh?'工程师':'Engineer' %></th><th><%= zh?'专业内容 / 分工':'Specialty / responsibility' %></th></tr></thead><tbody>
+<% for(const user of users){ %><tr><td><input style="height:auto;width:auto" type="checkbox" name="engineerIds" value="<%= user.id %>" aria-label="<%= user.displayName %>" <%= selectedIds.has(Number(user.id))?'checked':'' %>></td><td><select name="position_<%= user.id %>" aria-label="<%= zh?'项目职位':'Project position' %>"><option value="lead" <%= position(user.id)==='lead'?'selected':'' %>><%= zh?'主任工程师':'Lead engineer' %></option><option value="support" <%= position(user.id)==='support'?'selected':'' %>><%= zh?'参与工程师':'Supporting engineer' %></option></select></td><td><%= user.displayName %></td><td><input name="specialty_<%= user.id %>" value="<%= specialty(user.id) %>" maxlength="300" aria-label="<%= zh?'专业内容 / 分工':'Specialty / responsibility' %>" placeholder="<%= zh?'例如：整体工艺、机械设计、电气控制':'Process, mechanical design, electrical controls' %>"></td></tr><% } %>
+</tbody></table></div><button type="submit"><%= zh?'保存工程师分工':'Save engineering assignments' %></button>
+</form></details><% } %>

@@ -2,7 +2,7 @@
   <div class="workflow-action-list stage-workflow-actions">
     <% for (const workflowForm of forms) { const approveAction = workflowForm.action.startsWith('approve_'); const rejectAction = workflowForm.action.startsWith('reject_'); %>
       <form
-        class="workflow-compact-row <%= approveAction ? 'workflow-approve-row' : rejectAction ? 'workflow-reject-row' : 'workflow-neutral-row' %>"
+        class="workflow-compact-row <%= workflowForm.action==='change_quotation_engineer' ? 'workflow-engineering-management' : '' %> <%= approveAction ? 'workflow-approve-row' : rejectAction ? 'workflow-reject-row' : 'workflow-neutral-row' %>"
         method="post"
         action="/opportunities/<%= opportunity.id %>/workflow"
       >

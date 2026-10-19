@@ -219,3 +219,16 @@ test('workflow rejects invalid role status and assignee combinations', () => {
     opportunity: { status: STATUSES.DRAFT, salespersonId: 1, salesManagerId: 2 }
   }, ACTIONS.APPROVE_INITIATION, { quotationEngineerId: 3 }), /Action not allowed/);
 });
+
+test('assigned Technical Manager adjusts engineers at every stage without changing approval status',()=>{
+ for(const status of Object.values(STATUSES)){
+  const opportunity={status,technicalManagerId:5,quotationEngineerId:3,archivedAt:'2026-10-19T00:00:00Z'};
+  const context={userId:5,roles:[ROLES.TECHNICAL_MANAGER],opportunity};
+  const after=transition(context,ACTIONS.CHANGE_QUOTATION_ENGINEER,{quotationEngineerId:8});assert.equal(after.status,status);assert.equal(after.archivedAt,opportunity.archivedAt);
+  assert.throws(()=>transition({...context,userId:6},ACTIONS.CHANGE_QUOTATION_ENGINEER,{quotationEngineerId:8}),/Action not allowed/);
+ }
+});
+test('project lead adjusts supporting engineers while retaining the lead',()=>{
+ const context={userId:3,roles:[ROLES.QUOTATION_ENGINEER],opportunity:{status:STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,quotationEngineerId:3}};
+ assert.equal(transition(context,ACTIONS.CHANGE_QUOTATION_ENGINEER,{quotationEngineerId:3,quotationEngineerIds:[3,8]}).quotationEngineerId,3);
+});

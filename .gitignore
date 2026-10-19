@@ -10,4 +10,5 @@ tmp/
 .worktrees/
 
 _before-migration-backup/
+scripts/local-technical-manager.mjs
 

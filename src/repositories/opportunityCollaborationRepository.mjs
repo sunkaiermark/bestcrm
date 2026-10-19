@@ -1,8 +1,11 @@
+import {createOpportunityResponsibilityRepository} from './opportunityResponsibilityRepository.mjs';
 function mapWorkPackage(row) {
   return {
     id: Number(row.id),
     opportunityId: Number(row.opportunity_id),
     planKind: row.plan_kind,
+    sourceWorkPackageId: row.source_work_package_id ? Number(row.source_work_package_id) : null,
+    deletedAt: row.deleted_at || null,
     title: row.title,
     assigneeUserId: Number(row.assignee_user_id),
     assigneeDisplayName: row.assignee_display_name || row.assignee_username || '',
@@ -22,6 +25,7 @@ function mapVersion(row) {
     id: Number(row.id),
     workPackageId: Number(row.work_package_id),
     versionNo: Number(row.version_no),
+    approvedVersionNo: row.approved_version_no ? Number(row.approved_version_no) : null,
     status: row.status,
     submittedByUserId: Number(row.submitted_by_user_id),
     submittedByDisplayName: row.submitted_by_display_name || row.submitted_by_username || '',
@@ -44,7 +48,7 @@ export function createOpportunityCollaborationRepository(queryTarget) {
           SELECT wp.*, assignee.display_name AS assignee_display_name, assignee.username AS assignee_username
           FROM opportunity_collaboration_work_packages wp
           JOIN users assignee ON assignee.id = wp.assignee_user_id
-          WHERE wp.opportunity_id = $1
+          WHERE wp.opportunity_id = $1 AND (wp.deleted_at IS NULL OR (wp.plan_kind='internal_quote' AND wp.source_work_package_id IS NOT NULL))
           ORDER BY wp.plan_kind, wp.created_at, wp.id
         `, [opportunityId]),
         queryTarget.query(`
@@ -91,6 +95,18 @@ export function createOpportunityCollaborationRepository(queryTarget) {
       return packages;
     },
 
+    async ensureInternalQuotePackage(sourceId, opportunityId, actorUserId) {
+      const result=await queryTarget.query(`
+        WITH created AS (
+          INSERT INTO opportunity_collaboration_work_packages(opportunity_id,plan_kind,title,assignee_user_id,planned_start_date,planned_submit_date,created_by_user_id,source_work_package_id)
+          SELECT opportunity_id,'internal_quote',title,assignee_user_id,planned_start_date,planned_submit_date,$3,id
+          FROM opportunity_collaboration_work_packages WHERE id=$1 AND opportunity_id=$2 AND plan_kind='technical_solution' AND deleted_at IS NULL
+          ON CONFLICT(source_work_package_id) WHERE source_work_package_id IS NOT NULL DO UPDATE SET source_work_package_id=EXCLUDED.source_work_package_id
+          RETURNING *
+        ) SELECT * FROM created`,[sourceId,opportunityId,actorUserId]);
+      return result.rows[0]?mapWorkPackage(result.rows[0]):null;
+    },
+
     async createWorkPackage(input) {
       const result = await queryTarget.query(`
         WITH created AS (
@@ -116,9 +132,21 @@ export function createOpportunityCollaborationRepository(queryTarget) {
       return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
     },
 
+    async updateWorkPackage(input) {
+      const result=await queryTarget.query(`
+        WITH before AS (SELECT * FROM opportunity_collaboration_work_packages WHERE id=$1 AND opportunity_id=$2 FOR UPDATE),
+        updated AS (UPDATE opportunity_collaboration_work_packages wp SET title=$3,assignee_user_id=$4,planned_start_date=$5,planned_submit_date=$6,updated_at=now()
+          FROM before WHERE wp.id=before.id RETURNING wp.*),
+        logged AS (INSERT INTO opportunity_collaboration_work_package_events(work_package_id,event_type,actor_user_id,note)
+          SELECT updated.id,'updated',$7,json_build_object('before',json_build_object('title',before.title,'assigneeUserId',before.assignee_user_id,'start',before.planned_start_date,'due',before.planned_submit_date),'after',json_build_object('title',updated.title,'assigneeUserId',updated.assignee_user_id,'start',updated.planned_start_date,'due',updated.planned_submit_date))::text FROM updated JOIN before ON before.id=updated.id)
+        SELECT * FROM updated
+      `,[input.id,input.opportunityId,input.title,input.assigneeUserId,input.plannedStartDate||null,input.plannedSubmitDate||null,input.actorUserId]);
+      return result.rows[0]?mapWorkPackage(result.rows[0]):null;
+    },
+
     async findWorkPackageById(id) {
       const result = await queryTarget.query(`
-        SELECT * FROM opportunity_collaboration_work_packages WHERE id = $1 LIMIT 1
+        SELECT * FROM opportunity_collaboration_work_packages WHERE id = $1 AND deleted_at IS NULL LIMIT 1
       `, [id]);
       return result.rows[0] ? mapWorkPackage(result.rows[0]) : null;
     },
@@ -130,8 +158,8 @@ export function createOpportunityCollaborationRepository(queryTarget) {
           FROM opportunity_collaboration_work_package_versions
           WHERE work_package_id = $1
         ), created AS (
-          INSERT INTO opportunity_collaboration_work_package_versions (work_package_id, version_no, submitted_by_user_id)
-          SELECT $1, version_no, $2 FROM next_version
+          INSERT INTO opportunity_collaboration_work_package_versions (work_package_id, version_no, submitted_by_user_id,status,submitted_at)
+          SELECT $1, version_no, $2,$4,CASE WHEN $4='submitted' THEN now() ELSE NULL END FROM next_version
           RETURNING id, work_package_id
         ), files AS (
           INSERT INTO opportunity_collaboration_work_package_files (work_package_version_id, attachment_id, sort_order, added_by_user_id)
@@ -139,23 +167,29 @@ export function createOpportunityCollaborationRepository(queryTarget) {
           FROM created
           JOIN unnest($3::bigint[]) WITH ORDINALITY AS linked(attachment_id, sort_order) ON true
         ), updated AS (
-          UPDATE opportunity_collaboration_work_packages SET status = 'submitted', updated_at = now()
+          UPDATE opportunity_collaboration_work_packages SET status = CASE WHEN $4='submitted' THEN 'submitted' ELSE 'in_progress' END, updated_at = now()
           WHERE id = $1
         ), logged AS (
           INSERT INTO opportunity_collaboration_work_package_events (work_package_id, work_package_version_id, event_type, actor_user_id)
-          SELECT work_package_id, id, 'submitted', $2 FROM created
+          SELECT work_package_id, id, $4, $2 FROM created
         )
         SELECT id FROM created
-      `, [input.workPackageId, input.submittedByUserId, input.attachmentIds]);
+      `, [input.workPackageId, input.submittedByUserId, input.attachmentIds,input.staged?'uploaded':'submitted']);
       return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
     },
 
     async reviewVersion(input) {
+      if(input.status==='returned'&&!String(input.note||'').trim())throw Error('Return reason is required');
+      if(typeof queryTarget.connect==='function'){
+        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client).reviewVersion(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      }
+      await queryTarget.query('SELECT id FROM opportunity_collaboration_work_packages WHERE id=$1 FOR UPDATE',[input.workPackageId]);
       const result = await queryTarget.query(`
         WITH reviewed AS (
           UPDATE opportunity_collaboration_work_package_versions
-          SET status = $3, reviewed_by_user_id = $2, reviewed_at = now(), review_note = $4
-          WHERE id = $1 AND status = 'submitted'
+          SET status = $3, reviewed_by_user_id = $2, reviewed_at = now(), review_note = $4,
+            approved_version_no=CASE WHEN $3='accepted' THEN (SELECT COALESCE(MAX(approved_version_no),0)+1 FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$5) ELSE NULL END
+          WHERE id = $1 AND status = 'submitted' AND work_package_id=$5 AND id=(SELECT id FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$5 ORDER BY version_no DESC LIMIT 1)
           RETURNING id, work_package_id
         ), updated AS (
           UPDATE opportunity_collaboration_work_packages wp
@@ -165,10 +199,79 @@ export function createOpportunityCollaborationRepository(queryTarget) {
         ), logged AS (
           INSERT INTO opportunity_collaboration_work_package_events (work_package_id, work_package_version_id, event_type, actor_user_id, note)
           SELECT work_package_id, id, $3, $2, $4 FROM reviewed
+          RETURNING id,work_package_id
         )
-        SELECT id FROM reviewed
-      `, [input.versionId, input.reviewedByUserId, input.status, input.note || '']);
+        SELECT reviewed.id,logged.id AS event_id FROM reviewed JOIN logged ON logged.work_package_id=reviewed.work_package_id
+      `, [input.versionId, input.reviewedByUserId, input.status, input.note || '',input.workPackageId]);
+      if(result.rows[0])await queryTarget.query(`
+        INSERT INTO notifications(user_id,event_type,title,body,action_url,source_type,source_id,actor_user_id)
+        SELECT assignee_user_id,'collaboration_review',CASE WHEN $2='accepted' THEN '文件已批准' ELSE '文件退回修改' END,
+          title||CASE WHEN $2='accepted' THEN '：已批准' ELSE '：'||$3 END,
+          '/opportunities/'||opportunity_id||CASE WHEN plan_kind='internal_quote' THEN '#internal-quote' ELSE '#technical-proposal' END,
+          'collaboration_review',$4,$5 FROM opportunity_collaboration_work_packages WHERE id=$1
+        ON CONFLICT(user_id,source_type,source_id) DO NOTHING
+      `,[input.workPackageId,input.status,input.note||'',result.rows[0].event_id,input.reviewedByUserId]);
       return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
+    },
+
+    async listTechnicalTeam(opportunityId){return (await queryTarget.query('SELECT * FROM opportunity_technical_team_assignments WHERE opportunity_id=$1 AND is_active=true ORDER BY position,user_id',[opportunityId])).rows;},
+    async saveTechnicalTeam(input){
+      if(typeof queryTarget.connect==='function'){
+        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client).saveTechnicalTeam(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      }
+      const opportunity=(await queryTarget.query('SELECT * FROM opportunities WHERE id=$1 FOR UPDATE',[input.opportunityId])).rows[0];
+      const rows=input.assignments;const leads=rows.filter(row=>row.position==='lead');
+      if(!rows.length||leads.length!==1||rows.some(row=>!row.specialty.trim()||row.specialty.length>300)||new Set(rows.map(row=>row.userId)).size!==rows.length)throw Error('Exactly one lead and a specialty for each engineer are required');
+      if(!input.canChangeLead&&Number(leads[0].userId)!==Number(opportunity.quotation_engineer_id))throw Error('Only the manager can change the lead engineer');
+      const eligible=(await queryTarget.query("SELECT DISTINCT u.id FROM users u JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE u.is_active=true AND r.code='quotation_engineer' AND u.id=ANY($1::bigint[])",[rows.map(row=>row.userId)])).rows;
+      if(eligible.length!==rows.length)throw Error('Active engineers are required');
+      const before=await this.listTechnicalTeam(input.opportunityId),members=createOpportunityResponsibilityRepository(queryTarget);
+      const existing=await members.listTeamMembersByOpportunity(input.opportunityId);
+      for(const member of existing.filter(m=>m.roleCode==='quotation_engineer'&&m.isActive!==false))if(!rows.some(row=>row.userId===Number(member.userId)&&row.position==='support'))await members.removeTeamMember({opportunityId:input.opportunityId,memberId:member.id,removedBy:input.actorUserId});
+      await queryTarget.query('UPDATE opportunity_technical_team_assignments SET is_active=false WHERE opportunity_id=$1',[input.opportunityId]);
+      for(const row of rows){
+        await queryTarget.query('INSERT INTO opportunity_technical_team_assignments(opportunity_id,user_id,position,specialty,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(opportunity_id,user_id) DO UPDATE SET position=EXCLUDED.position,specialty=EXCLUDED.specialty,is_active=true,updated_by=EXCLUDED.updated_by,updated_at=now()',[input.opportunityId,row.userId,row.position,row.specialty,input.actorUserId]);
+        if(row.position==='support'){const prior=existing.find(m=>Number(m.userId)===row.userId&&m.roleCode==='quotation_engineer'&&m.isActive!==false);await members.addTeamMember({opportunityId:input.opportunityId,userId:row.userId,roleCode:'quotation_engineer',permissionLevel:prior?.permissionLevel||'edit',assignmentScope:prior?.assignmentScope||'Technical Proposal',taskDescription:row.specialty,dueDate:prior?.dueDate||null,addedBy:input.actorUserId,canSendExternalEmail:prior?.canSendExternalEmail||false});}
+      }
+      await queryTarget.query('UPDATE opportunities SET quotation_engineer_id=$2,updated_at=now() WHERE id=$1',[input.opportunityId,leads[0].userId]);
+      await queryTarget.query('INSERT INTO opportunity_technical_team_events(opportunity_id,actor_user_id,before_state,after_state) VALUES($1,$2,$3::jsonb,$4::jsonb)',[input.opportunityId,input.actorUserId,JSON.stringify(before),JSON.stringify(rows)]);
+    },
+    async applyTechnicalLifecycle(input){
+      if(typeof queryTarget.connect==='function'){
+        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client).applyTechnicalLifecycle(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
+      }
+      const wp=(await queryTarget.query("SELECT * FROM opportunity_collaboration_work_packages WHERE id=$1 AND opportunity_id=$2 AND plan_kind IN ('technical_solution','internal_quote') AND deleted_at IS NULL FOR UPDATE",[input.workPackageId,input.opportunityId])).rows[0];
+      if(!wp)throw Error('Technical work package not found');
+      const versions=(await queryTarget.query('SELECT * FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$1 ORDER BY version_no DESC FOR UPDATE',[wp.id])).rows;
+      const version=versions.find(row=>Number(row.id)===Number(input.versionId));
+      if(input.action!=='delete_package'&&!version)throw Error('Submission not found');
+      if(!input.isManager && Number(version?.submitted_by_user_id)!==Number(input.actorUserId))throw Error('Only the submitter can withdraw or remove this file');
+      const targetVersions=input.action==='delete_package'?versions:[version];
+      const ids=targetVersions.map(row=>row.id);
+      const files=(await queryTarget.query('SELECT a.* FROM attachments a JOIN opportunity_collaboration_work_package_files f ON f.attachment_id=a.id WHERE f.work_package_version_id=ANY($1::bigint[]) FOR UPDATE OF a',[ids])).rows;
+      const fileIds=files.map(row=>row.id);
+      const refs=(await queryTarget.query(`SELECT 1 WHERE EXISTS(SELECT 1 FROM quotation_package_attachments WHERE attachment_id=ANY($1::bigint[])) OR EXISTS(SELECT 1 FROM sales_commercial_quotation_drafts WHERE source_attachment_id=ANY($1::bigint[])) OR EXISTS(SELECT 1 FROM opportunity_technical_draft_attachments WHERE attachment_id=ANY($1::bigint[])) OR EXISTS(SELECT 1 FROM opportunity_technical_drafts WHERE uploaded_attachment_id=ANY($1::bigint[])) OR EXISTS(SELECT 1 FROM project_executions WHERE signed_contract_attachment_id=ANY($1::bigint[]))`,[fileIds])).rows;
+      if(targetVersions.some(row=>row.status==='accepted')||files.some(file=>file.opportunity_material_version_id)||refs.length)throw Error('Locked: confirmed, approved or referenced files must be retained');
+      if(input.action==='confirm'){
+        if(version.status!=='uploaded'||Number(version.id)!==Number(versions[0]?.id)||!files.some(file=>!file.retired_at))throw Error('Only the latest uploaded file can be submitted');
+        await queryTarget.query("UPDATE opportunity_collaboration_work_package_versions SET status='submitted',submitted_at=now() WHERE id=$1",[version.id]);
+        await queryTarget.query("UPDATE opportunity_collaboration_work_packages SET status='submitted',updated_at=now() WHERE id=$1",[wp.id]);
+      }else if(input.action==='withdraw'){
+        if(!['submitted','uploaded'].includes(version.status)||Number(version.id)!==Number(versions[0]?.id))throw Error('Only the latest pending submission can be withdrawn');
+        await queryTarget.query("UPDATE opportunity_collaboration_work_package_versions SET status='withdrawn' WHERE id=$1",[version.id]);
+        const previous=versions.find(row=>Number(row.id)!==Number(version.id)&&row.status==='accepted');
+        await queryTarget.query('UPDATE opportunity_collaboration_work_packages SET status=$2,updated_at=now() WHERE id=$1',[wp.id,previous?'accepted':'in_progress']);
+      }else{
+        if(targetVersions.some(row=>row.status==='submitted'))throw Error('Withdraw the pending submission before deleting');
+        if(input.action==='delete_file'){
+          if(!files.some(file=>Number(file.id)===Number(input.attachmentId)))throw Error('File not found');
+          await queryTarget.query("UPDATE attachments SET retired_at=now(),retired_by=$2,retirement_reason='Technical submission removed' WHERE id=$1 AND retired_at IS NULL",[input.attachmentId,input.actorUserId]);
+        }else{
+          await queryTarget.query('UPDATE opportunity_collaboration_work_packages SET deleted_at=now(),deleted_by=$2 WHERE id=$1',[wp.id,input.actorUserId]);
+          await queryTarget.query("UPDATE attachments SET retired_at=now(),retired_by=$2,retirement_reason='Technical work package removed' WHERE id=ANY($1::bigint[]) AND retired_at IS NULL",[fileIds,input.actorUserId]);
+        }
+      }
+      await queryTarget.query('INSERT INTO opportunity_collaboration_work_package_events(work_package_id,work_package_version_id,event_type,actor_user_id,note) VALUES($1,$2,$3,$4,$5)',[wp.id,version?.id||null,input.action==='confirm'?'submitted':input.action==='withdraw'?'withdrawn':input.action==='delete_file'?'file_retired':'deleted',input.actorUserId,'Technical-only lifecycle action; physical files and history retained']);
     },
 
     async isAttachmentLinked(attachmentId) {

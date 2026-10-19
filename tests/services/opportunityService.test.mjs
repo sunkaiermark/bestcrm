@@ -507,3 +507,10 @@ test('updateOpportunity rejects non-owner salesperson', async () => {
 
   assert.deepEqual(repositories.calls, []);
 });
+
+test('Technical Manager manages engineering across stages only within visible opportunities',()=>{
+ const user={id:5,isActive:true,roles:[ROLES.TECHNICAL_MANAGER]};
+ for(const status of Object.values(STATUSES))assert.equal(canManageOpportunityEngineeringTeam(user,{status,technicalManagerId:5,archivedAt:'2026-10-19'}),true);
+ assert.equal(canManageOpportunityEngineeringTeam(user,{technicalManagerId:6}),false);
+ assert.equal(canManageOpportunityEngineeringTeam({...user,isActive:false},{technicalManagerId:5}),false);
+});

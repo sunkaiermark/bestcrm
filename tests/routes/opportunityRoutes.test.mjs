@@ -4347,7 +4347,7 @@ test('Sales Manager changes quotation engineer after assignment from detail page
   assert.match(detail.text, /change_quotation_engineer/);
   assert.match(detail.text, /Quote Engineer One/);
   assert.match(detail.text, /Quote Engineer Two/);
-  assert.match(detail.text, /value="3" selected/);
+  assert.match(detail.text, /name="quotationEngineerLeadId" value="3"/);
 
   const response = await agent
     .post('/opportunities/30/workflow')

@@ -42,6 +42,11 @@ function requirePayloadValue(payload, field) {
 function roleAndAssigneeAllowed(context, rule) {
   const opportunity = context.opportunity || {};
   const user = { roles: context.roles || [] };
+  if (rule.action === ACTIONS.CHANGE_QUOTATION_ENGINEER) {
+    const technicalManager = hasRole(user, ROLES.TECHNICAL_MANAGER) && Number(opportunity.technicalManagerId) === Number(context.userId);
+    const lead = hasRole(user, ROLES.QUOTATION_ENGINEER) && Number(opportunity.quotationEngineerId) === Number(context.userId) && !opportunity.archivedAt && rule.fromStatuses.includes(opportunity.status);
+    if (technicalManager || lead) return true;
+  }
   const statusAllowed = rule.fromStatuses.includes(opportunity.status);
   const roleAllowed = hasRole(user, rule.role);
   const assigneeAllowed = opportunity[rule.assigneeField] === context.userId;
@@ -128,7 +133,7 @@ const RULES = [
       const nextQuotationEngineerId = Number(quotationEngineerId);
       if (!Number.isFinite(currentQuotationEngineerId)
         || !Number.isFinite(nextQuotationEngineerId)
-        || currentQuotationEngineerId === nextQuotationEngineerId) {
+        || (currentQuotationEngineerId === nextQuotationEngineerId && !Array.isArray(payload.quotationEngineerIds))) {
         actionNotAllowed();
       }
       return {
@@ -311,5 +316,9 @@ export function transition(context, action, payload = {}) {
   if (!rule || !roleAndAssigneeAllowed(context, rule)) {
     actionNotAllowed();
   }
+  if(action===ACTIONS.CHANGE_QUOTATION_ENGINEER && context.roles?.includes(ROLES.QUOTATION_ENGINEER)
+      && Number(context.opportunity.quotationEngineerId)===Number(context.userId)
+      && !context.roles?.some(role=>[ROLES.SALES_MANAGER,ROLES.TECHNICAL_MANAGER].includes(role))
+      && Number(payload.quotationEngineerId)!==Number(context.opportunity.quotationEngineerId)) actionNotAllowed();
   return rule.apply(context.opportunity, payload);
 }

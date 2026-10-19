@@ -5942,7 +5942,137 @@
           justify-content: flex-start;
         }
       }
-    </style>
+
+/* Compact engineering collaboration tables. */
+.section-stack>.business-section-technical,.section-stack>.collaboration-plan-section{min-width:0}
+.collaboration-plan-section .status{display:inline-block;width:auto;min-width:0;font-size:12px!important;line-height:1.4;white-space:nowrap;padding:3px 7px}
+.collaboration-plan-section col.collaboration-package-actions{display:table-column!important}
+
+.collaboration-plan-section{font-size:14px;line-height:1.45;min-width:0}
+.collaboration-embedded>.section-body{padding:0!important}
+.collaboration-plan-section h2{font-size:17px!important}
+.collaboration-plan-section table{font-size:14px;table-layout:fixed;width:100%}
+.collaboration-plan-section th{font-size:13px!important;font-weight:600;text-transform:none;white-space:nowrap}
+.collaboration-plan-section td{font-size:14px!important;overflow-wrap:anywhere}
+.collaboration-plan-section th,.collaboration-plan-section td{padding:8px!important;vertical-align:middle}
+.collaboration-plan-section .collaboration-work-package-table{min-width:760px}
+.collaboration-work-package-table .collaboration-package-title{width:17%}
+.collaboration-work-package-table .collaboration-package-owner{width:13%}
+.collaboration-work-package-table .collaboration-package-date{width:11%}
+.collaboration-work-package-table .collaboration-package-version{width:11%}
+.collaboration-work-package-table .collaboration-package-status{width:9%}
+.collaboration-work-package-table .collaboration-package-actions{width:18%}
+.collaboration-plan-section .collaboration-package-actions{flex-wrap:nowrap;gap:5px;min-height:28px}
+.collaboration-plan-section .collaboration-work-package-table td:nth-child(3),.collaboration-plan-section .collaboration-work-package-table td:nth-child(4){white-space:nowrap;font-variant-numeric:tabular-nums}
+.collaboration-plan-section input,.collaboration-plan-section select,.collaboration-plan-section button,.collaboration-plan-section .technical-file-action{font:inherit!important;font-size:14px!important;min-width:0;box-sizing:border-box}
+.collaboration-plan-section input,.collaboration-plan-section select{height:36px;padding:6px 8px;width:100%}
+.collaboration-plan-section button,.collaboration-plan-section .technical-file-action{height:32px;min-height:32px;padding:5px 12px;border-radius:5px;display:inline-flex;align-items:center;justify-content:center;white-space:nowrap;font-weight:500!important}
+.collaboration-plan-section .technical-file-action{background:#f2f6f8;color:#36586c;border:1px solid #d7e1e8}
+.collaboration-plan-section .collaboration-action-disabled{opacity:.45}
+.collaboration-control-form{margin:12px 0 0;padding:0;max-width:none;min-width:0;overflow-x:auto}
+.collaboration-control-table{border:1px solid #dce5eb;border-radius:6px;min-width:620px}
+.collaboration-control-table th{background:#f3f6f8!important;color:#506475}
+.collaboration-control-table td{background:#fff}
+.collaboration-control-table .localized-file-picker{min-width:0;margin:0;padding:0;font-size:14px}
+.collaboration-plan-section .localized-file-picker-button{font-size:14px!important}
+.collaboration-hint{font-size:12px!important;color:#738494;margin:5px 0 0!important}
+.collaboration-plan-section details{margin:6px 0;border:1px solid #e0e7ec;border-radius:5px;background:#fafcfd}
+.collaboration-plan-section details>summary{padding:7px 10px;font-size:13px;cursor:pointer;color:#36616c}
+.collaboration-edit-form{display:grid;grid-template-columns:2fr 1.5fr 1fr 1fr auto;align-items:end;gap:8px;padding:10px;margin:0;max-width:none}
+.collaboration-edit-form label{margin:0;font-size:13px;font-weight:500;min-width:0;gap:4px}
+.business-section-technical .stage-workflow-actions:has(.workflow-engineering-management){margin-top:12px}
+.business-section-technical .stage-workflow-actions .workflow-compact-row.workflow-engineering-management{display:grid!important;grid-template-columns:minmax(0,1fr) auto!important;gap:10px;align-items:center;padding:10px;margin:0;max-width:none;background:#f5f8fa;border:1px solid #dce5eb;border-radius:6px;font-size:14px}
+.business-section-technical .stage-workflow-actions .workflow-engineering-management .workflow-engineer-field{display:grid!important;grid-template-columns:80px minmax(0,1fr)!important;gap:8px;align-items:center;grid-column:1;grid-row:1;min-width:0}
+.business-section-technical .stage-workflow-actions .workflow-engineering-management .workflow-engineer-field>span{grid-column:1;font-size:13px}
+.business-section-technical .stage-workflow-actions .workflow-engineering-management .workflow-engineer-field>details{grid-column:2;min-width:0;margin:0;font-size:14px}
+.business-section-technical .stage-workflow-actions .workflow-engineering-management .workflow-engineer-picker>summary{min-height:36px;padding:6px 10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:14px}
+.business-section-technical .stage-workflow-actions .workflow-engineering-management .workflow-action-button{grid-column:2;grid-row:1;height:32px;min-height:32px;width:auto;padding:5px 12px;font-size:14px;font-weight:500;white-space:nowrap;text-align:center;border-radius:5px}
+.workflow-engineering-management .workflow-engineer-options{z-index:50;max-height:240px;overflow:auto;min-width:240px}
+.workflow-engineering-management .workflow-engineer-options label{font-size:14px;font-weight:400;margin:0;padding:7px}
+@media(max-width:900px){.collaboration-edit-form{grid-template-columns:1fr 1fr}.collaboration-edit-form button{justify-self:start}}
+
+.collaboration-embedded .technical-team-table{margin-bottom:8px}
+.collaboration-embedded .technical-team-editor{margin-bottom:10px}
+.collaboration-embedded .collaboration-hint{margin-bottom:8px!important}
+
+.collaboration-embedded .collaboration-work-package-table td:nth-child(6),.collaboration-embedded .collaboration-work-package-table td:nth-child(7){white-space:nowrap;font-variant-numeric:tabular-nums}
+
+/* Technical proposal: prioritize filenames and keep every cell on one line. */
+
+.collaboration-embedded table th,.collaboration-embedded table td{white-space:nowrap!important;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+.collaboration-embedded .collaboration-work-package-table td:last-child{overflow:visible}
+.collaboration-embedded .technical-submitted-file{font-weight:400}
+
+/* Match internal quotation filenames to the technical proposal column. */
+.collaboration-quote-panel .collaboration-work-package-table{min-width:1160px}
+.collaboration-quote-panel col.collaboration-package-title{width:130px}
+.collaboration-quote-panel col.collaboration-package-owner{width:90px}
+.collaboration-quote-panel col.collaboration-package-date{width:100px}
+.collaboration-quote-panel col.collaboration-package-file{width:auto}
+.collaboration-quote-panel col.collaboration-package-version{width:154px}
+.collaboration-quote-panel col.collaboration-package-status{width:86px}
+.collaboration-quote-panel col.collaboration-package-actions{width:110px}
+.collaboration-quote-panel .collaboration-work-package-table th,.collaboration-quote-panel .collaboration-work-package-table td{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;overflow-wrap:normal}
+
+.collaboration-embedded .technical-direct-links{display:flex;align-items:center;gap:5px;white-space:nowrap}
+.collaboration-embedded .technical-direct-links form{display:inline-flex;margin:0}
+.collaboration-embedded .technical-direct-links button,.collaboration-embedded .technical-direct-links a{font-size:12px!important;padding:4px 7px;min-height:28px;height:28px;width:auto}
+
+/* Balance the technical file metadata group without overlapping columns. */
+
+.collaboration-embedded .collaboration-work-package-table .technical-direct-links button{font-size:14px!important;padding:5px 12px;min-height:32px;height:32px}
+.collaboration-embedded .collaboration-work-package-table th:last-child,.collaboration-embedded .collaboration-work-package-table td:last-child{position:static;right:auto;box-shadow:none;background:transparent}
+.collaboration-embedded .collaboration-work-package-table{min-width:0;width:100%;table-layout:fixed}
+.collaboration-embedded col.collaboration-package-title{width:12%}
+.collaboration-embedded col.collaboration-package-owner{width:8%}
+.collaboration-embedded col.collaboration-package-date{width:8%}
+
+.collaboration-embedded col.collaboration-package-submit-time{width:12%}
+
+.collaboration-embedded .collaboration-work-package-table th,.collaboration-embedded .collaboration-work-package-table td{padding:8px 4px!important}
+.collaboration-embedded .collaboration-work-package-table .technical-direct-links{gap:3px}
+.collaboration-embedded .collaboration-work-package-table .technical-direct-links button,.collaboration-embedded .collaboration-work-package-table .technical-direct-links a{font-size:12px!important;padding:4px;min-height:28px;height:28px}
+.collaboration-embedded .collaboration-control-table{min-width:0}
+#technical-proposal .technical-draft-create-form{font-size:14px;line-height:1.45}
+#technical-proposal .technical-draft-create-form>label{font-size:13px;font-weight:600}
+#technical-proposal .technical-draft-create-form>select{font:inherit;font-size:14px;height:36px;padding:6px 8px}
+#technical-proposal .technical-draft-create-form>button{font:inherit;font-size:14px;font-weight:500;height:32px;min-height:32px;padding:5px 12px;border-radius:5px}
+#technical-proposal .collaboration-embedded .technical-direct-links{justify-content:flex-end}
+#technical-proposal .collaboration-embedded .collaboration-work-package-table th:last-child,
+#technical-proposal .collaboration-embedded .collaboration-work-package-table td:last-child,
+#technical-proposal .collaboration-embedded .collaboration-control-table th:last-child,
+#technical-proposal .collaboration-embedded .collaboration-control-table td:last-child{padding-right:8px!important;text-align:right}
+#technical-proposal .collaboration-embedded button,
+#technical-proposal .technical-draft-create-form>button{width:64px;min-width:64px;height:32px;min-height:32px;padding:4px;font-size:12px!important;box-sizing:border-box}
+#technical-proposal .technical-draft-create-form{padding-right:8px}
+#technical-proposal .technical-team-table th,#technical-proposal .technical-team-table td{text-align:left!important;padding:8px!important}
+#technical-proposal .technical-team-table col:nth-child(1){width:18%!important}
+#technical-proposal .technical-team-table col:nth-child(2){width:25%!important}
+#technical-proposal .technical-team-table col:nth-child(3){width:57%!important}
+#technical-proposal .collaboration-embedded .collaboration-work-package-table thead th:last-child{background:#e9f1f6!important;text-align:center;padding-left:8px!important;padding-right:8px!important}
+#internal-quote .technical-direct-links{justify-content:flex-end}
+#internal-quote .collaboration-work-package-table thead th:last-child{background:#e9f1f6!important;text-align:center}
+#internal-quote .collaboration-control-table th:last-child,#internal-quote .collaboration-control-table td:last-child{text-align:right}
+#internal-quote button{width:64px;min-width:64px;height:32px;min-height:32px;padding:4px;font-size:12px!important}
+.collaboration-review-row td{white-space:normal!important;text-align:left!important;background:#f6f9fb;overflow-wrap:anywhere!important}
+.collaboration-review-controls{display:flex;align-items:center;justify-content:flex-end;gap:8px}
+.collaboration-review-controls form{display:flex;align-items:center;gap:8px;margin:0;max-width:none}
+.collaboration-review-controls form:last-child{flex:1;max-width:600px}
+.collaboration-review-controls input[name=note]{flex:1;width:auto;min-width:0}
+.collaboration-review-controls button{flex-shrink:0}
+.collaboration-embedded col.collaboration-package-file{width:16%}
+.collaboration-embedded col.collaboration-package-version{width:4%}
+.collaboration-embedded col.collaboration-package-status{width:16%}
+.collaboration-embedded col.collaboration-package-actions{width:16%}
+.collaboration-approve-inline{display:inline-flex;margin:0 0 0 6px;vertical-align:middle}
+.collaboration-review-controls form:last-child{max-width:none;width:100%;align-items:flex-end}
+.collaboration-review-controls textarea[name=note]{flex:1;width:100%;min-width:0;min-height:76px;resize:vertical;font:inherit;font-size:14px;padding:8px;box-sizing:border-box;white-space:pre-wrap}
+.collaboration-embedded .technical-file-link-pair{display:inline-flex;align-items:center;gap:2px;width:64px;flex:0 0 64px}
+.collaboration-embedded .technical-file-link-pair a{flex:1;min-width:0;padding-left:2px!important;padding-right:2px!important;text-align:center}
+.collaboration-embedded .technical-direct-links .collaboration-approve-inline{margin:0;flex:0 0 64px}
+.collaboration-review-controls form:last-child{align-items:center}
+.collaboration-review-controls textarea[name=note][data-auto-grow]{min-height:32px;height:32px;padding:5px 8px;line-height:20px;resize:none;overflow:hidden}
+</style>
   </head>
   <body>
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>

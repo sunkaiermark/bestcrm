@@ -36,6 +36,7 @@ import {
   createOpportunityDraft,
   deleteOpportunity,
   isSupportingEngineer,
+  isProjectLeadEngineer,
   reopenOpportunity,
   updateOpportunity
 } from '../services/opportunityService.mjs';
@@ -355,19 +356,10 @@ function formForAction(action, usersByRole, opportunity = {}, teamMembers = []) 
         fields: [textareaField('reason', 'Reason')]
       };
     case ACTIONS.CHANGE_QUOTATION_ENGINEER:
-      return {
-        action,
-        title: 'Change Quotation Engineer',
-        button: 'Change Quotation Engineer',
-        fields: [
-          userSelectField(
-            'quotationEngineerId',
-            'Quotation Engineer',
-            usersByRole[ROLES.QUOTATION_ENGINEER] || [],
-            opportunity.quotationEngineerId
-          )
-        ]
-      };
+      return {action,title:'Change Quotation Engineer',button:'Change Quotation Engineer',fields:[
+        multiUserSelectField('quotationEngineerIds','Engineers',usersByRole[ROLES.QUOTATION_ENGINEER] || [],
+          [opportunity.quotationEngineerId,...teamMembers.filter(member=>member.roleCode===ROLES.QUOTATION_ENGINEER && member.isActive!==false).map(member=>member.userId)].filter(Boolean))
+      ]};
     case ACTIONS.SUBMIT_TECHNICAL_SOLUTION:
       return {
         action,
@@ -531,7 +523,7 @@ function opportunityWithActiveContractReviewer(opportunity, contractApprovals) {
 }
 
 function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], contractApprovals = [], language = 'en', quotationPackages = [], quotationPackagesEnabled = false, teamMembers = []) {
-  if (opportunity.archivedAt) {
+  if (opportunity.archivedAt && !(hasRole(user,ROLES.TECHNICAL_MANAGER) && Number(opportunity.technicalManagerId)===Number(user.id))) {
     return [];
   }
   const workflowOpportunity = opportunityWithActiveContractReviewer(opportunity, contractApprovals);
@@ -745,7 +737,7 @@ function canUploadAttachment(user, opportunity, category) {
     case 'commercial_quote':
       return commercialQuoteDeleteStatuses.has(opportunity.status) && isQuotationEngineer;
     case 'internal_quote':
-      return commercialQuoteDeleteStatuses.has(opportunity.status)
+      return (technicalSolutionDeleteStatuses.has(opportunity.status) || commercialQuoteDeleteStatuses.has(opportunity.status))
         && (isQuotationEngineer || isSupportingTechnicalEngineer);
     case 'contract':
       return contractDeleteStatuses.has(opportunity.status) && isSalesOwner;
@@ -801,13 +793,7 @@ function canSubmitCollaborationWorkPackage(user, opportunity, workPackage) {
 }
 
 function canReviewCollaborationWorkPackage(user, opportunity, workPackage) {
-  if (canManageOpportunityEngineeringTeam(user, opportunity)) return true;
-  const isProjectEngineer = hasRole(user, ROLES.QUOTATION_ENGINEER)
-    && Number(opportunity.quotationEngineerId) === Number(user.id);
-  if (isProjectEngineer) return true;
-  return workPackage.planKind === 'technical_solution'
-    ? Number(opportunity.technicalManagerId) === Number(user.id)
-    : Number(opportunity.commercialManagerId) === Number(user.id);
+  return hasRole(user,ROLES.TECHNICAL_MANAGER)&&Number(opportunity.technicalManagerId)===Number(user.id);
 }
 
 async function listResponsibilityUsers(userRepository) {
@@ -1280,7 +1266,10 @@ export function opportunityRoutes({
         teamMembers
       );
       const projectExecution=await projectExecutionRepository?.findByOpportunity(opportunity.id) || null;
+      const technicalTeamAssignments=await opportunityCollaborationRepository?.listTechnicalTeam?.(opportunity.id)||[];
       res.render('opportunities/detail', {
+        technicalTeamAssignments,
+        technicalEngineerOptions:usersByRole[ROLES.QUOTATION_ENGINEER]||[],
         projectExecution,
         canStartProjectExecution: canConfirmProjectExecution(req.currentUser,opportunity) && opportunity.status===STATUSES.CONTRACT_ARCHIVED,
         opportunity,
@@ -1595,6 +1584,7 @@ export function opportunityRoutes({
         return;
       }
       const planKind = collaborationPlanKind(req.body.planKind);
+      if(planKind==='internal_quote')return res.status(400).send('Internal quotations must reference a technical work package; independent quotation work packages cannot be created');
       const title = requiredText(req.body.title);
       const assigneeUserId = requiredPositiveInteger(req.body.assigneeUserId);
       const plannedStartDate = optionalIsoDate(req.body.plannedStartDate);
@@ -1626,6 +1616,55 @@ export function opportunityRoutes({
     }
   });
 
+  router.post('/opportunities/:id/technical-team',async(req,res,next)=>{
+    try{
+      const opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});if(!opportunity)return;
+      if(!canManageOpportunityEngineeringTeam(req.currentUser,opportunity))return res.status(403).send('Forbidden');
+      const selected=Array.isArray(req.body.engineerIds)?req.body.engineerIds:req.body.engineerIds?[req.body.engineerIds]:[];
+      const assignments=selected.map(value=>({userId:requiredPositiveInteger(value),position:req.body['position_'+value]==='lead'?'lead':'support',specialty:requiredText(req.body['specialty_'+value])}));
+      await opportunityCollaborationRepository.saveTechnicalTeam({opportunityId:opportunity.id,actorUserId:req.currentUser.id,assignments,canChangeLead:hasRole(req.currentUser,ROLES.TECHNICAL_MANAGER)||hasRole(req.currentUser,ROLES.SALES_MANAGER)||hasRole(req.currentUser,ROLES.ADMINISTRATOR)});
+      res.redirect('/opportunities/'+opportunity.id+'#technical-proposal');
+    }catch(error){if(/required|Only the manager/.test(error.message))return res.status(400).send(error.message);next(error);}
+  });
+  router.post('/opportunities/:id/technical-work-packages/:workPackageId/:operation',async(req,res,next)=>{
+    try{
+      const opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});if(!opportunity)return;
+      const sourceMatch=/^quote-([1-9]\d*)$/.exec(req.params.workPackageId);
+      let workPackage;
+      if(sourceMatch){
+        if(req.params.operation!=='delete')return res.sendStatus(404);
+        if(!canManageOpportunityEngineeringTeam(req.currentUser,opportunity))return res.status(403).send('Forbidden');
+        workPackage=await opportunityCollaborationRepository.ensureInternalQuotePackage(sourceMatch[1],opportunity.id,req.currentUser.id);
+      }else workPackage=await opportunityCollaborationRepository.findWorkPackageById(req.params.workPackageId);
+      if(!workPackage||!['technical_solution','internal_quote'].includes(workPackage.planKind)||Number(workPackage.opportunityId)!==Number(opportunity.id))return res.status(404).send('Technical work package not found');
+      const operation={delete:'delete_package',withdraw:'withdraw','delete-file':'delete_file',submit:'confirm'}[req.params.operation];if(!operation)return res.sendStatus(404);
+      if(operation==='confirm'&&req.body.confirmSubmission!=='yes')return res.status(400).send('Confirm submission before submitting');
+      const manager=canManageOpportunityEngineeringTeam(req.currentUser,opportunity);
+      if(!manager&&(operation==='delete_package'||!canSubmitCollaborationWorkPackage(req.currentUser,opportunity,workPackage)))return res.status(403).send('Forbidden');
+      await opportunityCollaborationRepository.applyTechnicalLifecycle({action:operation,workPackageId:workPackage.id,opportunityId:opportunity.id,versionId:requiredPositiveInteger(req.body.versionId),attachmentId:requiredPositiveInteger(req.body.attachmentId),actorUserId:req.currentUser.id,isManager:manager});
+      res.redirect('/opportunities/'+opportunity.id+'#technical-proposal');
+    }catch(error){if(/Locked|Withdraw|pending|not found|Only/.test(error.message))return res.status(409).send('该记录已确认、审批或被引用，或当前状态不允许此操作。请先撤销待审核提交；历史记录会保留。');next(error);}
+  });
+
+  router.post('/opportunities/:id/collaboration-work-packages/:workPackageId/update',async(req,res,next)=>{
+    try{
+      const opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});
+      if(!opportunity)return;
+      if(!canManageOpportunityEngineeringTeam(req.currentUser,opportunity))return res.status(403).send('Forbidden');
+      const workPackage=await opportunityCollaborationRepository.findWorkPackageById(req.params.workPackageId);
+      if(!workPackage||Number(workPackage.opportunityId)!==Number(opportunity.id))return res.status(404).send('Work package not found');
+      const title=requiredText(req.body.title),assigneeUserId=requiredPositiveInteger(req.body.assigneeUserId);
+      const plannedStartDate=optionalIsoDate(req.body.plannedStartDate),plannedSubmitDate=optionalIsoDate(req.body.plannedSubmitDate);
+      const eligible=new Set([Number(opportunity.quotationEngineerId),...(opportunity.teamMembers||[]).filter(m=>m.roleCode===ROLES.QUOTATION_ENGINEER&&m.isActive!==false).map(m=>Number(m.userId))]);
+      const engineer=assigneeUserId?await findActiveResponsibilityUser(userRepository,assigneeUserId):null;
+      if(!title||title.length>200||!eligible.has(assigneeUserId)||!engineer||!userHasRole(engineer,ROLES.QUOTATION_ENGINEER)
+        ||(requiredText(req.body.plannedStartDate)&&!plannedStartDate)||(requiredText(req.body.plannedSubmitDate)&&!plannedSubmitDate)
+        ||(plannedStartDate&&plannedSubmitDate&&plannedSubmitDate<plannedStartDate))return res.status(400).send('Work package, active responsible engineer and valid dates are required');
+      await opportunityCollaborationRepository.updateWorkPackage({id:workPackage.id,opportunityId:opportunity.id,title,assigneeUserId,plannedStartDate,plannedSubmitDate,actorUserId:req.currentUser.id});
+      res.redirect(redirectToOpportunity(opportunity.id));
+    }catch(error){next(error);}
+  });
+
   router.post('/opportunities/:id/collaboration-work-packages/:workPackageId/versions', async (req, res, next) => {
     try {
       const opportunity = await loadOpportunityOrSend({
@@ -1633,10 +1672,23 @@ export function opportunityRoutes({
       });
       if (!opportunity) return;
       req.opportunity = opportunity;
-      req.workPackage = await opportunityCollaborationRepository.findWorkPackageById(req.params.workPackageId);
+      const revisionMatch=/^revision-([1-9]\d*)$/.exec(req.params.workPackageId);
+      const quoteSourceMatch=/^quote-([1-9]\d*)$/.exec(req.params.workPackageId);
+      if(quoteSourceMatch){
+        req.quoteSource=await opportunityCollaborationRepository.findWorkPackageById(quoteSourceMatch[1]);
+        if(!req.quoteSource||req.quoteSource.planKind!=='technical_solution'||Number(req.quoteSource.opportunityId)!==Number(opportunity.id))return res.status(404).send('Work package not found');
+        if(!canSubmitCollaborationWorkPackage(req.currentUser,opportunity,req.quoteSource)||!canUploadAttachment(req.currentUser,opportunity,'internal_quote'))return res.status(403).send('Forbidden');
+        req.workPackage=(await opportunityCollaborationRepository.listByOpportunity(opportunity.id)).find(wp=>Number(wp.sourceWorkPackageId)===Number(req.quoteSource.id))||{...req.quoteSource,id:null,planKind:'internal_quote'};
+        if(req.workPackage.deletedAt)return res.status(409).send('Quotation has been removed');
+      }else req.workPackage = await opportunityCollaborationRepository.findWorkPackageById(revisionMatch?revisionMatch[1]:req.params.workPackageId);
       if (!req.workPackage || Number(req.workPackage.opportunityId) !== Number(opportunity.id)) {
         res.status(404).send('Work package not found');
         return;
+      }
+      if(['technical_solution','internal_quote'].includes(req.workPackage.planKind)){
+        const latest=(await opportunityCollaborationRepository.listByOpportunity(opportunity.id)).find(wp=>Number(wp.id)===Number(req.workPackage.id))?.latestVersion;
+        if(revisionMatch&&latest?.status!=='accepted')return res.status(409).send('New revision requires an approved version');
+        if(latest&&['uploaded','submitted','accepted'].includes(latest.status)&&!(revisionMatch&&latest.status==='accepted'))return res.status(409).send(latest.status==='accepted'?'Approved file is locked; start a new revision':'Withdraw the current upload or submission before uploading another file');
       }
       if (!canSubmitCollaborationWorkPackage(req.currentUser, opportunity, req.workPackage)) {
         res.status(403).send('Forbidden');
@@ -1663,6 +1715,10 @@ export function opportunityRoutes({
         res.status(403).send('Attachment upload is not allowed for this work package');
         return;
       }
+      if(req.quoteSource){
+        req.workPackage=await opportunityCollaborationRepository.ensureInternalQuotePackage(req.quoteSource.id,req.opportunity.id,req.currentUser.id);
+        if(!req.workPackage)return res.status(404).send('Work package not found');
+      }
       const attachment = await persistUploadedOpportunityAttachment({
         attachmentRepository,
         uploadDir,
@@ -1674,7 +1730,8 @@ export function opportunityRoutes({
       await opportunityCollaborationRepository.submitVersion({
         workPackageId: req.workPackage.id,
         submittedByUserId: req.currentUser.id,
-        attachmentIds: [attachment.id]
+        attachmentIds: [attachment.id],
+        staged:true
       });
       res.redirect(redirectToOpportunity(req.opportunity.id));
     } catch (error) {
@@ -1703,12 +1760,14 @@ export function opportunityRoutes({
         res.status(400).send('Return reason is required');
         return;
       }
-      await opportunityCollaborationRepository.reviewVersion({
+      const reviewed=await opportunityCollaborationRepository.reviewVersion({
+        workPackageId:workPackage.id,
         versionId: requiredPositiveInteger(req.params.versionId),
         reviewedByUserId: req.currentUser.id,
         status,
         note
       });
+      if(!reviewed)return res.status(409).send('Only the latest submitted file can be reviewed');
       res.redirect(redirectToOpportunity(opportunity.id));
     } catch (error) {
       next(error);
@@ -1921,11 +1980,17 @@ export function opportunityRoutes({
 
   router.post('/opportunities/:id/workflow', async (req, res, next) => {
     try {
+      const workflowPayload=parseWorkflowPayload(req.body);
+      if(req.body.action===ACTIONS.CHANGE_QUOTATION_ENGINEER && Array.isArray(workflowPayload.quotationEngineerIds)){
+        const engineers=await userRepository.listUsersByRole(ROLES.QUOTATION_ENGINEER);
+        const allowed=new Set(engineers.filter(user=>user.isActive!==false).map(user=>Number(user.id)));
+        if(workflowPayload.quotationEngineerIds.some(id=>!allowed.has(Number(id))))return res.status(400).send('Active engineers are required');
+      }
       await applyWorkflowAction({
         actor: req.currentUser,
         opportunityId: req.params.id,
         action: req.body.action,
-        payload: parseWorkflowPayload(req.body),
+        payload: workflowPayload,
         repositories: {
           opportunityRepository,
           workflowEventRepository,

@@ -92,6 +92,7 @@ export function isSupportingEngineer(user, opportunity) {
 }
 
 export function canManageOpportunityEngineeringTeam(user, opportunity) {
+  if (hasRole(user, ROLES.TECHNICAL_MANAGER) && user.isActive !== false && canViewOpportunity(user, opportunity)) return true;
   if (opportunity.archivedAt) {
     return false;
   }

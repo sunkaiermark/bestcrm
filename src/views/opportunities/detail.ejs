@@ -94,7 +94,8 @@
     }
     return String(left.key).localeCompare(String(right.key));
   });
-  const technicalSolutionTimeline = technicalSolutionAttachments.filter((attachment) => !technicalDraftAttachmentIds.has(Number(attachment.id))).map((attachment) => ({
+  const collaborationAttachmentIds=new Set((typeof collaborationWorkPackages!=='undefined'?collaborationWorkPackages:[]).flatMap(wp=>(wp.versionHistory||[]).flatMap(version=>(version.files||[]).map(file=>Number(file.id)))));
+  const technicalSolutionTimeline = technicalSolutionAttachments.filter((attachment) => !technicalDraftAttachmentIds.has(Number(attachment.id)) && !collaborationAttachmentIds.has(Number(attachment.id))).map((attachment) => ({
       key: `technical-file-${attachment.id}`,
       type: 'File',
       attachment,
@@ -153,7 +154,7 @@
   const projectApprovalForms = allWorkflowForms.filter((workflowForm) => ['approve_initiation', 'reject_initiation'].includes(workflowForm.action));
   const requirementWorkflowForms = allWorkflowForms.filter((workflowForm) => workflowForm.action === 'withdraw_initiation');
   const technicalWorkflowForms = allWorkflowForms.filter((workflowForm) => (
-    workflowForm.action === 'change_quotation_engineer'
+    (!collaborationWorkPackagesEnabled && workflowForm.action === 'change_quotation_engineer')
     || (!usesVersionedTechnicalDrafts && ['withdraw_technical_solution', 'approve_technical_solution', 'reject_technical_solution'].includes(workflowForm.action))
   ));
   const commercialWorkflowForms = allWorkflowForms.filter((workflowForm) => ['withdraw_commercial_quote', 'approve_commercial_quote', 'reject_commercial_quote', 'mark_won', 'mark_lost'].includes(workflowForm.action));
@@ -640,7 +641,7 @@
                     <% } %>
                   </div>
                 <% } %>
-              <% } else if (uploadPermissions.technical_solution) { %>
+              <% } else if (uploadPermissions.technical_solution && !collaborationWorkPackagesEnabled) { %>
                 <form class="form-panel attachment-upload-panel" method="post" action="/opportunities/<%= opportunity.id %>/attachments" enctype="multipart/form-data">
                   <%- csrfField() %>
                   <input type="hidden" name="category" value="technical_solution">
