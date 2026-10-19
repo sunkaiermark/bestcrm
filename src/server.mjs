@@ -1141,6 +1141,9 @@ export function createApp(options = {}) {
   }));
   app.use(salesQuotationStandardTermRoutes({ salesQuotationStandardTermRepository }));
   app.use(opportunityRoutes({
+    inquiryRepository,
+    aiSourceRepository: aiRepository,
+    aiSourceEnabled: aiConfig.workspaceEnabled,
     projectExecutionRepository,
     customerRepository,
     contactRepository,

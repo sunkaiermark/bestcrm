@@ -1,0 +1,56 @@
+/* A single typography scale for the opportunity detail workspace. */
+.opportunity-detail-page {
+  font: 14px/1.5 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif;
+  container: opportunity / inline-size;
+}
+.opportunity-detail-page .section-stack { grid-template-columns: minmax(0, 1fr); gap: 12px; }
+.opportunity-detail-page .section-stack > *,
+.opportunity-detail-page .section-body,
+.opportunity-detail-page .form-panel { min-width: 0; max-width: 100%; }
+.opportunity-detail-page :is(table, th, td, label, input, select, textarea, button, summary, .status, .muted, .user-line, .technical-file-action) {
+  font-family: inherit;
+  font-size: 14px !important;
+  line-height: 1.5;
+}
+.opportunity-detail-page :is(#technical-proposal, #internal-quote) :is(th, td, label, input, select, textarea, button, summary, .status, .technical-file-action) {
+  font-size: 14px !important;
+}
+.opportunity-detail-page h1 { font-size: 20px; line-height: 1.4; margin: 4px 0 12px; }
+.opportunity-detail-page :is(h2, .collaboration-plan-section h2) { font-size: 16px !important; line-height: 1.5; font-weight: 600; }
+.opportunity-detail-page h3 { font-size: 14px; line-height: 1.5; font-weight: 600; }
+.opportunity-detail-page :is(th, label) { font-weight: 500; }
+.opportunity-detail-page :is(td, input, select, textarea) { font-weight: 400; }
+.opportunity-detail-page .section-body { padding: 10px 12px; }
+.opportunity-detail-page .basic-info-table :is(th, td) { padding: 8px 10px; line-height: 1.6; }
+.opportunity-detail-page .basic-info-table .basic-info-label-column { width: 120px; }
+.opportunity-detail-page .opportunity-source-row td { white-space: normal; overflow-wrap: anywhere; }
+.opportunity-detail-page :is(button, .secondary-action, .quick-action, .technical-file-action) {
+  font-size: 14px !important;
+  font-weight: 500 !important;
+  line-height: 20px;
+  min-height: 32px;
+  border-radius: 5px;
+}
+.opportunity-detail-page :is(input:not([type=checkbox]):not([type=radio]):not([type=hidden]), select) {
+  height: 34px;
+  padding: 5px 8px;
+}
+.opportunity-detail-page #technical-proposal button,
+.opportunity-detail-page #internal-quote button { width: 68px; min-width: 68px; height: 32px; padding: 4px; }
+.opportunity-detail-page .technical-direct-links { flex-wrap: wrap; row-gap: 4px; }
+.opportunity-detail-page .technical-direct-links .collaboration-approve-inline { flex-basis: 68px; }
+.opportunity-detail-page .technical-file-link-pair { width: 72px; flex-basis: 72px; }
+.opportunity-detail-page .technical-file-link-pair a { padding: 3px 2px !important; }
+.opportunity-detail-page .status { font-weight: 500; }
+.opportunity-detail-page .opportunity-detail-toolbar { margin-bottom: 10px; }
+.opportunity-detail-page .product-category-review-row { grid-template-columns: auto minmax(0, 1fr) auto; min-width: 0; }
+.opportunity-detail-page .product-category-confirmed { min-width: 0; max-width: 100%; flex-wrap: wrap; }
+@container opportunity (max-width: 760px) {
+  .opportunity-detail-page .product-category-review-row { grid-template-columns: auto minmax(0, 1fr); }
+  .opportunity-detail-page .product-category-confirmed { grid-column: 1 / -1; justify-content: flex-start; }
+  .opportunity-detail-page .basic-info-table tr { grid-template-columns: 100px minmax(0, 1fr); }
+  .opportunity-detail-page .collaboration-control-table { min-width: 0; }
+  .opportunity-detail-page .collaboration-control-table :is(input, select) { padding-left: 4px; padding-right: 4px; }
+  .opportunity-detail-page .collaboration-review-controls form { flex-wrap: wrap; }
+  .opportunity-detail-page .collaboration-review-controls textarea { flex-basis: calc(100% - 80px); }
+}

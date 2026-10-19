@@ -12,6 +12,7 @@ export function createAiSourceRepository(pool){
    const r=await q.query('INSERT INTO ai_source_nonces(key_id,nonce,expires_at) VALUES($1,$2,$3) ON CONFLICT DO NOTHING RETURNING nonce',[key,nonce,expiry]);return !!r.rows.length;
   });},
   async source(id,q=pool,lock=false){return (await q.query(`SELECT * FROM ai_sources WHERE id=$1${lock?' FOR UPDATE':''}`,[id])).rows[0]||null;},
+  async findOriginsByLead(id){return (await pool.query('SELECT id,assigned_user_id,retention FROM ai_sources WHERE lead_id=$1 ORDER BY received_at,id',[id])).rows;},
   async external(client,id){return (await pool.query('SELECT * FROM ai_sources WHERE client_id=$1 AND external_lead_id=$2',[client,id])).rows[0]||null;},
   async list(actor,{q='',channel='',state='',page=1,pageSize=20,leadId=null,opportunityId=null}={}){
    const privileged=actor.roles.some(r=>['administrator','sales_manager'].includes(r));

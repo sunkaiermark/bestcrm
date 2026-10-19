@@ -888,6 +888,8 @@ test('opportunity detail gives the full title room and keeps only the approved h
 
 test('converted opportunity detail links back to its immutable source lead', async () => {
   const { agent } = await createLoggedInAgent({
+    aiSourceConfig: {enabled:false,workspaceEnabled:true,keys:[]},
+    inquiryRepository: { async findById(){return {id:11,submissionType:'sales_lead',source:'manual',createdBy:7,createdByDisplayName:'Original Recorder',createdAt:'2026-08-04T10:00:00Z'};} },
     opportunityRepository: {
       async getOpportunityDetail() {
         return {
@@ -921,6 +923,9 @@ test('converted opportunity detail links back to its immutable source lead', asy
   assert.match(detail.text, /<th scope="row">Source lead<\/th>/);
   assert.match(detail.text, /href="\/lead-submissions\/11"/);
   assert.match(detail.text, /View source lead #11/);
+  assert.match(detail.text, /Manual entry/);
+  assert.match(detail.text, /Original Recorder/);
+  assert.doesNotMatch(detail.text, /AI Source 来源资料/);
 });
 
 test('sales manager cannot create an opportunity directly from the customer library', async () => {

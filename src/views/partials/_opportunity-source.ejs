@@ -1,0 +1,11 @@
+<tr class="opportunity-source-row">
+  <th scope="row"><%= t('sourceLead') %></th>
+  <td><% if(sourceInfo?.leadUrl){ %><a href="<%= sourceInfo.leadUrl %>"><%= t('viewSourceLead') %> #<%= opportunity.originInquiryId %></a><% }else{ %>#<%= opportunity.originInquiryId %><% } %></td>
+  <th scope="row"><%= language==='zh'?'线索来源':'Lead source' %></th>
+  <td>
+    <% const labels=language==='zh'?{manual:'人工录入',email:'邮件',ai:'AI Source',website:'官网表单',chat:'网络聊天',unknown:'未记录'}:{manual:'Manual entry',email:'Email',ai:'AI Source',website:'Website form',chat:'Web chat',unknown:'Not recorded'}; %>
+    <%= labels[sourceInfo?.kind||'unknown'] %>
+    <% if(sourceInfo?.kind==='manual'){ %> · <%= sourceInfo.creatorName||(language==='zh'?'录入人未记录':'Recorder not recorded') %><% if(sourceInfo.createdAt){ %> · <%= formatShortDate(sourceInfo.createdAt) %><% } %><% } %>
+    <% for(const link of sourceInfo?.links||[]){ %> · <a href="<%= link.url %>"><%= link.kind==='ai'?(language==='zh'?'查看 AI Source 来源资料':'View AI Source record'):(language==='zh'?'查看原始邮件':'View original email') %></a><% } %>
+  </td>
+</tr>

@@ -1,4 +1,5 @@
 import { Router } from 'express';
+import { loadOpportunitySource } from '../services/opportunitySourceService.mjs';
 import { mkdirSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
@@ -818,6 +819,9 @@ function redirectToOpportunity(opportunityId) {
 }
 
 export function opportunityRoutes({
+  inquiryRepository = null,
+  aiSourceRepository = null,
+  aiSourceEnabled = false,
   projectExecutionRepository,
   customerRepository,
   contactRepository,
@@ -1267,7 +1271,9 @@ export function opportunityRoutes({
       );
       const projectExecution=await projectExecutionRepository?.findByOpportunity(opportunity.id) || null;
       const technicalTeamAssignments=await opportunityCollaborationRepository?.listTechnicalTeam?.(opportunity.id)||[];
+      const opportunitySource=await loadOpportunitySource({opportunity,user:req.currentUser,inquiryRepository,aiSourceRepository,emailArchiveRepository,aiSourceEnabled,emailCenterEnabled});
       res.render('opportunities/detail', {
+        opportunitySource,
         technicalTeamAssignments,
         technicalEngineerOptions:usersByRole[ROLES.QUOTATION_ENGINEER]||[],
         projectExecution,

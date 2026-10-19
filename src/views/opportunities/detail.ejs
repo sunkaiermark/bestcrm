@@ -1,5 +1,4 @@
-<%- include('../partials/app-start', { title: opportunity.title + ' - BESTCRM', activeNav: 'opportunities' }) %>
-<% if (typeof aiSourceEnabled !== 'undefined' && aiSourceEnabled && currentUser?.roles?.some(r=>['administrator','sales_manager','salesperson'].includes(r))) { %><a class="secondary-action" href="/ai-sources/related/opportunity/<%= opportunity.id %>">AI Source 来源资料</a><% } %>
+<%- include('../partials/app-start', { title: opportunity.title + ' - BESTCRM', activeNav: 'opportunities', mainClass: 'opportunity-detail-page' }) %>
 <%
   const attachmentUploadedAtSortValue = (value) => value instanceof Date ? value.toISOString() : String(value || '');
   const orderedAttachments = [...(attachments || [])].sort((left, right) => {
@@ -323,12 +322,7 @@
                       <td><%= opportunity.estimatedAmount ?? '' %></td>
                     </tr>
                     <% if (opportunity.originInquiryId) { %>
-                      <tr>
-                        <th scope="row"><%= t('sourceLead') %></th>
-                        <td><a href="/lead-submissions/<%= opportunity.originInquiryId %>"><%= t('viewSourceLead') %> #<%= opportunity.originInquiryId %></a></td>
-                        <th scope="row"></th>
-                        <td></td>
-                      </tr>
+                      <%- include('../partials/_opportunity-source',{sourceInfo:typeof opportunitySource==='undefined'?null:opportunitySource,formatShortDate}) %>
                     <% } %>
                     <tr>
                       <th scope="row"><%= t('customer') %></th>
