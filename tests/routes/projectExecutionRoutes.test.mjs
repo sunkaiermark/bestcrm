@@ -87,8 +87,8 @@ test('Sales sees upload-only UI and the obsolete manual-start POST creates no pr
   const { agent, getCreates } = await setup();
 
   const form = await agent.get('/opportunities/30/project-execution/confirm');
-  assert.equal(form.status, 200);
-  assert.match(form.text, /Upload mutually signed contract/);
+  assert.equal(form.status, 302);
+  assert.equal(form.headers.location, '/opportunities/30#project-execution-start');
   assert.doesNotMatch(form.text, /name="projectOwnerUserId"/);
   assert.doesNotMatch(form.text, /name="contractSignedOn"/);
 

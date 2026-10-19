@@ -700,7 +700,7 @@ const dictionaries = {
     primaryContact: 'Primary Contact',
     primaryNavigation: 'Primary navigation',
     projectExecution: 'Project Execution',
-    confirmProjectExecution: 'Upload signed contract',
+    confirmProjectExecution: 'Push to Project Execution',
     businessTypeWorkflowEvent: 'Workflow status',
     businessTypeOpportunity: 'Opportunity',
     contractSigningDate: 'Contract signing date',
@@ -2312,7 +2312,7 @@ const dictionaries = {
     primaryContact: '\u4e3b\u8981\u8054\u7cfb\u4eba',
     primaryNavigation: '\u4e3b\u5bfc\u822a',
     projectExecution: '\u9879\u76ee\u6267\u884c',
-    confirmProjectExecution: '上传签署合同',
+    confirmProjectExecution: '推送项目执行',
     businessTypeWorkflowEvent: '\u6d41\u7a0b\u72b6\u6001',
     businessTypeOpportunity: '\u5546\u673a',
     contractSigningDate: '\u5408\u540c\u7b7e\u8ba2\u65e5\u671f',
@@ -3254,7 +3254,7 @@ const todoTitleKeys = new Map([
   ['Send approved quote to customer', 'todoTitle.sendApprovedQuote'],
   ['Submit contract approval', 'todoTitle.submitContractApproval'],
   ['Submit opportunity initiation', 'todoTitle.submitOpportunityInitiation'],
-  ['Upload signed contract', 'confirmProjectExecution'],
+  ['Push to Project Execution', 'confirmProjectExecution'],
   ['Start Project Execution', 'confirmProjectExecution'],
   ['Confirm Project Execution creation', 'confirmProjectExecution']
 ]);

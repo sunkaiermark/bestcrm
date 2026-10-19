@@ -791,6 +791,19 @@
                 <p class="empty"><%= t('noContractFiles') %></p>
               <% } %>
               <%- include('_workflow-actions', { forms: contractStageWorkflowForms }) %>
+              <% if (typeof projectExecution !== 'undefined' && (projectExecution || canStartProjectExecution)) { %>
+                <div id="project-execution-start" class="inline-actions" style="margin-top:12px">
+                  <% if (projectExecution) { %>
+                    <a class="secondary-action" href="/project-executions/<%= projectExecution.id %>"><%= language==='zh'?'进入项目执行':'Open Project Execution' %></a>
+                  <% } else { %>
+                    <form method="post" action="/opportunities/<%= opportunity.id %>/project-execution/push" class="inline-actions">
+                      <%- csrfField() %>
+                      <button type="submit"><%= language==='zh'?'推送项目执行':'Push to Project Execution' %></button>
+                    </form>
+                  <% } %>
+                </div>
+              <% } %>
+
             </div>
           </section>
           <% } else { %>
@@ -800,14 +813,7 @@
           <% } %>
 
 
-<% if (typeof projectExecution !== 'undefined' && (projectExecution || canStartProjectExecution)) { %>
-<section class="content-section business-section business-section-contract" id="project-execution-start">
-<h2><%= language==='zh'?'双方签署合同 · 项目执行':'Signed contract · Project Execution' %></h2><div class="section-body">
-<% if(projectExecution){ %><p><%= language==='zh'?'执行项目已启动，合同与商机保持关联。':'Execution has started; the contract and Opportunity remain linked.' %></p><a class="secondary-action" href="/project-executions/<%= projectExecution.id %>"><%= language==='zh'?'进入项目执行':'Open Project Execution' %></a>
-<% }else{ %><p><%= language==='zh'?'合同已审批通过。销售只需上传双方签署合同，系统自动创建执行项目；总经理随后制定执行计划并分配人员。':'Upload the mutually signed contract to create the execution project automatically. The General Manager plans delivery afterwards.' %></p><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/project-execution/start"><%= language==='zh'?'上传双方签署合同':'Upload mutually signed contract' %></a><% } %>
-</div></section><% } %>
-
-          <section class="content-section business-section-audit">
+<section class="content-section business-section-audit">
             <h2><%= t('timeline') %></h2>
             <div class="section-body">
               <% if (timelineEvents && timelineEvents.length > 0) { %>

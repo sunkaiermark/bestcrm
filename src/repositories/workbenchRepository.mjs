@@ -69,7 +69,7 @@ function mapProjectExecutionConfirmationRow(row) {
     opportunityNo: row.opportunity_no,
     opportunityTitle: row.opportunity_title,
     customerName: row.customer_name,
-    title: 'Upload signed contract',
+    title: 'Push to Project Execution',
     description: 'Upload the mutually signed contract. The system creates execution automatically; the General Manager plans delivery.',
     status: 'pending',
     sourceType: 'project_execution_confirmation',

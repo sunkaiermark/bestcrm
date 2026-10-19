@@ -135,7 +135,10 @@ export async function confirmProjectExecution(repositories, actor, opportunityId
   // Sales only supplies the signed file. Do not invent a signing date or accept execution assignments here.
   const contractSignedOn = null;
   const ownerId = null;
-  const signedContract=context.signedContracts.find(file => Number(file.id)===Number(input.signedContractAttachmentId));
+  const eligibleContracts=input.useExistingContract
+    ? (await repositories.attachmentRepository.listByOpportunity(opportunityId)).filter(file=>['contract','signed_contract'].includes(file.category)&&!file.retiredAt)
+    : context.signedContracts;
+  const signedContract=input.useExistingContract ? eligibleContracts.sort((a,b)=>Number(b.id)-Number(a.id))[0] : eligibleContracts.find(file => Number(file.id)===Number(input.signedContractAttachmentId));
   if (!signedContract || !/^[a-f0-9]{64}$/.test(signedContract.sha256||'') || !(signedContract.fileSize>0)) {
     throw new Error('Valid signed contract attachment is required');
   }
@@ -146,7 +149,7 @@ export async function confirmProjectExecution(repositories, actor, opportunityId
   });
   if(result.created) await repositories.projectExecutionRepository.appendAuditEvent({
     projectExecutionId:result.projectExecution.id,eventType:'sales_project_started',actorUserId:actor.id,
-    note:'销售上传双方签署合同，系统自动创建执行项目，待总经理制定计划；合同附件 #'+signedContract.id+'；SHA256 '+signedContract.sha256
+    note:'销售从合同栏推送项目执行，待总经理制定计划；合同附件 #'+signedContract.id+'；SHA256 '+signedContract.sha256
   });
   return result;
 }

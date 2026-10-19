@@ -45,7 +45,7 @@ import {
   canReviewOpportunityTechnicalDraft,
   isTechnicalAdminSelfApprovalTest
 } from '../services/opportunityTechnicalDraftService.mjs';
-import { canConfirmProjectExecution, receiveSignedContract } from '../services/projectExecutionService.mjs';
+import { canConfirmProjectExecution } from '../services/projectExecutionService.mjs';
 import { WorkflowValidationError, applyWorkflowAction } from '../services/workflowService.mjs';
 import {
   applyDirectAttachmentPreviewHeaders,
@@ -195,7 +195,6 @@ const attachmentCategories = new Set([
   'internal_quote',
   'commercial_quote',
   'contract',
-  'signed_contract',
   'other'
 ]);
 
@@ -724,7 +723,6 @@ function canCreateRequirementUpdate(user, opportunity) {
 }
 
 function canUploadAttachment(user, opportunity, category) {
-  if (category === 'signed_contract') return opportunity.status === STATUSES.CONTRACT_ARCHIVED && canConfirmProjectExecution(user, opportunity);
   if (opportunity.archivedAt) {
     return false;
   }
@@ -1753,12 +1751,6 @@ export function opportunityRoutes({
         res.status(403).send('Attachment upload is not allowed for this section');
         return;
       }
-      if(category === 'signed_contract'){
-        const result=await receiveSignedContract({opportunityRepository,attachmentRepository,userRepository,projectExecutionRepository},
-          req.currentUser,req.opportunity.id,req.file,uploadDir);
-        res.redirect('/project-executions/'+result.projectExecution.id);
-        return;
-      }
       await persistUploadedOpportunityAttachment({
         attachmentRepository,
         uploadDir,
@@ -1767,9 +1759,7 @@ export function opportunityRoutes({
         category,
         actorUserId: req.currentUser.id
       });
-      res.redirect(category === 'signed_contract' && req.body.returnTo === 'project-start'
-        ? '/opportunities/'+req.opportunity.id+'/project-execution/start'
-        : '/opportunities/'+req.opportunity.id);
+      res.redirect('/opportunities/'+req.opportunity.id);
     } catch (error) {
       next(error);
     }

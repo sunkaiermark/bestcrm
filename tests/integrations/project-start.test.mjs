@@ -37,17 +37,19 @@ test('Sales upload automatically creates one project; only GM plans four departm
   const csrf=html=>(html.match(/name="_csrf" value="([^"]+)"/)||[])[1];
   async function login(user){const agent=request.agent(app);const page=await agent.get('/login');assert.equal((await agent.post('/login').type('form').send({username:user.username,password,_csrf:csrf(page.text)})).status,302);return agent;}
   const agent=await login(sales);
-  const form=await agent.get('/opportunities/'+id+'/project-execution/start');assert.equal(form.status,200);
+  const entry=await agent.get('/opportunities/'+id+'/project-execution/start');assert.equal(entry.status,302);assert.equal(entry.headers.location,'/opportunities/'+id+'#project-execution-start');
+  const form=await agent.get('/opportunities/'+id);assert.equal(form.status,200);assert.match(form.text,/Push to Project Execution/);
   assert.doesNotMatch(form.text,/name="(projectOwnerUserId|contractSignedOn)"/);
-  const upload=()=>agent.post('/opportunities/'+id+'/attachments').field('_csrf',csrf(form.text)).field('category','signed_contract').field('projectOwnerUserId',sales.id).field('contractSignedOn','2099-01-01').attach('attachment',Buffer.from('%PDF-1.4 Synthetic contract only'),{filename:'signed.pdf',contentType:'application/pdf'});
-
+  const filePathInitial=path.join(uploadDir,'initial.pdf');await writeFile(filePathInitial,Buffer.from('%PDF-1.4 Synthetic contract only'));
+  const initial=await receiveSignedContract(repos,sales,id,{path:filePathInitial,originalname:'signed.pdf',mimetype:'application/pdf'},uploadDir);
+  const upload=()=>agent.post('/opportunities/'+id+'/project-execution/push').type('form').send({_csrf:csrf(form.text),projectOwnerUserId:sales.id,contractSignedOn:'2099-01-01'});
   const first=await upload();assert.equal(first.status,302);assert.match(first.headers.location,/^\/project-executions\/\d+$/);
   const project=await repos.projectExecutionRepository.findByOpportunity(id);assert.equal(project.projectOwnerUserId,null);assert.equal(project.contractSignedOn,null);
   const projectId=project.id;
 
   const second=await upload();assert.equal(second.headers.location,first.headers.location);
   assert.equal(Number((await pool.query('SELECT count(*) FROM project_executions WHERE opportunity_id=$1',[id])).rows[0].count),1);
-  assert.equal((await repos.attachmentRepository.listByOpportunity(id)).filter(f=>f.category==='signed_contract').length,2);
+  assert.equal((await repos.attachmentRepository.listByOpportunity(id)).filter(f=>f.category==='signed_contract').length,1);
   assert.equal((await repos.projectExecutionRepository.findById(projectId)).signedContractAttachmentId,project.signedContractAttachmentId);
   const stranger=await login(other);
   assert.equal((await stranger.get('/opportunities/'+id+'/project-execution/start')).status,403);
@@ -74,6 +76,15 @@ test('Sales upload automatically creates one project; only GM plans four departm
   const reassigned=await repos.projectExecutionRepository.findWorkPackage(task.id);assert.equal(reassigned.status,'in_progress');assert.equal(reassigned.responsibleUserId,other.id);
   assert.equal((await repos.projectExecutionRepository.listWorkPackages(projectId)).length,4);
 
+  const pushId=await createOpportunity('SYN-EXISTING-CONTRACT');
+  const pushPage=await agent.get('/opportunities/'+pushId);assert.doesNotMatch(pushPage.text,/name="category" value="signed_contract"/);
+  const push=()=>agent.post('/opportunities/'+pushId+'/project-execution/push').type('form').send({_csrf:csrf(pushPage.text)});
+  assert.equal((await push()).status,400);
+  const existingFile=await repos.attachmentRepository.createAttachment({opportunityId:pushId,category:'contract',originalName:'signed-existing.pdf',storedPath:'synthetic-existing.pdf',mimeType:'application/pdf',fileSize:50,uploadedBy:sales.id,sha256:'a'.repeat(64)});
+  assert.equal((await push()).status,302);
+  const pushed=await repos.projectExecutionRepository.findByOpportunity(pushId);assert.equal(pushed.signedContractAttachmentId,existingFile.id);
+  assert.equal((await push()).headers.location,'/project-executions/'+pushed.id);
+  assert.equal((await repos.attachmentRepository.listByOpportunity(pushId)).length,1);
   const failingId=await createOpportunity('SYN-ROLLBACK-PROJECT');
   const filePath=path.join(uploadDir,'rollback.pdf');await writeFile(filePath,Buffer.from('%PDF-1.4 rollback fixture'));
   const failing={...repos,projectExecutionRepository:{withTransaction:work=>repos.projectExecutionRepository.withTransaction((tx,client)=>work({...tx,appendAuditEvent:async()=>{throw Error('synthetic audit failure');}},client))}};

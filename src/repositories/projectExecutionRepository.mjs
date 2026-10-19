@@ -142,7 +142,7 @@ export function createProjectExecutionRepository(queryTarget) {
     async lockOpportunity(id) { await queryTarget.query('SELECT id FROM opportunities WHERE id=$1 FOR UPDATE',[Number(id)]); },
     async lockProject(id) { await queryTarget.query('SELECT id FROM project_executions WHERE id=$1 FOR UPDATE',[Number(id)]); },
     async lockSignedContract(id,opportunityId) {
-      const result=await queryTarget.query("SELECT id FROM attachments WHERE id=$1 AND opportunity_id=$2 AND category='signed_contract' AND retired_at IS NULL FOR SHARE",[Number(id),Number(opportunityId)]);
+      const result=await queryTarget.query("SELECT id FROM attachments WHERE id=$1 AND opportunity_id=$2 AND category IN ('signed_contract','contract') AND retired_at IS NULL FOR SHARE",[Number(id),Number(opportunityId)]);
       if(!result.rows.length) throw new Error('Valid signed contract attachment is required');
     },
     async findById(id) {
