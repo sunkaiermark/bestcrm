@@ -123,6 +123,7 @@ test('creator can edit a pending lead without changing its status and the edit i
       },
       async createLeadReviewEvent(input) { events.push(input); return input; }
     },
+    approvalSettingRepository: { async findActiveByKey() { return { userId: 5 }; } },
     userRepository: {
       async listUsersWithRoles() { return [manager, salesperson]; }
     }
@@ -186,6 +187,7 @@ test('salesperson submission becomes a manager-assigned inquiry with salesperson
         return { id: 11, ...input };
       }
     },
+    approvalSettingRepository: { async findActiveByKey() { return { userId: 5 }; } },
     userRepository: {
       async listUsersWithRoles() {
         return [manager, salesperson];
@@ -242,6 +244,7 @@ test('salesperson submission becomes a manager-assigned inquiry with salesperson
 test('lead submission requires company name, contact name, phone, and email independently', async () => {
   const dependencies = {
     inquiryRepository: { async createInquiry() { assert.fail('must not create'); } },
+    approvalSettingRepository: { async findActiveByKey() { return { userId: 5 }; } },
     userRepository: { async listUsersWithRoles() { return [manager]; } }
   };
   const base = {
@@ -324,6 +327,7 @@ test('assigned manager can organise a lead for continued contact without changin
         return lead;
       }
     },
+    approvalSettingRepository: { async findActiveByKey() { return { userId: 5 }; } },
     userRepository: {
       async listUsersWithRoles() { return [manager, salesperson]; }
     }
@@ -366,6 +370,7 @@ test('assigned manager return and creator resubmission create immutable workflow
       },
       async createLeadReviewEvent(input) { events.push(input); return input; }
     },
+    approvalSettingRepository: { async findActiveByKey() { return { userId: 5 }; } },
     userRepository: {
       async listUsersWithRoles() { return [manager, salesperson]; }
     }
@@ -413,6 +418,7 @@ test('lead approval creates one active technical opportunity with assignments, t
       },
       async createLeadReviewEvent(input) { leadEvents.push(input); return input; }
     },
+    approvalSettingRepository: { async findActiveByKey() { return { userId: 5 }; } },
     userRepository: {
       async listUsersWithRoles() { return [manager, salesperson, engineer, supportingEngineer]; }
     },
@@ -496,33 +502,34 @@ test('lead approval creates one active technical opportunity with assignments, t
   });
 
   assert.equal(approved.id, 40);
-  assert.equal(approved.status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
+  assert.equal(approved.status, STATUSES.QUOTATION_ENGINEER_ASSIGNMENT_PENDING);
   assert.equal(approved.salesManagerId, 2);
-  assert.equal(approved.quotationEngineerId, 3);
+  assert.equal(approved.quotationEngineerId, null);
   assert.equal(approved.technicalPlanSubmitDate, '2026-10-06');
   assert.equal(createdOpportunityInput.originInquiryId, 11);
   assert.equal(workflowEvents[0].eventType, 'approve_initiation');
   assert.equal(workflowEvents[0].fromStatus, STATUSES.INITIATION_PENDING);
-  assert.equal(workflowEvents[0].toStatus, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
-  assert.deepEqual(todos.map((todo) => todo.assigneeUserId), [3, 9]);
-  assert.ok(todos.every((todo) => todo.dueAt === '2026-10-06T23:59:59+08:00'));
-  assert.deepEqual(teamAssignments.map((assignment) => assignment.userId), [9]);
+  assert.equal(workflowEvents[0].toStatus, STATUSES.QUOTATION_ENGINEER_ASSIGNMENT_PENDING);
+  assert.deepEqual(todos.map(todo=>[todo.assigneeUserId,todo.title]), [[5, 'Assign technical work']]);
+  assert.equal(approved.technicalManagerId, 5);
+  assert.deepEqual(teamAssignments, []);
   assert.equal(leadEvents[0].eventType, 'approved');
   assert.deepEqual(leadEvents[0].details, {
     attachmentsCopied: false,
     attachmentsReferenced: 0,
-    opportunityInitialStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
-    quotationEngineerIds: [3, 9],
+    opportunityInitialStatus: STATUSES.QUOTATION_ENGINEER_ASSIGNMENT_PENDING,
+    quotationEngineerIds: [],
     technicalPlanSubmitDate: '2026-10-06'
   });
 });
 
-test('lead approval validates quotation engineers and plan date before creating an opportunity', async () => {
+test('lead approval validates plan date before creating an opportunity', async () => {
   const lead = workflowLead();
   const dependencies = {
     inquiryRepository: {
       async findLeadByIdForUpdate() { return lead; }
     },
+    approvalSettingRepository: { async findActiveByKey() { return { userId: 5 }; } },
     userRepository: {
       async listUsersWithRoles() { return [manager, salesperson, engineer]; }
     },
@@ -538,17 +545,6 @@ test('lead approval validates quotation engineers and plan date before creating 
     technicalPlanSubmitDate: '2026-10-06'
   };
 
-  await assert.rejects(
-    () => approveSalesLead(dependencies, manager, 11, base),
-    /Quotation engineer is required/
-  );
-  await assert.rejects(
-    () => approveSalesLead(dependencies, manager, 11, {
-      ...base,
-      quotationEngineerIds: '999'
-    }),
-    /Quotation engineer is invalid/
-  );
   await assert.rejects(
     () => approveSalesLead(dependencies, manager, 11, {
       ...base,
@@ -599,6 +595,7 @@ test('lead approval reuses a matching customer contact and confirms creation onl
     inquiryRepository: {
       async findLeadByIdForUpdate() { return lead; }
     },
+    approvalSettingRepository: { async findActiveByKey() { return { userId: 5 }; } },
     userRepository: {
       async listUsersWithRoles() { return [manager, salesperson, engineer]; }
     },
@@ -706,6 +703,7 @@ test('email lead approval atomically links the unchanged canonical thread to the
     contactRepository,
     opportunityRepository,
     userRepository,
+    approvalSettingRepository: { async findActiveByKey(){return {userId:5};} },
     emailArchiveRepository,
     inquiryAttachmentRepository: { async listByInquiry() { return []; } },
     attachmentRepository: { async listByOpportunity() { return []; } },
@@ -798,6 +796,7 @@ test('administrator can reassign but cannot approve without the assigned sales-m
       async reassignLeadReviewer(id, input) { return { ...lead, assignedUserId: input.assignedUserId }; },
       async createLeadReviewEvent(input) { events.push(input); return input; }
     },
+    approvalSettingRepository: { async findActiveByKey() { return { userId: 5 }; } },
     userRepository: {
       async listUsersWithRoles() { return [manager, salesperson]; }
     }

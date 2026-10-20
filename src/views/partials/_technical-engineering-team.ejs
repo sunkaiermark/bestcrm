@@ -1,7 +1,10 @@
 <%
 const zh=language==='zh';
+const canAssignTeam=typeof canAssignEngineeringTeam!=='undefined'?canAssignEngineeringTeam:canManageCollaborationWorkPackages;
 const assignments=typeof technicalTeamAssignments!=='undefined'?technicalTeamAssignments:[];
 const draft=typeof technicalTeamForm!=='undefined'?technicalTeamForm:null;
+const teamEvents=typeof technicalTeamEvents!=='undefined'?technicalTeamEvents:[];
+const teamTime=value=>new Intl.DateTimeFormat(zh?'zh-CN':'en-GB',{timeZone:'Asia/Shanghai',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'}).format(new Date(value));
 const editorIds=draft?new Set(draft.assignments.map(a=>Number(a.userId))):null;
 const editorAssignment=id=>draft?.assignments.find(a=>Number(a.userId)===Number(id));
 const optionUsers=typeof technicalEngineerOptions!=='undefined'?technicalEngineerOptions:[];
@@ -12,12 +15,19 @@ const assignment=id=>assignments.find(a=>Number(a.user_id)===Number(id));
 const position=id=>assignment(id)?.position||(Number(id)===Number(opportunity.quotationEngineerId)?'lead':'support');
 const specialty=id=>assignment(id)?.specialty||activeMembers.find(m=>Number(m.userId)===Number(id))?.taskDescription||'';
 %>
+<% if(!canAssignTeam && selectedIds.size){ %>
 <table class="collaboration-control-table technical-team-table"><colgroup><col style="width:20%"><col style="width:25%"><col style="width:55%"></colgroup><thead><tr><th><%= zh?'项目职位':'Project position' %></th><th><%= zh?'工程师':'Engineer' %></th><th><%= zh?'专业内容 / 分工':'Specialty / responsibility' %></th></tr></thead><tbody>
-<% for(const user of users.filter(u=>selectedIds.has(Number(u.id)))){ %><tr><td><%= position(user.id)==='lead'?(zh?'主任工程师':'Lead engineer'):(zh?'参与工程师':'Supporting engineer') %></td><td><%= user.displayName %></td><td><%= specialty(user.id)||(zh?'待填写':'Not specified') %></td></tr><% } %>
+<% for(const user of users.filter(u=>selectedIds.has(Number(u.id)))){ %><tr><td><%= position(user.id)==='lead'?(zh?'主任工程师':'Lead engineer'):(zh?'工程师':'Engineer') %></td><td><%= user.displayName %></td><td><%= specialty(user.id)||(zh?'待填写':'Not specified') %></td></tr><% } %>
 </tbody></table>
-<% if(canManageCollaborationWorkPackages){ %><details class="technical-team-editor" <%= draft?'open':'' %>><summary><%= zh?'设置工程师职位与专业内容':'Set engineering positions and specialties' %></summary><form method="post" action="/opportunities/<%= opportunity.id %>/technical-team"><%- csrfField() %>
+<% } %>
+<% if(canAssignTeam){ %><div class="technical-team-editor"><form method="post" action="/opportunities/<%= opportunity.id %>/technical-team"><%- csrfField() %>
 <% if(draft){ %><p role="alert" style="color:#a12622;white-space:normal"><%= draft.message %></p><% } %>
 <div style="max-height:300px;overflow:auto"><table class="collaboration-control-table"><colgroup><col style="width:8%"><col style="width:22%"><col style="width:25%"><col style="width:45%"></colgroup><thead><tr><th><%= zh?'参与':'Include' %></th><th><%= zh?'项目职位':'Project position' %></th><th><%= zh?'工程师':'Engineer' %></th><th><%= zh?'专业内容 / 分工':'Specialty / responsibility' %></th></tr></thead><tbody>
-<% for(const user of users){ %><tr><td><input style="height:auto;width:auto" type="checkbox" name="engineerIds" value="<%= user.id %>" aria-label="<%= user.displayName %>" <%= (editorIds||selectedIds).has(Number(user.id))?'checked':'' %>></td><td><select name="position_<%= user.id %>" aria-label="<%= zh?'项目职位':'Project position' %>"><option value="lead" <%= (editorAssignment(user.id)?.position||position(user.id))==='lead'?'selected':'' %>><%= zh?'主任工程师':'Lead engineer' %></option><option value="support" <%= (editorAssignment(user.id)?.position||position(user.id))==='support'?'selected':'' %>><%= zh?'参与工程师':'Supporting engineer' %></option></select></td><td><%= user.displayName %></td><td><input name="specialty_<%= user.id %>" value="<%= editorAssignment(user.id)?.specialty??specialty(user.id) %>" maxlength="300" aria-label="<%= zh?'专业内容 / 分工':'Specialty / responsibility' %>" placeholder="<%= zh?'例如：整体工艺、机械设计、电气控制':'Process, mechanical design, electrical controls' %>"></td></tr><% } %>
-</tbody></table></div><button type="submit"><%= zh?'保存工程师分工':'Save engineering assignments' %></button>
-</form></details><% } %>
+<% for(const user of users){ %><tr><td><input style="height:auto;width:auto" type="checkbox" name="engineerIds" value="<%= user.id %>" aria-label="<%= user.displayName %>" <%= (editorIds||selectedIds).has(Number(user.id))?'checked':'' %>></td><td><select name="position_<%= user.id %>" aria-label="<%= zh?'项目职位':'Project position' %>"><option value="lead" <%= (editorAssignment(user.id)?.position||position(user.id))==='lead'?'selected':'' %>><%= zh?'主任工程师':'Lead engineer' %></option><option value="support" <%= (editorAssignment(user.id)?.position||position(user.id))==='support'?'selected':'' %>><%= zh?'工程师':'Engineer' %></option></select></td><td><%= user.displayName %></td><td><input name="specialty_<%= user.id %>" value="<%= editorAssignment(user.id)?.specialty??specialty(user.id) %>" maxlength="300" aria-label="<%= zh?'专业内容 / 分工':'Specialty / responsibility' %>" placeholder="<%= zh?'例如：整体工艺、机械设计、电气控制':'Process, mechanical design, electrical controls' %>"></td></tr><% } %>
+</tbody></table></div><% if(selectedIds.size){ %><label class="technical-team-change-reason"><span><%= zh?'变更原因':'Reason for change' %></span><input name="reason" maxlength="1000" value="<%= draft?.reason||'' %>" placeholder="<%= zh?'中途调整人员、职位或分工时必填':'Required when changing people, positions or responsibilities' %>"></label><% } %><button type="submit"><%= zh?'保存工程师分工':'Save engineering assignments' %></button>
+</form></div><% } %>
+
+<% if(teamEvents.length){ %><details class="technical-team-history"><summary><%= zh?'人员变更记录':'Team change history' %>（<%= teamEvents.length %>）</summary>
+<div class="technical-team-history-scroll"><table class="collaboration-control-table"><colgroup><col style="width:16%"><col style="width:12%"><col style="width:26%"><col style="width:26%"><col style="width:20%"></colgroup><thead><tr><% for(const label of (zh?['时间','操作人','变更前','变更后','原因']:['Time','Changed by','Before','After','Reason'])){ %><th><%= label %></th><% } %></tr></thead><tbody>
+<% for(const event of teamEvents){ %><tr><td><%= teamTime(event.createdAt) %></td><td><%= event.actorDisplayName %></td><% for(const state of [event.before,event.after]){ %><td><% if(!state.length){ %>—<% } %><% for(const row of state){ %><div><strong><%= row.userDisplayName %></strong> · <%= row.position==='lead'?(zh?'主任工程师':'Lead engineer'):(zh?'工程师':'Engineer') %><% if(row.specialty){ %> · <%= row.specialty %><% } %></div><% } %></td><% } %><td><%= event.reason||(event.before.length?(zh?'未记录':'Not recorded'):(zh?'首次分配':'Initial assignment')) %></td></tr><% } %>
+</tbody></table></div></details><% } %>

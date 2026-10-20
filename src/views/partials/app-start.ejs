@@ -6072,7 +6072,57 @@
 .collaboration-embedded .technical-direct-links .collaboration-approve-inline{margin:0;flex:0 0 64px}
 .collaboration-review-controls form:last-child{align-items:center}
 .collaboration-review-controls textarea[name=note][data-auto-grow]{min-height:32px;height:32px;padding:5px 8px;line-height:20px;resize:none;overflow:hidden}
-</style>
+
+      .lead-sales-manager-review .section-body { padding:10px 12px; }
+      .lead-sales-manager-review .lead-customer-resolution { padding:8px 10px; margin-bottom:8px; }
+      .lead-sales-manager-review .lead-customer-mode-field,
+      .lead-sales-manager-review .lead-existing-customer-fields > label,
+      .lead-sales-manager-review .inquiry-form-grid > label {
+        display:grid; grid-template-columns:160px minmax(0,1fr); align-items:center; gap:8px; margin:0; min-width:0;
+      }
+      .lead-sales-manager-review .lead-customer-mode-field select { margin:0; }
+      .lead-sales-manager-review .inquiry-form-grid { gap:8px 16px; padding:0; margin:0; }
+      .lead-sales-manager-review .lead-review-decision-grid { gap:8px 16px; margin-top:8px; padding-top:8px; }
+      .lead-sales-manager-review .lead-review-decision-cell { grid-template-columns:160px minmax(0,1fr); gap:8px; align-items:start; }
+      .lead-sales-manager-review .lead-review-decision-name { min-height:36px; padding:5px 8px; white-space:normal; line-height:1.4; justify-content:flex-start; }
+      .lead-sales-manager-review .lead-review-sales-owner { grid-column:1 / -1; }
+      .lead-sales-manager-review :is(input:not([type=checkbox]):not([type=hidden]),select,.workflow-engineer-picker > summary) { min-width:0; width:100%; box-sizing:border-box; min-height:36px; margin:0; padding:6px 9px; }
+      .lead-sales-manager-review .workflow-action-button { min-height:36px; padding:6px 8px; }
+      @media(max-width:1100px) {
+        .lead-sales-manager-review .inquiry-form-grid,
+        .lead-sales-manager-review .lead-review-decision-grid { grid-template-columns:minmax(0,1fr); }
+      }
+      @media(max-width:480px) {
+        .lead-sales-manager-review .lead-customer-mode-field,
+        .lead-sales-manager-review .lead-existing-customer-fields > label,
+        .lead-sales-manager-review .inquiry-form-grid > label,
+        .lead-sales-manager-review .lead-review-decision-cell { grid-template-columns:110px minmax(0,1fr); }
+      }
+          .technical-team-change-reason { display:grid; grid-template-columns:100px minmax(0,1fr); align-items:center; gap:8px; margin:8px 0; }
+      .technical-team-change-reason input { min-width:0; width:100%; }
+      .technical-team-history { margin-top:8px; }
+      .technical-team-history-scroll { max-width:100%; overflow:auto; }
+      .technical-team-history .collaboration-control-table { table-layout:fixed; width:100%; }
+      .opportunity-detail-page .technical-team-history .collaboration-control-table :is(th,td),
+      .opportunity-detail-page .technical-team-history .collaboration-control-table td div { white-space:normal !important; overflow-wrap:anywhere; overflow:visible !important; text-overflow:clip !important; vertical-align:top; }
+          .opportunity-detail-page #technical-proposal > .section-body { padding-right:0; }
+      .opportunity-detail-page #technical-proposal .technical-team-editor .collaboration-control-table td:last-child { padding-right:0 !important; }
+          .opportunity-detail-page .content-section { margin-bottom:8px; }
+      .opportunity-detail-page .business-section > h2 { padding:4px 10px; min-height:0; line-height:1.4; }
+      .opportunity-detail-page #technical-proposal .collaboration-embedded table :is(th,td),
+      .opportunity-detail-page #internal-quote table :is(th,td) { padding-top:3px !important; padding-bottom:3px !important; height:auto; }
+      .opportunity-detail-page .technical-team-editor .collaboration-control-table :is(input:not([type=checkbox]):not([type=hidden]),select) { min-height:30px !important; height:30px !important; padding-top:3px !important; padding-bottom:3px !important; }
+      .opportunity-detail-page #technical-proposal > .section-body { padding-top:6px; padding-bottom:6px; }
+      .opportunity-detail-page .technical-team-change-reason { margin:5px 0; }
+      .opportunity-detail-page .technical-team-change-reason input { min-height:30px; height:30px; padding-top:3px; padding-bottom:3px; }
+      .opportunity-detail-page .technical-team-history { margin-top:5px; }
+      .opportunity-detail-page .technical-team-history > summary,
+      .opportunity-detail-page .collaboration-add-package > summary { padding-top:5px; padding-bottom:5px; }
+          .opportunity-detail-page .section-stack { gap:8px !important; }
+      .opportunity-detail-page .section-stack > .content-section { margin:0; }
+      .opportunity-detail-page .detail-table :is(th,td) { padding-top:4px; padding-bottom:4px; }
+      .opportunity-detail-page .technical-team-change-reason input { min-height:30px !important; height:30px !important; }
+    </style>
     <% if(typeof mainClass!=='undefined'&&mainClass==='opportunity-detail-page'){ %><link rel="stylesheet" href="/assets/opportunity-detail.css"><% } %>
     <% if(typeof mainClass!=='undefined'&&mainClass==='lead-create-page'){ %><link rel="stylesheet" href="/assets/lead-create.css"><% } %>
     <% if(typeof mainClass!=='undefined'&&mainClass==='lead-list-page'){ %><link rel="stylesheet" href="/assets/lead-list.css"><% } %>

@@ -197,13 +197,6 @@ async function validateLeadRouting(userRepository, normalized, options = {}) {
   }
 }
 
-function selectedQuotationEngineerIds(value) {
-  const values = Array.isArray(value) ? value : [value];
-  return [...new Set(values
-    .map(Number)
-    .filter((userId) => Number.isSafeInteger(userId) && userId > 0))];
-}
-
 function leadApprovalCustomerInput(input = {}) {
   const resolution = text(input.customerResolution);
   if (!resolution) {
@@ -311,28 +304,14 @@ function assertValidTechnicalPlanSubmitDate(value) {
   return normalized;
 }
 
-async function validateLeadInitiationAssignment(userRepository, input) {
-  const users = typeof userRepository?.listUsersWithRoles === 'function'
-    ? await userRepository.listUsersWithRoles()
-    : [];
-  const eligibleIds = new Set(listEligibleQuotationEngineers(users).map((user) => Number(user.id)));
-  const quotationEngineerIds = selectedQuotationEngineerIds(input.quotationEngineerIds);
-  if (quotationEngineerIds.length === 0) {
-    throw new Error('Quotation engineer is required');
-  }
-  if (quotationEngineerIds.some((userId) => !eligibleIds.has(userId))) {
-    throw new Error('Quotation engineer is invalid');
-  }
-  const requestedLeadId = Number(input.quotationEngineerLeadId);
-  const quotationEngineerId = Number.isSafeInteger(requestedLeadId) && requestedLeadId > 0
-    ? requestedLeadId
-    : quotationEngineerIds[0];
-  if (!quotationEngineerIds.includes(quotationEngineerId)) {
-    throw new Error('Lead quotation engineer must be selected');
-  }
+async function validateLeadInitiationAssignment(repositories, input) {
+  const setting = await repositories.approvalSettingRepository?.findActiveByKey?.('technical_solution');
+  if (!setting?.userId) throw new Error('Technical assignment manager is not configured');
   return {
-    quotationEngineerId,
-    quotationEngineerIds,
+    quotationEngineerId: null,
+    quotationEngineerIds: [],
+    engineeringAssignmentDeferred: true,
+    technicalManagerId: Number(setting.userId),
     technicalPlanSubmitDate: assertValidTechnicalPlanSubmitDate(input.technicalPlanSubmitDate)
   };
 }
@@ -554,7 +533,7 @@ export async function approveSalesLead(dependencies, actor, leadId, input = {}) 
   return withLeadTransaction(dependencies, async (repositories) => {
     const lead = await lockLead(repositories.inquiryRepository, leadId);
     assertLeadReviewable(actor, lead);
-    const initiation = await validateLeadInitiationAssignment(repositories.userRepository, input);
+    const initiation = await validateLeadInitiationAssignment(repositories, input);
     const customerApprovalInput = leadApprovalCustomerInput(input);
     const approvalInput = await leadApprovalContactInput(
       repositories.contactRepository,
@@ -604,7 +583,7 @@ export async function approveSalesLead(dependencies, actor, leadId, input = {}) 
       details: {
         attachmentsCopied: false,
         attachmentsReferenced: referencedAttachments.length,
-        opportunityInitialStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+        opportunityInitialStatus: activeOpportunity.status,
         quotationEngineerIds: initiation.quotationEngineerIds,
         technicalPlanSubmitDate: initiation.technicalPlanSubmitDate
       }

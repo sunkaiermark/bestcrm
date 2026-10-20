@@ -31,6 +31,8 @@ export function canViewOpportunity(user, opportunity) {
   if (hasRole(user, ROLES.ADMINISTRATOR)) {
     return true;
   }
+  if (user.isActive !== false && hasRole(user, ROLES.GENERAL_MANAGER) && !opportunity.archivedAt
+      && [STATUSES.QUOTATION_ENGINEER_ASSIGNMENT_PENDING,STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,STATUSES.TECHNICAL_SOLUTION_REJECTED].includes(opportunity.status)) return true;
   const userId = Number(user.id);
   const isActiveTeamMember = Array.isArray(opportunity.teamMembers)
     && opportunity.teamMembers.some((member) => Number(member.userId) === userId && member.isActive !== false);
@@ -91,13 +93,16 @@ export function isSupportingEngineer(user, opportunity) {
     ));
 }
 
+export function canAssignOpportunityEngineeringTeam(user, opportunity) {
+  if (user.isActive === false) return false;
+  if (hasRole(user, ROLES.TECHNICAL_MANAGER) && canViewOpportunity(user, opportunity)) return true;
+  return !opportunity.archivedAt && (hasRole(user, ROLES.ADMINISTRATOR)
+    || (hasRole(user, ROLES.GENERAL_MANAGER) && canViewOpportunity(user, opportunity)));
+}
+
 export function canManageOpportunityEngineeringTeam(user, opportunity) {
-  if (hasRole(user, ROLES.TECHNICAL_MANAGER) && user.isActive !== false && canViewOpportunity(user, opportunity)) return true;
-  if (opportunity.archivedAt) {
-    return false;
-  }
-  return canManageOpportunityResponsibility(user, opportunity)
-    || isProjectLeadEngineer(user, opportunity);
+  return canAssignOpportunityEngineeringTeam(user, opportunity)
+    || (!opportunity.archivedAt && user.isActive !== false && isProjectLeadEngineer(user, opportunity));
 }
 
 export function canContributeOpportunityEngineering(user, opportunity) {

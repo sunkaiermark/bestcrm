@@ -314,6 +314,7 @@ function handleLeadError(error, res, next) {
     'Email is required',
     'Sales manager is required',
     'Sales owner is required',
+    'Technical assignment manager is not configured',
     'Quotation engineer is required',
     'Quotation engineer is invalid',
     'Lead quotation engineer must be selected',
@@ -366,6 +367,7 @@ function handleLeadError(error, res, next) {
 }
 
 export function leadSubmissionRoutes({
+  approvalSettingRepository = null,
   inquiryRepository,
   inquiryAttachmentRepository,
   userRepository,
@@ -494,6 +496,7 @@ export function leadSubmissionRoutes({
     sharedAddress
   };
   const dependencies = {
+    approvalSettingRepository,
     ...emailDependencies,
     inquiryAttachmentRepository,
     attachmentRepository,

@@ -31,6 +31,7 @@ import {
   canDeleteOpportunity,
   canManageOpportunityResponsibility,
   canManageOpportunityEngineeringTeam,
+  canAssignOpportunityEngineeringTeam,
   canEditOpportunity,
   canReopenOpportunity,
   canViewOpportunity,
@@ -61,7 +62,7 @@ import { formatPlainEmailForReading } from '../utils/emailPresentation.mjs';
 import { createMessageLabeler, createWorkflowButtonLabeler, createWorkflowFieldLabeler, createWorkflowTitleLabeler } from '../utils/i18n.mjs';
 
 function opportunityVisibilityFilter(user) {
-  return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { visibleToUserId: user.id };
+  return hasRole(user, ROLES.ADMINISTRATOR) ? {} : { visibleToUserId: user.id, ...(user.isActive !== false && hasRole(user, ROLES.GENERAL_MANAGER) ? {includeTechnicalAssignmentQueue:true} : {}) };
 }
 
 function customerMasterRecord(opportunity) {
@@ -538,6 +539,7 @@ function buildWorkflowForms(user, opportunity, usersByRole, attachments = [], co
     opportunity: workflowOpportunity
   });
   return allowedActions
+    .filter(action=>action!==ACTIONS.CHANGE_QUOTATION_ENGINEER || canAssignOpportunityEngineeringTeam(user,opportunity))
     .map((action) => formForAction(action, usersByRole, opportunity, teamMembers))
     .filter(Boolean)
     .map((form) => {
@@ -1271,6 +1273,7 @@ export function opportunityRoutes({
       );
       const projectExecution=await projectExecutionRepository?.findByOpportunity(opportunity.id) || null;
       const technicalTeamAssignments=await opportunityCollaborationRepository?.listTechnicalTeam?.(opportunity.id)||[];
+      const technicalTeamEvents=await opportunityCollaborationRepository?.listTechnicalTeamEvents?.(opportunity.id)||[];
       const opportunitySource=await loadOpportunitySource({opportunity,user:req.currentUser,inquiryRepository,aiSourceRepository,emailArchiveRepository,aiSourceEnabled,emailCenterEnabled});
       const technicalTeamForm = req.session.technicalTeamForm?.opportunityId === Number(opportunity.id) ? req.session.technicalTeamForm : null;
       if (technicalTeamForm) delete req.session.technicalTeamForm;
@@ -1278,6 +1281,7 @@ export function opportunityRoutes({
         technicalTeamForm,
         opportunitySource,
         technicalTeamAssignments,
+        technicalTeamEvents,
         technicalEngineerOptions:usersByRole[ROLES.QUOTATION_ENGINEER]||[],
         projectExecution,
         canStartProjectExecution: canConfirmProjectExecution(req.currentUser,opportunity) && opportunity.status===STATUSES.CONTRACT_ARCHIVED,
@@ -1300,6 +1304,7 @@ export function opportunityRoutes({
         collaborationWorkPackages,
         collaborationWorkPackagesEnabled: opportunityCollaborationRepository?.supportsWorkPackages === true,
         canManageCollaborationWorkPackages: canManageOpportunityEngineeringTeam(req.currentUser, opportunityWithTeam),
+        canAssignEngineeringTeam: canAssignOpportunityEngineeringTeam(req.currentUser, opportunityWithTeam),
         canContributeCollaborationWorkPackages: canContributeOpportunityEngineering(req.currentUser, opportunityWithTeam),
         developmentLinks,
         activeTechnicalDraft,
@@ -1359,7 +1364,7 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      if (!canManageOpportunityEngineeringTeam(req.currentUser, opportunity)) {
+      if (!canAssignOpportunityEngineeringTeam(req.currentUser, opportunity)) {
         res.status(403).send('Forbidden');
         return;
       }
@@ -1409,7 +1414,7 @@ export function opportunityRoutes({
       if (!opportunity) {
         return;
       }
-      if (!canManageOpportunityEngineeringTeam(req.currentUser, opportunity)) {
+      if (!canAssignOpportunityEngineeringTeam(req.currentUser, opportunity)) {
         res.status(403).send('Forbidden');
         return;
       }
@@ -1627,23 +1632,24 @@ export function opportunityRoutes({
 
   router.post('/opportunities/:id/technical-team',async(req,res,next)=>{
     let opportunity, assignments=[];
+    const reason=String(req.body.reason||'').trim();
     const showValidation = message => {
-      req.session.technicalTeamForm={opportunityId:Number(opportunity.id),assignments,message};
+      req.session.technicalTeamForm={opportunityId:Number(opportunity.id),assignments,message,reason};
       return res.redirect('/opportunities/'+opportunity.id+'#technical-proposal');
     };
     try{
       opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});if(!opportunity)return;
-      if(!canManageOpportunityEngineeringTeam(req.currentUser,opportunity))return res.status(403).send('Forbidden');
+      if(!canAssignOpportunityEngineeringTeam(req.currentUser,opportunity))return res.status(403).send('Forbidden');
       const selected=Array.isArray(req.body.engineerIds)?req.body.engineerIds:req.body.engineerIds?[req.body.engineerIds]:[];
       assignments=selected.map(value=>({userId:requiredPositiveInteger(value),position:req.body['position_'+value]==='lead'?'lead':'support',specialty:requiredText(req.body['specialty_'+value])}));
       const issues=[];
       if(assignments.filter(row=>row.position==='lead').length!==1)issues.push('请在勾选的工程师中设置且仅设置一位主任工程师。');
       if(assignments.some(row=>!row.specialty||row.specialty.length>300))issues.push('请为每位勾选的工程师填写专业内容／分工（最多300字）。');
       if(issues.length)return showValidation(issues.join(' '));
-      await opportunityCollaborationRepository.saveTechnicalTeam({opportunityId:opportunity.id,actorUserId:req.currentUser.id,assignments,canChangeLead:hasRole(req.currentUser,ROLES.TECHNICAL_MANAGER)||hasRole(req.currentUser,ROLES.SALES_MANAGER)||hasRole(req.currentUser,ROLES.ADMINISTRATOR)});
+      await opportunityCollaborationRepository.saveTechnicalTeam({opportunityId:opportunity.id,actorUserId:req.currentUser.id,assignments,reason,canChangeLead:canAssignOpportunityEngineeringTeam(req.currentUser,opportunity)});
       delete req.session.technicalTeamForm;
       res.redirect('/opportunities/'+opportunity.id+'#technical-proposal');
-    }catch(error){if(opportunity&&/required|Only the manager/.test(error.message))return showValidation(/Only the manager/.test(error.message)?'只有经理可以更换主任工程师。':'请选择有效且在职的工程师，并完整填写职位与专业分工。');next(error);}
+    }catch(error){if(opportunity&&/Technical team change reason/.test(error.message))return showValidation(/too long/.test(error.message)?'变更原因最多1000字。':'请填写人员、职位或分工的变更原因。');if(opportunity&&/required|Only the manager/.test(error.message))return showValidation(/Only the manager/.test(error.message)?'只有经理可以更换主任工程师。':'请选择有效且在职的工程师，并完整填写职位与专业分工。');next(error);}
   });
   router.post('/opportunities/:id/technical-work-packages/:workPackageId/:operation',async(req,res,next)=>{
     try{
@@ -2000,6 +2006,10 @@ export function opportunityRoutes({
   router.post('/opportunities/:id/workflow', async (req, res, next) => {
     try {
       const workflowPayload=parseWorkflowPayload(req.body);
+      if(req.body.action===ACTIONS.CHANGE_QUOTATION_ENGINEER){
+        const target=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});if(!target)return;
+        if(!canAssignOpportunityEngineeringTeam(req.currentUser,target))return res.status(403).send('Forbidden');
+      }
       if(req.body.action===ACTIONS.CHANGE_QUOTATION_ENGINEER && Array.isArray(workflowPayload.quotationEngineerIds)){
         const engineers=await userRepository.listUsersByRole(ROLES.QUOTATION_ENGINEER);
         const allowed=new Set(engineers.filter(user=>user.isActive!==false).map(user=>Number(user.id)));

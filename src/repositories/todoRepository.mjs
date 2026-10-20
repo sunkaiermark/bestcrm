@@ -6,6 +6,7 @@ function nullableDate(value) {
 
 const workItemDefinitions = new Map([
   ['Approve opportunity initiation', { kpiCode: 'approve_on_time', roleContext: 'sales' }],
+  ['Assign technical work', { kpiCode: 'complete_assigned_work', roleContext: 'technical' }],
   ['Prepare technical solution', { kpiCode: 'submit_technical_solution', roleContext: 'technical' }],
   ['Revise technical solution', { kpiCode: 'resubmit_technical_solution', roleContext: 'technical' }],
   ['Revise technical solution for supplemental requirement', { kpiCode: 'resubmit_technical_solution', roleContext: 'technical' }],

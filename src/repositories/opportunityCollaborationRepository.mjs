@@ -282,6 +282,14 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
     },
 
     async listTechnicalTeam(opportunityId){return (await queryTarget.query('SELECT * FROM opportunity_technical_team_assignments WHERE opportunity_id=$1 AND is_active=true ORDER BY position,user_id',[opportunityId])).rows;},
+    async listTechnicalTeamEvents(opportunityId) {
+      const events = (await queryTarget.query('SELECT e.*,u.display_name AS actor_display_name,u.username AS actor_username FROM opportunity_technical_team_events e JOIN users u ON u.id=e.actor_user_id WHERE e.opportunity_id=$1 ORDER BY e.created_at DESC,e.id DESC',[opportunityId])).rows;
+      const ids = [...new Set(events.flatMap(event=>[...(event.before_state||[]),...(event.after_state||[])].map(row=>Number(row.userId??row.user_id))).filter(id=>id>0))];
+      const people = ids.length ? (await queryTarget.query('SELECT id,display_name,username FROM users WHERE id=ANY($1::bigint[])',[ids])).rows : [];
+      const names = new Map(people.map(user=>[Number(user.id),user.display_name||user.username]));
+      const snapshot = rows => (rows||[]).map(row=>({userId:Number(row.userId??row.user_id),userDisplayName:row.userDisplayName||names.get(Number(row.userId??row.user_id))||('#'+(row.userId??row.user_id)),position:row.position,specialty:row.specialty||''}));
+      return events.map(event=>({id:Number(event.id),actorUserId:Number(event.actor_user_id),actorDisplayName:event.actor_display_name||event.actor_username,createdAt:event.created_at,reason:event.change_reason||'',before:snapshot(event.before_state),after:snapshot(event.after_state)}));
+    },
     async saveTechnicalTeam(input){
       if(!inTransaction && typeof queryTarget.connect==='function'){
         const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client, { inTransaction: true }).saveTechnicalTeam(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
@@ -290,18 +298,52 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
       const rows=input.assignments;const leads=rows.filter(row=>row.position==='lead');
       if(!rows.length||leads.length!==1||rows.some(row=>!row.specialty.trim()||row.specialty.length>300)||new Set(rows.map(row=>row.userId)).size!==rows.length)throw Error('Exactly one lead and a specialty for each engineer are required');
       if(!input.canChangeLead&&Number(leads[0].userId)!==Number(opportunity.quotation_engineer_id))throw Error('Only the manager can change the lead engineer');
-      const eligible=(await queryTarget.query("SELECT DISTINCT u.id FROM users u JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE u.is_active=true AND r.code='quotation_engineer' AND u.id=ANY($1::bigint[])",[rows.map(row=>row.userId)])).rows;
+      const eligible=(await queryTarget.query("SELECT DISTINCT u.id,u.display_name,u.username FROM users u JOIN user_roles ur ON ur.user_id=u.id JOIN roles r ON r.id=ur.role_id WHERE u.is_active=true AND r.code='quotation_engineer' AND u.id=ANY($1::bigint[])",[rows.map(row=>row.userId)])).rows;
       if(eligible.length!==rows.length)throw Error('Active engineers are required');
       const before=await this.listTechnicalTeam(input.opportunityId),members=createOpportunityResponsibilityRepository(queryTarget);
       const existing=await members.listTeamMembersByOpportunity(input.opportunityId);
+      const canonical = assignments => JSON.stringify(assignments.map(row=>({userId:Number(row.userId??row.user_id),position:row.position,specialty:String(row.specialty||'').trim()})).sort((a,b)=>a.userId-b.userId));
+      const previous = before.length ? before : [{userId:Number(opportunity.quotation_engineer_id),position:'lead',specialty:''},...existing.filter(m=>m.roleCode==='quotation_engineer'&&m.isActive!==false).map(m=>({userId:Number(m.userId),position:'support',specialty:m.taskDescription||''}))].filter(row=>row.userId>0);
+      if (canonical(previous) === canonical(rows)) return {changed:false};
+      const reason = String(input.reason||'').trim();
+      if (previous.length && !reason) throw Error('Technical team change reason is required');
+      if (reason.length>1000) throw Error('Technical team change reason is too long');
+      const snapshotIds = [...new Set([...previous,...rows].map(row=>Number(row.userId??row.user_id)))];
+      const snapshotUsers = (await queryTarget.query('SELECT id,display_name,username FROM users WHERE id=ANY($1::bigint[])',[snapshotIds])).rows;
+      const snapshotNames = new Map(snapshotUsers.map(user=>[Number(user.id),user.display_name||user.username]));
+      const snapshot = assignments => assignments.map(row=>({userId:Number(row.userId??row.user_id),userDisplayName:snapshotNames.get(Number(row.userId??row.user_id))||('#'+(row.userId??row.user_id)),position:row.position,specialty:row.specialty||''}));
       for(const member of existing.filter(m=>m.roleCode==='quotation_engineer'&&m.isActive!==false))if(!rows.some(row=>row.userId===Number(member.userId)&&row.position==='support'))await members.removeTeamMember({opportunityId:input.opportunityId,memberId:member.id,removedBy:input.actorUserId});
       await queryTarget.query('UPDATE opportunity_technical_team_assignments SET is_active=false WHERE opportunity_id=$1',[input.opportunityId]);
       for(const row of rows){
         await queryTarget.query('INSERT INTO opportunity_technical_team_assignments(opportunity_id,user_id,position,specialty,updated_by) VALUES($1,$2,$3,$4,$5) ON CONFLICT(opportunity_id,user_id) DO UPDATE SET position=EXCLUDED.position,specialty=EXCLUDED.specialty,is_active=true,updated_by=EXCLUDED.updated_by,updated_at=now()',[input.opportunityId,row.userId,row.position,row.specialty,input.actorUserId]);
         if(row.position==='support'){const prior=existing.find(m=>Number(m.userId)===row.userId&&m.roleCode==='quotation_engineer'&&m.isActive!==false);await members.addTeamMember({opportunityId:input.opportunityId,userId:row.userId,roleCode:'quotation_engineer',permissionLevel:prior?.permissionLevel||'edit',assignmentScope:prior?.assignmentScope||'Technical Proposal',taskDescription:row.specialty,dueDate:prior?.dueDate||null,addedBy:input.actorUserId,canSendExternalEmail:prior?.canSendExternalEmail||false});}
       }
+
+      if (['quotation_engineer_assignment_pending', 'technical_solution_in_progress', 'technical_solution_rejected'].includes(opportunity.status)) {
+        const todos = createTodoRepository(queryTarget);
+        if (opportunity.status === 'quotation_engineer_assignment_pending') {
+          await todos.closePendingForOpportunityAndTitle(input.opportunityId, 'Assign technical work', 'completed', input.actorUserId);
+          await queryTarget.query("UPDATE opportunities SET status='technical_solution_in_progress',updated_at=now() WHERE id=$1",[input.opportunityId]);
+        }
+        const previousIds = new Set([Number(opportunity.quotation_engineer_id), ...existing.filter(m => m.roleCode === 'quotation_engineer' && m.isActive !== false).map(m => Number(m.userId))].filter(id => id > 0));
+        const nextIds = new Set(rows.map(row => Number(row.userId)));
+        for (const userId of previousIds) {
+          if (!nextIds.has(userId)) {
+            for (const title of ['Prepare technical solution', 'Revise technical solution']) {
+              await todos.closePendingForOpportunityAssigneeAndTitle(input.opportunityId, userId, title, 'reassigned', input.actorUserId);
+            }
+          }
+        }
+        const title = opportunity.status === 'technical_solution_rejected' ? 'Revise technical solution' : 'Prepare technical solution';
+        const currentTodos = await todos.listByOpportunity(input.opportunityId);
+        for (const userId of nextIds) {
+          if (!previousIds.has(userId) && !currentTodos.some(todo => todo.assigneeUserId === userId && todo.title === title && todo.status === 'pending')) {
+            await todos.create({ opportunityId: input.opportunityId, assigneeUserId: userId, title, actionUrl: '/opportunities/' + input.opportunityId + '#technical-proposal', ...(opportunity.technical_plan_submit_date ? {dueAt: (opportunity.technical_plan_submit_date instanceof Date ? opportunity.technical_plan_submit_date.toISOString().slice(0,10) : String(opportunity.technical_plan_submit_date).slice(0,10)) + 'T23:59:59+08:00'} : {}) }, input.actorUserId);
+          }
+        }
+      }
       await queryTarget.query('UPDATE opportunities SET quotation_engineer_id=$2,updated_at=now() WHERE id=$1',[input.opportunityId,leads[0].userId]);
-      await queryTarget.query('INSERT INTO opportunity_technical_team_events(opportunity_id,actor_user_id,before_state,after_state) VALUES($1,$2,$3::jsonb,$4::jsonb)',[input.opportunityId,input.actorUserId,JSON.stringify(before),JSON.stringify(rows)]);
+      await queryTarget.query('INSERT INTO opportunity_technical_team_events(opportunity_id,actor_user_id,before_state,after_state,change_reason) VALUES($1,$2,$3::jsonb,$4::jsonb,$5)',[input.opportunityId,input.actorUserId,JSON.stringify(snapshot(previous)),JSON.stringify(snapshot(rows)),reason]);
     },
     async applyTechnicalLifecycle(input){
       if(!inTransaction && typeof queryTarget.connect==='function'){

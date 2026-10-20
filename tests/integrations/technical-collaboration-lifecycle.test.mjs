@@ -16,11 +16,11 @@ test('technical team positions, submission withdrawal and deletion respect appro
  const rejectedIndependent=await a.post('/opportunities/'+opp.id+'/collaboration-work-packages').type('form').send({_csrf:csrf(page.text),planKind:'internal_quote',title:'Forbidden standalone quote',assigneeUserId:lead.id});
  assert.equal(rejectedIndependent.status,400);
  assert.equal((await pool.query("SELECT count(*) AS n FROM opportunity_collaboration_work_packages WHERE plan_kind='internal_quote'")).rows[0].n,beforeIndependent);
- const team={_csrf:csrf(page.text),engineerIds:[lead.id,support.id],['position_'+lead.id]:'lead',['specialty_'+lead.id]:'Overall process',['position_'+support.id]:'support',['specialty_'+support.id]:'Mechanical design'};
+ const team={reason:'Synthetic technical team configuration',_csrf:csrf(page.text),engineerIds:[lead.id,support.id],['position_'+lead.id]:'lead',['specialty_'+lead.id]:'Overall process',['position_'+support.id]:'support',['specialty_'+support.id]:'Mechanical design'};
  assert.equal((await a.post('/opportunities/'+opp.id+'/technical-team').type('form').send(team)).status,302);
  assert.equal((await repo.listTechnicalTeam(opp.id)).length,2);
  assert.equal((await a.post('/opportunities/'+opp.id+'/technical-team').type('form').send({...team,['position_'+support.id]:'lead'})).status,302);
- const invalidLeadPage=await a.get('/opportunities/'+opp.id);assert.equal(invalidLeadPage.status,200);assert.match(invalidLeadPage.text,/请在勾选的工程师中设置且仅设置一位主任工程师/);assert.match(invalidLeadPage.text,/technical-team-editor" open/);assert.match(invalidLeadPage.text,/value="Mechanical design"/);
+ const invalidLeadPage=await a.get('/opportunities/'+opp.id);assert.equal(invalidLeadPage.status,200);assert.match(invalidLeadPage.text,/请在勾选的工程师中设置且仅设置一位主任工程师/);assert.match(invalidLeadPage.text,/technical-team-editor"/);assert.match(invalidLeadPage.text,/value="Mechanical design"/);
  assert.equal((await repo.listTechnicalTeam(opp.id)).length,2);
  assert.equal((await a.post('/opportunities/'+opp.id+'/technical-team').type('form').send({...team,['specialty_'+support.id]:''})).status,302);
  const invalidSpecialtyPage=await a.get('/opportunities/'+opp.id);assert.equal(invalidSpecialtyPage.status,200);assert.match(invalidSpecialtyPage.text,/请为每位勾选的工程师填写专业内容/);assert.match(invalidSpecialtyPage.text,new RegExp('name="specialty_'+support.id+'" value=""'));

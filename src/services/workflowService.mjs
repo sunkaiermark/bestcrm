@@ -1,3 +1,4 @@
+import { STATUSES } from '../domain/statuses.mjs';
 import { startProjectAfterContractApproval } from './projectExecutionService.mjs';
 import { ACTIONS, transition } from '../domain/workflow.mjs';
 import { ROLES } from '../domain/roles.mjs';
@@ -145,6 +146,7 @@ function targetUserForAction(action, before, after, payload) {
     case ACTIONS.SUBMIT_INITIATION:
       return after.salesManagerId;
     case ACTIONS.APPROVE_INITIATION:
+      return after.status === STATUSES.QUOTATION_ENGINEER_ASSIGNMENT_PENDING ? after.technicalManagerId : after.quotationEngineerId;
     case ACTIONS.CHANGE_QUOTATION_ENGINEER:
     case ACTIONS.REJECT_TECHNICAL_SOLUTION:
     case ACTIONS.REJECT_COMMERCIAL_QUOTE:
@@ -198,6 +200,7 @@ function nextTodosForAction(action, after, payload, before) {
     case ACTIONS.SUBMIT_INITIATION:
       return [{ opportunityId: after.id, assigneeUserId: after.salesManagerId, title: 'Approve opportunity initiation' }];
     case ACTIONS.APPROVE_INITIATION:
+      if (after.status === STATUSES.QUOTATION_ENGINEER_ASSIGNMENT_PENDING) return [{opportunityId:after.id,assigneeUserId:after.technicalManagerId,title:'Assign technical work',actionUrl:'/opportunities/'+after.id+'#technical-proposal'}];
       return [...new Set(
         Array.isArray(payload.quotationEngineerIds) && payload.quotationEngineerIds.length > 0
           ? payload.quotationEngineerIds.map(Number)

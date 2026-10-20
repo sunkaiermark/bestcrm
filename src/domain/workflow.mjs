@@ -107,8 +107,13 @@ const RULES = [
     apply(opportunity, payload) {
       return {
         ...opportunity,
-        status: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
-        quotationEngineerId: requirePayloadValue(payload, 'quotationEngineerId'),
+        status: payload.engineeringAssignmentDeferred === true && Number(opportunity.originInquiryId) > 0
+          ? STATUSES.QUOTATION_ENGINEER_ASSIGNMENT_PENDING
+          : STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
+        ...(payload.engineeringAssignmentDeferred === true && Number(opportunity.originInquiryId) > 0 ? {technicalManagerId: requirePayloadValue(payload, 'technicalManagerId')} : {}),
+        quotationEngineerId: payload.engineeringAssignmentDeferred === true && Number(opportunity.originInquiryId) > 0
+          ? null
+          : requirePayloadValue(payload, 'quotationEngineerId'),
         technicalPlanSubmitDate: requirePayloadValue(payload, 'technicalPlanSubmitDate')
       };
     }

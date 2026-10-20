@@ -185,7 +185,10 @@ function opportunityListConditions(filter = {}) {
   }
   if (filter.visibleToUserId) {
     params.push(filter.visibleToUserId);
-    where.push(visibleOpportunityPredicate(`$${params.length}`));
+    const visibility = visibleOpportunityPredicate('$' + params.length);
+    where.push(filter.includeTechnicalAssignmentQueue
+      ? '(' + visibility + " OR (o.archived_at IS NULL AND o.status IN ('quotation_engineer_assignment_pending','technical_solution_in_progress','technical_solution_rejected')))"
+      : visibility);
   }
   if (filter.searchTerm) {
     params.push(`%${String(filter.searchTerm).replace(/[\\%_]/g, '\\$&')}%`);
@@ -560,6 +563,7 @@ export function createOpportunityRepository(queryTarget) {
       const result = await queryTarget.query(`
         SELECT
           id,
+          origin_inquiry_id,
           opportunity_no,
           title,
           customer_id,

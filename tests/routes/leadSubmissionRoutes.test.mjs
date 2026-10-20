@@ -85,6 +85,7 @@ async function buildApp({
   let currentReceipt = receipt;
   const app = createApp({
     sessionSecret: 'test-secret',
+    approvalSettingRepository: { async findActiveByKey(){return {userId:5};} },
     uploadDir,
     maxUploadMb: 1,
     userRepository: {
@@ -398,27 +399,22 @@ test('assigned sales manager sees the compact two-by-two approval controls on le
     assert.match(page.text, /action="\/lead-submissions\/11\/approve"/);
     assert.match(page.text, /action="\/lead-submissions\/11\/return"/);
     assert.doesNotMatch(page.text, /action="\/lead-submissions\/11\/reject"/);
-    assert.match(page.text, />Approve &amp; Assign</);
+    assert.match(page.text, />Approve &amp; initiate</);
     assert.match(page.text, />Reject for modification</);
     assert.doesNotMatch(page.text, />Reject lead</);
     assert.doesNotMatch(page.text, />Return for modification</);
     assert.match(page.text, />Sales manager approval and initiation</);
-    assert.match(page.text, /name="quotationEngineerIds"[^>]*value="3"/);
-    assert.match(page.text, /name="quotationEngineerIds"[^>]*value="9"/);
-    assert.match(page.text, /name="quotationEngineerLeadId"/);
-    assert.match(page.text, /name="technicalPlanSubmitDate"[^>]*required/);
+                assert.match(page.text, /name="technicalPlanSubmitDate"[^>]*required/);
     const customerDecisionIndex = page.text.indexOf('name="customerResolution"');
     const decisionGridIndex = page.text.indexOf('class="lead-review-decision-grid"');
     const salesOwnerIndex = page.text.indexOf('class="lead-review-decision-cell lead-review-sales-owner"');
-    const engineerIndex = page.text.indexOf('class="lead-review-decision-cell lead-review-engineer"');
     const returnIndex = page.text.indexOf('class="lead-review-decision-cell lead-review-return"');
     const approveIndex = page.text.indexOf('class="lead-review-decision-cell lead-review-approve"');
     assert.ok(
       customerDecisionIndex >= 0
       && customerDecisionIndex < decisionGridIndex
       && decisionGridIndex < salesOwnerIndex
-      && salesOwnerIndex < engineerIndex
-      && engineerIndex < returnIndex
+      && salesOwnerIndex < returnIndex
       && returnIndex < approveIndex
     );
     assert.match(page.text, /<select name="customerResolution" id="lead-customer-resolution" required>/);
@@ -443,9 +439,9 @@ test('assigned sales manager sees the compact two-by-two approval controls on le
     assert.doesNotMatch(approvalForm, /name="contactPhone"/);
     assert.doesNotMatch(approvalForm, /name="requirementText"/);
     assert.doesNotMatch(approvalForm, /data-product-category-picker/);
-    assert.equal((page.text.match(/class="lead-review-decision-cell/g) || []).length, 4);
+    assert.equal((page.text.match(/class="lead-review-decision-cell/g) || []).length, 3);
     assert.match(page.text, /name="salespersonId" form="lead-approval-form" required/);
-    assert.match(page.text, /form="lead-approval-form"[\s\S]*?type="checkbox"[\s\S]*?name="quotationEngineerIds"/);
+    assert.doesNotMatch(page.text, /name="quotationEngineerIds"|data-engineer-picker/);
     assert.match(page.text, /form="lead-approval-form" class="workflow-action-button workflow-approve-button"/);
     assert.match(page.text, /name="reason" type="text" required maxlength="1000" placeholder="Modification request"/);
   } finally {
@@ -578,10 +574,7 @@ test('duplicate customer approval returns to the lead review page with actionabl
     assert.match(response.text, /name="estimatedAmount" value="125000"/);
     assert.match(response.text, /name="deliveryCycle" value="16 weeks"/);
     assert.match(response.text, /name="expectedBidDate" value="2026-12-15"/);
-    assert.match(response.text, /name="quotationEngineerIds"[^>]*value="3"[^>]*checked/);
-    assert.match(response.text, /name="quotationEngineerIds"[^>]*value="9"[^>]*checked/);
-    assert.match(response.text, /name="quotationEngineerLeadId" value="3"/);
-    assert.match(response.text, /name="technicalPlanSubmitDate" value="2026-10-06" required/);
+                assert.match(response.text, /name="technicalPlanSubmitDate" value="2026-10-06" required/);
     assert.doesNotMatch(
       response.text.match(/<form id="lead-approval-form" class="inquiry-workflow-form lead-conversion-review-form"[\s\S]*?<\/form>/)?.[0] || '',
       /name="requirementText"/

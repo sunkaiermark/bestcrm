@@ -1,3 +1,4 @@
+import { createApprovalSettingRepository } from '../repositories/approvalSettingRepository.mjs';
 import { createEmailArchiveRepository } from '../repositories/emailArchiveRepository.mjs';
 import { createEmailResponseRepository } from '../repositories/emailResponseRepository.mjs';
 import { createAttachmentRepository } from '../repositories/attachmentRepository.mjs';
@@ -18,6 +19,7 @@ export function createEmailArchiveTransaction(pool) {
     try {
       await client.query('BEGIN');
       const result = await callback({
+        approvalSettingRepository: createApprovalSettingRepository(client),
         attachmentRepository: createAttachmentRepository(client),
         emailArchiveRepository: createEmailArchiveRepository(client),
         emailResponseRepository: createEmailResponseRepository(client),

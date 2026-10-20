@@ -1023,6 +1023,7 @@ export function createApp(options = {}) {
   app.use(aiSourceRoutes({ enabled: aiConfig.workspaceEnabled, repository: aiRepository, userRepository, evidenceRoot: aiConfig.evidenceRoot }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
   app.use(leadSubmissionRoutes({
+    approvalSettingRepository,
     inquiryRepository,
     inquiryAttachmentRepository,
     userRepository,

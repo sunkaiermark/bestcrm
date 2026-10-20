@@ -343,7 +343,7 @@ async function createLoggedInAgent(extraOptions = {}) {
 function assertAppSidebar(html, activeHref) {
   const navAccount = html.match(/<div class="nav-account"[\s\S]*?<\/div>\s*<\/div>/)?.[0] || '';
   assert.match(html, /class="left-nav"/);
-  assert.match(html, /\.app-shell\s*\{[^}]*grid-template-columns:\s*280px minmax\(0, 1fr\);/);
+  assert.match(html, /\.app-shell\s*\{[^}]*grid-template-columns:\s*220px minmax\(0, 1fr\);/);
   assert.match(html, /font:\s*20px\/1\.45 "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", Arial, sans-serif;/);
   assert.match(html, /th\s*\{[\s\S]*font-size:\s*20px;/);
   assert.match(html, /h1\s*\{[\s\S]*font-size:\s*24px;/);
@@ -4326,7 +4326,7 @@ test('Sales Manager approves initiation and assigns quotation engineer from deta
   ]);
 });
 
-test('Sales Manager changes quotation engineer after assignment from detail page', async () => {
+test('Sales Manager cannot reassign engineering after initiation', async () => {
   const { agent, calls, getOpportunity } = await createWorkflowAgent({
     user: {
       id: 2,
@@ -4350,35 +4350,12 @@ test('Sales Manager changes quotation engineer after assignment from detail page
 
   const detail = await agent.get('/opportunities/30');
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /change_quotation_engineer/);
-  assert.match(detail.text, /Quote Engineer One/);
-  assert.match(detail.text, /Quote Engineer Two/);
-  assert.match(detail.text, /name="quotationEngineerLeadId" value="3"/);
-
-  const response = await agent
-    .post('/opportunities/30/workflow')
-    .type('form')
+  assert.doesNotMatch(detail.text, /name="action" value="change_quotation_engineer"/);
+  const response = await agent.post('/opportunities/30/workflow').type('form')
     .send({ action: ACTIONS.CHANGE_QUOTATION_ENGINEER, quotationEngineerId: '8', comment: 'handover' });
-
-  assert.equal(response.status, 302);
-  assert.equal(response.headers.location, '/opportunities/30');
-  assert.equal(getOpportunity().status, STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS);
-  assert.equal(getOpportunity().quotationEngineerId, 8);
-  assert.deepEqual(calls.filter((call) => call[0] !== 'listUsersByRole'), [
-    ['findOpportunity', 30],
-    ['updateOpportunity', 30, { quotationEngineerId: 8 }],
-    ['createEvent', {
-      opportunityId: 30,
-      eventType: ACTIONS.CHANGE_QUOTATION_ENGINEER,
-      fromStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
-      toStatus: STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,
-      actorUserId: 2,
-      targetUserId: 8,
-      comment: 'handover'
-    }],
-    ['closeTodosForAssignee', 30, 3, 'reassigned'],
-    ['createTodo', { opportunityId: 30, assigneeUserId: 8, title: 'Prepare technical solution' }]
-  ]);
+  assert.equal(response.status, 403);
+  assert.equal(getOpportunity().quotationEngineerId, 3);
+  assert.equal(calls.some(call=>call[0]==='updateOpportunity'),false);
 });
 
 test('commercial quote form shows attachment based submission and missing attachment hint', async () => {

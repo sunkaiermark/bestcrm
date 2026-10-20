@@ -171,6 +171,7 @@
     ...contractWorkflowForms
   ];
   const technicalStartedStatuses = new Set([
+    'quotation_engineer_assignment_pending',
     'technical_solution_in_progress', 'technical_solution_pending', 'technical_solution_rejected',
     'commercial_quote_in_progress', 'commercial_quote_pending', 'commercial_quote_rejected',
     'customer_negotiation', 'lost_archived', 'won_contract_pending',
@@ -364,15 +365,15 @@
 
           <% if (collaborationWorkPackagesEnabled && opportunity.quotationEngineerId) { %>
             <section class="content-section business-section collaboration-assignment-section">
-              <h2><%= language === 'zh' ? '技术报价协作' : 'Technical quotation collaboration' %></h2>
+
               <div class="section-body">
                 <table class="detail-table collaboration-assignment-table"><tbody><tr>
                   <th scope="row"><%= language === 'zh' ? '立项来源' : 'Initiation source' %></th>
                   <td><%= language === 'zh' ? '销售经理审批并立项（在线索页完成）' : 'Sales manager approval on the lead record' %></td>
-                  <th scope="row"><%= language === 'zh' ? '项目工程师' : 'Project engineer' %></th>
+                  <th scope="row"><%= language === 'zh' ? '主任工程师' : 'Lead engineer' %></th>
                   <td><%= opportunity.quotationEngineerDisplayName || opportunity.quotationEngineerUsername %></td>
                 </tr><tr>
-                  <th scope="row"><%= language === 'zh' ? '组员工程师' : 'Supporting engineers' %></th>
+                  <th scope="row"><%= language === 'zh' ? '工程师' : 'Engineers' %></th>
                   <td colspan="3"><%= collaborationTeamMembers.filter((member) => member.roleCode === 'quotation_engineer' && member.isActive !== false).map((member) => member.userDisplayName || member.username).join('、') || '—' %></td>
                 </tr></tbody></table>
               </div>

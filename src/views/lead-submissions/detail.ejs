@@ -41,27 +41,6 @@
             && leadApprovalValue('confirmNewCustomerDetails', '') === '1';
           const confirmedNewContactDetails = leadApprovalValue('confirmNewContactDetails', '') === '1';
           const selectedSalespersonId = leadApprovalValue('salespersonId', submission.recommendedSalespersonId);
-          const rawSelectedQuotationEngineerIds = leadApprovalValue('quotationEngineerIds', []);
-          const selectedQuotationEngineerIds = [...new Set(
-            (Array.isArray(rawSelectedQuotationEngineerIds)
-              ? rawSelectedQuotationEngineerIds
-              : [rawSelectedQuotationEngineerIds])
-              .map(Number)
-              .filter((userId) => Number.isSafeInteger(userId) && userId > 0)
-          )];
-          const requestedQuotationEngineerLeadId = Number(leadApprovalValue(
-            'quotationEngineerLeadId',
-            selectedQuotationEngineerIds[0]
-          ));
-          const selectedQuotationEngineerLeadId = selectedQuotationEngineerIds.includes(requestedQuotationEngineerLeadId)
-            ? requestedQuotationEngineerLeadId
-            : selectedQuotationEngineerIds[0];
-          const orderedQuotationEngineerIds = selectedQuotationEngineerLeadId
-            ? [
-                selectedQuotationEngineerLeadId,
-                ...selectedQuotationEngineerIds.filter((userId) => userId !== selectedQuotationEngineerLeadId)
-              ]
-            : [];
         %>
         <p class="breadcrumb"><a href="/lead-submissions"><%= t('myLeadSubmissions') %></a></p>
         <header class="page-header">
@@ -326,42 +305,6 @@
                   </select>
                 </label>
 
-                <div class="lead-review-decision-cell lead-review-engineer">
-                  <span class="lead-review-decision-name"><%= language === 'zh' ? '项目工程师及组员工程师' : 'Project and supporting engineers' %></span>
-                  <details
-                    class="workflow-engineer-picker"
-                    data-engineer-picker
-                    data-approval-form-id="lead-approval-form"
-                    data-selected-order="<%= orderedQuotationEngineerIds.join(',') %>"
-                  >
-                    <summary data-engineer-summary><%= orderedQuotationEngineerIds.length > 0
-                      ? orderedQuotationEngineerIds
-                          .map((id) => quotationEngineers.find((user) => Number(user.id) === id))
-                          .filter(Boolean)
-                          .map((user) => user.displayName || user.username)
-                          .join(', ')
-                      : t('workflowField.quotationEngineerIds') %></summary>
-                    <input form="lead-approval-form" type="hidden" name="quotationEngineerLeadId" value="<%= selectedQuotationEngineerLeadId || '' %>" data-engineer-lead>
-                    <div class="workflow-engineer-options">
-                      <% for (const engineer of quotationEngineers) { %>
-                        <label>
-                          <input
-                            form="lead-approval-form"
-                            type="checkbox"
-                            name="quotationEngineerIds"
-                            value="<%= engineer.id %>"
-                            data-engineer-option
-                            data-engineer-name="<%= engineer.displayName || engineer.username %>"
-                            <%= selectedQuotationEngineerIds.includes(Number(engineer.id)) ? 'checked' : '' %>
-                          >
-                          <span><%= engineer.displayName || engineer.username %></span>
-                        </label>
-                      <% } %>
-                    </div>
-                  </details>
-                  <span class="muted"><%= language === 'zh' ? '首位为项目工程师，其余为组员工程师；可仅选择一人。' : 'The first selection is the project engineer; the rest are supporting engineers.' %></span>
-                </div>
-
                 <form class="lead-review-decision-cell lead-review-return" method="post" action="/lead-submissions/<%= submission.id %>/return">
                   <%- csrfField() %>
                   <button class="workflow-action-button workflow-reject-button" type="submit"><%= t('rejectForModification') %></button>
@@ -372,7 +315,7 @@
                 </form>
 
                 <div class="lead-review-decision-cell lead-review-approve">
-                  <button form="lead-approval-form" class="workflow-action-button workflow-approve-button" type="submit" disabled><%= t('approveLeadAndCreateOpportunity') %></button>
+                  <button form="lead-approval-form" class="workflow-action-button workflow-approve-button" type="submit" disabled><%= language === 'zh' ? '批准立项' : 'Approve & initiate' %></button>
                   <label class="lead-review-decision-option">
                     <span class="visually-hidden"><%= t('reviewNote') %></span>
                     <input form="lead-approval-form" name="reviewNote" type="text" maxlength="1000" value="<%= leadApprovalValue('reviewNote') || '' %>" placeholder="<%= t('reviewNote') %>">
@@ -546,38 +489,6 @@
               newCustomerConfirmation?.addEventListener('change', refreshApproveButton);
               refreshCustomerResolution();
             })();
-            document.querySelectorAll('[data-engineer-picker]').forEach((picker) => {
-              const options = [...picker.querySelectorAll('[data-engineer-option]')];
-              const summary = picker.querySelector('[data-engineer-summary]');
-              const leadInput = picker.querySelector('[data-engineer-lead]');
-              let selectionOrder = String(picker.dataset.selectedOrder || '')
-                .split(',')
-                .filter(Boolean);
-              const refresh = () => {
-                const selected = options.filter((option) => option.checked);
-                const selectedIds = new Set(selected.map((option) => option.value));
-                selectionOrder = selectionOrder.filter((id) => selectedIds.has(id));
-                for (const option of selected) {
-                  if (!selectionOrder.includes(option.value)) selectionOrder.push(option.value);
-                }
-                leadInput.value = selectionOrder[0] || '';
-                summary.textContent = selectionOrder
-                  .map((id) => options.find((option) => option.value === id)?.dataset.engineerName)
-                  .filter(Boolean)
-                  .join(', ') || <%- JSON.stringify(t('workflowField.quotationEngineerIds')) %>;
-              };
-              for (const option of options) option.addEventListener('change', refresh);
-              const approvalForm = document.getElementById(picker.dataset.approvalFormId || 'lead-approval-form');
-              approvalForm?.addEventListener('submit', (event) => {
-                refresh();
-                if (!leadInput.value) {
-                  event.preventDefault();
-                  picker.open = true;
-                  options[0]?.focus();
-                }
-              });
-              refresh();
-            });
           </script>
         <% } %>
 <%- include('../partials/app-end') %>
