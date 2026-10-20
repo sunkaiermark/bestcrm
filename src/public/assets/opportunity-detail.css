@@ -66,7 +66,7 @@
 
 .opportunity-detail-page #technical-proposal [data-team-add] {
   width: auto;
-  min-width: 112px;
-  padding: 4px 14px;
+  min-width: 148px;
+  padding: 4px 16px;
   white-space: nowrap;
 }
