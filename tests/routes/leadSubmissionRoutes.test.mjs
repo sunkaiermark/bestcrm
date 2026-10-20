@@ -291,7 +291,7 @@ test('salesperson uploads and previews a supporting file before submitting the l
     assert.match(form.text, /\/assets\/lead-create\.css/);
     const layoutStyles = await agent.get('/assets/lead-create.css');
     assert.equal(layoutStyles.status,200);
-    assert.match(layoutStyles.text,/textarea\[name="requirementText"\][^}]*min-height:34px/);
+    assert.match(layoutStyles.text,/textarea\[name="requirementText"\][^}]*min-height:44px/);
     assert.doesNotMatch(form.text, /name="productInterest"|name="sourceAttributionNote"/);
     assert.ok(form.text.indexOf('name="priority"') < form.text.indexOf('data-lead-category-inline'));
     assert.match(form.text, /<details id="lead-uploaded-files" class="lead-uploaded-files">/);

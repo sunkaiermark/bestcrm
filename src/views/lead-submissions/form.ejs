@@ -158,7 +158,7 @@
               const resizeRequirement = () => {
                 requirement.style.height = 'auto';
                 const borderHeight = requirement.offsetHeight - requirement.clientHeight;
-                requirement.style.height = `${Math.max(34, requirement.scrollHeight + borderHeight)}px`;
+                requirement.style.height = `${Math.max(44, requirement.scrollHeight + borderHeight)}px`;
               };
               requirement.addEventListener('input', resizeRequirement);
               window.addEventListener('resize', resizeRequirement);
