@@ -3,3 +3,25 @@
 .lead-list-page > .inline-actions a,
 .lead-list-page .page-header .quick-action,
 .lead-list-page .empty-state { font-size:16px !important; line-height:1.5; }
+.lead-list-page { min-width:0; max-width:100%; box-sizing:border-box; }
+.lead-list-page .list-section { min-width:0; max-width:100%; }
+.lead-list-page .lead-submission-list-table { min-width:0; width:100%; table-layout:fixed; }
+.lead-list-page .lead-submission-list-table :is(th,td) { width:auto; overflow-wrap:normal; white-space:nowrap; text-overflow:ellipsis; overflow:hidden; }
+.lead-list-page .lead-submission-list-table .cell-link { min-width:0; white-space:nowrap; overflow-wrap:normal; text-overflow:ellipsis; overflow:hidden; }
+.lead-list-page .lead-submission-list-table .status { max-width:100%; box-sizing:border-box; white-space:nowrap; overflow-wrap:normal; text-overflow:ellipsis; overflow:hidden; }
+@media (min-width:861px) {
+  .lead-list-page .lead-submission-list-table :is(th,td):nth-child(1) { width:11%; }
+  .lead-list-page .lead-submission-list-table :is(th,td):nth-child(2) { width:14%; }
+  .lead-list-page .lead-submission-list-table :is(th,td):nth-child(3) { width:25%; }
+  .lead-list-page .lead-submission-list-table :is(th,td):nth-child(4) { width:9%; }
+  .lead-list-page .lead-submission-list-table :is(th,td):nth-child(5) { width:11%; }
+  .lead-list-page .lead-submission-list-table :is(th,td):nth-child(6) { width:9%; }
+  .lead-list-page .lead-submission-list-table :is(th,td):nth-child(7) { width:8%; }
+  .lead-list-page .lead-submission-list-table :is(th,td):nth-child(8) { width:7%; }
+  .lead-list-page .lead-submission-list-table :is(th,td):nth-child(9) { width:6%; }
+  .lead-list-page .lead-submission-list-table :is(th,td) { padding:8px 6px; }
+  .lead-list-page .lead-submission-list-table td.clickable-cell { padding:0; }
+  .lead-list-page .lead-submission-list-table td.clickable-cell .cell-link { padding:8px 6px; }
+}
+
+.lead-list-page .lead-requirement-preview { display:block; max-height:none; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
