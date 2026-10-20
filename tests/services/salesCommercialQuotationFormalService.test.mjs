@@ -31,7 +31,7 @@ const mark = { id: 9, username: '杨胜华', isActive: true, roles: [ROLES.ADMIN
 const opportunity = {
   id: 20, opportunityNo: '800020', title: 'Mixer project', customerName: 'Customer',
   primaryContactName: 'Buyer', salespersonId: 7, quotationEngineerId: 3, salespersonDisplayName: 'Sales Owner',
-  commercialManagerId: 8, archivedAt: null
+  commercialManagerId: 8, archivedAt: null, status: 'commercial_quote_in_progress'
 };
 
 const terms = QUOTATION_COMMERCIAL_TERM_SECTIONS.map((section, index) => ({
@@ -468,3 +468,5 @@ test('incomplete formal PDF omits absent seller fields and empty term section in
     await writeFile(process.env.BESTCRM_INCOMPLETE_PDF_QA_OUTPUT, pdf);
   }
 });
+
+test('formal commercial quote cannot be submitted before the commercial stage opens',()=>{assert.equal(canSubmitSalesCommercialQuotation(sales,{...opportunity,status:'technical_solution_in_progress'}),false);});

@@ -1,3 +1,4 @@
+import { startProjectAfterContractApproval } from './projectExecutionService.mjs';
 import { ACTIONS, transition } from '../domain/workflow.mjs';
 import { ROLES } from '../domain/roles.mjs';
 import {
@@ -943,6 +944,9 @@ export async function applyWorkflowAction({
   if (before.archivedAt && !(action===ACTIONS.CHANGE_QUOTATION_ENGINEER && actor.roles?.includes('technical_manager') && Number(before.technicalManagerId)===Number(actor.id))) {
     throw new WorkflowValidationError('Archived opportunity is read-only', 409);
   }
+  if([ACTIONS.SUBMIT_TECHNICAL_SOLUTION,ACTIONS.APPROVE_TECHNICAL_SOLUTION,ACTIONS.REJECT_TECHNICAL_SOLUTION,ACTIONS.WITHDRAW_TECHNICAL_SOLUTION].includes(action) && repositories.opportunityCollaborationRepository?.commercialReadiness){
+    throw new WorkflowValidationError('技术方案已改为工作包审批，请在技术工作包中提交、批准或退回修改，无需重复整体审批。',409);
+  }
   const contractApproval = await loadContractApprovalContext(action, opportunityId, repositories);
   const transitionOpportunity = opportunityWithContractApproval(before, contractApproval);
   const configuredPayload = await payloadWithConfiguredApprovalAssignee({ action, payload, repositories });
@@ -999,6 +1003,9 @@ export async function applyWorkflowAction({
   await persistTechnicalSolutionWithdrawal({ action, actor, opportunityId, repositories });
   await persistCommercialQuoteReviewData({ action, actor, opportunityId, payload: effectivePayload, repositories });
   await persistContractApprovalData({ action, actor, opportunityId, payload: effectivePayload, repositories, contractApproval });
+  if(action===ACTIONS.APPROVE_CONTRACT && repositories.projectExecutionRepository){
+    await startProjectAfterContractApproval(repositories,actor,effectiveAfter);
+  }
   await persistInitiationEngineeringAssignments({
     action,
     actor,

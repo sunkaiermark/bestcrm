@@ -741,7 +741,7 @@ function canUploadAttachment(user, opportunity, category) {
       return (technicalSolutionDeleteStatuses.has(opportunity.status) || commercialQuoteDeleteStatuses.has(opportunity.status))
         && (isQuotationEngineer || isSupportingTechnicalEngineer);
     case 'contract':
-      return contractDeleteStatuses.has(opportunity.status) && isSalesOwner;
+      return (opportunity.status===STATUSES.CUSTOMER_NEGOTIATION || contractDeleteStatuses.has(opportunity.status)) && isSalesOwner;
     default:
       return false;
   }

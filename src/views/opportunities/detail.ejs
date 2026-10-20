@@ -154,12 +154,12 @@
   const requirementWorkflowForms = allWorkflowForms.filter((workflowForm) => workflowForm.action === 'withdraw_initiation');
   const technicalWorkflowForms = allWorkflowForms.filter((workflowForm) => (
     (!collaborationWorkPackagesEnabled && workflowForm.action === 'change_quotation_engineer')
-    || (!usesVersionedTechnicalDrafts && ['withdraw_technical_solution', 'approve_technical_solution', 'reject_technical_solution'].includes(workflowForm.action))
+    || (!collaborationWorkPackagesEnabled && !usesVersionedTechnicalDrafts && ['withdraw_technical_solution', 'approve_technical_solution', 'reject_technical_solution'].includes(workflowForm.action))
   ));
   const commercialWorkflowForms = allWorkflowForms.filter((workflowForm) => ['withdraw_commercial_quote', 'approve_commercial_quote', 'reject_commercial_quote', 'mark_won', 'mark_lost'].includes(workflowForm.action));
   const contractWorkflowForms = allWorkflowForms.filter((workflowForm) => ['withdraw_contract_approval', 'approve_contract', 'reject_contract'].includes(workflowForm.action));
   const technicalStageWorkflowForms = [
-    ...(!usesVersionedTechnicalDrafts && technicalSubmitWorkflowForm ? [technicalSubmitWorkflowForm] : []),
+    ...(!collaborationWorkPackagesEnabled && !usesVersionedTechnicalDrafts && technicalSubmitWorkflowForm ? [technicalSubmitWorkflowForm] : []),
     ...technicalWorkflowForms
   ];
   const commercialStageWorkflowForms = [
@@ -181,13 +181,13 @@
     'customer_negotiation', 'lost_archived', 'won_contract_pending',
     'contract_approval_in_progress', 'contract_rejected', 'contract_archived'
   ]);
-  const contractStartedStatuses = new Set(['won_contract_pending', 'contract_approval_in_progress', 'contract_rejected', 'contract_archived']);
+  const contractStartedStatuses = new Set(['customer_negotiation', 'won_contract_pending', 'contract_approval_in_progress', 'contract_rejected', 'contract_archived']);
   const technicalStarted = technicalStartedStatuses.has(opportunity.status);
   const commercialStarted = commercialStartedStatuses.has(opportunity.status);
   const contractStarted = contractStartedStatuses.has(opportunity.status);
   const canDeleteTechnicalSolutionAttachments = technicalSolutionDeleteStatuses.includes(opportunity.status);
   const canDeleteCommercialQuoteAttachments = ['commercial_quote_in_progress', 'commercial_quote_rejected'].includes(opportunity.status);
-  const canDeleteContractAttachments = ['customer_negotiation', 'won_contract_pending', 'contract_rejected'].includes(opportunity.status);
+  const canDeleteContractAttachments = ['won_contract_pending', 'contract_rejected'].includes(opportunity.status);
   const contractSubmitUnavailableMessage = (() => {
     if (contractApprovalWorkflowForm || !uploadPermissions.contract || contractAttachments.length === 0) {
       return '';
@@ -524,7 +524,7 @@
                   csrfField
                 }) %>
               <% } %>
-              <% if (usesVersionedTechnicalDrafts) { %>
+              <% if (usesVersionedTechnicalDrafts && !collaborationWorkPackagesEnabled) { %>
                 <% if (canCreateUploadedTechnicalDraft) { %>
                   <form class="form-panel technical-draft-create-form" method="post" action="/opportunities/<%= opportunity.id %>/technical-drafts">
                     <%- csrfField() %>

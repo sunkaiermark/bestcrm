@@ -486,3 +486,19 @@ export async function advanceProjectReleaseWorkflow(repositories, actor, project
   });
   return next;
 }
+
+// Called only by the authorized contract approval inside its existing transaction.
+export async function startProjectAfterContractApproval(repositories, actor, opportunity) {
+  if(opportunity.status!==STATUSES.CONTRACT_ARCHIVED)throw new Error('Contract approval is required');
+  const repo=repositories.projectExecutionRepository;
+  await repo.lockOpportunity(opportunity.id);
+  const existing=await repo.findByOpportunity(opportunity.id);
+  if(existing)return {projectExecution:existing,created:false};
+  const files=await repositories.attachmentRepository.listByOpportunity(opportunity.id);
+  const contract=files.filter(f=>['contract','signed_contract'].includes(f.category)&&!f.retiredAt).sort((a,b)=>Number(b.id)-Number(a.id))[0];
+  if(!contract)throw new Error('批准合同前须上传合同文件');
+  await repo.lockSignedContract(contract.id,opportunity.id);
+  const result=await repo.createForOpportunity({opportunityId:opportunity.id,contractSignedOn:null,confirmedByUserId:actor.id,projectOwnerUserId:null,signedContractAttachmentId:contract.id});
+  if(result.created)await repo.appendAuditEvent({projectExecutionId:result.projectExecution.id,eventType:'contract_approved_project_started',actorUserId:actor.id,note:'商务合同批准后自动启动，待总经理制定执行计划；合同附件 #'+contract.id});
+  return result;
+}

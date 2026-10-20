@@ -3516,7 +3516,7 @@ test('approved commercial quote hides and blocks quote attachment deletion', asy
   }
 });
 
-test('customer negotiation keeps contract content fully collapsed until the opportunity is won', async () => {
+test('commercial approval opens contract content during customer negotiation', async () => {
   const attachment = {
     id: 57,
     opportunityId: 30,
@@ -3546,8 +3546,9 @@ test('customer negotiation keeps contract content fully collapsed until the oppo
   const detail = await agent.get('/opportunities/30');
 
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /business-section-contract business-section-future[\s\S]*Contract[\s\S]*Not started/);
-  assert.doesNotMatch(detail.text, /contract-v1\.docx|submit_contract_approval|name="category" value="contract"/);
+  assert.doesNotMatch(detail.text, /business-section-contract business-section-future/);
+  assert.match(detail.text, /contract-v1\.docx/);
+  assert.match(detail.text, /name="category" value="contract"/);
 });
 
 test('contract attachment before negotiation remains hidden with the future contract stage', async () => {

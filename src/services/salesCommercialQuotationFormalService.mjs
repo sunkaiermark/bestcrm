@@ -28,6 +28,7 @@ function fail(message, statusCode = 409) {
 }
 
 export function canSubmitSalesCommercialQuotation(user, opportunity) {
+  if(!['commercial_quote_in_progress','commercial_quote_rejected','customer_negotiation','won_contract_pending','contract_rejected'].includes(opportunity.status))return false;
   if (opportunity.archivedAt) return false;
   const isAssignedSalesperson = hasRole(user, ROLES.SALESPERSON)
     && Number(opportunity.salespersonId) === Number(user.id);

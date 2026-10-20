@@ -1,3 +1,7 @@
+import {createAttachmentRepository} from './attachmentRepository.mjs';
+import {createOpportunityTechnicalDraftRepository} from './opportunityTechnicalDraftRepository.mjs';
+import {createWorkflowEventRepository} from './workflowEventRepository.mjs';
+import {createTodoRepository} from './todoRepository.mjs';
 import {createOpportunityResponsibilityRepository} from './opportunityResponsibilityRepository.mjs';
 function mapWorkPackage(row) {
   return {
@@ -41,6 +45,66 @@ function mapVersion(row) {
 export function createOpportunityCollaborationRepository(queryTarget, { inTransaction = false } = {}) {
   return {
     supportsWorkPackages: true,
+    async commercialReadiness(opportunityId) {
+      const result=await queryTarget.query(`
+        SELECT count(*)::int AS technical_count,
+          COALESCE(bool_and(COALESCE(
+            (SELECT v.status FROM opportunity_collaboration_work_package_versions v WHERE v.work_package_id=t.id ORDER BY v.version_no DESC,v.id DESC LIMIT 1)='accepted'
+            AND EXISTS(SELECT 1 FROM opportunity_collaboration_work_packages q
+              WHERE q.opportunity_id=t.opportunity_id AND q.source_work_package_id=t.id AND q.plan_kind='internal_quote' AND q.deleted_at IS NULL
+              AND (SELECT v.status FROM opportunity_collaboration_work_package_versions v WHERE v.work_package_id=q.id ORDER BY v.version_no DESC,v.id DESC LIMIT 1)='accepted')
+          ,false)),false) AS ready
+        FROM opportunity_collaboration_work_packages t
+        WHERE t.opportunity_id=$1 AND t.plan_kind='technical_solution' AND t.deleted_at IS NULL
+      `,[opportunityId]);
+      return {technicalCount:Number(result.rows[0]?.technical_count||0),ready:result.rows[0]?.ready===true};
+    },
+    async snapshotApprovedTechnicalPackages(opportunityId, actorUserId) {
+      const result=await queryTarget.query(`
+        SELECT t.id AS package_id,v.id AS version_id,v.approved_version_no,v.reviewed_by_user_id,v.reviewed_at,a.id AS attachment_id,a.sha256,a.original_name,a.stored_path,a.mime_type,a.file_size,a.uploaded_by
+        FROM opportunity_collaboration_work_packages t
+        JOIN LATERAL (SELECT * FROM opportunity_collaboration_work_package_versions WHERE work_package_id=t.id ORDER BY version_no DESC,id DESC LIMIT 1) v ON v.status='accepted'
+        JOIN opportunity_collaboration_work_package_files f ON f.work_package_version_id=v.id
+        JOIN attachments a ON a.id=f.attachment_id AND a.retired_at IS NULL
+        WHERE t.opportunity_id=$1 AND t.plan_kind='technical_solution' AND t.deleted_at IS NULL
+        ORDER BY t.id,a.id
+      `,[opportunityId]);
+      const approvals=result.rows;
+      if(!approvals.length)throw Error('Approved technical package files are required');
+      const metadata={workPackageApprovalSnapshot:true,approvals};
+      const previous=await queryTarget.query(`SELECT id FROM opportunity_technical_drafts WHERE opportunity_id=$1 AND status='approved' AND source_metadata=$2::jsonb`,[opportunityId,JSON.stringify(metadata)]);
+      if(previous.rows.length)return Number(previous.rows[0].id);
+      const drafts=createOpportunityTechnicalDraftRepository(queryTarget);
+      const draft=await drafts.createDraft({opportunityId,templateRevisionId:null,language:'zh',templateCodeSnapshot:'WORK_PACKAGE_APPROVALS',templateNameSnapshot:'已批准技术工作包汇总',templateRevisionNoSnapshot:1,contentSchemaSnapshot:{},variableSchemaSnapshot:[],variableValues:{},selectedClauses:[],renderedContent:{},sourceMetadata:metadata,validationIssues:[],actorUserId,sourceKind:'uploaded_file',deliverableType:'technical_agreement'});
+      const ids=[];const hashes=new Set();const names=new Set();
+      const attachmentRepo=createAttachmentRepository(queryTarget);
+      for(const row of approvals){
+        if(hashes.has(row.sha256))continue;
+        hashes.add(row.sha256);
+        let name=row.original_name;
+        if(names.has(name.toLowerCase()))name=row.package_id+'-'+name;
+        names.add(name.toLowerCase());
+        const copy=await attachmentRepo.createAttachment({opportunityId,category:'technical_solution',originalName:name,storedPath:row.stored_path,mimeType:row.mime_type,fileSize:Number(row.file_size),sha256:row.sha256,uploadedBy:actorUserId});
+        ids.push(copy.id);
+      }
+      await drafts.setUploadedFiles({draftId:draft.id,attachmentIds:ids,actorUserId});
+      await queryTarget.query(`UPDATE opportunity_technical_drafts SET status='approved',formal_version_no=(SELECT COALESCE(MAX(formal_version_no),0)+1 FROM opportunity_technical_drafts WHERE opportunity_id=$1),reviewed_by=$3,reviewed_at=now(),review_comment='由工作包批准记录自动汇总，无需重复审批',updated_by=$3 WHERE id=$2`,[opportunityId,draft.id,actorUserId]);
+      await queryTarget.query(`INSERT INTO opportunity_technical_draft_events(technical_draft_id,event_type,actor_user_id,details) VALUES($1,'approved',$2,$3::jsonb)`,[draft.id,actorUserId,JSON.stringify(metadata)]);
+      return draft.id;
+    },
+    async advanceCommercialWhenReady(opportunityId, actorUserId) {
+      const before=(await queryTarget.query('SELECT id,status,quotation_engineer_id FROM opportunities WHERE id=$1 FOR UPDATE',[opportunityId])).rows[0];
+      const readiness=await this.commercialReadiness(opportunityId);
+      if(!readiness.technicalCount||!readiness.ready)return false;
+      await this.snapshotApprovedTechnicalPackages(opportunityId,actorUserId);
+      const result=await queryTarget.query(`UPDATE opportunities SET status='commercial_quote_in_progress',updated_at=now()
+        WHERE id=$1 AND archived_at IS NULL AND status IN ('technical_solution_in_progress','technical_solution_pending','technical_solution_rejected') RETURNING id`,[opportunityId]);
+      if(result.rows.length){
+        await createWorkflowEventRepository(queryTarget).create({opportunityId,eventType:'technical_and_internal_quote_approved',fromStatus:before.status,toStatus:'commercial_quote_in_progress',actorUserId,targetUserId:before.quotation_engineer_id,comment:'技术方案及对应内部报价全部批准，自动开启商务方案'});
+        if(before.quotation_engineer_id)await createTodoRepository(queryTarget).create({opportunityId,assigneeUserId:Number(before.quotation_engineer_id),title:'Prepare commercial quote'},actorUserId);
+      }
+      return result.rows.length>0;
+    },
 
     async listByOpportunity(opportunityId) {
       const [packagesResult, versionsResult, filesResult] = await Promise.all([
@@ -183,6 +247,8 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
       if(!inTransaction && typeof queryTarget.connect==='function'){
         const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client, { inTransaction: true }).reviewVersion(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
       }
+      const owner=await queryTarget.query('SELECT opportunity_id FROM opportunity_collaboration_work_packages WHERE id=$1',[input.workPackageId]);
+      if(owner.rows[0])await queryTarget.query('SELECT id FROM opportunities WHERE id=$1 FOR UPDATE',[owner.rows[0].opportunity_id]);
       await queryTarget.query('SELECT id FROM opportunity_collaboration_work_packages WHERE id=$1 FOR UPDATE',[input.workPackageId]);
       const result = await queryTarget.query(`
         WITH reviewed AS (
@@ -211,6 +277,7 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
           'collaboration_review',$4,$5 FROM opportunity_collaboration_work_packages WHERE id=$1
         ON CONFLICT(user_id,source_type,source_id) DO NOTHING
       `,[input.workPackageId,input.status,input.note||'',result.rows[0].event_id,input.reviewedByUserId]);
+      if(result.rows[0] && input.status==='accepted' && owner.rows[0])await this.advanceCommercialWhenReady(owner.rows[0].opportunity_id,input.reviewedByUserId);
       return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
     },
 

@@ -1,3 +1,5 @@
+import { createProjectExecutionRepository } from '../repositories/projectExecutionRepository.mjs';
+import { createOpportunityCollaborationRepository } from '../repositories/opportunityCollaborationRepository.mjs';
 import { createAttachmentRepository } from '../repositories/attachmentRepository.mjs';
 import { createApprovalSettingRepository } from '../repositories/approvalSettingRepository.mjs';
 import { createCommercialQuoteRepository } from '../repositories/commercialQuoteRepository.mjs';
@@ -14,6 +16,8 @@ import { createWorkflowEventRepository } from '../repositories/workflowEventRepo
 
 function createWorkflowRepositories(queryTarget) {
   return {
+    projectExecutionRepository: createProjectExecutionRepository(queryTarget),
+    opportunityCollaborationRepository: createOpportunityCollaborationRepository(queryTarget, {inTransaction:true}),
     attachmentRepository: createAttachmentRepository(queryTarget),
     approvalSettingRepository: createApprovalSettingRepository(queryTarget),
     commercialQuoteRepository: createCommercialQuoteRepository(queryTarget),
