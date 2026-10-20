@@ -63,3 +63,10 @@
   .opportunity-detail-page .collaboration-review-controls form { flex-wrap: wrap; }
   .opportunity-detail-page .collaboration-review-controls textarea { flex-basis: calc(100% - 80px); }
 }
+
+.opportunity-detail-page #technical-proposal [data-team-add] {
+  width: auto;
+  min-width: 112px;
+  padding: 4px 14px;
+  white-space: nowrap;
+}
