@@ -1272,7 +1272,10 @@ export function opportunityRoutes({
       const projectExecution=await projectExecutionRepository?.findByOpportunity(opportunity.id) || null;
       const technicalTeamAssignments=await opportunityCollaborationRepository?.listTechnicalTeam?.(opportunity.id)||[];
       const opportunitySource=await loadOpportunitySource({opportunity,user:req.currentUser,inquiryRepository,aiSourceRepository,emailArchiveRepository,aiSourceEnabled,emailCenterEnabled});
+      const technicalTeamForm = req.session.technicalTeamForm?.opportunityId === Number(opportunity.id) ? req.session.technicalTeamForm : null;
+      if (technicalTeamForm) delete req.session.technicalTeamForm;
       res.render('opportunities/detail', {
+        technicalTeamForm,
         opportunitySource,
         technicalTeamAssignments,
         technicalEngineerOptions:usersByRole[ROLES.QUOTATION_ENGINEER]||[],
@@ -1623,14 +1626,24 @@ export function opportunityRoutes({
   });
 
   router.post('/opportunities/:id/technical-team',async(req,res,next)=>{
+    let opportunity, assignments=[];
+    const showValidation = message => {
+      req.session.technicalTeamForm={opportunityId:Number(opportunity.id),assignments,message};
+      return res.redirect('/opportunities/'+opportunity.id+'#technical-proposal');
+    };
     try{
-      const opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});if(!opportunity)return;
+      opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});if(!opportunity)return;
       if(!canManageOpportunityEngineeringTeam(req.currentUser,opportunity))return res.status(403).send('Forbidden');
       const selected=Array.isArray(req.body.engineerIds)?req.body.engineerIds:req.body.engineerIds?[req.body.engineerIds]:[];
-      const assignments=selected.map(value=>({userId:requiredPositiveInteger(value),position:req.body['position_'+value]==='lead'?'lead':'support',specialty:requiredText(req.body['specialty_'+value])}));
+      assignments=selected.map(value=>({userId:requiredPositiveInteger(value),position:req.body['position_'+value]==='lead'?'lead':'support',specialty:requiredText(req.body['specialty_'+value])}));
+      const issues=[];
+      if(assignments.filter(row=>row.position==='lead').length!==1)issues.push('请在勾选的工程师中设置且仅设置一位主任工程师。');
+      if(assignments.some(row=>!row.specialty||row.specialty.length>300))issues.push('请为每位勾选的工程师填写专业内容／分工（最多300字）。');
+      if(issues.length)return showValidation(issues.join(' '));
       await opportunityCollaborationRepository.saveTechnicalTeam({opportunityId:opportunity.id,actorUserId:req.currentUser.id,assignments,canChangeLead:hasRole(req.currentUser,ROLES.TECHNICAL_MANAGER)||hasRole(req.currentUser,ROLES.SALES_MANAGER)||hasRole(req.currentUser,ROLES.ADMINISTRATOR)});
+      delete req.session.technicalTeamForm;
       res.redirect('/opportunities/'+opportunity.id+'#technical-proposal');
-    }catch(error){if(/required|Only the manager/.test(error.message))return res.status(400).send(error.message);next(error);}
+    }catch(error){if(opportunity&&/required|Only the manager/.test(error.message))return showValidation(/Only the manager/.test(error.message)?'只有经理可以更换主任工程师。':'请选择有效且在职的工程师，并完整填写职位与专业分工。');next(error);}
   });
   router.post('/opportunities/:id/technical-work-packages/:workPackageId/:operation',async(req,res,next)=>{
     try{

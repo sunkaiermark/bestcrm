@@ -19,7 +19,12 @@ test('technical team positions, submission withdrawal and deletion respect appro
  const team={_csrf:csrf(page.text),engineerIds:[lead.id,support.id],['position_'+lead.id]:'lead',['specialty_'+lead.id]:'Overall process',['position_'+support.id]:'support',['specialty_'+support.id]:'Mechanical design'};
  assert.equal((await a.post('/opportunities/'+opp.id+'/technical-team').type('form').send(team)).status,302);
  assert.equal((await repo.listTechnicalTeam(opp.id)).length,2);
- assert.equal((await a.post('/opportunities/'+opp.id+'/technical-team').type('form').send({...team,['position_'+support.id]:'lead'})).status,400);assert.equal((await repo.listTechnicalTeam(opp.id)).length,2);
+ assert.equal((await a.post('/opportunities/'+opp.id+'/technical-team').type('form').send({...team,['position_'+support.id]:'lead'})).status,302);
+ const invalidLeadPage=await a.get('/opportunities/'+opp.id);assert.equal(invalidLeadPage.status,200);assert.match(invalidLeadPage.text,/请在勾选的工程师中设置且仅设置一位主任工程师/);assert.match(invalidLeadPage.text,/technical-team-editor" open/);assert.match(invalidLeadPage.text,/value="Mechanical design"/);
+ assert.equal((await repo.listTechnicalTeam(opp.id)).length,2);
+ assert.equal((await a.post('/opportunities/'+opp.id+'/technical-team').type('form').send({...team,['specialty_'+support.id]:''})).status,302);
+ const invalidSpecialtyPage=await a.get('/opportunities/'+opp.id);assert.equal(invalidSpecialtyPage.status,200);assert.match(invalidSpecialtyPage.text,/请为每位勾选的工程师填写专业内容/);assert.match(invalidSpecialtyPage.text,new RegExp('name="specialty_'+support.id+'" value=""'));
+ assert.equal((await repo.listTechnicalTeam(opp.id)).length,2);
  async function pack(title='Synthetic work'){return repo.createWorkPackage({opportunityId:opp.id,planKind:'technical_solution',title,assigneeUserId:lead.id,createdByUserId:manager.id});}
  async function submit(wp){const f=await attachments.createAttachment({opportunityId:opp.id,category:'technical_solution',originalName:'synthetic.pdf',storedPath:'synthetic.pdf',mimeType:'application/pdf',fileSize:100,uploadedBy:lead.id,sha256:'a'.repeat(64)});const v=await repo.submitVersion({workPackageId:wp.id,submittedByUserId:lead.id,attachmentIds:[f.id]});return {f,v};}
  const action=(wp,operation,body={})=>a.post('/opportunities/'+opp.id+'/technical-work-packages/'+wp.id+'/'+operation).type('form').send({_csrf:csrf(page.text),...body});
