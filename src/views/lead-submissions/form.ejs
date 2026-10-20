@@ -8,7 +8,7 @@
     ? 'resubmitForReview'
     : pendingEditMode ? 'saveLeadChanges' : 'submitForReview';
 %>
-<%- include('../partials/app-start', { title: `${t(pageTitleKey)} - BESTCRM`, activeNav: 'lead-submissions' }) %>
+<%- include('../partials/app-start', { title: `${t(pageTitleKey)} - BESTCRM`, activeNav: 'lead-submissions', mainClass: editingMode ? '' : 'lead-create-page' }) %>
         <p class="breadcrumb"><a href="/lead-submissions"><%= t('myLeadSubmissions') %></a></p>
         <header class="page-header">
           <div>
@@ -31,14 +31,11 @@
               <% } %>
             </select>
           </label>
-          <% if (!editingMode) { %>
-            <label><%= t('leadSourceAttributionNote') %><input name="sourceAttributionNote" maxlength="500" placeholder="<%= t('leadSourceAttributionNoteHint') %>" value=""></label>
-          <% } %>
           <label><span><%= t('companyName') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input name="companyName" value="<%= submission.companyName || '' %>" required></label>
           <label><%= t('website') %><input name="companyWebsite" type="text" inputmode="url" placeholder="https://www.example.com" value="<%= submission.companyWebsite || '' %>"></label>
           <label><span><%= t('contactName') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input name="contactName" value="<%= submission.contactName || '' %>" required></label>
           <label><span><%= t('email') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input type="email" name="contactEmail" value="<%= submission.contactEmail || '' %>" required></label>
-          <label><span><%= t('phone') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input type="tel" name="contactPhone" value="<%= submission.contactPhone || '' %>" required></label>
+          <label><span><%= language === 'zh' ? '联系人电话' : 'Contact phone' %><span class="lead-required-mark" aria-hidden="true">*</span></span><input type="tel" name="contactPhone" value="<%= submission.contactPhone || '' %>" required></label>
           <label>
             <%= t('country') %>
             <select name="country">
@@ -48,9 +45,7 @@
               <% } %>
             </select>
           </label>
-          <label><%= t('productInterest') %><input name="productInterest" value="<%= submission.productInterest || '' %>"></label>
-          <%- include('../partials/product-category-picker', { record: submission, subjectInput: 'subject', requirementInput: 'requirementText', formId: '', className: '' }) %>
-          <label><%= t('opportunityType') %><input name="opportunityType" value="<%= submission.opportunityType || '' %>"></label>
+          <% if (!editingMode) { %>
           <label>
             <%= t('priority') %>
             <select name="priority" required>
@@ -59,6 +54,24 @@
               <% } %>
             </select>
           </label>
+          <% } %>
+          <% if (editingMode) { %>
+          <label><%= t('productInterest') %><input name="productInterest" value="<%= submission.productInterest || '' %>"></label>
+          <%- include('../partials/product-category-picker', { record: submission, subjectInput: 'subject', requirementInput: 'requirementText', formId: '', className: '' }) %>
+          <% } else { %>
+          <%- include('../partials/lead-product-category-inline', { record: submission }) %>
+          <% } %>
+          <label><%= t('opportunityType') %><input name="opportunityType" value="<%= submission.opportunityType || '' %>"></label>
+          <% if (editingMode) { %>
+          <label>
+            <%= t('priority') %>
+            <select name="priority" required>
+              <% for (const priority of ['low', 'normal', 'high', 'urgent']) { %>
+                <option value="<%= priority %>"<%= submission.priority === priority ? ' selected' : '' %>><%= t(`inquiryPriority.${priority}`) %></option>
+              <% } %>
+            </select>
+          </label>
+          <% } %>
           <% if (showSalesOwnerField) { %>
             <label>
               <%= t('recommendedSalesOwner') %>
@@ -79,7 +92,7 @@
               <% } %>
             </select>
           </label>
-          <label class="lead-submission-form-wide"><%= t('requirement') %><textarea name="requirementText" required><%= submission.requirementText || '' %></textarea></label>
+          <label class="lead-submission-form-wide"><%= language === 'zh' ? '需求描述' : 'Requirement description' %><textarea name="requirementText" rows="1" required><%= submission.requirementText || '' %></textarea></label>
           <% if (editingMode && (attachments || []).length) { %>
             <div class="lead-submission-form-wide">
               <strong><%= t('existingSupportingFiles') %></strong>
@@ -111,14 +124,15 @@
             data-upload-first-label="<%= t('uploadFilesBeforeSubmit') %>"
             data-upload-error-label="<%= t('fileUploadFailed') %>"
           >
-            <strong><%= t('uploadedSupportingFiles') %></strong>
-            <div class="inquiry-attachment-list lead-attachment-list lead-staged-attachment-list" id="lead-staged-attachment-list"></div>
+            <details id="lead-uploaded-files" class="lead-uploaded-files"<%= (stagedAttachments || []).length ? ' open' : '' %>>
+              <summary><%= language === 'zh' ? '已上传文件' : 'Uploaded files' %></summary>
+              <div class="inquiry-attachment-list lead-attachment-list lead-staged-attachment-list" id="lead-staged-attachment-list"></div>
+            </details>
             <div class="lead-attachment-picker">
               <label for="lead-attachment-input"><%= t('supportingFiles') %></label>
               <input type="file" id="lead-attachment-input" multiple>
               <button type="button" class="secondary-action" id="lead-attachment-upload-button"><%= t('uploadSelectedFiles') %></button>
             </div>
-            <p class="muted lead-attachment-hint"><%= t('supportingFilesHint') %> <%= maxAttachmentCount %> · <%= t('maximumPerFile') %> <%= maxUploadMb %> MB</p>
             <p class="lead-attachment-status" id="lead-attachment-status" role="status" aria-live="polite"></p>
           </div>
           <% if (resubmissionMode) { %>
@@ -135,6 +149,7 @@
             const uploadButton = document.getElementById('lead-attachment-upload-button');
             const submitButton = document.getElementById('lead-submit-button');
             const list = document.getElementById('lead-staged-attachment-list');
+            const uploadedFiles = document.getElementById('lead-uploaded-files');
             const status = document.getElementById('lead-attachment-status');
             const requirement = form?.classList.contains('lead-submission-form-new')
               ? form.querySelector('textarea[name="requirementText"]')
@@ -143,7 +158,7 @@
               const resizeRequirement = () => {
                 requirement.style.height = 'auto';
                 const borderHeight = requirement.offsetHeight - requirement.clientHeight;
-                requirement.style.height = `${Math.max(200, requirement.scrollHeight + borderHeight)}px`;
+                requirement.style.height = `${Math.max(34, requirement.scrollHeight + borderHeight)}px`;
               };
               requirement.addEventListener('input', resizeRequirement);
               window.addEventListener('resize', resizeRequirement);
@@ -190,6 +205,7 @@
 
             const renderAttachments = () => {
               list.replaceChildren();
+              if (uploadedFiles) uploadedFiles.open = attachments.length > 0;
               if (!attachments.length) {
                 const empty = document.createElement('p');
                 empty.className = 'empty-state';

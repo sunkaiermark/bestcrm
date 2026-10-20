@@ -1,0 +1,15 @@
+<% const chosen = Array.isArray(record?.confirmedProductCategoryCodes) ? record.confirmedProductCategoryCodes : []; %>
+
+<div class="lead-category-inline" data-lead-category-inline>
+  <label for="lead-product-category-select"><%= t('productCategories') %></label>
+  <select id="lead-product-category-select" aria-label="<%= t('productCategories') %>">
+    <option value=""><%= language==='zh'?'选择产品分类':'Select product category' %></option>
+    <% for (const category of productCategories) { %><option value="<%= category.code %>"><%= category.label %></option><% } %>
+  </select>
+  <button type="button" data-lead-category-confirm><%= language==='zh'?'确认':'Confirm' %></button>
+  <div class="lead-category-confirmed" data-lead-category-confirmed aria-live="polite" data-remove-label="<%= language==='zh'?'取消分类':'Remove category' %>">
+    <% for (const code of chosen) { %><span class="status"><span><%= productCategoryLabel(code) %></span><input type="hidden" name="confirmedProductCategoryCodes" value="<%= code %>"><button type="button" aria-label="<%= language==='zh'?'取消分类':'Remove category' %> <%= productCategoryLabel(code) %>">×</button></span><% } %>
+  </div>
+  <input type="hidden" name="productCategoriesSubmitted" value="1">
+</div>
+<script src="/assets/lead-product-category-inline.js" defer></script>
