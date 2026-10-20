@@ -1,4 +1,5 @@
 <% const isWebsiteForm = inquiry.source === 'website'; %>
+<link rel="stylesheet" href="/assets/lead-management.css">
 <%- include('../partials/app-start', { title: `${inquiry.subject || t(isWebsiteForm ? 'websiteForm' : 'inquiry')} - BESTCRM`, activeNav: 'inquiries' }) %>
         <% const formatFileSize = (bytes) => { const value = Number(bytes || 0); if (value >= 1024 * 1024) return `${(value / 1024 / 1024).toFixed(1)} MB`; if (value >= 1024) return `${(value / 1024).toFixed(1)} KB`; return `${value} B`; }; %>
         <p class="breadcrumb"><a href="/inquiries"><%= t(isWebsiteForm ? 'websiteForms' : 'inquiries') %></a></p>

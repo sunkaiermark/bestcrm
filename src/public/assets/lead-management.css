@@ -1,0 +1,51 @@
+.lead-lifecycle-form, .lead-follow-up-form { gap: 0; }
+/* Keep each management field label beside its control. */
+.lead-lifecycle-form .inquiry-form-grid,
+.lead-follow-up-form .inquiry-form-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 16px;
+  padding: 8px 14px 0;
+}
+.lead-lifecycle-form .inquiry-form-grid > label,
+.lead-follow-up-form .inquiry-form-grid > label {
+  display: grid;
+  grid-template-columns: 148px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  min-width: 0;
+}
+.lead-lifecycle-form .inquiry-field-wide,
+.lead-follow-up-form .inquiry-field-wide { grid-column: 1 / -1; }
+.lead-lifecycle-form .inquiry-form-grid :is(input, select, textarea),
+.lead-follow-up-form .inquiry-form-grid :is(input, select, textarea) {
+  box-sizing: border-box;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  height: 34px;
+  min-height: 34px;
+  padding: 4px 8px;
+}
+.lead-lifecycle-form textarea,
+.lead-follow-up-form textarea { resize: vertical; }
+.lead-lifecycle-form .inquiry-primary-actions,
+.lead-follow-up-form .inquiry-primary-actions { margin-top: 8px; padding: 0 14px 8px; }
+@media (max-width: 900px) {
+  .lead-lifecycle-form .inquiry-form-grid,
+  .lead-follow-up-form .inquiry-form-grid { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 480px) {
+  .lead-lifecycle-form .inquiry-form-grid > label,
+  .lead-follow-up-form .inquiry-form-grid > label { grid-template-columns: 120px minmax(0, 1fr); }
+}
+
+.lead-lifecycle-section,
+.lead-lifecycle-section h2,
+.lead-lifecycle-section h3,
+.lead-lifecycle-section label,
+.lead-lifecycle-section input,
+.lead-lifecycle-section select,
+.lead-lifecycle-section textarea,
+.lead-lifecycle-section button { font-size: 16px; }
