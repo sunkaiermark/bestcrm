@@ -1,3 +1,4 @@
+import { organizeEmailRequirement } from '../utils/emailRequirement.mjs';
 import { createHash } from 'node:crypto';
 import { suggestProductCategoryCode, suggestProductInterest } from '../domain/productCategories.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
@@ -834,7 +835,7 @@ function conversionDraftFromThread(thread) {
   const sourceMessage = inboundSourceMessage(thread);
   if (!sourceMessage) throw new EmailArchiveError('Inbound source message is required', 409);
   const subject = sourceMessage.subject || thread.subject || '';
-  const requirement = sourceMessage.textBody || subject || 'Email request';
+  const requirement = organizeEmailRequirement(sourceMessage.textBody, subject || 'Email request');
   return {
     emailThreadId: thread.id,
     subject,
@@ -990,7 +991,7 @@ function inquiryInputFromThread(thread, actor) {
     productInterest: suggestProductInterest({ subject: sourceMessage.subject, requirementText: sourceMessage.textBody }),
     productCategoryCode: suggestProductCategoryCode({ subject: sourceMessage.subject, requirementText: sourceMessage.textBody }),
     opportunityType: '',
-    requirementText: sourceMessage.textBody || sourceMessage.subject || thread.subject || 'Email inquiry',
+    requirementText: organizeEmailRequirement(sourceMessage.textBody, sourceMessage.subject || thread.subject || 'Email inquiry'),
     rawPayload: {
       emailThreadId: thread.id,
       emailMessageId: sourceMessage.id,

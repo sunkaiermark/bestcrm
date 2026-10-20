@@ -1,3 +1,4 @@
+import { organizeEmailRequirement } from '../utils/emailRequirement.mjs';
 import { simpleParser } from 'mailparser';
 import { isInquiryPriority } from '../domain/inquiries.mjs';
 import { suggestProductCategoryCode } from '../domain/productCategories.mjs';
@@ -154,7 +155,7 @@ export function normalizeEmailInquiryPayload(parsed = {}, meta = {}) {
     productInterest: fieldFromBody(body, ['Product', 'Product Interest', 'Equipment', '产品', '设备']),
     productCategoryCode: suggestProductCategoryCode({ subject, requirementText: body }),
     opportunityType: fieldFromBody(body, ['Opportunity Type', 'Project Type', '商机类型', '项目类型']),
-    requirementText: body || subject,
+    requirementText: organizeEmailRequirement(body, subject),
     rawPayload: {
       mailbox: text(meta.mailbox || 'INBOX'),
       uid: meta.uid || null,

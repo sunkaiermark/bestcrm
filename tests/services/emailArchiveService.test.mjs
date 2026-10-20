@@ -856,6 +856,8 @@ test('manual inquiry conversion is atomic idempotent and records one audit event
 
 test('email intake context prefills a lead and converted mail becomes a lead instead of an inquiry', async () => {
   const memory = triageMemory();
+  const archivedBody = 'Hi Jason,\n\nPlease quote\n\nRegards,\nBuyer\nCONFIDENTIALITY NOTICE: private';
+  memory.thread.messages[0].textBody = archivedBody;
   const leads = [];
   const users = [
     { id: 2, displayName: 'Manager', isActive: true, roles: [ROLES.SALES_MANAGER] },
@@ -887,6 +889,7 @@ test('email intake context prefills a lead and converted mail becomes a lead ins
   assert.equal(context.draft.sourceChannel, 'email');
   assert.equal(context.draft.contactEmail, 'buyer@example.com');
   assert.equal(context.draft.requirementText, 'Please quote');
+  assert.equal(memory.thread.messages[0].textBody, archivedBody);
 
   const first = await convertEmailThreadToLead(dependencies, actor, 30, {
     submissionToken: '05ab97d9-7bc5-4db0-973a-d68315c4ae8c',
@@ -905,6 +908,8 @@ test('email intake context prefills a lead and converted mail becomes a lead ins
   assert.equal(leads[0].submissionType, 'sales_lead');
   assert.equal(leads[0].sourceChannel, 'email');
   assert.equal(leads[0].rawPayload.emailThreadId, 30);
+  assert.equal(leads[0].requirementText, 'Please quote one mixer');
+  assert.equal(memory.thread.messages[0].textBody, archivedBody);
   assert.equal(memory.thread.triageStatus, 'converted_lead');
   assert.equal(memory.events[0].eventType, 'converted_lead');
 });
