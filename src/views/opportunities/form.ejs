@@ -156,7 +156,7 @@
             <%= t('opportunityType') %>
             <select name="projectType" form="opportunity-form">
               <option value=""><%= t('selectProjectType') %></option>
-              <% const projectTypeOptions = ['新增', '扩建', '改造', '维修']; %>
+              <% const projectTypeOptions = ['新增', '扩建', '改造维修']; %>
               <% if (opportunity.projectType && !projectTypeOptions.includes(opportunity.projectType)) { %>
                 <option value="<%= opportunity.projectType %>" selected><%= opportunity.projectType %></option>
               <% } %>

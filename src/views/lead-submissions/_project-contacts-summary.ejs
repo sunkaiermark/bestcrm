@@ -1,0 +1,4 @@
+<% const savedContacts = savedAnalysis.projectContacts || []; %>
+<% if (savedContacts.length) { %><details class="lead-project-contacts lead-project-contacts-saved"><summary>项目联系人（<%= savedContacts.length %>）</summary><div class="lead-project-contact-table"><table><thead><tr><th>联系人</th><th>所属公司</th><th>项目职责</th><th>邮箱</th><th>来源</th></tr></thead><tbody>
+<% for (const person of savedContacts) { %><tr><td title="<%= person.name %>"><%= person.name %></td><td title="<%= person.company %>"><%= person.company || '待确认' %></td><td title="<%= person.role %>"><%= person.role || '待确认' %></td><td title="<%= person.emails.join('; ') %>"><%= person.emails.join('; ') || '待确认' %></td><td title="<%= person.evidence || '' %>"><%= person.source === 'ai_email' ? '来源邮件' : '人工录入' %></td></tr><% } %>
+</tbody></table></div></details><% } %>

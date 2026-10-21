@@ -1,0 +1,9 @@
+<% const projectContacts = submission.rawPayload?.leadAnalysis?.projectContacts || []; %>
+<details class="lead-submission-form-wide lead-project-contacts" id="lead-project-contacts">
+<summary>项目联系人（<span id="lead-project-contact-count"><%= projectContacts.length %></span>）</summary>
+<input type="hidden" name="projectContacts" id="lead-project-contacts-value" value="<%= JSON.stringify(projectContacts) %>">
+<div class="lead-project-contact-table"><table><colgroup><col style="width:15%"><col style="width:20%"><col style="width:20%"><col style="width:30%"><col style="width:15%"></colgroup><thead><tr><th>联系人</th><th>所属公司</th><th>项目职责</th><th>邮箱（可多个）</th><th>来源／操作</th></tr></thead><tbody id="lead-project-contact-rows"></tbody></table></div>
+<div class="lead-project-contact-actions"><button type="button" id="lead-project-contact-add">添加联系人</button><button type="button" id="lead-project-contact-main" class="secondary-action">加入主联系人</button></div>
+<p id="lead-project-contact-status" role="status"></p>
+</details>
+<script src="/assets/lead-project-contacts.js" defer></script>

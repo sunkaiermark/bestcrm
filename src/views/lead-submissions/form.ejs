@@ -63,7 +63,7 @@
           <% } else { %>
           <%- include('../partials/lead-product-category-inline', { record: submission }) %>
           <% } %>
-          <label><%= t('opportunityType') %><input name="opportunityType" value="<%= submission.opportunityType || '' %>"></label>
+          <%- include('_opportunity-type') %>
           <% if (editingMode) { %>
           <label>
             <%= t('priority') %>
@@ -94,6 +94,7 @@
               <% } %>
             </select>
           </label>
+          <%- include('_project-contacts') %>
           <%- include('_analysis-fields') %>
           <label class="lead-submission-form-wide"><%= language === 'zh' ? '需求描述' : 'Requirement description' %><textarea name="requirementText" rows="1" required><%= submission.requirementText || '' %></textarea></label>
           <%- include('_analysis-report') %>

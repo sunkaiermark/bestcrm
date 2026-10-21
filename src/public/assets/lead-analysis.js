@@ -22,6 +22,7 @@
   try{const result=await api('analyze',{consent:true,email:byId('lead-ai-email')?.value||''});
    const map={company:'companyName',website:'companyWebsite',contact:'contactName',email:'contactEmail',phone:'contactPhone',country:'country',transactionRole:'transactionRole',endUserName:'endUserName',endUserWebsite:'endUserWebsite',projectLocation:'projectLocation'};
    for(const [key,name]of Object.entries(map)){const control=field(name),value=result.fields[key]?.value;if(!control||!value)continue;if(control instanceof HTMLSelectElement&&!Array.from(control.options).some(option=>option.value===value))continue;control.value=value;}
+   byId('lead-project-contacts')?.dispatchEvent(new CustomEvent('lead-ai-contacts',{detail:result.contacts||[]}));
    field('requirementText').value=result.requirement;grow(field('requirementText'));clearReport();usedAi=true;dialog.close();
    const qualification={qualified:'具备潜在线索特征',uncertain:'需要人工判断',non_business:'可能属于非业务邮件'};
    notice((qualification[result.qualification]||'待人工判断')+'：'+result.reason+' 请审阅后按现有流程提交。');

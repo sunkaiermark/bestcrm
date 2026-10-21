@@ -1,0 +1,6 @@
+<label><%= t('opportunityType') %><select name="opportunityType">
+<option value=""><%= t('selectProjectType') %></option>
+<% const leadTypeOptions = ['新增', '扩建', '改造维修']; %>
+<% if (submission.opportunityType && !leadTypeOptions.includes(submission.opportunityType)) { %><option value="<%= submission.opportunityType %>" selected><%= submission.opportunityType %></option><% } %>
+<% for (const value of leadTypeOptions) { %><option value="<%= value %>"<%= submission.opportunityType === value ? ' selected' : '' %>><%= value %></option><% } %>
+</select></label>
