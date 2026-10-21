@@ -97,6 +97,7 @@
           <%- include('_analysis-fields') %>
           <label class="lead-submission-form-wide"><%= language === 'zh' ? '需求描述' : 'Requirement description' %><textarea name="requirementText" rows="1" required><%= submission.requirementText || '' %></textarea></label>
           <%- include('_analysis-report') %>
+          <%- include('_source-email-attachments') %>
           <% if (editingMode && (attachments || []).length) { %>
             <div class="lead-submission-form-wide">
               <strong><%= t('existingSupportingFiles') %></strong>

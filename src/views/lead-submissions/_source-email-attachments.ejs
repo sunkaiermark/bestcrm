@@ -1,0 +1,10 @@
+<% const sourceFiles = typeof sourceEmailAttachments !== 'undefined' ? sourceEmailAttachments : []; %>
+<% if (sourceFiles.length) { %>
+<details class="lead-submission-form-wide lead-source-email-files" open>
+<summary>来源邮件附件（<%= sourceFiles.length %>）</summary>
+<% for (const file of sourceFiles) { %>
+<div class="lead-source-email-file"><span title="<%= file.originalName %>"><%= file.originalName %></span><span><a href="/email-center/attachments/<%= file.id %>/preview" target="_blank" rel="noopener">预览</a> <a href="/email-center/attachments/<%= file.id %>/download">下载</a></span></div>
+<% } %>
+<p class="muted">保留在来源邮件中，无需重复上传；当前AI整理仅使用正文，尚未读取附件内容。</p>
+</details>
+<% } %>

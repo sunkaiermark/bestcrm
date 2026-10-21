@@ -1,7 +1,7 @@
 (() => {
  const form=document.getElementById('lead-submission-form'),dialog=document.getElementById('lead-ai-dialog');if(!form||!dialog)return;
  const byId=id=>document.getElementById(id),field=name=>form.elements.namedItem(name),report=field('customerAnalysisReport');
- const notice=message=>{byId('lead-ai-status').textContent=message;byId('lead-ai-dialog-status').textContent=message;};
+ const notice=message=>{byId('lead-ai-status').textContent=message;byId('lead-ai-dialog-status').textContent=message;if(byId('lead-ai-report-status'))byId('lead-ai-report-status').textContent=message;};
  const contextNames=['companyName','companyWebsite','transactionRole','endUserName','endUserWebsite','projectLocation'];
  const context=()=>Object.fromEntries(contextNames.map(name=>[name,field(name)?.value||'']));
  const csrf=()=>form.querySelector('[name=_csrf]')?.value||'';
@@ -31,8 +31,8 @@
   if(!byId('lead-ai-search-consent').checked){dialog.showModal();return notice('请先勾选允许使用询价方和最终用户信息进行联网调查，然后点击完成，再生成报告。');}
   const input=context(),snapshot=JSON.stringify(input),request=++reportRequest;
   if(!input.companyName&&!input.companyWebsite)return notice('请先填写询价方公司名称或官网。');
-  setBusy(true);notice('正在调查客户和最终用户，请稍候…');
-  try{const result=await api('research',{consent:true,context:input});if(snapshot!==JSON.stringify(context())||request!==reportRequest)throw Error('客户信息已变化，请重新生成报告。');report.value=result.text;usedAi=true;renderReport();notice(result.notice||'报告已生成，请人工核对来源与结论。');}catch(error){notice(error.message);}finally{setBusy(false);}
+  setBusy(true);byId('lead-ai-research').textContent='生成中…';byId('lead-analysis-document').setAttribute('aria-busy','true');notice('正在联网调查客户和最终用户，通常需要30–90秒，请勿重复点击。');
+  try{const result=await api('research',{consent:true,context:input});if(snapshot!==JSON.stringify(context())||request!==reportRequest)throw Error('客户信息已变化，请重新生成报告。');report.value=result.text;usedAi=true;renderReport();notice(result.notice||'报告已生成，请人工核对来源与结论。');}catch(error){notice('报告未生成：'+error.message);}finally{setBusy(false);byId('lead-ai-research').textContent='生成报告';byId('lead-analysis-document').removeAttribute('aria-busy');}
  });
  form.addEventListener('input',event=>{if(event.target.matches('textarea')&&!event.target.hidden)grow(event.target);if(contextNames.includes(event.target.name)&&report.value){clearReport();notice('客户或交易关系已变化，旧报告已清空，请重新生成。');}});
  form.addEventListener('change',event=>{if(!contextNames.includes(event.target.name))return;if(field('transactionRole').value==='end_user'){field('endUserName').value=field('companyName').value;field('endUserWebsite').value=field('companyWebsite').value;}if(report.value){clearReport();notice('交易关系已变化，请重新生成报告。');}});

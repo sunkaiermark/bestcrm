@@ -1,3 +1,4 @@
+import { sourceEmailAttachments } from '../services/leadEmailAttachments.mjs';
 import { createLeadAiIntegration } from '../services/leadAiIntegration.mjs';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
@@ -660,6 +661,7 @@ export function leadSubmissionRoutes({
         attachments: [],
         attachmentDraftToken,
         stagedAttachments: [],
+        sourceEmailAttachments: sourceEmailAttachments(emailContext?.thread),
         emailThreadId: emailContext?.thread.id || null,
         submissionToken: randomUUID(),
         sourceChannels: SALES_LEAD_SOURCE_CHANNELS,
@@ -735,12 +737,19 @@ export function leadSubmissionRoutes({
         req.currentUser
       );
       const attachments = await inquiryAttachmentRepository.listByInquiry(submission.id);
+      let sourceThread = null;
+      const sourceThreadId = Number(submission.rawPayload?.emailThreadId || 0);
+      if (sourceThreadId > 0) {
+        try { sourceThread = (await getEmailThreadIntakeContext(emailDependencies, req.currentUser, sourceThreadId)).thread; }
+        catch (error) { if (!(error instanceof EmailArchiveError) || ![403,404].includes(error.statusCode)) throw error; }
+      }
       const attachmentDraftToken = await issueLeadAttachmentDraft(req);
       res.render('lead-submissions/form', {
         submission,
         attachments,
         attachmentDraftToken,
         stagedAttachments: [],
+        sourceEmailAttachments: sourceEmailAttachments(sourceThread),
         emailThreadId: null,
         submissionToken: '',
         sourceChannels: SALES_LEAD_SOURCE_CHANNELS,
