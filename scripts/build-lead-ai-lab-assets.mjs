@@ -7,7 +7,7 @@ const template=fs.readFileSync('src/views/lead-submissions/form.ejs','utf8');
 const start=template.indexOf('<form class="form-panel');
 const end=template.indexOf('<% if (editingMode && (attachments',start);
 if(start<0||end<0)throw Error('Lead form template unavailable');
-let fragment=template.slice(start,end);
+let fragment=template.slice(start,end).replace(/<%- include\('_analysis-(?:fields|report)'\) %>/g,'');
 fragment=fragment.replace(/method="post" action="[\s\S]*?" id="lead-submission-form"/,'id="lead-submission-form"');
 let form=ejs.render(fragment,{editingMode:false,formAction:'',submission:{sourceChannel:'email',priority:'normal'},submissionToken:'',attachmentDraftToken:'',emailThreadId:'',csrfField:()=>'',sourceChannels:['email','exhibition','referral','other'],countryOptions:CUSTOMER_COUNTRIES,productCategories:PRODUCT_CATEGORIES,productCategoryLabel,language:'zh',t:createTranslator('zh'),showSalesOwnerField:false,salespeople:[],reviewManagers:[{id:'lab-review',displayName:'实验审核经理'}]},{filename:'src/views/lead-submissions/form.ejs'});
 const requirementIndex=form.indexOf('name="requirementText"');

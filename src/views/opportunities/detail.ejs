@@ -266,6 +266,7 @@
         <% if (opportunity.archivedAt) { %><p class="user-line"><%= t('archivedRecord') %><% if (opportunity.archiveReason) { %>: <%= opportunity.archiveReason %><% } %></p><% } %>
 
         <div class="section-stack">
+<% if (typeof opportunitySource !== 'undefined' && opportunitySource?.leadAnalysis) { %><link rel="stylesheet" href="/assets/lead-analysis.css"><section class="content-section"><%- include('../lead-submissions/_analysis-summary', { analysis: opportunitySource.leadAnalysis }) %></section><% } %>
         <% if (typeof developmentLinks !== 'undefined' && developmentLinks.length) { %>
           <section class="content-section" aria-labelledby="opportunity-development-heading">
             <h2 id="opportunity-development-heading"><%= language === 'zh' ? '关联研发课题' : 'Linked development topics' %></h2>

@@ -9,12 +9,14 @@
     : pendingEditMode ? 'saveLeadChanges' : 'submitForReview';
 %>
 <%- include('../partials/app-start', { title: `${t(pageTitleKey)} - BESTCRM`, activeNav: 'lead-submissions', mainClass: editingMode ? '' : 'lead-create-page' }) %>
+<link rel="stylesheet" href="/assets/lead-analysis.css">
         <p class="breadcrumb"><a href="/lead-submissions"><%= t('myLeadSubmissions') %></a></p>
         <header class="page-header">
           <div>
             <h1><%= t(pageTitleKey) %></h1>
             <% if (editingMode) { %><p class="muted"><%= t(noticeKey) %></p><% } %>
           </div>
+          <% if (typeof leadAiEnabled !== 'undefined' && leadAiEnabled) { %><button type="button" id="lead-ai-open">AI整理</button><% } %>
         </header>
 
         <form class="form-panel lead-submission-form<%= editingMode ? '' : ' lead-submission-form-new' %>" method="post" action="<%= formAction || '/lead-submissions' %>" id="lead-submission-form">
@@ -92,7 +94,9 @@
               <% } %>
             </select>
           </label>
+          <%- include('_analysis-fields') %>
           <label class="lead-submission-form-wide"><%= language === 'zh' ? '需求描述' : 'Requirement description' %><textarea name="requirementText" rows="1" required><%= submission.requirementText || '' %></textarea></label>
+          <%- include('_analysis-report') %>
           <% if (editingMode && (attachments || []).length) { %>
             <div class="lead-submission-form-wide">
               <strong><%= t('existingSupportingFiles') %></strong>
@@ -299,4 +303,5 @@
             renderAttachments();
           })();
         </script>
+<%- include('_analysis-dialog') %>
 <%- include('../partials/app-end') %>

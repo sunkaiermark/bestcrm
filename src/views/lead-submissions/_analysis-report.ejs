@@ -1,0 +1,11 @@
+<% const reportAnalysis = submission.rawPayload?.leadAnalysis || {}; %>
+<div class="lead-analysis-report lead-submission-form-wide">
+  <label for="customer-analysis-report">客户分析报告</label>
+  <div class="lead-analysis-report-content">
+    <textarea id="customer-analysis-report" name="customerAnalysisReport" rows="1" maxlength="30000" placeholder="生成后请审阅或修改"><%= reportAnalysis.customerAnalysisReport || '' %></textarea>
+    <article id="lead-analysis-document" hidden></article><button type="button" id="lead-analysis-edit" hidden>编辑报告</button>
+  </div>
+  <% if (typeof leadAiEnabled !== 'undefined' && leadAiEnabled) { %><button type="button" id="lead-ai-research">生成报告</button><% } %>
+  <button type="button" id="lead-analysis-read">朗读</button>
+</div>
+<input type="hidden" name="aiReviewed" value="">

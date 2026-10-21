@@ -8,7 +8,7 @@ export async function loadOpportunitySource({ opportunity, user, inquiryReposito
   const leadUrl = lead.submissionType==='sales_lead'
     ? (canViewLeadSubmission(user, lead) ? `/lead-submissions/${lead.id}` : null)
     : (canViewInquiry(user) ? `/inquiries/${lead.id}` : null);
-  const result = { leadId: lead.id, leadUrl, kind: 'unknown', creatorName: '', createdAt: null, links: [] };
+  const result = { leadId: lead.id, leadUrl, leadAnalysis: leadUrl ? lead.rawPayload?.leadAnalysis || null : null, kind: 'unknown', creatorName: '', createdAt: null, links: [] };
   // Origin follows the persisted lead relationship, not an opportunity link or payload label.
   const origins = await aiSourceRepository?.findOriginsByLead?.(lead.id) || [];
   if (origins.length) {

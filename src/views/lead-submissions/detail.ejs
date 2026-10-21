@@ -85,6 +85,8 @@
           </dl>
         </section>
 
+        <link rel="stylesheet" href="/assets/lead-analysis.css">
+        <%- include('_analysis-summary', { analysis: submission.rawPayload?.leadAnalysis }) %>
         <% if (canManageLifecycle || canRecordFollowUp || relatedLeads.length || managementEvents.length) { %>
           <section class="content-section lead-lifecycle-section">
             <h2><%= t('leadLifecycle') %></h2>

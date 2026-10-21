@@ -1,4 +1,3 @@
-import { leadAiTrialRoutes } from './routes/leadAiTrialRoutes.mjs';
 import ejs from 'ejs';
 import { loadAiSourceConfig } from './integrations/sunkaier-ai/config.mjs';
 import { createAiSourceRepository } from './integrations/sunkaier-ai/repository.mjs';
@@ -1023,7 +1022,7 @@ export function createApp(options = {}) {
   }
   app.use(aiSourceRoutes({ enabled: aiConfig.workspaceEnabled, repository: aiRepository, userRepository, evidenceRoot: aiConfig.evidenceRoot }));
   app.use(contactRoutes({ customerRepository, contactRepository }));
-  app.use('/lead-ai-trial', leadAiTrialRoutes({ env: options.leadAiTrialEnv || process.env }));
+  app.get('/lead-ai-trial', (req, res) => res.redirect('/lead-submissions/new'));
   app.use(leadSubmissionRoutes({
     approvalSettingRepository,
     inquiryRepository,

@@ -1,0 +1,5 @@
+<% const leadAnalysis = submission.rawPayload?.leadAnalysis || {}; %>
+<label class="lead-analysis-field">本次交易角色<select name="transactionRole"><% for (const [value, label] of Object.entries({unknown:'待确认',end_user:'最终用户',agent:'代理商／经销商',epc:'工程公司／EPC',procurement:'采购服务商'})) { %><option value="<%= value %>"<%= (leadAnalysis.transactionRole || 'unknown') === value ? ' selected' : '' %>><%= label %></option><% } %></select></label>
+<label class="lead-analysis-field">最终用户<input name="endUserName" value="<%= leadAnalysis.endUserName || '' %>" maxlength="200" placeholder="企业全称；未披露可留空"></label>
+<label class="lead-analysis-field">最终用户官网<input name="endUserWebsite" value="<%= leadAnalysis.endUserWebsite || '' %>" maxlength="300" placeholder="https://"></label>
+<label class="lead-analysis-field">项目地点<input name="projectLocation" value="<%= leadAnalysis.projectLocation || '' %>" maxlength="200" placeholder="国家／地区或项目现场"></label>

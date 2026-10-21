@@ -580,6 +580,7 @@ export function createInquiryRepository(queryTarget) {
           product_category_reviewed_at = CASE WHEN confirmed_product_category_codes IS DISTINCT FROM $18::text[] THEN now() ELSE product_category_reviewed_at END,
           opportunity_type = $11,
           requirement_text = $12,
+          raw_payload = COALESCE(raw_payload, '{}'::jsonb) || $20::jsonb,
           priority = $13,
           assigned_user_id = $14,
           recommended_salesperson_id = $15,
@@ -611,7 +612,8 @@ export function createInquiryRepository(queryTarget) {
         input.actorUserId,
         input.productCategoryCode || '',
         input.confirmedProductCategoryCodes || [],
-        input.productCategoryReviewedBy || input.actorUserId || null
+        input.productCategoryReviewedBy || input.actorUserId || null,
+        JSON.stringify(input.rawPayload || {})
       ]);
       return mapInquiryRow(result.rows[0]);
     },
@@ -635,6 +637,7 @@ export function createInquiryRepository(queryTarget) {
           product_category_reviewed_at = CASE WHEN confirmed_product_category_codes IS DISTINCT FROM $18::text[] THEN now() ELSE product_category_reviewed_at END,
           opportunity_type = $11,
           requirement_text = $12,
+          raw_payload = COALESCE(raw_payload, '{}'::jsonb) || $20::jsonb,
           priority = $13,
           assigned_user_id = $14,
           recommended_salesperson_id = $15,
@@ -663,7 +666,8 @@ export function createInquiryRepository(queryTarget) {
         input.actorUserId,
         input.productCategoryCode || '',
         input.confirmedProductCategoryCodes || [],
-        input.productCategoryReviewedBy || input.actorUserId || null
+        input.productCategoryReviewedBy || input.actorUserId || null,
+        JSON.stringify(input.rawPayload || {})
       ]);
       return mapInquiryRow(result.rows[0]);
     },

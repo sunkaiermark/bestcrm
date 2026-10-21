@@ -1,3 +1,4 @@
+import { normalizeLeadAnalysis, LEAD_AI_AUDIT } from '../domain/leadAnalysis.mjs';
 import { ROLES, hasRole } from '../domain/roles.mjs';
 import { confirmedProductCategoriesFromInput, resolveProductCategoryCode, suggestProductInterest } from '../domain/productCategories.mjs';
 import { ACTIONS } from '../domain/workflow.mjs';
@@ -118,6 +119,7 @@ export function listEligibleQuotationEngineers(users = []) {
 export function normalizeLeadSubmissionInput(input, actor) {
   const sourceChannel = isSalesLeadSourceChannel(input.sourceChannel) ? input.sourceChannel : 'other';
   const submissionToken = text(input.submissionToken);
+  const leadAnalysis = normalizeLeadAnalysis(input, actor, input[LEAD_AI_AUDIT]?.previous || {});
   const emailThreadId = numberOrNull(input.emailThreadId);
   const recommendedSalespersonId = hasRole(actor, ROLES.SALESPERSON)
     ? Number(actor.id)
@@ -144,6 +146,7 @@ export function normalizeLeadSubmissionInput(input, actor) {
     requirementText: text(input.requirementText),
     rawPayload: {
       intakeKind: 'sales_lead',
+      ...(Object.keys(leadAnalysis).length ? { leadAnalysis } : {}),
       sourceChannel,
       ...(Number.isInteger(emailThreadId) && emailThreadId > 0 ? { emailThreadId } : {})
     },
@@ -171,10 +174,12 @@ function normalizeLeadResubmissionInput(input, actor, current) {
     ...input,
     confirmedProductCategoryCodes: confirmedProductCategoriesFromInput(input, current.confirmedProductCategoryCodes),
     submissionToken: '00000000-0000-0000-0000-000000000000',
+    [LEAD_AI_AUDIT]: { ...(input[LEAD_AI_AUDIT] || {}), previous: current.rawPayload?.leadAnalysis || {} },
     emailThreadId: current.rawPayload?.emailThreadId
   }, actor);
   return {
     ...normalized,
+    rawPayload: { ...current.rawPayload, ...normalized.rawPayload },
     actorUserId: Number(actor.id)
   };
 }

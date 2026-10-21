@@ -1,3 +1,4 @@
+import { createLeadAiIntegration } from '../services/leadAiIntegration.mjs';
 import { randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { mkdir, readFile, readdir, rename, rm, stat } from 'node:fs/promises';
@@ -380,6 +381,7 @@ export function leadSubmissionRoutes({
   workflowEventRepository = null,
   todoRepository = null,
   emailArchiveTransaction = null,
+  leadAiEnv = process.env,
   sharedAddress = 'sales@sunkaier.com',
   uploadDir = './var/uploads',
   maxUploadMb = 3072
@@ -515,6 +517,14 @@ export function leadSubmissionRoutes({
     }
     next();
   });
+
+  const leadAi = createLeadAiIntegration({ env: leadAiEnv,
+    validateForm: (req, token) => Boolean(leadAttachmentDraft(req, token)),
+    loadEmail: (req, id) => getEmailThreadIntakeContext(emailDependencies, req.currentUser, id),
+    loadLead: async (req, id) => { const lead = await loadVisibleSubmission(dependencies, req.currentUser, id); return lead && canEditLeadSubmission(req.currentUser, lead) ? lead : null; }
+  });
+  router.use(leadAi.router);
+  router.use('/lead-submissions', (req, res, next) => { res.locals.leadAiEnabled = leadAi.enabled(); next(); });
 
   router.post(
     '/lead-submissions/attachment-drafts/:draftToken',
@@ -674,15 +684,16 @@ export function leadSubmissionRoutes({
         res.status(403).send('Invalid CSRF token');
         return;
       }
+      const reviewedInput = await leadAi.prepareSubmission(req, req.body);
       const emailThreadId = Number(req.body.emailThreadId || 0);
       const inquiry = Number.isInteger(emailThreadId) && emailThreadId > 0
         ? (await convertEmailThreadToLead(
             emailDependencies,
             req.currentUser,
             emailThreadId,
-            req.body
+            reviewedInput
           )).lead
-        : await submitSalesLead({ inquiryRepository, userRepository }, req.currentUser, req.body);
+        : await submitSalesLead({ inquiryRepository, userRepository }, req.currentUser, reviewedInput);
       if (inquiry.wasDuplicate) {
         await discardLeadAttachmentDraft(req, String(req.body.attachmentDraftToken || ''));
       } else {
@@ -760,7 +771,7 @@ export function leadSubmissionRoutes({
         dependencies,
         req.currentUser,
         req.params.id,
-        req.body
+        await leadAi.prepareSubmission(req, req.body)
       );
       await finalizeLeadAttachmentDraft(req, submission.id);
       res.redirect(`/lead-submissions/${submission.id}`);
@@ -779,7 +790,7 @@ export function leadSubmissionRoutes({
         dependencies,
         req.currentUser,
         req.params.id,
-        req.body
+        await leadAi.prepareSubmission(req, req.body)
       );
       await finalizeLeadAttachmentDraft(req, submission.id);
       res.redirect(`/lead-submissions/${submission.id}`);
