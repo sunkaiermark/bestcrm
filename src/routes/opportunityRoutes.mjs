@@ -1278,6 +1278,7 @@ export function opportunityRoutes({
       const technicalTeamForm = req.session.technicalTeamForm?.opportunityId === Number(opportunity.id) ? req.session.technicalTeamForm : null;
       if (technicalTeamForm) delete req.session.technicalTeamForm;
       res.render('opportunities/detail', {
+        technicalPackageAdded: req.query.workPackageAdded === '1',
         technicalTeamForm,
         opportunitySource,
         technicalTeamAssignments,
@@ -1624,7 +1625,7 @@ export function opportunityRoutes({
         plannedSubmitDate,
         createdByUserId: req.currentUser.id
       });
-      res.redirect(redirectToOpportunity(opportunity.id));
+      res.redirect(redirectToOpportunity(opportunity.id) + '?workPackageAdded=1#technical-work-packages');
     } catch (error) {
       next(error);
     }
@@ -1686,7 +1687,7 @@ export function opportunityRoutes({
         ||(requiredText(req.body.plannedStartDate)&&!plannedStartDate)||(requiredText(req.body.plannedSubmitDate)&&!plannedSubmitDate)
         ||(plannedStartDate&&plannedSubmitDate&&plannedSubmitDate<plannedStartDate))return res.status(400).send('Work package, active responsible engineer and valid dates are required');
       await opportunityCollaborationRepository.updateWorkPackage({id:workPackage.id,opportunityId:opportunity.id,title,assigneeUserId,plannedStartDate,plannedSubmitDate,actorUserId:req.currentUser.id});
-      res.redirect(redirectToOpportunity(opportunity.id));
+      res.redirect(redirectToOpportunity(opportunity.id) + '#technical-work-packages');
     }catch(error){next(error);}
   });
 

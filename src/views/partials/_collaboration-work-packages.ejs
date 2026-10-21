@@ -26,7 +26,7 @@
   <div class="section-body">
     <%- include('_technical-engineering-team',{teamMembers,opportunity,canManageCollaborationWorkPackages}) %>
 
-    <div class="collaboration-work-package-scroll">
+    <div class="collaboration-work-package-scroll" id="technical-work-packages">
       <table class="collaboration-work-package-table">
         <colgroup><col class="collaboration-package-title"><col class="collaboration-package-owner"><col class="collaboration-package-date"><col class="collaboration-package-date"><col class="collaboration-package-file"><col class="collaboration-package-submit-time"><col class="collaboration-package-version"><col class="collaboration-package-status"><col class="collaboration-package-actions"></colgroup>
         <thead><tr>
@@ -68,7 +68,7 @@
 
 
     <% if (canManageCollaborationWorkPackages) { %>
-      <details class="technical-add-package"><summary><%= language==='zh'?'新增工作包':'New work package' %></summary>
+      <details class="technical-add-package"<%= typeof technicalPackageAdded !== 'undefined' && technicalPackageAdded ? ' open' : '' %>><summary><%= language==='zh'?'新增工作包':'New work package' %></summary>
       <form class="collaboration-control-form" method="post" action="/opportunities/<%= opportunity.id %>/collaboration-work-packages">
         <%- csrfField() %><input type="hidden" name="planKind" value="<%= planKind %>">
         <table class="collaboration-control-table"><colgroup><col style="width:30%"><col style="width:24%"><col style="width:17%"><col style="width:17%"><col style="width:12%"></colgroup>

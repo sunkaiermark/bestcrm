@@ -4712,3 +4712,12 @@ test('legal reviewer can see contract approval records and approve from detail p
     ['closeTodos', 30, 'completed']
   ]);
 });
+
+ test('work package saves return to package list and keep new entry form open', async()=>{
+ const created=[],updated=[];
+ const {agent}=await createLoggedInAgent({csrfProtection:true,user:{roles:[ROLES.ADMINISTRATOR]},opportunityRepository:{async getOpportunityDetail(){return {id:30,title:'Work packages',opportunityNo:'TEST',customerId:10,customerName:'Acme',salespersonId:7,quotationEngineerId:3,quotationEngineerDisplayName:'Quotation Engineer',status:STATUSES.TECHNICAL_SOLUTION_IN_PROGRESS,requirement:'Synthetic test'};}},opportunityCollaborationRepository:{supportsWorkPackages:true,async listByOpportunity(){return [];},async createWorkPackage(input){created.push(input);return {id:91};},async findWorkPackageById(){return {id:91,opportunityId:30,planKind:'technical_solution'};},async updateWorkPackage(input){updated.push(input);return {id:91};}}});
+ const page=await agent.get('/opportunities/30');assert.equal(page.status,200);const token=extractCsrfToken(page.text);
+ const result=await agent.post('/opportunities/30/collaboration-work-packages').type('form').send({_csrf:token,planKind:'technical_solution',title:'Mixer',assigneeUserId:3});assert.equal(result.status,302);assert.equal(result.headers.location,'/opportunities/30?workPackageAdded=1#technical-work-packages');assert.equal(created.length,1);
+ const returned=await agent.get(result.headers.location);assert.equal(returned.status,200);assert.match(returned.text,/id="technical-work-packages"/);assert.match(returned.text,/<details class="technical-add-package" open>/);assert.doesNotMatch(page.text,/<details class="technical-add-package" open>/);
+ const saved=await agent.post('/opportunities/30/collaboration-work-packages/91/update').type('form').send({_csrf:extractCsrfToken(returned.text),title:'Updated Mixer',assigneeUserId:3});assert.equal(saved.status,302);assert.equal(saved.headers.location,'/opportunities/30#technical-work-packages');assert.equal(updated.length,1);
+ });
