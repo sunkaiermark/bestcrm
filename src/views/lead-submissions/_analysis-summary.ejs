@@ -1,8 +1,9 @@
 <% const savedAnalysis = (typeof analysis !== 'undefined' && analysis) || {}; const roleNames={unknown:'待确认',end_user:'最终用户',agent:'代理商／经销商',epc:'工程公司／EPC',procurement:'采购服务商'}; %>
 <% if (savedAnalysis.transactionRole || savedAnalysis.endUserName || savedAnalysis.customerAnalysisReport) { %>
+<div class="lead-analysis-summary<%= savedAnalysis.customerAnalysisReport ? ' has-report' : '' %>">
 <dl class="lead-summary-narrative lead-analysis-facts">
-<div><dt>本次交易角色</dt><dd><%= roleNames[savedAnalysis.transactionRole] || '待确认' %></dd></div>
-<div><dt>最终用户</dt><dd><%= savedAnalysis.endUserName || '未披露／待确认' %></dd></div>
+<div><dt>本次交易角色</dt><dd title="<%= roleNames[savedAnalysis.transactionRole] || '待确认' %>"><%= roleNames[savedAnalysis.transactionRole] || '待确认' %></dd></div>
+<div><dt>最终用户</dt><dd title="<%= savedAnalysis.endUserName || '未披露／待确认' %>"><%= savedAnalysis.endUserName || '未披露／待确认' %></dd></div>
 <% if (savedAnalysis.endUserWebsite) { %><div><dt>最终用户官网</dt><dd><%= savedAnalysis.endUserWebsite %></dd></div><% } %>
 <% if (savedAnalysis.projectLocation) { %><div><dt>项目地点</dt><dd><%= savedAnalysis.projectLocation %></dd></div><% } %>
 </dl>
@@ -16,5 +17,6 @@
 </article>
 </details>
 <% } %>
+</div>
 <% } %>
 <%- include('_project-contacts-summary', { savedAnalysis }) %>

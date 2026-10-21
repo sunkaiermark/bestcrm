@@ -1,4 +1,5 @@
-<%- include('../partials/app-start', { title: `${t('systemUsers')} - BESTCRM`, activeNav: 'system-users' }) %>
+<%- include('../partials/app-start', { title: `${t('systemUsers')} - BESTCRM`, activeNav: 'system-users', mainClass: 'system-users-page' }) %>
+        <link rel="stylesheet" href="/assets/system-users.css">
         <header class="page-header">
           <div>
             <h1><%= t('systemUsers') %></h1>
@@ -12,7 +13,7 @@
 
         <section class="list-section">
           <div class="list-body">
-            <table class="list-table content-fit-table">
+            <table class="list-table system-users-table">
               <thead>
                 <tr>
                   <th><%= t('user') %></th>
@@ -31,41 +32,41 @@
               <tbody>
                 <% for (const user of users) { %>
                   <tr>
-                    <td><%= user.displayName %></td>
-                    <td><%= user.username %></td>
-                    <td>
-                      <div class="role-list">
+                    <td data-label="<%= t('user') %>"><span class="system-user-value" title="<%= user.displayName %>"><%= user.displayName %></span></td>
+                    <td data-label="<%= t('username') %>"><span class="system-user-value" title="<%= user.username %>"><%= user.username %></span></td>
+                    <td data-label="<%= t('roles') %>">
+                      <div class="role-list" title="<%= user.roles.join(', ') %>">
                         <% for (const role of user.roles) { %>
-                          <div class="role-list-item"><%= role %></div>
+                          <div class="role-list-item" title="<%= role %>"><%= role %></div>
                         <% } %>
                       </div>
                     </td>
-                    <td><%= user.email || '-' %></td>
-                    <td><%= user.personalMailboxAddress || '-' %></td>
-                    <td><%= user.phone || '-' %></td>
-                    <td><span class="status"><%= user.isActive ? t('active') : t('inactive') %></span></td>
-                    <td>
+                    <td data-label="<%= t('email') %>"><span class="system-user-value" title="<%= user.email || '-' %>"><%= user.email || '-' %></span></td>
+                    <td data-label="<%= t('personalCrmMailbox') %>"><span class="system-user-value" title="<%= user.personalMailboxAddress || '-' %>"><%= user.personalMailboxAddress || '-' %></span></td>
+                    <td data-label="<%= t('phone') %>"><span class="system-user-value" title="<%= user.phone || '-' %>"><%= user.phone || '-' %></span></td>
+                    <td data-label="<%= t('status') %>"><span class="status"><%= user.isActive ? t('active') : t('inactive') %></span></td>
+                    <td data-label="<%= t('multiFactorAuthentication') %>"><div class="system-security-inline">
                       <% if (authenticatorMfaEnabled) { %>
                         <span class="status"><%= t(`adminMfaStatus.${user.mfa.status}`) %></span>
                         <% if (user.mfa.isRequired) { %><div class="muted"><%= t('mfaRequired') %></div><% } %>
                       <% } else { %>
-                        <span class="muted"><%= t('authenticatorFeatureDisabledAdmin') %></span>
+                        <span class="muted" title="<%= t('authenticatorFeatureDisabledAdmin') %>"><%= language === 'zh' ? '未启用' : 'Disabled' %></span>
                       <% } %>
-                      <a class="secondary-action" href="/system/users/<%= user.id %>/security"><%= t('manageSecurity') %></a>
+                      <a class="secondary-action" href="/system/users/<%= user.id %>/security" title="<%= t('manageSecurity') %>"><%= t('manageSecurity') %></a></div>
                     </td>
                     <% if (canManageUsers) { %>
-                      <td class="actions-cell">
+                      <td class="actions-cell" data-label="<%= t('actions') %>">
                         <div class="inline-actions system-actions">
-                          <a class="secondary-action" href="/system/users/<%= user.id %>/edit"><%= t('edit') %></a>
+                          <a class="secondary-action" href="/system/users/<%= user.id %>/edit" title="<%= t('edit') %>"><%= t('edit') %></a>
                           <form method="post" action="/system/users/<%= user.id %>/reset-password" onsubmit="const password = prompt('<%= t('resetPasswordPrompt') %>'); if (!password) return false; this.elements.password.value = password; return confirm('<%= t('resetPasswordConfirm') %>');">
                             <%- csrfField() %>
                             <input name="password" type="hidden">
-                            <button class="secondary-action" type="submit"><%= t('resetPassword') %></button>
+                            <button class="secondary-action" type="submit" title="<%= t('resetPassword') %>"><%= t('resetPassword') %></button>
                           </form>
                           <% if (user.login.isLocked) { %>
                             <form method="post" action="/system/users/<%= user.id %>/unlock-login" onsubmit="return confirm('<%= t('unlockLoginConfirm') %>')">
                               <%- csrfField() %>
-                              <button class="secondary-action" type="submit"><%= t('unlockLogin') %></button>
+                              <button class="secondary-action" type="submit" title="<%= t('unlockLogin') %>"><%= t('unlockLogin') %></button>
                             </form>
                           <% } else { %>
                             <span class="status"><%= t('loginUnlocked') %></span>
@@ -73,7 +74,7 @@
                           <% if (user.isActive) { %>
                             <form method="post" action="/system/users/<%= user.id %>/delete" onsubmit="return confirm('<%= t('deleteUserConfirm') %>')">
                               <%- csrfField() %>
-                              <button class="danger-action" type="submit"><%= t('delete') %></button>
+                              <button class="danger-action" type="submit" title="<%= t('delete') %>"><%= t('delete') %></button>
                             </form>
                           <% } %>
                         </div>
