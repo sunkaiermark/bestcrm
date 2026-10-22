@@ -72,6 +72,7 @@
             <dt><%= t('leadNextFollowUpOn') %></dt><dd><%= submission.leadNextFollowUpOn || '-' %></dd>
             <dt><%= t('companyName') %></dt><dd><%= submission.companyName || '-' %></dd>
             <dt><%= t('website') %></dt><dd><%= submission.companyWebsite || submission.matchedCustomerWebsite || '-' %></dd>
+            <% if (submission.rawPayload?.companyAddress) { %><dt>公司地址</dt><dd><%= submission.rawPayload.companyAddress %></dd><% } %>
             <dt><%= t('contactName') %></dt><dd><%= submission.contactName || '-' %></dd>
             <dt><%= t('email') %></dt><dd><%= submission.contactEmail || '-' %></dd>
             <dt><%= t('phone') %></dt><dd><%= submission.contactPhone || '-' %></dd>
@@ -87,6 +88,7 @@
 
         <link rel="stylesheet" href="/assets/lead-analysis.css">
         <%- include('_analysis-summary', { analysis: submission.rawPayload?.leadAnalysis }) %>
+        <% if (typeof canManageCustomerReport !== 'undefined' && canManageCustomerReport) { %><%- include('_saved-report-editor') %><% } %>
         <% if (canManageLifecycle || canRecordFollowUp || relatedLeads.length || managementEvents.length) { %>
           <section class="content-section lead-lifecycle-section">
             <h2><%= t('leadLifecycle') %></h2>

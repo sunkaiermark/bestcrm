@@ -1,3 +1,4 @@
+import { PRODUCT_CATEGORIES } from './productCategories.mjs';
 import { normalizeProjectContacts, projectContactKey } from './projectContacts.mjs';
 import { createHash } from 'node:crypto';
 export const LEAD_AI_AUDIT = Symbol('serverLeadAiAudit');
@@ -5,7 +6,12 @@ export const TRANSACTION_ROLES = Object.freeze({unknown:'待确认',end_user:'�
 const names=['transactionRole','endUserName','endUserWebsite','projectLocation','customerAnalysisReport'];
 const text=(value,max)=>String(value||'').trim().slice(0,max);
 export function customerAnalysisContext(input={}) {
-  return Object.fromEntries(['companyName','companyWebsite','transactionRole','endUserName','endUserWebsite','projectLocation'].map(name=>[name,text(input[name],name.includes('Website')?300:200)]));
+  const values = Array.isArray(input.confirmedProductCategoryCodes) ? input.confirmedProductCategoryCodes : input.confirmedProductCategoryCodes ? [input.confirmedProductCategoryCodes] : [];
+  return { ...Object.fromEntries(['companyName','companyWebsite','transactionRole','endUserName','endUserWebsite','projectLocation'].map(name=>[name,text(input[name],name.includes('Website')?300:200)])),
+    subject: text(input.subject, 300), productInterest: text(input.productInterest, 2000),
+    requirementText: text(input.requirementText, 10000),
+    confirmedProductCategoryCodes: PRODUCT_CATEGORIES.filter(category=>values.includes(category.code)).map(category=>category.code) };
+
 }
 export function analysisContextHash(input) { return createHash('sha256').update(JSON.stringify(customerAnalysisContext(input))).digest('hex'); }
 export function normalizeLeadAnalysis(input,actor,previous={}) {

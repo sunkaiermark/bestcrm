@@ -1,3 +1,4 @@
+import { canManageConvertedLeadReport, savedLeadReportRevision, saveConvertedLeadReport } from '../services/leadCustomerReportService.mjs';
 import { sourceEmailAttachments } from '../services/leadEmailAttachments.mjs';
 import { createLeadAiIntegration } from '../services/leadAiIntegration.mjs';
 import { randomUUID } from 'node:crypto';
@@ -23,7 +24,7 @@ import {
   CustomerApprovalRequiredError
 } from '../services/inquiryService.mjs';
 import { DuplicateContactError } from '../services/contactService.mjs';
-import { DuplicateCustomerError } from '../services/customerService.mjs';
+import { DuplicateCustomerError, canViewCustomer } from '../services/customerService.mjs';
 import { canViewOpportunity } from '../services/opportunityService.mjs';
 import {
   approveSalesLead,
@@ -290,6 +291,9 @@ async function renderLeadDetailPage(dependencies, req, res, submission, {
     canManageLifecycle: canManageLeadLifecycle(req.currentUser, submission),
     canRecordFollowUp: canRecordLeadFollowUp(req.currentUser, submission),
     canEdit: canEditLeadSubmission(req.currentUser, submission),
+    canManageCustomerReport: canManageConvertedLeadReport(req.currentUser, submission),
+    customerReportRevision: savedLeadReportRevision(submission),
+    customerReportSaved: req.query.reportSaved === '1',
     canEditCategories: hasRole(req.currentUser, ROLES.ADMINISTRATOR)
       || hasRole(req.currentUser, ROLES.SALES_MANAGER)
       || Number(submission.createdBy) === Number(req.currentUser.id),
@@ -522,6 +526,7 @@ export function leadSubmissionRoutes({
   const leadAi = createLeadAiIntegration({ env: leadAiEnv,
     validateForm: (req, token) => Boolean(leadAttachmentDraft(req, token)),
     loadEmail: (req, id) => getEmailThreadIntakeContext(emailDependencies, req.currentUser, id),
+    loadReportLead: (req, id) => loadVisibleSubmission(dependencies, req.currentUser, id),
     loadLead: async (req, id) => { const lead = await loadVisibleSubmission(dependencies, req.currentUser, id); return lead && canEditLeadSubmission(req.currentUser, lead) ? lead : null; }
   });
   router.use(leadAi.router);
@@ -637,6 +642,40 @@ export function leadSubmissionRoutes({
     }
   });
 
+  router.get('/lead-submissions/customer-options', async (req, res, next) => {
+    try {
+      res.set('Cache-Control', 'private, no-store');
+      const searchTerm = String(req.query.q || '').trim();
+      if (!searchTerm) return res.json({ customers: [] });
+      if (searchTerm.length > 120) return res.status(400).json({ error: 'Search term is too long' });
+      const filter = { searchTerm, archiveScope: 'active', limit: 15,
+        ...(hasRole(req.currentUser, ROLES.ADMINISTRATOR) ? {} : { coordinatorUserId: Number(req.currentUser.id) }) };
+      const matches = typeof customerRepository?.listCustomers === 'function'
+        ? await customerRepository.listCustomers(filter) : [];
+      res.json({ customers: matches.filter(customer => !customer.archivedAt && canViewCustomer(req.currentUser, customer))
+        .slice(0, 15).map(customer => ({ id: customer.id, name: customer.name,
+          customerCode: customer.customerCode || '', website: customer.website || '' })) });
+    } catch (error) { next(error); }
+  });
+
+  router.get('/lead-submissions/customer-options/:customerId', async (req, res, next) => {
+    try {
+      res.set('Cache-Control', 'private, no-store');
+      const id = Number(req.params.customerId);
+      if (!Number.isSafeInteger(id) || id <= 0) return res.status(400).json({ error: 'Invalid customer' });
+      const customer = await customerRepository?.getCustomerDetail?.(id);
+      if (!customer || customer.archivedAt || customer.mergedIntoId) return res.status(404).json({ error: 'Customer not found' });
+      if (!canViewCustomer(req.currentUser, customer)) return res.status(403).json({ error: 'Forbidden' });
+      const contacts = typeof contactRepository?.listContacts === 'function'
+        ? await contactRepository.listContacts({ customerId: id, archiveScope: 'active' }) : [];
+      res.json({ customer: { id: customer.id, name: customer.name, customerCode: customer.customerCode || '',
+        website: customer.website || '', address: customer.address || '', country: customer.country || '' },
+        contacts: contacts.filter(contact => Number(contact.customerId) === id && !contact.archivedAt && !contact.mergedIntoId)
+          .map(contact => ({ id: contact.id, name: contact.name || '', title: contact.title || '',
+            phone: contact.phone || '', email: contact.email || '' })) });
+    } catch (error) { next(error); }
+  });
+
   router.get('/lead-submissions/new', async (req, res, next) => {
     try {
       scheduleLeadAttachmentDraftCleanup(uploadDir);
@@ -718,6 +757,19 @@ export function leadSubmissionRoutes({
     } catch (error) {
       next(error);
     }
+  });
+
+  router.post('/lead-submissions/:id/customer-report', async (req, res, next) => {
+    try {
+      if (!csrfValid(req)) return res.status(403).send('Invalid CSRF token');
+      const lead = await loadVisibleSubmission(dependencies, req.currentUser, req.params.id);
+      if (!lead) return res.status(404).send('Lead submission not found');
+      await saveConvertedLeadReport(inquiryRepository, req.currentUser, lead, req.body,
+        req.session.leadCustomerReportDrafts?.[lead.id]);
+      if (req.session.leadCustomerReportDrafts) delete req.session.leadCustomerReportDrafts[lead.id];
+      await saveSession(req);
+      res.redirect('/lead-submissions/' + lead.id + '?reportSaved=1#lead-customer-report');
+    } catch (error) { handleLeadError(error, res, next); }
   });
 
   router.get('/lead-submissions/:id/edit', async (req, res, next) => {

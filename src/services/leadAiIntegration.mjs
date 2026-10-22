@@ -1,10 +1,11 @@
 import { Router } from 'express';
-import { createHash } from 'node:crypto';
+import { canManageConvertedLeadReport, savedLeadReportContext, savedLeadReportRevision } from './leadCustomerReportService.mjs';
+import { randomUUID, createHash } from 'node:crypto';
 import { callAnalysis, researchCustomer } from './leadAiProvider.mjs';
-import { LEAD_AI_AUDIT, analysisContextHash } from '../domain/leadAnalysis.mjs';
+import { LEAD_AI_AUDIT, analysisContextHash, customerAnalysisContext } from '../domain/leadAnalysis.mjs';
 const fingerprint=text=>createHash('sha256').update(text).digest('hex');
 const save=req=>new Promise((resolve,reject)=>req.session.save(error=>error?reject(error):resolve()));
-export function createLeadAiIntegration({env=process.env,loadEmail,loadLead,validateForm,analyze=callAnalysis,research=researchCustomer}) {
+export function createLeadAiIntegration({env=process.env,loadEmail,loadLead,loadReportLead,validateForm,analyze=callAnalysis,research=researchCustomer}) {
  const router=Router(),counts=new Map();let busy=false;
  const enabled=()=>Boolean(env.LAB_ARK_API_KEY);
  const state=req=>req.session.leadAiDrafts ||= {};
@@ -30,6 +31,21 @@ export function createLeadAiIntegration({env=process.env,loadEmail,loadLead,vali
  }
  function put(req,value){const all=state(req);all[token(req)]={...all[token(req)],...value,actorId:req.currentUser.id};const keys=Object.keys(all);for(const key of keys.slice(0,Math.max(0,keys.length-8)))delete all[key];}
  const handle=run=>async(req,res)=>{try{if(req.csrfProtectionEnabled!==false&&!req.validateCsrf?.())return res.status(403).json({error:'页面已过期，请刷新后重试。'});await run(req,res);}catch(error){res.status(400).json({error:error.message?.slice(0,250)||'AI处理失败，请人工填写。'});}};
+ router.post('/lead-submissions/:id/customer-report/generate',handle(async(req,res)=>{
+  const lead=await loadReportLead?.(req,Number(req.params.id));
+  if(!lead||!canManageConvertedLeadReport(req.currentUser,lead))return res.status(403).json({error:'Forbidden'});
+  if(req.body.consent!==true)throw Error('请先确认允许使用询价方和最终用户公开信息进行联网调查。');
+  const revision=savedLeadReportRevision(lead),input=savedLeadReportContext(lead);
+  if(req.body.reportRevision!==revision)throw Error('线索内容已有更新，请刷新后重试。');
+  const fields={company:{value:input.companyName},website:{value:input.companyWebsite},transactionRole:{value:input.transactionRole},endUserName:{value:input.endUserName},endUserWebsite:{value:input.endUserWebsite},projectLocation:{value:input.projectLocation},requirement:{value:input.requirementText},product:{value:input.productInterest},subject:{value:input.subject},productCategories:{value:input.confirmedProductCategoryCodes}};
+  const report=await paid(req,()=>research(fields,{env}));
+  const current=await loadReportLead(req,Number(req.params.id));
+  if(!current||!canManageConvertedLeadReport(req.currentUser,current)||savedLeadReportRevision(current)!==revision)throw Error('线索内容已有更新，请刷新后重新生成。');
+  const drafts=req.session.leadCustomerReportDrafts ||= {};
+  const token=randomUUID();drafts[lead.id]={token,leadId:lead.id,actorId:req.currentUser.id,revision,report};
+  for(const id of Object.keys(drafts).slice(0,Math.max(0,Object.keys(drafts).length-8)))delete drafts[id];
+  await save(req);res.json({...report,token});
+ }));
  router.post('/lead-submissions/ai/analyze',handle(async(req,res)=>{
   if(req.body.consent!==true)throw Error('请先确认允许将邮件提交至豆包。');
   const input=await source(req);
@@ -42,7 +58,7 @@ export function createLeadAiIntegration({env=process.env,loadEmail,loadLead,vali
   if(req.body.consent!==true)throw Error('请先确认允许使用询价方和最终用户公开信息进行联网调查。');
   if(!validateForm(req,token(req)))throw Error('表单已过期，请重新打开。');
   const leadId=Number(req.body.leadId||0);if(leadId&&!await loadLead(req,leadId))throw Error('无权编辑这条线索。');
-  const input=req.body.context||{},fields={company:{value:input.companyName},website:{value:input.companyWebsite},transactionRole:{value:input.transactionRole},endUserName:{value:input.endUserName},endUserWebsite:{value:input.endUserWebsite},projectLocation:{value:input.projectLocation}};
+  const input=customerAnalysisContext(req.body.context||{}),fields={company:{value:input.companyName},website:{value:input.companyWebsite},transactionRole:{value:input.transactionRole},endUserName:{value:input.endUserName},endUserWebsite:{value:input.endUserWebsite},projectLocation:{value:input.projectLocation},requirement:{value:input.requirementText},product:{value:input.productInterest},subject:{value:input.subject},productCategories:{value:input.confirmedProductCategoryCodes}};
   const report=await paid(req,()=>research(fields,{env}));
   put(req,{report:{...report,contextHash:analysisContextHash(input),leadId}});await save(req);res.json(report);
  }));

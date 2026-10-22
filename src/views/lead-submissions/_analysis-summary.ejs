@@ -10,9 +10,9 @@
 <% if (savedAnalysis.customerAnalysisReport) { %>
 <details class="lead-analysis-saved"><summary>客户分析报告</summary>
 <article class="lead-analysis-saved-report">
-<% const headings=['执行摘要','交易角色与采购关系','最终用户分析','项目关联判断','待核实事项','建议行动','信息来源']; %>
-<% for (const line of savedAnalysis.customerAnalysisReport.split('\n').filter(value=>value.trim())) { const clean=line.trim().replace(/^#+\s*/,'').replace(/^(?:[一二三四五六七]+、|\d+[.、)]\s*)/,''); const index=headings.indexOf(clean); %>
-<% if (index >= 0) { %><h3><%= ['一、','二、','三、','四、','五、','六、','七、'][index]+clean %></h3><% } else { %><p><%= line %></p><% } %>
+<% const headings=['执行摘要','交易角色与采购关系','最终用户分析','胜开尔产品结合度','项目关联判断','待核实事项','建议行动','信息来源']; %>
+<% for (const line of savedAnalysis.customerAnalysisReport.split('\n').filter(value=>value.trim())) { const clean=line.trim().replace(/^#+\s*/,'').replace(/^(?:[一二三四五六七八九十]+、|\d+[.、)]\s*)/,''); const index=headings.indexOf(clean); %>
+<% if (index >= 0) { %><h3><%= ['一、','二、','三、','四、','五、','六、','七、','八、'][index]+clean %></h3><% } else { %><p><%= line %></p><% } %>
 <% } %>
 </article>
 </details>

@@ -618,6 +618,25 @@ export function createInquiryRepository(queryTarget) {
       return mapInquiryRow(result.rows[0]);
     },
 
+    async updateConvertedLeadReport(id, input) {
+      const result = await queryTarget.query(`
+        UPDATE inquiries
+        SET raw_payload = jsonb_set(COALESCE(raw_payload, '{}'::jsonb), '{leadAnalysis}', $2::jsonb),
+            updated_at = now()
+        WHERE id = $1 AND submission_type = 'sales_lead' AND status = 'converted'
+          AND converted_opportunity_id = $3
+          AND COALESCE(raw_payload->'leadAnalysis', '{}'::jsonb) = $4::jsonb
+          AND COALESCE(company_name, '') = $5 AND COALESCE(company_website, '') = $6
+          AND COALESCE(requirement_text, '') = $7 AND COALESCE(product_interest, '') = $8
+          AND COALESCE(subject, '') = $9
+          AND COALESCE(confirmed_product_category_codes, '{}'::text[]) = $10::text[]
+        RETURNING *
+      `, [id, JSON.stringify(input.analysis), input.convertedOpportunityId,
+        JSON.stringify(input.previousAnalysis), input.companyName, input.companyWebsite,
+        input.requirementText, input.productInterest, input.subject, input.confirmedProductCategoryCodes]);
+      return mapInquiryRow(result.rows[0]);
+    },
+
     async updatePendingLead(id, input) {
       const result = await queryTarget.query(`
         UPDATE inquiries

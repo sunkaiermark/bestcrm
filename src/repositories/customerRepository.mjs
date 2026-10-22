@@ -180,11 +180,17 @@ export function createCustomerRepository(queryTarget) {
           OR c.website ILIKE ${searchParam} ESCAPE '\\'
         )`);
       }
+      let limitSql = '';
+      if (Number.isSafeInteger(filter.limit) && filter.limit > 0) {
+        params.push(Math.min(filter.limit, 100));
+        limitSql = 'LIMIT $' + params.length;
+      }
       const result = await queryTarget.query(`
         ${customerSelect}
         ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
         GROUP BY c.id, coordinator.display_name, coordinator.username
         ORDER BY c.created_at DESC, c.id DESC
+        ${limitSql}
       `, params);
       return result.rows.map(mapCustomerRow);
     },

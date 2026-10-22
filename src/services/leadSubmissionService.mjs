@@ -146,6 +146,7 @@ export function normalizeLeadSubmissionInput(input, actor) {
     requirementText: text(input.requirementText),
     rawPayload: {
       intakeKind: 'sales_lead',
+      ...(Object.hasOwn(input, 'companyAddress') ? { companyAddress: text(input.companyAddress).slice(0, 1000) } : {}),
       ...(Object.keys(leadAnalysis).length ? { leadAnalysis } : {}),
       sourceChannel,
       ...(Number.isInteger(emailThreadId) && emailThreadId > 0 ? { emailThreadId } : {})

@@ -10,6 +10,7 @@
 %>
 <%- include('../partials/app-start', { title: `${t(pageTitleKey)} - BESTCRM`, activeNav: 'lead-submissions', mainClass: editingMode ? '' : 'lead-create-page' }) %>
 <link rel="stylesheet" href="/assets/lead-analysis.css">
+<link rel="stylesheet" href="/assets/lead-company-lookup.css">
         <p class="breadcrumb"><a href="/lead-submissions"><%= t('myLeadSubmissions') %></a></p>
         <header class="page-header">
           <div>
@@ -33,11 +34,16 @@
               <% } %>
             </select>
           </label>
-          <label><span><%= t('companyName') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input name="companyName" value="<%= submission.companyName || '' %>" required></label>
+          <label class="lead-company-field"><span><%= t('companyName') %><span class="lead-required-mark" aria-hidden="true">*</span></span><span class="lead-company-lookup" data-lead-company-lookup>
+            <input name="companyName" value="<%= submission.companyName || '' %>" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="lead-company-options" aria-label="<%= t('companyName') %>" placeholder="输入公司名称关键词查询" required>
+            <ul id="lead-company-options" role="listbox" aria-label="现有公司" hidden></ul>
+            <span class="lead-company-search-status" role="status" aria-live="polite"></span>
+          </span></label>
           <label><%= t('website') %><input name="companyWebsite" type="text" inputmode="url" placeholder="https://www.example.com" value="<%= submission.companyWebsite || '' %>"></label>
-          <label><span><%= t('contactName') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input name="contactName" value="<%= submission.contactName || '' %>" required></label>
+          <label><span><%= t('contactName') %><span class="lead-required-mark" aria-hidden="true">*</span></span><span class="lead-company-contact-field"><input name="contactName" value="<%= submission.contactName || '' %>" required><select data-lead-existing-contact aria-label="选择该公司的联系人" hidden><option value="">选择该公司的联系人</option></select></span></label>
           <label><span><%= t('email') %><span class="lead-required-mark" aria-hidden="true">*</span></span><input type="email" name="contactEmail" value="<%= submission.contactEmail || '' %>" required></label>
           <label><span><%= language === 'zh' ? '联系人电话' : 'Contact phone' %><span class="lead-required-mark" aria-hidden="true">*</span></span><input type="tel" name="contactPhone" value="<%= submission.contactPhone || '' %>" required></label>
+          <label class="lead-submission-form-wide lead-company-address"><span>公司地址</span><input name="companyAddress" maxlength="1000" value="<%= submission.rawPayload?.companyAddress || '' %>"></label>
           <label>
             <%= t('country') %>
             <select name="country">
@@ -305,5 +311,6 @@
             renderAttachments();
           })();
         </script>
+<script src="/assets/lead-company-lookup.js" defer></script>
 <%- include('_analysis-dialog') %>
 <%- include('../partials/app-end') %>

@@ -1,0 +1,12 @@
+#lead-customer-report{font-size:16px;min-width:0;max-width:100%;padding:8px 12px;box-sizing:border-box}
+#lead-customer-report :is(summary,label,textarea,button,a,p){font-size:16px}
+#lead-customer-report summary{cursor:pointer;white-space:nowrap}
+#lead-customer-report form{display:grid;grid-template-columns:150px minmax(0,1fr);gap:8px;margin-top:8px;min-width:0}
+#lead-customer-report textarea{width:100%;min-width:0;box-sizing:border-box;resize:vertical}
+#lead-customer-report [data-report-status],#lead-customer-report .inline-actions{grid-column:2;min-width:0;margin:0}
+#lead-customer-report [data-report-status]:empty{display:none}
+#lead-customer-report .inline-actions{display:flex;flex-wrap:wrap;align-items:center;gap:10px}
+#lead-customer-report .inline-actions label{display:flex;align-items:center;gap:5px}
+#lead-customer-report input[type=checkbox]{width:auto;margin:0}
+#lead-customer-report :is(button,a){white-space:nowrap}
+@media(max-width:600px){#lead-customer-report form{grid-template-columns:110px minmax(0,1fr)}}

@@ -1,0 +1,22 @@
+<link rel="stylesheet" href="/assets/lead-saved-report.css">
+<section class="content-section" id="lead-customer-report">
+  <% if (customerReportSaved) { %><p role="status">客户分析报告已保存，可在关联商机中查看。</p><% } %>
+  <details>
+    <summary>补充客户分析报告</summary>
+    <form method="post" action="/lead-submissions/<%= submission.id %>/customer-report" data-saved-customer-report>
+      <%- csrfField() %>
+      <input type="hidden" name="reportRevision" value="<%= customerReportRevision %>">
+      <input type="hidden" name="reportGenerationToken" value="">
+      <label for="saved-customer-report">客户分析报告</label>
+      <textarea id="saved-customer-report" name="customerAnalysisReport" rows="10" maxlength="30000" required placeholder="生成后请审阅或修改，也可填写人工整理的报告。"><%= submission.rawPayload?.leadAnalysis?.customerAnalysisReport || '' %></textarea>
+      <p role="status" aria-live="polite" data-report-status></p>
+      <div class="inline-actions">
+        <% if (typeof leadAiEnabled !== 'undefined' && leadAiEnabled) { %><button type="button" data-report-generate>生成报告</button><% } %>
+        <label><input type="checkbox" name="reportReviewed" value="1" required>已人工审阅报告内容及信息来源</label>
+        <button type="submit">保存报告</button>
+        <a href="/opportunities/<%= submission.convertedOpportunityId %>">查看商机</a>
+      </div>
+    </form>
+  </details>
+</section>
+<script src="/assets/lead-saved-report.js" defer></script>

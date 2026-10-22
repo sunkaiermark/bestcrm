@@ -6,7 +6,7 @@
 <label>来源邮件<textarea id="lead-ai-email" rows="7" maxlength="20000" placeholder="粘贴邮件正文"></textarea></label>
 <% } %>
 <label><input type="checkbox" id="lead-ai-consent">允许将邮件提交至豆包进行整理</label>
-<label><input type="checkbox" id="lead-ai-search-consent">允许将询价方、最终用户及项目地区信息用于联网调查</label>
+<label><input type="checkbox" id="lead-ai-search-consent">允许将需求描述及产品信息提交豆包进行匹配分析，并将询价方、最终用户及项目地区用于联网调查</label>
 <div class="lead-ai-dialog-actions"><% if (typeof leadAiEnabled !== 'undefined' && leadAiEnabled) { %><button type="button" id="lead-ai-analyze">整理并填充</button><% } %><button type="button" id="lead-ai-close">完成</button></div>
 <p id="lead-ai-dialog-status" role="status"></p>
 </dialog>

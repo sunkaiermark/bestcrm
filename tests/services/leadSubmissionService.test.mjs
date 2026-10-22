@@ -4,6 +4,7 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { STATUSES } from '../../src/domain/statuses.mjs';
 import {
   approveSalesLead,
+  normalizeLeadSubmissionInput,
   canEditLeadSubmission,
   canManageLeadLifecycle,
   canRecordLeadFollowUp,
@@ -811,4 +812,14 @@ test('administrator can reassign but cannot approve without the assigned sales-m
     () => approveSalesLead(dependencies, administrator, 11, {}),
     /Forbidden/
   );
+});
+
+
+test('company address is retained in lead payload without pre-approving a selected customer', () => {
+  const result = normalizeLeadSubmissionInput({ companyName: 'Example', companyAddress: '  Example Road 12  ',
+    matchedCustomerId: 999, matchedContactId: 888 }, salesperson);
+  assert.equal(result.rawPayload.companyAddress, 'Example Road 12');
+  assert.equal(result.matchedCustomerId, null);
+  assert.equal(result.matchedContactId, null);
+  assert.equal(result.status, 'new');
 });

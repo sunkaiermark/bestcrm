@@ -1,0 +1,12 @@
+.lead-company-lookup{position:relative;display:block;min-width:0;max-width:100%}
+.lead-company-lookup>input{width:100%;min-width:0;box-sizing:border-box}
+.lead-company-lookup [role=listbox]{position:absolute;top:100%;left:0;right:0;z-index:30;max-height:240px;overflow-y:auto;box-sizing:border-box;margin:2px 0 0;padding:3px;background:#fff;border:1px solid #cbd8e2;border-radius:5px;box-shadow:0 4px 12px #17314a24;list-style:none}
+.lead-company-lookup [role=listbox][hidden]{display:none!important}
+.lead-company-lookup [role=option]{display:block;padding:5px 8px;font-size:16px;line-height:1.4;color:#172b3a;cursor:pointer;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lead-company-lookup [role=option]:hover,.lead-company-lookup [aria-selected=true]{background:#e8f4f3}
+.lead-company-search-status{display:block;font-size:16px;line-height:1.3;color:#587080;margin-top:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.lead-company-search-status:empty{display:none}
+.lead-company-contact-field{display:block;min-width:0;max-width:100%}.lead-company-contact-field :is(input,select){width:100%;min-width:0;max-width:100%;box-sizing:border-box;font-size:16px}.lead-company-contact-field select{margin-top:4px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.lead-company-contact-field select[hidden]{display:none!important}
+
+.lead-submission-form>label.lead-company-address{display:grid;grid-template-columns:150px minmax(0,1fr)!important;align-items:center;gap:10px}
+@media(max-width:700px){.lead-submission-form>label.lead-company-address{grid-template-columns:110px minmax(0,1fr)!important}}

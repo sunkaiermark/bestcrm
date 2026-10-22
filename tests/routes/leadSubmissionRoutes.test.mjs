@@ -15,6 +15,7 @@ async function buildApp({
   receiptCreatedBy = 7,
   receiptAssignedUserId = 2,
   receiptStatus = 'new',
+  convertedOpportunityId = null,
   attachments = [],
   uploadDir,
   customerRepository,
@@ -77,7 +78,7 @@ async function buildApp({
     assignedDisplayName: 'Sales Manager',
     recommendedSalespersonId: 7,
     createdBy: receiptCreatedBy,
-    convertedOpportunityId: null,
+    convertedOpportunityId,
     convertedSalespersonId: null,
     rawPayload: {},
     createdAt: '2026-09-02T01:00:00.000Z'
@@ -105,6 +106,11 @@ async function buildApp({
       async createInquiry(input) {
         calls.push(['createInquiry', input]);
         currentReceipt = { ...currentReceipt, ...input, id: 11, wasDuplicate: false };
+        return currentReceipt;
+      },
+      async updateConvertedLeadReport(id, input) {
+        calls.push(['updateConvertedLeadReport', id, input]);
+        currentReceipt = { ...currentReceipt, rawPayload: { ...currentReceipt.rawPayload, leadAnalysis: input.analysis } };
         return currentReceipt;
       },
       async updatePendingLead(id, input) {
@@ -868,4 +874,101 @@ test('processed lead view uses converted and rejected statuses', async () => {
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
+});
+
+
+test('converted lead has independent report save without reopening approval or ordinary edit', async () => {
+  const { agent, calls } = await buildApp({ receiptStatus: 'converted', convertedOpportunityId: 173 });
+  const detail = await agent.get('/lead-submissions/11');
+  assert.equal(detail.status, 200);
+  assert.ok(detail.text.includes('action="/lead-submissions/11/customer-report"'));
+  assert.ok(detail.text.includes('补充客户分析报告'));
+  assert.equal((await agent.get('/lead-submissions/11/edit')).status, 403);
+  const revision = detail.text.match(/name="reportRevision" value="([a-f0-9]+)"/)[1];
+  const response = await agent.post('/lead-submissions/11/customer-report').type('form').send({
+    reportRevision: revision, customerAnalysisReport: 'Reviewed customer report', reportReviewed: '1',
+    status: 'new', convertedOpportunityId: 999, requirementText: 'tampered'
+  });
+  assert.equal(response.status, 302);
+  assert.equal(response.headers.location, '/lead-submissions/11?reportSaved=1#lead-customer-report');
+  assert.equal(calls.filter(call => call[0] === 'updateConvertedLeadReport').length, 1);
+  assert.equal(calls.filter(call => call[0] === 'updatePendingLead' || call[0] === 'createLeadReviewEvent').length, 0);
+  const saved = await agent.get('/lead-submissions/11');
+  assert.match(saved.text, /Reviewed customer report/);
+  assert.ok(saved.text.includes('href="/opportunities/173"'));
+});
+
+test('converted report controls and save are forbidden to an unrelated viewer', async () => {
+  const { agent } = await buildApp({ receiptStatus: 'converted', convertedOpportunityId: 173,
+    receiptCreatedBy: 8, currentUserRoles: ['sales_manager'], receiptAssignedUserId: 2 });
+  const detail = await agent.get('/lead-submissions/11');
+  assert.equal(detail.status, 200);
+  assert.equal(detail.text.includes('data-saved-customer-report'), false);
+  assert.equal((await agent.post('/lead-submissions/11/customer-report').type('form').send({})).status, 403);
+});
+
+
+test('lead company lookup applies customer ownership scope and returns only selectable public fields', async () => {
+  const queries = [];
+  const { agent } = await buildApp({ customerRepository: { async listCustomers(filter) {
+    queries.push(filter);
+    return [
+      { id: 1, name: 'Acme Engineering', website: 'https://acme.invalid', customerCode: 'C001', coordinatorUserId: 7, notes: 'private notes' },
+      { id: 2, name: 'Restricted Acme', coordinatorUserId: 99 },
+      { id: 3, name: 'Archived Acme', coordinatorUserId: 7, archivedAt: '2026-10-01' }
+    ];
+  } } });
+  const page = await agent.get('/lead-submissions/new');
+  assert.equal(page.status, 200);
+  assert.ok(page.text.includes('data-lead-company-lookup'));
+  assert.ok(page.text.includes('role="combobox"'));
+  const empty = await agent.get('/lead-submissions/customer-options?q=');
+  assert.deepEqual(empty.body.customers, []);
+  assert.equal(queries.length, 0);
+  const response = await agent.get('/lead-submissions/customer-options').query({ q: ' Acme ', coordinatorUserId: 99 });
+  assert.equal(response.status, 200);
+  assert.deepEqual(queries[0], { searchTerm: 'Acme', archiveScope: 'active', limit: 15, coordinatorUserId: 7 });
+  assert.deepEqual(response.body.customers, [{ id: 1, name: 'Acme Engineering', website: 'https://acme.invalid', customerCode: 'C001' }]);
+  assert.match(response.headers['cache-control'], /no-store/);
+  assert.equal((await agent.get('/lead-submissions/customer-options').query({ q: 'a'.repeat(121) })).status, 400);
+});
+
+test('administrator lead lookup searches active companies without coordinator restriction', async () => {
+  let selectedFilter;
+  const { agent } = await buildApp({ currentUserRoles: ['administrator'], customerRepository: { async listCustomers(filter) {
+    selectedFilter = filter;
+    return [{ id: 2, name: 'Other company', coordinatorUserId: 99 }];
+  } } });
+  const response = await agent.get('/lead-submissions/customer-options?q=company');
+  assert.equal(response.status, 200);
+  assert.equal(selectedFilter.coordinatorUserId, undefined);
+  assert.equal(response.body.customers.length, 1);
+});
+
+
+test('company basic detail and contacts require ownership and omit archived or unrelated contacts', async () => {
+  let contactFilter;
+  const { agent } = await buildApp({
+    customerRepository: { async getCustomerDetail(id) {
+      return { id, name: 'Company', website: 'https://company.invalid', address: 'Company address', country: 'China',
+        coordinatorUserId: id === 2 ? 99 : 7, archivedAt: id === 3 ? '2026-10-01' : null, notes: 'private notes' };
+    } },
+    contactRepository: { async listContacts(filter) {
+      contactFilter = filter;
+      return [{ id: 10, customerId: 1, name: 'Buyer', title: 'Purchasing', phone: '123', email: 'buyer@example.invalid', notes: 'private' },
+        { id: 11, customerId: 1, name: 'Archived', archivedAt: '2026-10-01' },
+        { id: 12, customerId: 2, name: 'Other company contact' }];
+    } }
+  });
+  const response = await agent.get('/lead-submissions/customer-options/1');
+  assert.equal(response.status, 200);
+  assert.equal(response.body.customer.address, 'Company address');
+  assert.equal(response.body.contacts.length, 1);
+  assert.equal(response.body.contacts[0].phone, '123');
+  assert.equal(response.body.customer.notes, undefined);
+  assert.equal(response.body.contacts[0].notes, undefined);
+  assert.deepEqual(contactFilter, { customerId: 1, archiveScope: 'active' });
+  assert.equal((await agent.get('/lead-submissions/customer-options/2')).status, 403);
+  assert.equal((await agent.get('/lead-submissions/customer-options/3')).status, 404);
+  assert.equal((await agent.get('/lead-submissions/customer-options/invalid')).status, 400);
 });
