@@ -151,6 +151,7 @@
                 <div class="email-recipient-line"><%= t('emailTo') %>: <%= recipients(message.toRecipients) || '-' %><% if (message.ccRecipients.length) { %> · <%= t('emailCc') %>: <%= recipients(message.ccRecipients) %><% } %></div>
                 <details class="email-message-details"><summary><%= t('emailMessageDetails') %></summary><dl class="detail-grid"><div><dt><%= t('emailFrom') %></dt><dd><%= message.fromName ? `${message.fromName} <${message.fromAddress}>` : message.fromAddress %></dd></div><div><dt><%= t('emailDate') %></dt><dd><%= formatEmailListDate(messageDate) %></dd></div><div><dt><%= t('emailTo') %></dt><dd><%= recipients(message.toRecipients) || '-' %></dd></div><div><dt><%= t('emailCc') %></dt><dd><%= recipients(message.ccRecipients) || '-' %></dd></div><div><dt>Message-ID</dt><dd><%= message.messageId || '-' %></dd></div><div><dt>In-Reply-To</dt><dd><%= message.inReplyTo || '-' %></dd></div></dl></details>
                 <%- include('_message-content', { message, formatPlainEmailForReading }) %>
+                <%- include('_draft-actions', { message }) %>
               </div>
             </details>
           <% } %>

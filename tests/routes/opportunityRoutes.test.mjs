@@ -4721,3 +4721,28 @@ test('legal reviewer can see contract approval records and approve from detail p
  const returned=await agent.get(result.headers.location);assert.equal(returned.status,200);assert.match(returned.text,/id="technical-work-packages"/);assert.match(returned.text,/<details class="technical-add-package" open>/);assert.doesNotMatch(page.text,/<details class="technical-add-package" open>/);
  const saved=await agent.post('/opportunities/30/collaboration-work-packages/91/update').type('form').send({_csrf:extractCsrfToken(returned.text),title:'Updated Mixer',assigneeUserId:3});assert.equal(saved.status,302);assert.equal(saved.headers.location,'/opportunities/30#technical-work-packages');assert.equal(updated.length,1);
  });
+
+
+test('opportunity correspondence distinguishes draft, pending, sent and failed with send controls only for unsent messages', async () => {
+  const messages = ['draft', 'pending', 'sent', 'failed'].map((deliveryStatus, index) => ({
+    id: 91 + index, direction: 'outbound', deliveryStatus, subject: 'Saved customer email',
+    fromAddress: 'sales@sunkaier.com', toRecipients: [{ address: 'buyer@example.com' }],
+    textBody: 'Preserved email body', createdAt: '2026-10-22T00:00:00Z', attachments: []
+  }));
+  const { agent } = await createLoggedInAgent({ emailCenter: { enabled: true }, customerEmail: { enabled: true },
+    emailArchiveRepository: { supportsEmailArchive: true,
+      async listThreadsByOpportunity() { return [{ id: 81, subject: 'Saved customer email' }]; },
+      async getThreadDetail() { return { id: 81, subject: 'Saved customer email', messages }; }
+    } });
+  const detail = await agent.get('/opportunities/30');
+  assert.equal(detail.status, 200);
+  for (let index = 0; index < messages.length; index += 1) {
+    const start = detail.text.indexOf('id="opportunity-email-' + (91 + index) + '"');
+    assert.ok(start >= 0);
+    const fragment = detail.text.slice(start, detail.text.indexOf('</details>', start));
+    assert.ok(fragment.includes('>' + ['Draft', 'Pending', 'Sent', 'Failed'][index] + '</span>'));
+  }
+  for (const [id, expected] of [[91, true], [92, false], [93, false], [94, true]]) {
+    assert.equal(detail.text.includes('action="/email-center/messages/' + id + '/send"'), expected);
+  }
+});

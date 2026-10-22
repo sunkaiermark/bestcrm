@@ -403,11 +403,12 @@
                         <strong><%= message.subject || message.threadSubject || t('noSubject') %></strong>
                         <span class="muted"><%= message.fromAddress %><% if (recipients) { %> → <%= recipients %><% } %></span>
                       </span>
-                      <span class="correspondence-direction"><%= message.direction === 'outbound' ? `→ ${t('outgoing')}` : `← ${t('incoming')}` %></span>
+                      <span class="correspondence-direction"><%= message.direction === 'outbound' ? (message.deliveryStatus ? t(`emailDeliveryStatus.${message.deliveryStatus}`) : `→ ${t('outgoing')}`) : `← ${t('incoming')}` %></span>
                     </summary>
                     <div class="correspondence-content">
                       <%- include('../email-center/_response-status', { message, canAcknowledgeCustomerEmail, formatEmailListDate: formatShortDate, returnTo: `/opportunities/${opportunity.id}?emailMessageId=${message.id}#opportunity-email-${message.id}` }) %>
                       <%- include('../email-center/_message-content', { message, formatPlainEmailForReading }) %>
+                      <% if (customerEmailSendingEnabled) { %><%- include('../email-center/_draft-actions', { message }) %><% } %>
                       <div class="inline-actions correspondence-actions">
                         <a href="/email-center/threads/<%= message.threadId %>"><%= t('openEmailThread') %></a>
                       </div>

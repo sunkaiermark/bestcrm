@@ -1233,3 +1233,34 @@ test('reply entry requires choosing a conversation when an opportunity has multi
   assert.match(selected.text, /<input type="hidden" name="threadId" value="3">/);
   assert.match(selected.text, /<form class="form-panel" method="post" action="\/email-center\/messages"/);
 });
+
+
+test('saved opportunity drafts expose send only to authorized senders, never after sending', async () => {
+  const draft = { ...thread().messages[0], id: 12, threadId: 2, direction: 'outbound', deliveryStatus: 'draft' };
+  for (const [sendingEnabled, roles, status, expected] of [
+    [true, [ROLES.ADMINISTRATOR], 'draft', true],
+    [true, [ROLES.ADMINISTRATOR], 'failed', true],
+    [true, [ROLES.ADMINISTRATOR], 'sent', false],
+    [true, [ROLES.ADMINISTRATOR], 'pending', false],
+    [false, [ROLES.ADMINISTRATOR], 'draft', false]
+  ]) {
+    const agent = await createAgent({ userId: 7, roles, sendingEnabled,
+      linkedOverrides: { messages: [{ ...draft, deliveryStatus: status }] } });
+    const response = await agent.get('/email-center/threads/2');
+    assert.equal(response.status, 200);
+    assert.equal(response.text.includes('action="/email-center/messages/12/send"'), expected);
+    if (expected) assert.match(response.text, /name="_csrf"/);
+  }
+});
+
+
+test('supporting engineer without send permission cannot see or invoke saved draft send', async () => {
+  const draft = { ...thread().messages[0], id: 12, threadId: 2, direction: 'outbound', deliveryStatus: 'draft' };
+  const agent = await createAgent({ userId: 15, roles: [ROLES.QUOTATION_ENGINEER], sendingEnabled: true,
+    teamMembers: [{ userId: 15, isActive: true, canSendExternalEmail: false }],
+    linkedOverrides: { messages: [draft] } });
+  const detail = await agent.get('/email-center/threads/2');
+  assert.equal(detail.status, 200);
+  assert.equal(detail.text.includes('action="/email-center/messages/12/send"'), false);
+  assert.equal((await agent.post('/email-center/messages/12/send').type('form').send({})).status, 403);
+});

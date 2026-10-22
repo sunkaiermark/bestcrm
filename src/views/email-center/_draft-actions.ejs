@@ -1,0 +1,6 @@
+<% if (typeof canSendSavedCustomerEmail !== 'undefined' && canSendSavedCustomerEmail && message.direction === 'outbound' && ['draft', 'failed'].includes(message.deliveryStatus)) { %>
+<form method="post" action="/email-center/messages/<%= message.id %>/send" class="inline-actions" data-confirm="<%= t('sendSavedEmailConfirm') %>" onsubmit="if (!confirm(this.dataset.confirm)) return false; this.querySelector('button').disabled = true;">
+  <%- csrfField() %>
+  <button type="submit"><%= t(message.deliveryStatus === 'failed' ? 'retrySavedEmail' : 'sendSavedDraft') %></button>
+</form>
+<% } %>

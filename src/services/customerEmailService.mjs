@@ -199,7 +199,7 @@ async function opportunityContext(dependencies, opportunityId) {
   return { ...opportunity, teamMembers };
 }
 
-function canSendOpportunityEmail(actor, opportunity) {
+export function canSendOpportunityEmail(actor, opportunity) {
   if (hasRole(actor, ROLES.ADMINISTRATOR)) return true;
   const actorId = Number(actor.id);
   if ([

@@ -41,6 +41,7 @@ import { acknowledgeCustomerEmail, EmailResponseError } from '../services/emailR
 import { canSubmitNewLead } from '../services/leadSubmissionService.mjs';
 import {
   CustomerEmailError,
+  canSendOpportunityEmail,
   createCustomerEmailDraft,
   getCustomerEmailComposeContext,
   sendCustomerEmail
@@ -358,7 +359,10 @@ export function emailCenterRoutes({
         || hasRole(req.currentUser, ROLES.SALES_MANAGER)
         || (categoryOpportunity && !categoryOpportunity.archivedAt
           && Number(categoryOpportunity.salespersonId) === Number(req.currentUser.id)));
+      const sendTeam = sendingEnabled && categoryOpportunity && typeof opportunityResponsibilityRepository?.listTeamMembersByOpportunity === 'function'
+        ? await opportunityResponsibilityRepository.listTeamMembersByOpportunity(categoryOpportunity.id) : [];
       res.render('email-center/detail', {
+        canSendSavedCustomerEmail: sendingEnabled && Boolean(categoryOpportunity && canSendOpportunityEmail(req.currentUser, { ...categoryOpportunity, teamMembers: sendTeam })),
         thread: threadWithResponses,
         ...masterAccess,
         canAcknowledgeCustomerEmail: Number(categoryOpportunity?.salespersonId) === Number(req.currentUser.id),
@@ -534,6 +538,9 @@ export function emailCenterRoutes({
   router.post('/email-center/messages/:messageId/send', async (req, res, next) => {
     if (!sendingEnabled) return res.status(404).send('Customer email sending is disabled');
     try {
+      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
+        return res.status(403).send('Invalid CSRF token');
+      }
       const message = await sendCustomerEmail(dependencies, req.currentUser, req.params.messageId);
       res.redirect(`/email-center/threads/${message.threadId}`);
     } catch (error) {

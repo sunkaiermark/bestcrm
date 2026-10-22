@@ -746,3 +746,41 @@ test('failed delivery retries the same archived formal quotation message without
     await rm(uploadDir, { recursive: true, force: true });
   }
 });
+
+
+test('saved draft preserves recipients and attachments and blocks sending again while pending or sent', async () => {
+  const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-draft-send-'));
+  let releaseSend;
+  let markStarted;
+  const started = new Promise((resolve) => { markStarted = resolve; });
+  const pendingSend = new Promise((resolve) => { releaseSend = resolve; });
+  const sent = [];
+  try {
+    const dependencies = createDependencies(uploadDir, { transport: { async sendMail(mail) {
+      sent.push(mail);
+      markStarted();
+      await pendingSend;
+      return { messageId: '<saved-draft@example.com>' };
+    } } });
+    const draft = await createCustomerEmailDraft(dependencies, actor(), {
+      threadId: 1, to: 'buyer@example.com', cc: 'engineer@example.com', subject: 'Saved draft',
+      body: 'Original draft content', action: 'draft'
+    }, [{ originalname: 'notes.txt', mimetype: 'text/plain', buffer: Buffer.from('original attachment') }]);
+    assert.equal(sent.length, 0);
+    const delivery = sendCustomerEmail(dependencies, actor(), draft.id);
+    await started;
+    await assert.rejects(() => sendCustomerEmail(dependencies, actor(), draft.id), /Only draft or failed/);
+    releaseSend();
+    const result = await delivery;
+    assert.equal(result.deliveryStatus, 'sent');
+    await assert.rejects(() => sendCustomerEmail(dependencies, actor(), draft.id), /Only draft or failed/);
+    assert.equal(sent.length, 1);
+    assert.deepEqual(sent[0].envelope.to, ['buyer@example.com', 'engineer@example.com']);
+    const parsed = await simpleParser(sent[0].raw);
+    assert.match(parsed.text, /Original draft content/);
+    assert.equal(parsed.attachments.find((file) => file.filename === 'notes.txt').content.toString(), 'original attachment');
+  } finally {
+    releaseSend?.();
+    await rm(uploadDir, { recursive: true, force: true });
+  }
+});

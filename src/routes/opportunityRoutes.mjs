@@ -1,3 +1,4 @@
+import { canSendOpportunityEmail } from '../services/customerEmailService.mjs';
 import { Router } from 'express';
 import { loadOpportunitySource } from '../services/opportunitySourceService.mjs';
 import { mkdirSync } from 'node:fs';
@@ -1295,6 +1296,7 @@ export function opportunityRoutes({
         attachments,
         requirementUpdates,
         correspondenceThreads,
+        canSendSavedCustomerEmail: canSendOpportunityEmail(req.currentUser, opportunityWithTeam),
         canAcknowledgeCustomerEmail: Number(opportunity.salespersonId) === Number(req.currentUser.id),
         formatPlainEmailForReading,
         materialVersions,
