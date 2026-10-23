@@ -1,0 +1,9 @@
+<%- include('../partials/app-start', {title: attachment.originalName + ' - 审核批注',activeNav}) %>
+<link rel="stylesheet" href="/assets/office-editor.css">
+<header class="page-header"><div><h1>审核批注 · <%= attachment.originalName %></h1><p>原文锁定，只能添加批注。点击编辑器保存，确认下方显示已归档后关闭本窗口，再返回商机批准或退回修改。</p><p>批注稿单独保留，不替换提交文件，不增加正文版本。红色审核意见可在原文件预览中查看。</p></div><a class="quick-action secondary-action" href="/opportunities/<%= attachment.opportunityId %>">返回商机</a></header>
+<div id="office-review-status" role="status" data-session-id="<%= session.id %>" data-saved-id="<%= saved?.id || '' %>">审核编辑器加载中……</div>
+<div class="office-editor-frame"><div id="office-review-editor"></div></div>
+<script id="office-review-config" type="application/json"><%- JSON.stringify(settings).replaceAll('<','\\u003c') %></script>
+<script src="<%= scriptUrl %>"></script>
+<script src="/assets/office-review.js" defer></script>
+<%- include('../partials/app-end') %>

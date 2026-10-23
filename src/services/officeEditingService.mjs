@@ -47,7 +47,7 @@ export async function downloadOfficeResult(url,config,fetchImpl=fetch) {
   const parts=[];let total=0;for await(const part of r.body){total+=part.length;if(total>25*1024*1024)throw officeError('Document exceeds 25 MB');parts.push(part);}return Buffer.concat(parts);
 }
 export function createOfficeEditingService({config,pool,uploadDir,authorize,fetchImpl=fetch}) {
-  async function currentAttachment(id){const {createAttachmentRepository}=await import('../repositories/attachmentRepository.mjs');return createAttachmentRepository(pool).findById(id);}
+  async function currentAttachment(id,target=pool){const {createAttachmentRepository}=await import('../repositories/attachmentRepository.mjs');return createAttachmentRepository(target).findById(id);}
   async function find(id){const r=await pool.query('SELECT * FROM office_edit_sessions WHERE id=$1',[id]);return r.rows[0];}
   async function start(attachment,user){
     await authorize(attachment,user);
@@ -85,13 +85,14 @@ export function createOfficeEditingService({config,pool,uploadDir,authorize,fetc
       if(s.state==='closed'){await client.query('COMMIT');return;}
       if(new Date(s.expires_at)<=new Date())throw officeError('Session expired',403);
       if([2,6].includes(data.status)){
-        const attachment=await currentAttachment(s.current_attachment_id);
-        await authorize(attachment,{id:Number(s.actor_user_id)},true);
+        const attachment=await currentAttachment(s.current_attachment_id,client);
+        await authorize(attachment,{id:Number(s.actor_user_id)},true,client);
         const buffer=await downloadOfficeResult(data.url,config,fetchImpl),hash=await officeContentHash(buffer,path.extname(attachment.originalName).toLowerCase());
         if(hash!==s.content_hash){
+          const accessContext=await authorize(attachment,{id:Number(s.actor_user_id)},true,client);
           stored=await storeAttachmentBuffer({uploadDir,originalName:attachment.originalName,content:buffer,prefix:'office-edits'});
           const {createAttachmentRepository}=await import('../repositories/attachmentRepository.mjs');
-          const saved=await createAttachmentRepository(client).replaceAttachment({originalAttachmentId:attachment.id,actorUserId:Number(s.actor_user_id),reason:'office_edit_new_version',replacement:{opportunityId:attachment.opportunityId,category:attachment.category,originalName:attachment.originalName,mimeType:attachment.mimeType,uploadedBy:Number(s.actor_user_id),...stored}});
+          const saved=accessContext?.workPackage ? await (await import('./officeWorkPackageService.mjs')).saveOfficeWorkPackageRevision({client,context:accessContext.workPackage,attachment,stored,actorUserId:Number(s.actor_user_id)}) : await createAttachmentRepository(client).replaceAttachment({originalAttachmentId:attachment.id,actorUserId:Number(s.actor_user_id),reason:'office_edit_new_version',replacement:{opportunityId:attachment.opportunityId,category:attachment.category,originalName:attachment.originalName,mimeType:attachment.mimeType,uploadedBy:Number(s.actor_user_id),...stored}});
           if(!saved)throw officeError('附件已变更，请刷新后重试。',409);
           await client.query('INSERT INTO office_edit_versions(session_id,version_no,attachment_id,content_hash) VALUES($1,$2,$3,$4)',[id,s.version_no+1,saved.id,hash]);
           await client.query('UPDATE office_edit_sessions SET current_attachment_id=$2,content_hash=$3,version_no=version_no+1 WHERE id=$1',[id,saved.id,hash]);
@@ -103,5 +104,9 @@ export function createOfficeEditingService({config,pool,uploadDir,authorize,fetc
     }catch(e){await client.query('ROLLBACK');if(stored)await removeStoredAttachmentFile(stored.absolutePath);throw e;}finally{client.release();}
   }
   async function history(attachmentId){return (await pool.query(`SELECT v.*,a.original_name,a.uploaded_at FROM office_edit_versions v JOIN office_edit_sessions s ON s.id=v.session_id JOIN attachments a ON a.id=v.attachment_id WHERE s.root_attachment_id IN (SELECT root_attachment_id FROM office_edit_sessions WHERE source_attachment_id=$1 OR current_attachment_id=$1 UNION SELECT s2.root_attachment_id FROM office_edit_sessions s2 JOIN office_edit_versions v2 ON v2.session_id=s2.id WHERE v2.attachment_id=$1) ORDER BY v.saved_at DESC`,[attachmentId])).rows;}
-  return {start,editor,source,callback,history};
+  async function access(attachment,user) {
+    try { await authorize(attachment,user); return {allowed:true,reason:''}; }
+    catch(error) { if([403,404,409].includes(error.statusCode))return {allowed:false,reason:error.message}; throw error; }
+  }
+  return {start,editor,source,callback,history,access};
 }

@@ -5,7 +5,7 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function createAgent({ userId = 7, username = `user${userId}`, roles = [ROLES.SALESPERSON], archivedAt = null, commercialManagerId = null, quotationEngineerId = 3, sourceAvailable = true, existingDraft = null, standardTerms = [], formalVersions = [], customerContacts, quotationPreviewPdfRenderer, quotationSigning } = {}) {
+async function createAgent({ userId = 7, username = `user${userId}`, roles = [ROLES.SALESPERSON], archivedAt = null, commercialManagerId = null, quotationEngineerId = 3, sourceAvailable = true, existingDraft = null, standardTerms = [], formalVersions = [], customerContacts, quotationPreviewPdfRenderer, quotationSigning, status = 'technical_solution_in_progress' } = {}) {
   const user = {
     id: userId, username, displayName: 'Test User',
     passwordHash: await hashPassword('ChangeMe123!'), isActive: true, roles,
@@ -15,7 +15,7 @@ async function createAgent({ userId = 7, username = `user${userId}`, roles = [RO
   const opportunity = {
     id: 20, opportunityNo: '800020', title: 'Mixer Project', customerId: 30, customerName: 'Acme',
     customerCoordinatorUserId: 7,
-    primaryContactId: 501, primaryContactName: 'Alex', salespersonId: 7, quotationEngineerId, status: 'technical_solution_in_progress',
+    primaryContactId: 501, primaryContactName: 'Alex', salespersonId: 7, quotationEngineerId, status,
     salespersonDisplayName: 'Sales Owner', commercialManagerId, archivedAt, teamMembers: []
   };
   const source = {
@@ -210,6 +210,7 @@ test('internal A4 PDF preview requires a visible saved draft and never issues a 
   const pdf = Buffer.from('%PDF-1.7\ninternal-preview');
   const rendererCalls = [];
   const saved = await createAgent({
+    status: 'commercial_quote_in_progress',
     existingDraft: { opportunityId: 20, draftRevisionNo: 2, sourceAttachmentId: 51,
       sourceSha256: 'a'.repeat(64), language: 'en', sellerEntityCode: 'sunkaier_apac', lineItems: [] },
     quotationPreviewPdfRenderer: async (input) => { rendererCalls.push(input); return pdf; }
@@ -294,6 +295,7 @@ test('assigned quotation engineer can create or modify a draft, while unrelated 
   assert.equal((await unrelatedEngineer.agent.post('/opportunities/20/commercial-quotation-draft')
     .type('form').send({ sourceAttachmentId: '51', expectedRevisionNo: '0' })).status, 403);
   const engineer = await createAgent({
+    status: 'commercial_quote_in_progress',
     userId: 3,
     roles: [ROLES.QUOTATION_ENGINEER],
     existingDraft: { opportunityId: 20, draftRevisionNo: 1, sourceAttachmentId: 51,

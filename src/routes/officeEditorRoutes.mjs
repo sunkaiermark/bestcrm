@@ -9,10 +9,14 @@ export function officeServiceRoutes({service,uploadDir}) {
   router.post('/office-service/:sessionId/callback',async(req,res)=>{try{const token=req.get('authorization')?.replace(/^Bearer\s+/i,'')||req.body?.token;await service.callback(req.params.sessionId,token);res.json({error:0});}catch(e){res.status(e.statusCode||500).json({error:1});}});
   return router;
 }
+function editorError(error,res,next) {
+  if([400,403,404,409].includes(error.statusCode))return res.status(error.statusCode).type('text/plain').send(error.message);
+  next(error);
+}
 export function officeEditorRoutes({service,attachmentRepository}) {
   const router=Router();router.use(['/office-editor','/opportunities/:id/attachments/:attachmentId/edit'],requireLogin);
-  router.post('/opportunities/:id/attachments/:attachmentId/edit',async(req,res,next)=>{try{const a=await attachmentRepository.findById(req.params.attachmentId);if(!a||a.opportunityId!==Number(req.params.id))throw officeError('Not found',404);const id=await service.start(a,req.currentUser);res.redirect(`/office-editor/${id}`);}catch(e){next(e);}});
-  router.get('/office-editor/:sessionId/status',async(req,res,next)=>{try{const data=await service.editor(req.params.sessionId,req.currentUser);res.set('Cache-Control','private, no-store').json({versionNo:data.session.version_no,currentAttachmentId:data.session.current_attachment_id});}catch(e){next(e);}});
-  router.get('/office-editor/:sessionId',async(req,res,next)=>{try{const data=await service.editor(req.params.sessionId,req.currentUser);const origin=new URL(data.scriptUrl).origin;res.set('Content-Security-Policy',BASE_CONTENT_SECURITY_POLICY.replace("script-src 'self' 'unsafe-inline'","script-src 'self' 'unsafe-inline' "+origin).replace("frame-src 'self'","frame-src 'self' "+origin));res.set('Cache-Control','private, no-store');res.render('attachments/office-editor',{...data,history:await service.history(data.session.source_attachment_id),activeNav:'opportunities'});}catch(e){next(e);}});
+  router.post('/opportunities/:id/attachments/:attachmentId/edit',async(req,res,next)=>{try{const a=await attachmentRepository.findById(req.params.attachmentId);if(!a||a.opportunityId!==Number(req.params.id))throw officeError('Not found',404);const id=await service.start(a,req.currentUser);res.redirect(`/office-editor/${id}`);}catch(e){editorError(e,res,next);}});
+  router.get('/office-editor/:sessionId/status',async(req,res,next)=>{try{const data=await service.editor(req.params.sessionId,req.currentUser);res.set('Cache-Control','private, no-store').json({versionNo:data.session.version_no,currentAttachmentId:data.session.current_attachment_id});}catch(e){editorError(e,res,next);}});
+  router.get('/office-editor/:sessionId',async(req,res,next)=>{try{const data=await service.editor(req.params.sessionId,req.currentUser);const origin=new URL(data.scriptUrl).origin;res.set('Content-Security-Policy',BASE_CONTENT_SECURITY_POLICY.replace("script-src 'self' 'unsafe-inline'","script-src 'self' 'unsafe-inline' "+origin).replace("frame-src 'self'","frame-src 'self' "+origin));res.set('Cache-Control','private, no-store');res.render('attachments/office-editor',{...data,history:await service.history(data.session.source_attachment_id),activeNav:'opportunities'});}catch(e){editorError(e,res,next);}});
   return router;
 }

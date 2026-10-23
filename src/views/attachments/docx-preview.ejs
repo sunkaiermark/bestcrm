@@ -13,12 +13,13 @@
             <div class="muted"><%= previewContextText %></div>
           </div>
           <div class="page-actions">
-            <% if(typeof officeEditUrl !== 'undefined' && officeEditUrl) { %><form method="post" action="<%= officeEditUrl %>"><%- csrfField() %><button type="submit">在线编辑</button></form><% } %>
+            <% if(typeof officeEditUrl !== 'undefined' && officeEditUrl) { %><form method="post" action="<%= officeEditUrl %>"><%- csrfField() %><button type="submit">在线编辑</button></form><% } else if(typeof officeReadOnlyReason !== 'undefined' && officeReadOnlyReason) { %><span class="muted" title="<%= officeReadOnlyReason %>">只读：<%= officeReadOnlyReason %></span><% } %>
             <a class="quick-action secondary-action" href="<%= previewBackUrl %>"><%= t(previewBackLabelKey) %></a>
             <a class="quick-action" href="<%= downloadUrl %>"><%= t('download') %></a>
           </div>
         </header>
 
+        <%- include('_office-review-feedback') %>
         <section class="content-section">
           <h2><%= attachment.originalName %></h2>
           <% if(typeof officeHistory !== 'undefined' && officeHistory.length) { %><details><summary>编辑版本记录（<%= officeHistory.length %>）</summary><% for(const version of officeHistory) { %><p>V<%= version.version_no %> · <%= version.saved_at %> · <a href="/opportunities/<%= opportunity.id %>/attachments/<%= version.attachment_id %>/preview">预览</a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= version.attachment_id %>/download">下载</a></p><% } %></details><% } %>

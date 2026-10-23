@@ -1,0 +1,8 @@
+<%- include('../partials/app-start',{title:attachment.originalName+' - 查看审核批注',activeNav}) %>
+<link rel="stylesheet" href="/assets/office-editor.css">
+<header class="page-header"><div><h1>审核批注稿 · <%= attachment.originalName %></h1><p>此稿仅供查看审核意见，正式提交文件保持不变。</p></div><a class="quick-action secondary-action" href="/opportunities/<%= attachment.opportunityId %>/attachments/<%= attachment.id %>/preview">返回原文件预览</a></header>
+<p id="office-review-view-status" role="status">批注稿加载中……</p>
+<div class="office-editor-frame"><div id="office-review-viewer"></div></div>
+<script id="office-review-view-config" type="application/json"><%- JSON.stringify(settings).replaceAll('<','\\u003c') %></script>
+<script src="<%= scriptUrl %>"></script><script src="/assets/office-review-view.js" defer></script>
+<%- include('../partials/app-end') %>

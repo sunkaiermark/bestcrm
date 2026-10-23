@@ -1,7 +1,9 @@
-import { loadOfficeConfig, createOfficeEditingService, officeError } from './services/officeEditingService.mjs';
+import {createOfficeReviewService} from './services/officeReviewService.mjs';
+import {officeReviewRoutes,officeReviewServiceRoutes} from './routes/officeReviewRoutes.mjs';
+import { createOfficeAttachmentAuthorization } from './services/officeAttachmentAuthorizationService.mjs';
+import { loadOfficeConfig, createOfficeEditingService } from './services/officeEditingService.mjs';
 import { officeServiceRoutes, officeEditorRoutes } from './routes/officeEditorRoutes.mjs';
-import { canDeleteAttachment } from './routes/opportunityRoutes.mjs';
-import { canViewOpportunity } from './services/opportunityService.mjs';
+import { canDeleteAttachment, canUploadAttachment } from './routes/opportunityRoutes.mjs';
 import ejs from 'ejs';
 import { loadAiSourceConfig } from './integrations/sunkaier-ai/config.mjs';
 import { createAiSourceRepository } from './integrations/sunkaier-ai/repository.mjs';
@@ -909,13 +911,9 @@ export function createApp(options = {}) {
     }
   }));
   const officeConfig = options.officeConfig || loadOfficeConfig();
-  const officeService = officeConfig.enabled && pool ? createOfficeEditingService({config:officeConfig,pool,uploadDir:config.uploadDir,authorize:async(attachment,user,fromCallback=false)=>{
-    if(fromCallback)user=await userRepository.findByIdWithRoles(user.id);
-    if(!attachment||attachment.retiredAt||attachment.opportunityMaterialVersionId||attachment.sourceInquiryAttachmentId||!user||user.isActive===false)throw officeError('该文件只读，请使用未提交审批的工作文件。',403);
-    const opportunity=await opportunityRepository.findById(attachment.opportunityId);
-    if(!opportunity||!canViewOpportunity(user,opportunity)||!canDeleteAttachment(user,opportunity,attachment))throw officeError('当前阶段无权编辑该附件。',403);
-    if(await opportunityTechnicalDraftRepository?.isAttachmentLinked?.(attachment.id)||await opportunityCollaborationRepository?.isAttachmentLinked?.(attachment.id))throw officeError('工作包和已提交草案附件只读。',403);
-  }}) : null;
+  const officeService = officeConfig.enabled && pool ? createOfficeEditingService({config:officeConfig,pool,uploadDir:config.uploadDir,authorize:createOfficeAttachmentAuthorization({pool,userRepository,canDeleteAttachment,canUploadAttachment})}) : null;
+  const officeReviewService = officeService ? createOfficeReviewService({config:officeConfig,pool,uploadDir:config.uploadDir,userRepository}) : null;
+  if(officeReviewService)app.use(officeReviewServiceRoutes({service:officeReviewService,uploadDir:config.uploadDir}));
   if(officeService)app.use(officeServiceRoutes({service:officeService,uploadDir:config.uploadDir}));
   app.use(csrfProtection({
     enabled: 'csrfProtection' in options ? options.csrfProtection : config.nodeEnv === 'production'
@@ -1155,10 +1153,12 @@ export function createApp(options = {}) {
     uploadDir: config.uploadDir
   }));
   app.use(salesQuotationStandardTermRoutes({ salesQuotationStandardTermRepository }));
+  if(officeReviewService)app.use(officeReviewRoutes({service:officeReviewService,attachmentRepository,uploadDir:config.uploadDir}));
   if(officeService)app.use(officeEditorRoutes({service:officeService,attachmentRepository}));
   app.use(opportunityRoutes({
     officeEditingEnabled: Boolean(officeService),
     officeEditingService: officeService,
+    officeReviewService,
     inquiryRepository,
     aiSourceRepository: aiRepository,
     aiSourceEnabled: aiConfig.workspaceEnabled,

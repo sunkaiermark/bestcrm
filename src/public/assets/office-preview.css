@@ -13,3 +13,7 @@
 .office-sheet-table thead th { position:sticky; top:0; z-index:2; }
 .office-sheet-table tbody th { position:sticky; left:0; z-index:1; }
 @media(max-width:700px) { .office-document-viewport { padding:8px; } .office-word-document { padding:24px 18px; } }
+
+.office-review-feedback { border:1px solid #d99; border-radius:6px; padding:12px; margin:12px 0; color:#b42318; }
+.office-review-feedback article { border-top:1px solid #f1c6c6; padding:8px 0; overflow-wrap:anywhere; }
+.office-review-feedback article p { white-space:pre-wrap; margin:4px 0; }

@@ -70,3 +70,7 @@
   padding: 4px 16px;
   white-space: nowrap;
 }
+
+.technical-submitted-file > div { display:flex; align-items:center; gap:6px; min-width:0; }
+.technical-submitted-file > div > span { flex:1; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.technical-submitted-file > div > a { flex:none; }

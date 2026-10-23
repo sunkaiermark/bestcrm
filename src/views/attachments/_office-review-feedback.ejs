@@ -1,0 +1,6 @@
+<% if(typeof officeReviewUrl!=='undefined' && officeReviewUrl){ %><form method="post" action="<%= officeReviewUrl %>"><%- csrfField() %><button type="submit">审核批注</button></form><% } %>
+<% if(typeof officeReviews!=='undefined' && officeReviews.length){const latestReview=officeReviews[0]; %>
+<section class="office-review-feedback" aria-label="审核批注"><h2>审核批注</h2><p>本次提交版本 · <%= latestReview.display_name || latestReview.username %> · <%= latestReview.saved_at %> · <a href="/office-review/snapshots/<%= latestReview.id %>/view">查看定位批注</a> · <a href="/office-review/snapshots/<%= latestReview.id %>/download">下载批注稿</a></p>
+<% if(!latestReview.comments.length){ %><p>当前批注已清空，历史记录仍保留。</p><% } %>
+<% for(const comment of latestReview.comments){ %><article><strong><%= comment.location %></strong><p><%= comment.text %></p><small><%= comment.author %><% if(comment.date){ %> · <%= comment.date %><% } %></small></article><% } %>
+<details><summary>批注保存记录（<%= officeReviews.length %>）</summary><% for(const snapshot of officeReviews){ %><p><%= snapshot.display_name || snapshot.username %> · <%= snapshot.saved_at %> · <a href="/office-review/snapshots/<%= snapshot.id %>/view">查看定位批注</a> · <a href="/office-review/snapshots/<%= snapshot.id %>/download">下载批注稿</a></p><% } %></details></section><% } %>

@@ -718,7 +718,7 @@ function canCreateRequirementUpdate(user, opportunity) {
   return supplementalRequirementStatuses.has(opportunity.status) && Boolean(opportunity.quotationEngineerId);
 }
 
-function canUploadAttachment(user, opportunity, category) {
+export function canUploadAttachment(user, opportunity, category) {
   if (opportunity.archivedAt) {
     return false;
   }
@@ -824,6 +824,7 @@ function redirectToOpportunity(opportunityId) {
 export function opportunityRoutes({
   officeEditingEnabled = false,
   officeEditingService = null,
+  officeReviewService = null,
   inquiryRepository = null,
   aiSourceRepository = null,
   aiSourceEnabled = false,
@@ -860,6 +861,7 @@ export function opportunityRoutes({
   const router = Router();
   const upload = createUploadMiddleware(uploadDir, maxUploadMb);
   const uploadAttachment = uploadAttachmentOrSendLimitError(upload, maxUploadMb);
+  const uploadWorkPackageFiles=(req,res,next)=>upload.array('attachment',20)(req,res,async error=>{if(error){await Promise.all((req.files||[]).map(file=>rm(file.path,{force:true})));if(error instanceof multer.MulterError)return res.status(error.code==='LIMIT_FILE_SIZE'?413:400).send('文件超过上传限制，单次最多20份文件。');}next(error);});
 
   router.use('/opportunities', requireLogin);
   router.use('/api/opportunities', requireLogin);
@@ -1717,8 +1719,9 @@ export function opportunityRoutes({
       }
       if(['technical_solution','internal_quote'].includes(req.workPackage.planKind)){
         const latest=(await opportunityCollaborationRepository.listByOpportunity(opportunity.id)).find(wp=>Number(wp.id)===Number(req.workPackage.id))?.latestVersion;
+        req.newWorkPackageRevision=Boolean(revisionMatch);
         if(revisionMatch&&latest?.status!=='accepted')return res.status(409).send('New revision requires an approved version');
-        if(latest&&['uploaded','submitted','accepted'].includes(latest.status)&&!(revisionMatch&&latest.status==='accepted'))return res.status(409).send(latest.status==='accepted'?'Approved file is locked; start a new revision':'Withdraw the current upload or submission before uploading another file');
+        if(latest&&['submitted','accepted'].includes(latest.status)&&!(revisionMatch&&latest.status==='accepted'))return res.status(409).send(latest.status==='accepted'?'Approved file is locked; start a new revision':'文件已提交审核，请先撤回提交再补充文件。');
       }
       if (!canSubmitCollaborationWorkPackage(req.currentUser, opportunity, req.workPackage)) {
         res.status(403).send('Forbidden');
@@ -1726,47 +1729,23 @@ export function opportunityRoutes({
       }
       next();
     } catch (error) {
+      if(error.statusCode===409)return res.status(409).type('text/plain').send(error.message);
       next(error);
     }
-  }, uploadAttachment, async (req, res, next) => {
+  }, uploadWorkPackageFiles, async (req, res, next) => {
+    let persisted=false;
     try {
-      if (req.csrfProtectionEnabled && !req.validateCsrf?.()) {
-        if (req.file?.path) await rm(req.file.path, { force: true });
-        res.status(403).send('Invalid CSRF token');
-        return;
-      }
-      if (!req.file) {
-        res.status(400).send('Attachment file is required');
-        return;
-      }
-      const category = req.workPackage.planKind === 'technical_solution' ? 'technical_solution' : 'internal_quote';
-      if (!canUploadAttachment(req.currentUser, req.opportunity, category)) {
-        await rm(req.file.path, { force: true });
-        res.status(403).send('Attachment upload is not allowed for this work package');
-        return;
-      }
-      if(req.quoteSource){
-        req.workPackage=await opportunityCollaborationRepository.ensureInternalQuotePackage(req.quoteSource.id,req.opportunity.id,req.currentUser.id);
-        if(!req.workPackage)return res.status(404).send('Work package not found');
-      }
-      const attachment = await persistUploadedOpportunityAttachment({
-        attachmentRepository,
-        uploadDir,
-        file: req.file,
-        opportunityId: req.opportunity.id,
-        category,
-        actorUserId: req.currentUser.id
-      });
-      await opportunityCollaborationRepository.submitVersion({
-        workPackageId: req.workPackage.id,
-        submittedByUserId: req.currentUser.id,
-        attachmentIds: [attachment.id],
-        staged:true
-      });
-      res.redirect(redirectToOpportunity(req.opportunity.id));
-    } catch (error) {
-      next(error);
-    }
+      if(req.csrfProtectionEnabled&&!req.validateCsrf?.())return res.status(403).send('Invalid CSRF token');
+      if(!req.files?.length)return res.status(400).send('Attachment file is required');
+      const category=req.workPackage.planKind==='technical_solution'?'technical_solution':'internal_quote';
+      if(!canUploadAttachment(req.currentUser,req.opportunity,category))return res.status(403).send('Attachment upload is not allowed for this work package');
+      if(req.quoteSource){req.workPackage=await opportunityCollaborationRepository.ensureInternalQuotePackage(req.quoteSource.id,req.opportunity.id,req.currentUser.id);if(!req.workPackage)return res.status(404).send('Work package not found');}
+      const attachments=[];
+      for(const file of req.files)attachments.push(await persistUploadedOpportunityAttachment({attachmentRepository:{createAttachment:async input=>input},uploadDir,file,opportunityId:req.opportunity.id,category,actorUserId:req.currentUser.id}));
+      await opportunityCollaborationRepository.stageFiles({workPackageId:req.workPackage.id,actorUserId:req.currentUser.id,attachments,revision:req.newWorkPackageRevision});
+      persisted=true;
+      res.redirect(redirectToOpportunity(req.opportunity.id)+(category==='technical_solution'?'#technical-work-packages':'#internal-quote'));
+    }catch(error){if(error.statusCode===409)res.status(409).type('text/plain').send(error.message);else next(error);}finally{if(!persisted)await Promise.all((req.files||[]).map(file=>rm(file.path,{force:true})));}
   });
 
   router.post('/opportunities/:id/collaboration-work-packages/:workPackageId/versions/:versionId/review', async (req, res, next) => {
@@ -1791,6 +1770,7 @@ export function opportunityRoutes({
         return;
       }
       const reviewed=await opportunityCollaborationRepository.reviewVersion({
+        requireOfficeReviewClosed:Boolean(officeReviewService),
         workPackageId:workPackage.id,
         versionId: requiredPositiveInteger(req.params.versionId),
         reviewedByUserId: req.currentUser.id,
@@ -1800,6 +1780,7 @@ export function opportunityRoutes({
       if(!reviewed)return res.status(409).send('Only the latest submitted file can be reviewed');
       res.redirect(redirectToOpportunity(opportunity.id));
     } catch (error) {
+      if(error.statusCode===409)return res.status(409).type('text/plain').send(error.message);
       next(error);
     }
   });
@@ -1929,6 +1910,9 @@ export function opportunityRoutes({
       }
       const kind = attachmentPreviewKind(attachment);
       const downloadUrl = `/opportunities/${opportunity.id}/attachments/${attachment.id}/download`;
+      const officeReviewUrl = officeReviewService && await officeReviewService.access(attachment,req.currentUser) ? `/opportunities/${opportunity.id}/attachments/${attachment.id}/review` : null;
+      const officeReviews = officeReviewService && ['docx','spreadsheet'].includes(kind) ? await officeReviewService.historyIfLinked(attachment,req.currentUser) : [];
+      const officeAccess = officeEditingService && ['docx','spreadsheet'].includes(kind) ? await officeEditingService.access(attachment,req.currentUser) : null;
       if (kind === 'unsupported-dwg') {
         res.status(200).render('attachments/unsupported-preview', {
           activeNav: 'opportunities',
@@ -1967,8 +1951,10 @@ export function opportunityRoutes({
           opportunity,
           attachment,
           downloadUrl,
+          officeReviewUrl,officeReviews,
           officeHistory: officeEditingService ? await officeEditingService.history(attachment.id) : [],
-          officeEditUrl: officeEditingEnabled && !attachment.retiredAt && !attachment.opportunityMaterialVersionId && !attachment.sourceInquiryAttachmentId && canDeleteAttachment(req.currentUser,opportunity,attachment) ? `/opportunities/${opportunity.id}/attachments/${attachment.id}/edit` : null,
+          officeReadOnlyReason: officeAccess?.allowed === false ? officeAccess.reason : '',
+          officeEditUrl: officeEditingEnabled && officeAccess?.allowed ? `/opportunities/${opportunity.id}/attachments/${attachment.id}/edit` : null,
           documentHtml: extractDocxPreview(docxBuffer)
         });
         return;
@@ -1980,8 +1966,10 @@ export function opportunityRoutes({
           opportunity,
           attachment,
           downloadUrl,
+          officeReviewUrl,officeReviews,
           officeHistory: officeEditingService ? await officeEditingService.history(attachment.id) : [],
-          officeEditUrl: officeEditingEnabled && !attachment.retiredAt && !attachment.opportunityMaterialVersionId && !attachment.sourceInquiryAttachmentId && canDeleteAttachment(req.currentUser,opportunity,attachment) ? `/opportunities/${opportunity.id}/attachments/${attachment.id}/edit` : null,
+          officeReadOnlyReason: officeAccess?.allowed === false ? officeAccess.reason : '',
+          officeEditUrl: officeEditingEnabled && officeAccess?.allowed ? `/opportunities/${opportunity.id}/attachments/${attachment.id}/edit` : null,
           preview: extractStyledXlsxPreview(spreadsheetBuffer)
         });
         return;

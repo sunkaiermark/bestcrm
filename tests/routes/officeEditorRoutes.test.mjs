@@ -24,3 +24,9 @@ test('Office editor auth does not intercept health or unrelated application rout
  await request(application).get('/unrelated').expect(200,'pass');
  await request(application).get('/office-editor/private').expect(302).expect('Location',/login/);
 });
+
+test('Office editor returns the exact read-only reason instead of a generic production Forbidden page',async()=>{
+ const application=app({start:async()=>{throw Object.assign(new Error('工作包和已提交草案附件只读。'),{statusCode:403});}});
+ const response=await request(application).post('/opportunities/9/attachments/1/edit').set('x-csrf-token','test-csrf').send({}).expect(403);
+ assert.equal(response.text,'工作包和已提交草案附件只读。');assert.match(response.headers['content-type'],/text\/plain/);
+});
