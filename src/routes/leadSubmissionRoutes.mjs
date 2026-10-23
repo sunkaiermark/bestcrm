@@ -51,8 +51,8 @@ import {
 import {
   applyDirectAttachmentPreviewHeaders,
   attachmentPreviewKind,
-  extractDocxPlainText,
-  extractXlsxPreview,
+  extractDocxPreview,
+  extractStyledXlsxPreview,
   renderDxfPreview
 } from '../utils/attachmentPreview.mjs';
 import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
@@ -998,7 +998,7 @@ export function leadSubmissionRoutes({
       const docxBuffer = await readFile(filePath);
       res.status(200).render('attachments/docx-preview', {
         ...previewContext,
-        paragraphs: extractDocxPlainText(docxBuffer)
+        documentHtml: extractDocxPreview(docxBuffer)
       });
       return;
     }
@@ -1006,7 +1006,7 @@ export function leadSubmissionRoutes({
       const spreadsheetBuffer = await readFile(filePath);
       res.status(200).render('attachments/spreadsheet-preview', {
         ...previewContext,
-        preview: extractXlsxPreview(spreadsheetBuffer)
+        preview: extractStyledXlsxPreview(spreadsheetBuffer)
       });
       return;
     }

@@ -1,0 +1,22 @@
+services:
+  documents:
+    image: ${OFFICE_DOCS_IMAGE:?Set a pinned ONLYOFFICE documentserver image tag or digest}
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:8088:80'
+    environment:
+      JWT_ENABLED: 'true'
+      JWT_SECRET: ${OFFICE_JWT_SECRET:?Run prepare-office-service.sh}
+      JWT_HEADER: Authorization
+      JWT_IN_BODY: 'true'
+    volumes:
+      - office_logs:/var/log/onlyoffice
+      - office_data:/var/www/onlyoffice/Data
+      - office_lib:/var/lib/onlyoffice
+      - office_db:/var/lib/postgresql
+    stop_grace_period: 90s
+volumes:
+  office_logs:
+  office_data:
+  office_lib:
+  office_db:

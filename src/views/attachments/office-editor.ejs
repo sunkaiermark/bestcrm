@@ -1,0 +1,10 @@
+<%- include('../partials/app-start', {title: attachment.originalName + ' - 在线编辑',activeNav}) %>
+<link rel="stylesheet" href="/assets/office-editor.css">
+<header class="page-header"><div><h1><%= attachment.originalName %></h1><p>修改后点击编辑器内的保存按钮。内容未变不增加版本；保存不会代替提交审批。</p></div><div class="page-actions"><a class="quick-action secondary-action" href="/opportunities/<%= session.opportunity_id %>">返回商机</a></div></header>
+<div data-session-id="<%= session.id %>" data-version-no="<%= session.version_no %>" id="office-save-status" role="status">编辑器加载中……</div>
+<div class="office-editor-frame"><div id="office-editor"></div></div>
+<details><summary>版本记录（<%= history.length %>）</summary><p><a href="/opportunities/<%= session.opportunity_id %>/attachments/<%= session.root_attachment_id %>/download">原始版本</a></p><% for(const version of history){ %><p>V<%= version.version_no %> · <%= version.saved_at %> · <a href="/opportunities/<%= session.opportunity_id %>/attachments/<%= version.attachment_id %>/download">下载</a></p><% } %></details>
+<script id="office-editor-config" type="application/json"><%- JSON.stringify(settings).replaceAll('<','\\u003c') %></script>
+<script src="<%= scriptUrl %>"></script>
+<script src="/assets/office-editor.js" defer></script>
+<%- include('../partials/app-end') %>

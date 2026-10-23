@@ -5,6 +5,7 @@
           const previewBackUrl = typeof backUrl !== 'undefined' ? backUrl : `/opportunities/${opportunity.id}`;
           const previewBackLabelKey = typeof backLabelKey !== 'undefined' ? backLabelKey : 'backToOpportunity';
         %>
+        <link rel="stylesheet" href="/assets/office-preview.css">
         <header class="page-header">
           <div>
             <div class="eyebrow"><%= t(previewContextLabelKey) %></div>
@@ -12,6 +13,7 @@
             <div class="muted"><%= previewContextText %></div>
           </div>
           <div class="page-actions">
+            <% if(typeof officeEditUrl !== 'undefined' && officeEditUrl) { %><form method="post" action="<%= officeEditUrl %>"><%- csrfField() %><button type="submit">在线编辑</button></form><% } %>
             <a class="quick-action secondary-action" href="<%= previewBackUrl %>"><%= t(previewBackLabelKey) %></a>
             <a class="quick-action" href="<%= downloadUrl %>"><%= t('download') %></a>
           </div>
@@ -19,13 +21,10 @@
 
         <section class="content-section">
           <h2><%= attachment.originalName %></h2>
+          <% if(typeof officeHistory !== 'undefined' && officeHistory.length) { %><details><summary>编辑版本记录（<%= officeHistory.length %>）</summary><% for(const version of officeHistory) { %><p>V<%= version.version_no %> · <%= version.saved_at %> · <a href="/opportunities/<%= opportunity.id %>/attachments/<%= version.attachment_id %>/preview">预览</a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= version.attachment_id %>/download">下载</a></p><% } %></details><% } %>
           <div class="section-body">
-            <% if (paragraphs.length > 0) { %>
-              <article class="document-preview">
-                <% for (const paragraph of paragraphs) { %>
-                  <p><%= paragraph %></p>
-                <% } %>
-              </article>
+            <% if (documentHtml) { %>
+              <div class="office-document-viewport"><article class="office-word-document"><%- documentHtml %></article></div>
             <% } else { %>
               <p class="muted"><%= t('docxNoPreviewText') %></p>
             <% } %>

@@ -13,8 +13,8 @@ import {
   applyDirectAttachmentPreviewHeaders,
   attachmentPreviewKind,
   directAttachmentPreviewMimeType,
-  extractDocxPlainText,
-  extractXlsxPreview,
+  extractDocxPreview,
+  extractStyledXlsxPreview,
   renderDxfPreview
 } from '../utils/attachmentPreview.mjs';
 import { formatPlainEmailForReading, resolveInlineEmailContent } from '../utils/emailPresentation.mjs';
@@ -626,14 +626,14 @@ export function emailCenterRoutes({
       if (kind === 'docx') {
         res.status(200).render('attachments/docx-preview', {
           ...previewContext,
-          paragraphs: extractDocxPlainText(await readFile(filePath))
+          documentHtml: extractDocxPreview(await readFile(filePath))
         });
         return;
       }
       if (kind === 'spreadsheet') {
         res.status(200).render('attachments/spreadsheet-preview', {
           ...previewContext,
-          preview: extractXlsxPreview(await readFile(filePath))
+          preview: extractStyledXlsxPreview(await readFile(filePath))
         });
         return;
       }

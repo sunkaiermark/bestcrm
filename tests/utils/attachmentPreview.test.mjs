@@ -5,6 +5,8 @@ import {
   attachmentPreviewKind,
   directAttachmentPreviewMimeType,
   extractDocxPlainText,
+  extractDocxPreview,
+  extractStyledXlsxPreview,
   extractXlsxPreview,
   renderDxfPreview
 } from '../../src/utils/attachmentPreview.mjs';
@@ -199,4 +201,25 @@ test('xlsx preview extracts worksheet names, shared strings, and cell values', (
     { number: 2, cells: ['Mixer & reactor', '2', 'TRUE'] }
   ]);
   assert.equal(preview.truncated, false);
+});
+
+test('Word preview retains cover tables, formatting and escaped attachment text', () => {
+  const file = createStoredZip([{name:'word/document.xml',data:'<w:document xmlns:w="urn:word"><w:body><w:p><w:pPr><w:jc w:val="center"/></w:pPr><w:r><w:rPr><w:b/></w:rPr><w:t>技术协议</w:t></w:r></w:p><w:tbl><w:tblGrid><w:gridCol w:w="2000"/><w:gridCol w:w="6000"/></w:tblGrid><w:tr><w:tc><w:p><w:r><w:t>设备名称</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>&lt;script&gt;alert(1)&lt;/script&gt;</w:t></w:r></w:p></w:tc></w:tr></w:tbl></w:body></w:document>'}]);
+  const html=extractDocxPreview(file);
+  assert.match(html, /text-align:center/); assert.match(html, /font-weight:700/);
+  assert.match(html, /<table/); assert.match(html, /width:25%/);
+  assert.match(html, /&lt;script&gt;/); assert.doesNotMatch(html, /<script>/);
+});
+test('Excel preview preserves merges, column widths, alignment, dates and percentages', () => {
+  const file=createStoredZip([
+    {name:'xl/worksheets/sheet1.xml',data:'<worksheet><cols><col min="1" max="2" width="25"/></cols><sheetData><row r="1"><c r="A1" t="inlineStr"><is><t>项目 &lt;img onerror=x&gt;</t></is></c></row><row r="2"><c r="A2" s="1"><v>45000</v></c><c r="B2" s="2"><v>0.25</v></c></row></sheetData><mergeCells><mergeCell ref="A1:B1"/></mergeCells></worksheet>'},
+    {name:'xl/styles.xml',data:'<styleSheet><fonts><font><b/></font></fonts><cellXfs><xf/><xf numFmtId="14"><alignment horizontal="center"/></xf><xf numFmtId="9"/></cellXfs></styleSheet>'}
+  ]);
+  const html=extractStyledXlsxPreview(file).sheets[0].html;
+  assert.match(html,/colspan="2" rowspan="1"/);assert.match(html,/width:180px/);
+  assert.match(html,/2023-03-15/);assert.match(html,/25%/);assert.match(html,/text-align:center/);
+  assert.match(html,/&lt;img onerror=x&gt;/);assert.doesNotMatch(html,/<img/);
+});
+test('Word preview rejects entity declarations and malformed documents', () => {
+  for(const xml of ['<!DOCTYPE x [<!ENTITY a SYSTEM "file:///etc/passwd">]><x/>','<broken>']) assert.equal(extractDocxPreview(createStoredZip([{name:'word/document.xml',data:xml}])),'');
 });

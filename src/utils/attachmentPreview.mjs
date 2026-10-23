@@ -1,4 +1,5 @@
 import path from 'node:path';
+import { wordHtml, sheetLayout } from './officePreviewLayout.mjs';
 import { inflateRawSync } from 'node:zlib';
 
 const directPreviewMimeByExtension = new Map([
@@ -457,4 +458,30 @@ export function extractDocxPlainText(buffer) {
   } catch {
     return [];
   }
+}
+
+export function extractDocxPreview(buffer) {
+  try { return wordHtml(zipEntryBuffer(buffer, 'word/document.xml')?.toString('utf8'), zipEntryBuffer(buffer, 'word/styles.xml')?.toString('utf8')); }
+  catch { return ''; }
+}
+export function extractStyledXlsxPreview(buffer, options) {
+  const preview = extractXlsxPreview(buffer, options);
+  const workbookXml = zipEntryBuffer(buffer, 'xl/workbook.xml')?.toString('utf8') || '';
+  const stylesXml = zipEntryBuffer(buffer, 'xl/styles.xml')?.toString('utf8') || '';
+  const definitions = spreadsheetSheetDefinitions(buffer, workbookXml);
+  const date1904 = /<workbookPr\b[^>]*date1904=["'](?:1|true)["']/i.test(workbookXml);
+  return { ...preview, sheets: preview.sheets.map((sheet, index) => sheetLayout(zipEntryBuffer(buffer, definitions[index].filename)?.toString('utf8'), stylesXml, sheet, date1904)) };
+}
+
+export function readOfficePackageParts(buffer) {
+  const entries = zipEntries(buffer);
+  if (!entries.length || entries.length > 5000 || entries.reduce((sum, entry) => sum + entry.uncompressedSize, 0) > 80 * 1024 * 1024) throw new Error('Office package exceeds preview limits');
+  const names = new Set();
+  return entries.filter(entry => !entry.filename.endsWith('/')).map(entry => {
+    if (names.has(entry.filename)) throw new Error('Duplicate Office package entry');
+    names.add(entry.filename);
+    const data = zipEntryBuffer(buffer, entry.filename, 32 * 1024 * 1024);
+    if (!data || data.length !== entry.uncompressedSize) throw new Error('Invalid Office package entry');
+    return { name: entry.filename, data };
+  });
 }

@@ -54,8 +54,8 @@ import { WorkflowValidationError, applyWorkflowAction } from '../services/workfl
 import {
   applyDirectAttachmentPreviewHeaders,
   attachmentPreviewKind,
-  extractDocxPlainText,
-  extractXlsxPreview,
+  extractDocxPreview,
+  extractStyledXlsxPreview,
   renderDxfPreview
 } from '../utils/attachmentPreview.mjs';
 import { attachmentContentDisposition, inlineContentDisposition } from '../utils/contentDisposition.mjs';
@@ -678,7 +678,7 @@ function normalizeAttachmentCategory(category) {
   return attachmentCategories.has(category) ? category : 'other';
 }
 
-function canDeleteAttachment(user, opportunity, attachment) {
+export function canDeleteAttachment(user, opportunity, attachment) {
   if (!canUploadAttachment(user, opportunity, attachment.category)) {
     return false;
   }
@@ -822,6 +822,8 @@ function redirectToOpportunity(opportunityId) {
 }
 
 export function opportunityRoutes({
+  officeEditingEnabled = false,
+  officeEditingService = null,
   inquiryRepository = null,
   aiSourceRepository = null,
   aiSourceEnabled = false,
@@ -1965,7 +1967,9 @@ export function opportunityRoutes({
           opportunity,
           attachment,
           downloadUrl,
-          paragraphs: extractDocxPlainText(docxBuffer)
+          officeHistory: officeEditingService ? await officeEditingService.history(attachment.id) : [],
+          officeEditUrl: officeEditingEnabled && !attachment.retiredAt && !attachment.opportunityMaterialVersionId && !attachment.sourceInquiryAttachmentId && canDeleteAttachment(req.currentUser,opportunity,attachment) ? `/opportunities/${opportunity.id}/attachments/${attachment.id}/edit` : null,
+          documentHtml: extractDocxPreview(docxBuffer)
         });
         return;
       }
@@ -1976,7 +1980,9 @@ export function opportunityRoutes({
           opportunity,
           attachment,
           downloadUrl,
-          preview: extractXlsxPreview(spreadsheetBuffer)
+          officeHistory: officeEditingService ? await officeEditingService.history(attachment.id) : [],
+          officeEditUrl: officeEditingEnabled && !attachment.retiredAt && !attachment.opportunityMaterialVersionId && !attachment.sourceInquiryAttachmentId && canDeleteAttachment(req.currentUser,opportunity,attachment) ? `/opportunities/${opportunity.id}/attachments/${attachment.id}/edit` : null,
+          preview: extractStyledXlsxPreview(spreadsheetBuffer)
         });
         return;
       }
