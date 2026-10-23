@@ -49,6 +49,7 @@ test('Save creates only changed versions and duplicate callbacks do not incremen
  try{
   await save(6);assert.equal(writes,0);assert.equal(s.version_no,0);
   buffer=await doc('修改正文');await save(6);assert.equal(writes,1);assert.equal(s.version_no,1);
+  const latest=await service.source(s.id,signOfficeToken({session:s.id,purpose:'download',exp:Math.floor(Date.now()/1000)+60},config.secret));assert.equal(latest.id,s.current_attachment_id);
   await save(6);assert.equal(writes,1);
   allowed=false;await assert.rejects(()=>save(6));assert.equal(writes,1);allowed=true;
   await save(2);assert.equal(writes,1);assert.equal(s.state,'closed');

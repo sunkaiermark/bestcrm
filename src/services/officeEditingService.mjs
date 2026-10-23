@@ -74,7 +74,7 @@ export function createOfficeEditingService({config,pool,uploadDir,authorize,fetc
     const settings={documentType:attachment.originalName.toLowerCase().endsWith('.xlsx')?'cell':'word',type:'desktop',height:'100%',width:'100%',document:{key:id,fileType:path.extname(attachment.originalName).slice(1).toLowerCase(),title:attachment.originalName,url:`${config.baseUrl}/office-service/${id}/file?token=${encodeURIComponent(token)}`,permissions:{edit:true,download:true,print:true}},editorConfig:{mode:'edit',lang:'zh-CN',callbackUrl:`${config.baseUrl}/office-service/${id}/callback`,user:{id:String(user.id),name:user.displayName||user.username||String(user.id)},customization:{forcesave:true,autosave:true}}};
     return {session,attachment,settings:{...settings,token:signOfficeToken(settings,config.secret)},scriptUrl:`${config.documentServerUrl}/web-apps/apps/api/documents/api.js`};
   }
-  async function source(id,token){const signed=verifyOfficeToken(token,config.secret),s=await find(id);if(signed.session!==id||signed.purpose!=='download'||!s||s.state!=='editing'||new Date(s.expires_at)<=new Date())throw officeError('Forbidden',403);return currentAttachment(s.source_attachment_id);}
+  async function source(id,token){const signed=verifyOfficeToken(token,config.secret),s=await find(id);if(signed.session!==id||signed.purpose!=='download'||!s||s.state!=='editing'||new Date(s.expires_at)<=new Date())throw officeError('Forbidden',403);return currentAttachment(s.current_attachment_id);}
   async function callback(id,token){
     const signed=verifyOfficeToken(token,config.secret),data=signed.payload||signed;
     if(data.key!==id||!Number.isInteger(data.status))throw officeError('Invalid callback',403);
