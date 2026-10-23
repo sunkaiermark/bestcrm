@@ -17,3 +17,10 @@ test('Starting an editor requires login and CSRF and checks attachment opportuni
  await request(app(service)).post('/opportunities/9/attachments/1/edit').set('x-csrf-token','test-csrf').send({}).expect(302).expect('Location','/office-editor/key');assert.equal(calls,1);
  await request(app(service,null)).post('/opportunities/9/attachments/1/edit').set('x-csrf-token','test-csrf').send({}).expect(302).expect('Location',/login/);
 });
+
+test('Office editor auth does not intercept health or unrelated application routes',async()=>{
+ const application=app({},null);application.get('/health',(req,res)=>res.json({ok:true,app:'BESTCRM'}));application.get('/unrelated',(req,res)=>res.send('pass'));
+ await request(application).get('/health').expect(200,{ok:true,app:'BESTCRM'});
+ await request(application).get('/unrelated').expect(200,'pass');
+ await request(application).get('/office-editor/private').expect(302).expect('Location',/login/);
+});
