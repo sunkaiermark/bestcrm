@@ -1658,6 +1658,21 @@ export function opportunityRoutes({
       res.redirect('/opportunities/'+opportunity.id+'#technical-proposal');
     }catch(error){if(opportunity&&/Technical team change reason/.test(error.message))return showValidation(/too long/.test(error.message)?'变更原因最多1000字。':'请填写人员、职位或分工的变更原因。');if(opportunity&&/required|Only the manager/.test(error.message))return showValidation(/Only the manager/.test(error.message)?'只有经理可以更换主任工程师。':'请选择有效且在职的工程师，并完整填写职位与专业分工。');next(error);}
   });
+  router.post('/opportunities/:id/collaboration-files/:workPackageId/:attachmentId/:action',async(req,res,next)=>{
+    try{
+      const opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});if(!opportunity)return;
+      const workPackage=await opportunityCollaborationRepository.findWorkPackageById(req.params.workPackageId);
+      if(!workPackage||Number(workPackage.opportunityId)!==Number(opportunity.id))return res.sendStatus(404);
+      const action=req.params.action,review=['accepted','returned'].includes(action);
+      if(!['accepted','returned','submit','withdraw'].includes(action))return res.sendStatus(404);
+      if(review?!canReviewCollaborationWorkPackage(req.currentUser,opportunity,workPackage):!canSubmitCollaborationWorkPackage(req.currentUser,opportunity,workPackage))return res.sendStatus(403);
+      const note=requiredText(req.body.note);
+      if(action==='returned'&&(!note||note.length>2000||req.body.confirmRejection!=='yes'))return res.status(400).send('请保存驳回意见后确认。');
+      await opportunityCollaborationRepository.fileDecision({opportunityId:opportunity.id,workPackageId:workPackage.id,attachmentId:requiredPositiveInteger(req.params.attachmentId),action,note,actorUserId:req.currentUser.id,isManager:canManageOpportunityEngineeringTeam(req.currentUser,opportunity)});
+      res.redirect(redirectToOpportunity(opportunity.id)+(workPackage.planKind==='internal_quote'?'#internal-quote':'#technical-work-packages'));
+    }catch(error){if(error.statusCode===409)return res.status(409).type('text/plain').send(error.message);next(error);}
+  });
+
   router.post('/opportunities/:id/technical-work-packages/:workPackageId/:operation',async(req,res,next)=>{
     try{
       const opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});if(!opportunity)return;
@@ -1721,7 +1736,7 @@ export function opportunityRoutes({
         const latest=(await opportunityCollaborationRepository.listByOpportunity(opportunity.id)).find(wp=>Number(wp.id)===Number(req.workPackage.id))?.latestVersion;
         req.newWorkPackageRevision=Boolean(revisionMatch);
         if(revisionMatch&&latest?.status!=='accepted')return res.status(409).send('New revision requires an approved version');
-        if(latest&&['submitted','accepted'].includes(latest.status)&&!(revisionMatch&&latest.status==='accepted'))return res.status(409).send(latest.status==='accepted'?'Approved file is locked; start a new revision':'文件已提交审核，请先撤回提交再补充文件。');
+        if(latest?.status==='accepted'&&!revisionMatch)return res.status(409).send('Approved file is locked; start a new revision');
       }
       if (!canSubmitCollaborationWorkPackage(req.currentUser, opportunity, req.workPackage)) {
         res.status(403).send('Forbidden');
@@ -1742,7 +1757,7 @@ export function opportunityRoutes({
       if(req.quoteSource){req.workPackage=await opportunityCollaborationRepository.ensureInternalQuotePackage(req.quoteSource.id,req.opportunity.id,req.currentUser.id);if(!req.workPackage)return res.status(404).send('Work package not found');}
       const attachments=[];
       for(const file of req.files)attachments.push(await persistUploadedOpportunityAttachment({attachmentRepository:{createAttachment:async input=>input},uploadDir,file,opportunityId:req.opportunity.id,category,actorUserId:req.currentUser.id}));
-      await opportunityCollaborationRepository.stageFiles({workPackageId:req.workPackage.id,actorUserId:req.currentUser.id,attachments,revision:req.newWorkPackageRevision});
+      await opportunityCollaborationRepository.stageFiles({workPackageId:req.workPackage.id,actorUserId:req.currentUser.id,attachments,revision:req.newWorkPackageRevision,replacementAttachmentId:requiredPositiveInteger(req.body.replacementAttachmentId)});
       persisted=true;
       res.redirect(redirectToOpportunity(req.opportunity.id)+(category==='technical_solution'?'#technical-work-packages':'#internal-quote'));
     }catch(error){if(error.statusCode===409)res.status(409).type('text/plain').send(error.message);else next(error);}finally{if(!persisted)await Promise.all((req.files||[]).map(file=>rm(file.path,{force:true})));}

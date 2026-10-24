@@ -66,7 +66,7 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
         JOIN LATERAL (SELECT * FROM opportunity_collaboration_work_package_versions WHERE work_package_id=t.id ORDER BY version_no DESC,id DESC LIMIT 1) v ON v.status='accepted'
         JOIN opportunity_collaboration_work_package_files f ON f.work_package_version_id=v.id
         JOIN attachments a ON a.id=f.attachment_id AND a.retired_at IS NULL
-        WHERE t.opportunity_id=$1 AND t.plan_kind='technical_solution' AND t.deleted_at IS NULL
+        WHERE t.opportunity_id=$1 AND t.plan_kind='technical_solution' AND t.deleted_at IS NULL AND f.status='accepted' AND f.superseded_by_attachment_id IS NULL
         ORDER BY t.id,a.id
       `,[opportunityId]);
       const approvals=result.rows;
@@ -126,11 +126,12 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
           ORDER BY v.work_package_id, v.version_no DESC, v.id DESC
         `, [opportunityId]),
         queryTarget.query(`
-          SELECT f.work_package_version_id, a.id AS attachment_id, a.original_name, a.mime_type, a.uploaded_at
+          SELECT f.*, a.id AS attachment_id, a.original_name, a.mime_type, a.uploaded_at, reviewer.display_name AS file_reviewer_name
           FROM opportunity_collaboration_work_package_files f
           JOIN opportunity_collaboration_work_package_versions v ON v.id = f.work_package_version_id
           JOIN opportunity_collaboration_work_packages wp ON wp.id = v.work_package_id
           JOIN attachments a ON a.id = f.attachment_id
+          LEFT JOIN users reviewer ON reviewer.id=f.reviewed_by_user_id
           WHERE wp.opportunity_id = $1 AND a.retired_at IS NULL
           ORDER BY f.work_package_version_id, f.sort_order, f.id
         `, [opportunityId])
@@ -153,7 +154,8 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
           id: Number(row.attachment_id),
           originalName: row.original_name,
           mimeType: row.mime_type,
-          uploadedAt: row.uploaded_at
+          uploadedAt: row.uploaded_at,
+          addedByUserId:Number(row.added_by_user_id),status: row.status, submittedAt:row.submitted_at,reviewNote:row.review_note,reviewedAt:row.reviewed_at,reviewedByDisplayName:row.file_reviewer_name, supersededByAttachmentId:row.superseded_by_attachment_id
         });
       }
       return packages;
@@ -224,21 +226,68 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
       const opportunity=(await queryTarget.query('SELECT * FROM opportunities WHERE id=$1 FOR UPDATE',[owner.opportunity_id])).rows[0];
       const wp=(await queryTarget.query('SELECT * FROM opportunity_collaboration_work_packages WHERE id=$1 FOR UPDATE',[input.workPackageId])).rows[0];if(wp.deleted_at)fail('工作包已删除。');
       const stages=wp.plan_kind==='technical_solution'?['technical_solution_in_progress','technical_solution_rejected']:['technical_solution_in_progress','technical_solution_rejected','commercial_quote_in_progress','commercial_quote_rejected'];if(!opportunity||opportunity.archived_at||!stages.includes(opportunity.status))fail('商机阶段已变化，请刷新后重试。');
-      const latest=(await queryTarget.query('SELECT * FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$1 ORDER BY version_no DESC,id DESC LIMIT 1',[input.workPackageId])).rows[0];
-      if(latest?.status==='submitted')fail('文件已提交审核，请先撤回提交再补充文件。');
+      let latest=(await queryTarget.query('SELECT * FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$1 ORDER BY version_no DESC,id DESC LIMIT 1',[input.workPackageId])).rows[0];
+
       if(input.revision&&latest?.status!=='accepted')fail('新修订需要已批准版本。');
-      if(latest?.status==='accepted'&&!input.revision)fail('已批准版本不可修改，请发起新修订。');
-      const existing=latest?.status==='uploaded'?(await queryTarget.query('SELECT attachment_id,sort_order FROM opportunity_collaboration_work_package_files WHERE work_package_version_id=$1 ORDER BY sort_order',[latest.id])).rows:[];
+      if(latest?.status==='accepted'){
+        if(!input.revision)fail('已批准版本不可修改，请发起新修订。');
+        const prior=latest;
+        const created=await this.submitVersion({workPackageId:input.workPackageId,submittedByUserId:input.actorUserId,attachmentIds:[],staged:true});
+        const oldFiles=(await queryTarget.query(`SELECT f.*,a.* FROM opportunity_collaboration_work_package_files f JOIN attachments a ON a.id=f.attachment_id WHERE f.work_package_version_id=$1 AND f.status='accepted' AND f.superseded_by_attachment_id IS NULL AND a.retired_at IS NULL ORDER BY f.sort_order`,[prior.id])).rows;
+        for(let n=0;n<oldFiles.length;n++){
+          const f=oldFiles[n],copy=await createAttachmentRepository(queryTarget).createAttachment({opportunityId:owner.opportunity_id,category:f.category,originalName:f.original_name,storedPath:f.stored_path,mimeType:f.mime_type,fileSize:Number(f.file_size),sha256:f.sha256,uploadedBy:input.actorUserId});
+          await queryTarget.query(`INSERT INTO opportunity_collaboration_work_package_files(work_package_version_id,attachment_id,sort_order,added_by_user_id,status,submitted_at,reviewed_by_user_id,reviewed_at,review_note) VALUES($1,$2,$3,$4,'accepted',$5,$6,$7,$8)`,[created.id,copy.id,n+1,input.actorUserId,f.submitted_at,f.reviewed_by_user_id,f.reviewed_at,f.review_note]);
+        }
+        latest={id:created.id,status:'uploaded'};
+      }
+      const existing=latest?(await queryTarget.query('SELECT attachment_id,sort_order FROM opportunity_collaboration_work_package_files WHERE work_package_version_id=$1 ORDER BY sort_order',[latest.id])).rows:[];
       if(!input.attachments?.length||existing.length+input.attachments.length>20)fail('每个工作包版本最多上传20份文件。');
+      let replacement;
+      if(input.replacementAttachmentId){
+        if(input.attachments.length!==1)fail('替换驳回文件时请只选择一份文件。');
+        replacement=(await queryTarget.query("SELECT f.* FROM opportunity_collaboration_work_package_files f WHERE f.work_package_version_id=$1 AND f.attachment_id=$2 AND f.status='returned' AND f.superseded_by_attachment_id IS NULL FOR UPDATE",[latest?.id,input.replacementAttachmentId])).rows[0];if(!replacement)fail('仅可替换本工作包已驳回且尚未替换的文件。');
+      }
       const ids=[];for(const attachment of input.attachments){if(Number(attachment.opportunityId)!==Number(owner.opportunity_id))fail('附件不属于此商机。');ids.push((await createAttachmentRepository(queryTarget).createAttachment(attachment)).id);}
-      if(latest?.status==='uploaded'){
+      if(latest){
         const firstOrder=Math.max(0,...existing.map(f=>Number(f.sort_order)))+1;
         await queryTarget.query('INSERT INTO opportunity_collaboration_work_package_files(work_package_version_id,attachment_id,sort_order,added_by_user_id) SELECT $1,attachment_id,ordinality+$4,$2 FROM unnest($3::bigint[]) WITH ORDINALITY AS files(attachment_id,ordinality)',[latest.id,input.actorUserId,ids,firstOrder-1]);
         await queryTarget.query("INSERT INTO opportunity_collaboration_work_package_events(work_package_id,work_package_version_id,event_type,actor_user_id,note) VALUES($1,$2,'uploaded',$3,$4)",[input.workPackageId,latest.id,input.actorUserId,'补充上传 '+ids.length+' 份文件']);
-        await queryTarget.query('UPDATE opportunity_collaboration_work_packages SET updated_at=now() WHERE id=$1',[input.workPackageId]);
+        if(replacement)await queryTarget.query('UPDATE opportunity_collaboration_work_package_files SET superseded_by_attachment_id=$2 WHERE attachment_id=$1',[input.replacementAttachmentId,ids[0]]);
+        await this.refreshFileDecisions(input.workPackageId, input.actorUserId);
         return {id:Number(latest.id)};
       }
       return this.submitVersion({workPackageId:input.workPackageId,submittedByUserId:input.actorUserId,attachmentIds:ids,staged:true});
+    },
+
+    async refreshFileDecisions(workPackageId,actorUserId) {
+      const rows=(await queryTarget.query(`SELECT f.status FROM opportunity_collaboration_work_package_files f JOIN opportunity_collaboration_work_package_versions v ON v.id=f.work_package_version_id JOIN attachments a ON a.id=f.attachment_id WHERE v.id=(SELECT id FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$1 ORDER BY version_no DESC,id DESC LIMIT 1) AND a.retired_at IS NULL AND f.superseded_by_attachment_id IS NULL`,[workPackageId])).rows;
+      const states=rows.map(r=>r.status).filter(s=>s!=='withdrawn');
+      const status=states.length&&states.every(s=>s==='accepted')?'accepted':states.includes('submitted')?'submitted':states.includes('returned')?'returned':'uploaded';
+      await queryTarget.query(`UPDATE opportunity_collaboration_work_package_versions SET status=$2,submitted_at=(SELECT min(f.submitted_at) FROM opportunity_collaboration_work_package_files f WHERE f.work_package_version_id=opportunity_collaboration_work_package_versions.id AND f.superseded_by_attachment_id IS NULL AND f.status<>'withdrawn'),reviewed_by_user_id=CASE WHEN $2 IN ('accepted','returned') THEN $3::bigint ELSE NULL END,reviewed_at=CASE WHEN $2 IN ('accepted','returned') THEN now() ELSE NULL END,approved_version_no=CASE WHEN $2='accepted' THEN COALESCE(approved_version_no,(SELECT COALESCE(MAX(approved_version_no),0)+1 FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$1)) ELSE NULL END WHERE id=(SELECT id FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$1 ORDER BY version_no DESC,id DESC LIMIT 1)`,[workPackageId,status,actorUserId]);
+      await queryTarget.query(`UPDATE opportunity_collaboration_work_packages SET status=$2,updated_at=now() WHERE id=$1`,[workPackageId,status==='uploaded'?'in_progress':status]);
+    },
+    async fileDecision(input) {
+      if(!inTransaction&&typeof queryTarget.connect==='function'){
+        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client,{inTransaction:true}).fileDecision(input);await client.query('COMMIT');return result;}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+      }
+      const fail=message=>{throw Object.assign(Error(message),{statusCode:409});};
+      const opportunity=(await queryTarget.query('SELECT id,status,archived_at FROM opportunities WHERE id=$1 FOR UPDATE',[input.opportunityId])).rows[0];
+      if(!opportunity||opportunity.archived_at||!['technical_solution_in_progress','technical_solution_rejected','technical_solution_pending','commercial_quote_in_progress','commercial_quote_rejected'].includes(opportunity.status))fail('商机当前阶段不允许修改文件状态。');
+      const wp=(await queryTarget.query('SELECT * FROM opportunity_collaboration_work_packages WHERE id=$1 AND opportunity_id=$2 AND deleted_at IS NULL FOR UPDATE',[input.workPackageId,input.opportunityId])).rows[0];
+      if(!wp)fail('工作包不存在。');
+      const file=(await queryTarget.query(`SELECT f.*,v.submitted_by_user_id,a.retired_at FROM opportunity_collaboration_work_package_files f JOIN opportunity_collaboration_work_package_versions v ON v.id=f.work_package_version_id JOIN attachments a ON a.id=f.attachment_id WHERE f.attachment_id=$1 AND v.work_package_id=$2 AND v.id=(SELECT id FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$2 ORDER BY version_no DESC,id DESC LIMIT 1) FOR UPDATE OF f`,[input.attachmentId,wp.id])).rows[0];
+      if(!file||file.retired_at||file.superseded_by_attachment_id)fail('文件已变化，请刷新后重试。');
+      const review=['accepted','returned'].includes(input.action);
+      if(review){if(file.status!=='submitted')fail('只能审批待审核文件。');if(input.action==='returned'&&!String(input.note||'').trim())fail('请填写驳回意见。');}
+      else{if(!input.isManager&&Number(file.added_by_user_id)!==Number(input.actorUserId))fail('仅上传者可操作该文件。');if(file.status!=='uploaded')fail('仅未提交文件可以提交或撤回。');}
+      const status=input.action==='submit'?'submitted':input.action==='withdraw'?'withdrawn':input.action;
+      if(!['submitted','withdrawn','accepted','returned'].includes(status))fail('无效操作。');
+      await queryTarget.query(`UPDATE opportunity_collaboration_work_package_files SET status=$2,submitted_at=CASE WHEN $2='submitted' THEN now() ELSE submitted_at END,reviewed_by_user_id=CASE WHEN $2 IN ('accepted','returned') THEN $3::bigint ELSE NULL END,reviewed_at=CASE WHEN $2 IN ('accepted','returned') THEN now() ELSE NULL END,review_note=$4 WHERE attachment_id=$1`,[input.attachmentId,status,input.actorUserId,input.note||'']);
+      const event=(await queryTarget.query(`INSERT INTO opportunity_collaboration_work_package_events(work_package_id,work_package_version_id,event_type,actor_user_id,note) VALUES($1,$2,$3,$4,$5) RETURNING id`,[wp.id,file.work_package_version_id,status,input.actorUserId,JSON.stringify({attachmentId:input.attachmentId,note:input.note||''})])).rows[0];
+      await this.refreshFileDecisions(wp.id,input.actorUserId);
+      if(review)await queryTarget.query(`INSERT INTO notifications(user_id,event_type,title,body,action_url,source_type,source_id,actor_user_id) SELECT $1,'collaboration_review',$2,$3,$4,'collaboration_file_review',$5,$6`,[file.added_by_user_id,status==='accepted'?'文件已同意':'文件已驳回',input.note||'', '/opportunities/'+input.opportunityId+(wp.plan_kind==='internal_quote'?'#internal-quote':'#technical-proposal'),event.id,input.actorUserId]);
+      if(status==='accepted')await this.advanceCommercialWhenReady(input.opportunityId,input.actorUserId);
+      return {id:input.attachmentId};
     },
 
     async submitVersion(input) {
@@ -252,8 +301,8 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
           SELECT $1, version_no, $2,$4,CASE WHEN $4='submitted' THEN now() ELSE NULL END FROM next_version
           RETURNING id, work_package_id
         ), files AS (
-          INSERT INTO opportunity_collaboration_work_package_files (work_package_version_id, attachment_id, sort_order, added_by_user_id)
-          SELECT created.id, linked.attachment_id, linked.sort_order, $2
+          INSERT INTO opportunity_collaboration_work_package_files (work_package_version_id, attachment_id, sort_order, added_by_user_id,status,submitted_at)
+          SELECT created.id, linked.attachment_id, linked.sort_order, $2,$4,CASE WHEN $4='submitted' THEN now() ELSE NULL END
           FROM created
           JOIN unnest($3::bigint[]) WITH ORDINALITY AS linked(attachment_id, sort_order) ON true
         ), updated AS (
@@ -268,45 +317,7 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
       return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
     },
 
-    async reviewVersion(input) {
-      if(input.status==='returned'&&!String(input.note||'').trim())throw Error('Return reason is required');
-      if(!inTransaction && typeof queryTarget.connect==='function'){
-        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client, { inTransaction: true }).reviewVersion(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
-      }
-      const owner=await queryTarget.query('SELECT opportunity_id FROM opportunity_collaboration_work_packages WHERE id=$1',[input.workPackageId]);
-      if(owner.rows[0])await queryTarget.query('SELECT id FROM opportunities WHERE id=$1 FOR UPDATE',[owner.rows[0].opportunity_id]);
-      await queryTarget.query('SELECT id FROM opportunity_collaboration_work_packages WHERE id=$1 FOR UPDATE',[input.workPackageId]);
-      if(input.requireOfficeReviewClosed){const active=(await queryTarget.query("SELECT s.id FROM office_review_sessions s JOIN opportunity_collaboration_work_package_versions v ON v.id=s.work_package_version_id WHERE v.work_package_id=$1 AND v.id=$2 AND s.state='editing' AND s.expires_at>now() LIMIT 1",[input.workPackageId,input.versionId])).rows[0];if(active)throw Object.assign(Error('请先保存批注并关闭审核窗口，等待批注归档完成后再批准或退回。'),{statusCode:409});}
-      const result = await queryTarget.query(`
-        WITH reviewed AS (
-          UPDATE opportunity_collaboration_work_package_versions
-          SET status = $3, reviewed_by_user_id = $2, reviewed_at = now(), review_note = $4,
-            approved_version_no=CASE WHEN $3='accepted' THEN (SELECT COALESCE(MAX(approved_version_no),0)+1 FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$5) ELSE NULL END
-          WHERE id = $1 AND status = 'submitted' AND work_package_id=$5 AND id=(SELECT id FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$5 ORDER BY version_no DESC LIMIT 1)
-          RETURNING id, work_package_id
-        ), updated AS (
-          UPDATE opportunity_collaboration_work_packages wp
-          SET status = $3, updated_at = now()
-          FROM reviewed
-          WHERE wp.id = reviewed.work_package_id
-        ), logged AS (
-          INSERT INTO opportunity_collaboration_work_package_events (work_package_id, work_package_version_id, event_type, actor_user_id, note)
-          SELECT work_package_id, id, $3, $2, $4 FROM reviewed
-          RETURNING id,work_package_id
-        )
-        SELECT reviewed.id,logged.id AS event_id FROM reviewed JOIN logged ON logged.work_package_id=reviewed.work_package_id
-      `, [input.versionId, input.reviewedByUserId, input.status, input.note || '',input.workPackageId]);
-      if(result.rows[0])await queryTarget.query(`
-        INSERT INTO notifications(user_id,event_type,title,body,action_url,source_type,source_id,actor_user_id)
-        SELECT DISTINCT recipient.user_id,'collaboration_review',CASE WHEN $2='accepted' THEN '文件已批准' ELSE '文件退回修改' END,
-          title||CASE WHEN $2='accepted' THEN '：已批准' ELSE '：'||$3 END,
-          '/opportunities/'||opportunity_id||CASE WHEN plan_kind='internal_quote' THEN '#internal-quote' ELSE '#technical-proposal' END,
-          'collaboration_review',$4::bigint,$5::bigint FROM opportunity_collaboration_work_packages wp JOIN opportunity_collaboration_work_package_versions v ON v.work_package_id=wp.id AND v.id=$6 CROSS JOIN LATERAL unnest(ARRAY[wp.assignee_user_id,v.submitted_by_user_id]) AS recipient(user_id) WHERE wp.id=$1 AND recipient.user_id IS NOT NULL
-        ON CONFLICT(user_id,source_type,source_id) DO NOTHING
-      `,[input.workPackageId,input.status,input.note||'',result.rows[0].event_id,input.reviewedByUserId,input.versionId]);
-      if(result.rows[0] && input.status==='accepted' && owner.rows[0])await this.advanceCommercialWhenReady(owner.rows[0].opportunity_id,input.reviewedByUserId);
-      return result.rows[0] ? { id: Number(result.rows[0].id) } : null;
-    },
+    async reviewVersion() {throw Object.assign(Error('请刷新页面，逐文件审批。'),{statusCode:409});},
 
     async listTechnicalTeam(opportunityId){return (await queryTarget.query('SELECT * FROM opportunity_technical_team_assignments WHERE opportunity_id=$1 AND is_active=true ORDER BY position,user_id',[opportunityId])).rows;},
     async listTechnicalTeamEvents(opportunityId) {
@@ -373,6 +384,7 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
       await queryTarget.query('INSERT INTO opportunity_technical_team_events(opportunity_id,actor_user_id,before_state,after_state,change_reason) VALUES($1,$2,$3::jsonb,$4::jsonb,$5)',[input.opportunityId,input.actorUserId,JSON.stringify(snapshot(previous)),JSON.stringify(snapshot(rows)),reason]);
     },
     async applyTechnicalLifecycle(input){
+      if(['confirm','withdraw','delete_file'].includes(input.action))throw Object.assign(Error('Only individual file actions are supported; refresh the page.'),{statusCode:409});
       if(!inTransaction && typeof queryTarget.connect==='function'){
         const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client, { inTransaction: true }).applyTechnicalLifecycle(input);await client.query('COMMIT');return result;}catch(error){await client.query('ROLLBACK');throw error;}finally{client.release();}
       }
@@ -384,10 +396,11 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
       if(!input.isManager && Number(version?.submitted_by_user_id)!==Number(input.actorUserId))throw Error('Only the submitter can withdraw or remove this file');
       const targetVersions=input.action==='delete_package'?versions:[version];
       const ids=targetVersions.map(row=>row.id);
-      const files=(await queryTarget.query('SELECT a.* FROM attachments a JOIN opportunity_collaboration_work_package_files f ON f.attachment_id=a.id WHERE f.work_package_version_id=ANY($1::bigint[]) FOR UPDATE OF a',[ids])).rows;
+      const files=(await queryTarget.query('SELECT a.*,f.status AS file_status FROM attachments a JOIN opportunity_collaboration_work_package_files f ON f.attachment_id=a.id WHERE f.work_package_version_id=ANY($1::bigint[]) FOR UPDATE OF a',[ids])).rows;
       const fileIds=files.map(row=>row.id);
       const refs=(await queryTarget.query(`SELECT 1 WHERE EXISTS(SELECT 1 FROM quotation_package_attachments WHERE attachment_id=ANY($1::bigint[])) OR EXISTS(SELECT 1 FROM sales_commercial_quotation_drafts WHERE source_attachment_id=ANY($1::bigint[])) OR EXISTS(SELECT 1 FROM opportunity_technical_draft_attachments WHERE attachment_id=ANY($1::bigint[])) OR EXISTS(SELECT 1 FROM opportunity_technical_drafts WHERE uploaded_attachment_id=ANY($1::bigint[])) OR EXISTS(SELECT 1 FROM project_executions WHERE signed_contract_attachment_id=ANY($1::bigint[]))`,[fileIds])).rows;
-      if(targetVersions.some(row=>row.status==='accepted')||files.some(file=>file.opportunity_material_version_id)||refs.length)throw Error('Locked: confirmed, approved or referenced files must be retained');
+      if(targetVersions.some(row=>row.status==='accepted')||files.some(file=>['accepted','submitted'].includes(file.file_status)||file.opportunity_material_version_id)||refs.length)throw Error('Locked: confirmed, approved or referenced files must be retained');
+      if(['confirm','withdraw','delete_file'].includes(input.action))throw Object.assign(Error('请刷新页面，逐文件操作。'),{statusCode:409});
       if(input.action==='confirm'){
         if(version.status!=='uploaded'||Number(version.id)!==Number(versions[0]?.id)||!files.some(file=>!file.retired_at))throw Error('Only the latest uploaded file can be submitted');
         await queryTarget.query("UPDATE opportunity_collaboration_work_package_versions SET status='submitted',submitted_at=now() WHERE id=$1",[version.id]);

@@ -1,0 +1,23 @@
+<%
+const version=workPackage.latestVersion;
+const files=(version?.files||[]).filter(f=>!f.supersededByAttachmentId&&f.status!=='withdrawn');
+const reviewer=currentUser.roles?.includes('technical_manager')&&Number(currentUser.id)===Number(opportunity.technicalManagerId);
+const base='/opportunities/'+opportunity.id+'/collaboration-files/'+workPackage.id+'/';
+%>
+<% if(!files.length){ %><tr><td><strong><%= workPackage.title %></strong></td><td><%= workPackage.assigneeDisplayName %></td><td><%= dateValue(workPackage.plannedStartDate)||'—' %></td><td><%= dateValue(workPackage.plannedSubmitDate)||'—' %></td><td>—</td><td>—</td><td>—</td><td><%= language==='zh'?'未上传':'No file' %></td><td>—</td></tr><% } %>
+<% for(const file of files){const status=file.status||version.status;const url=base+file.id+'/';const canAct=canManageCollaborationWorkPackages||Number(file.addedByUserId||version.submittedByUserId)===Number(currentUser.id); %>
+<tr>
+<td title="<%= workPackage.title %>"><strong><%= workPackage.title %></strong></td><td><%= workPackage.assigneeDisplayName %></td>
+<td><%= dateValue(workPackage.plannedStartDate)||'—' %></td><td><%= dateValue(workPackage.plannedSubmitDate)||'—' %></td>
+<td title="<%= file.originalName %>"><%= file.originalName %></td><td><%= file.submittedAt?formatShortDate(file.submittedAt):'—' %></td><td><%= version.approvedVersionNo?'V'+version.approvedVersionNo:'—' %></td>
+<td><span class="status"><%= status==='uploaded'?(language==='zh'?'已上传 / 未提交':'Not submitted'):status==='returned'?(language==='zh'?'已驳回':'Returned'):status==='submitted'?(language==='zh'?(reviewer?'待审核':'已提交'):'Submitted'):packageStatusLabel(status) %></span></td>
+<td><div class="collaboration-file-actions">
+<a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.id %>/preview"><%= t('preview') %></a>
+<a href="/opportunities/<%= opportunity.id %>/attachments/<%= file.id %>/download"><%= t('download') %></a>
+<% if(status==='uploaded'&&canAct&&!reviewer){for(const action of ['withdraw','submit']){ %><form method="post" action="<%= url+action %>"><%- csrfField() %><button type="submit"><%= action==='withdraw'?(language==='zh'?'撤回':'Withdraw'):(language==='zh'?'提交':'Submit') %></button></form><% }} %>
+<% if(status==='submitted'&&reviewer){ %><form method="post" action="<%= url+'accepted' %>"><%- csrfField() %><button type="submit"><%= language==='zh'?'同意':'Approve' %></button></form><button type="button" data-file-reject="reject-<%= file.id %>"><%= language==='zh'?'驳回':'Reject' %></button><% } %>
+</div></td></tr>
+<% if(status==='returned'){ %><tr class="collaboration-file-feedback"><td colspan="9"><strong>驳回意见：</strong><%= file.reviewNote||version.reviewNote %> · <%= file.reviewedByDisplayName||'' %> · <%= file.reviewedAt?formatShortDate(file.reviewedAt):'' %></td></tr><% } %>
+<% if(status==='submitted'&&reviewer){ %><tr id="reject-<%= file.id %>" class="collaboration-file-rejection" hidden><td colspan="9"><form method="post" action="<%= url+'returned' %>" data-file-rejection-form><%- csrfField() %><label>驳回意见 <textarea name="note" required maxlength="2000" rows="2"></textarea></label><input name="confirmRejection" type="hidden" value=""><button type="button" data-save-rejection>保存</button><button type="submit" disabled>确认</button><button type="button" data-cancel-rejection>取消</button></form></td></tr><% } %>
+<% } %>
+<% const historical=(workPackage.versionHistory||[]).flatMap(v=>(v.files||[]).filter(f=>v.id!==version?.id||f.supersededByAttachmentId||f.status==='withdrawn').map(f=>({v,f})));if(historical.length){ %><tr><td colspan="9"><details><summary>历史文件</summary><% for(const {v,f} of historical){ %><p><%= f.originalName %> · <%= packageStatusLabel(f.status||v.status) %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= f.id %>/preview"><%= t('preview') %></a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= f.id %>/download"><%= t('download') %></a><% if(f.reviewNote){ %> · 驳回意见：<%= f.reviewNote %><% } %></p><% } %></details></td></tr><% } %>

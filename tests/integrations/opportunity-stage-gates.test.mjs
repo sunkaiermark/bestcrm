@@ -19,7 +19,7 @@ test('commercial starts only after every active technical package and its paired
  assert.equal((await repo.commercialReadiness(o.id)).ready,false);
  const packages=[];
  for(const title of ['Process','Mechanical']){const technical=await repo.createWorkPackage({opportunityId:o.id,planKind:'technical_solution',title,assigneeUserId:user.id,createdByUserId:user.id});const quote=await repo.ensureInternalQuotePackage(technical.id,o.id,user.id);packages.push({technical,quote});}
- async function approve(wp){const f=await files.createAttachment({opportunityId:o.id,category:wp.planKind||'technical_solution',originalName:'test.txt',storedPath:'synthetic/test.txt',mimeType:'text/plain',fileSize:10,sha256:'a'.repeat(64),uploadedBy:user.id});const v=await repo.submitVersion({workPackageId:wp.id,submittedByUserId:user.id,attachmentIds:[f.id]});assert.ok(await repo.reviewVersion({workPackageId:wp.id,versionId:v.id,reviewedByUserId:user.id,status:'accepted'}));}
+ async function approve(wp){const f=await files.createAttachment({opportunityId:o.id,category:wp.planKind||'technical_solution',originalName:'test.txt',storedPath:'synthetic/test.txt',mimeType:'text/plain',fileSize:10,sha256:'a'.repeat(64),uploadedBy:user.id});const v=await repo.submitVersion({workPackageId:wp.id,submittedByUserId:user.id,attachmentIds:[f.id]});assert.ok(await repo.fileDecision({opportunityId:o.id,workPackageId:wp.id,attachmentId:f.id,actorUserId:user.id,action:'accepted'}));}
  await approve(packages[0].technical);await approve(packages[0].quote);await approve(packages[1].quote);
  assert.equal((await repo.commercialReadiness(o.id)).ready,false);
  assert.equal((await pool.query('SELECT status FROM opportunities WHERE id=$1',[o.id])).rows[0].status,'technical_solution_in_progress');

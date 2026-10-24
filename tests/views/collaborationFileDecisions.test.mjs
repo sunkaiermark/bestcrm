@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {JSDOM} from 'jsdom';
+import ejs from 'ejs';
+test('review actions stay on one row; rejection requires saved unchanged opinion and does not expose document editing',async()=>{
+ const html=await ejs.renderFile('src/views/partials/_collaboration-file-rows.ejs',{language:'zh',workPackage:{id:1,title:'Mixer',assigneeDisplayName:'Engineer',versionHistory:[],latestVersion:{id:1,files:[{id:11,originalName:'<img onerror=alert(1)>',status:'submitted'},{id:12,originalName:'Second.xlsx',status:'submitted'}]}},currentUser:{id:2,roles:['technical_manager']},opportunity:{id:1,technicalManagerId:2},canManageCollaborationWorkPackages:false,dateValue:()=>'',formatShortDate:()=>'',packageStatusLabel:s=>s,csrfField:()=>'<input name="_csrf" value="synthetic">',t:s=>s});
+ const dom=new JSDOM('<table><tbody>'+html+'</tbody></table>',{runScripts:'outside-only'}),d=dom.window.document;
+ dom.window.eval(await readFile('src/public/assets/collaboration-file-decisions.js','utf8'));
+ assert.equal(d.querySelectorAll('.collaboration-file-actions').length,2);
+ assert.equal(d.querySelectorAll('.collaboration-file-actions form').length,2);
+ assert.equal(d.querySelectorAll('img').length,0);
+ assert.ok(!html.includes('office-review'));
+ const row=d.getElementById('reject-11'),form=row.querySelector('form'),confirm=form.querySelector('[type=submit]');assert.equal(row.hidden,true);assert.equal(confirm.disabled,true);
+ d.querySelector('[data-file-reject]').click();assert.equal(row.hidden,false);assert.equal(d.getElementById('reject-12').hidden,true);
+ form.elements.note.value='Please fix pressure';form.querySelector('[data-save-rejection]').click();assert.equal(confirm.disabled,false);assert.equal(form.elements.confirmRejection.value,'yes');
+ form.elements.note.value+=' and temperature';form.elements.note.dispatchEvent(new dom.window.Event('input',{bubbles:true}));assert.equal(confirm.disabled,true);assert.equal(form.elements.confirmRejection.value,'');
+ form.querySelector('[data-save-rejection]').click();assert.equal(confirm.disabled,false);
+ dom.window.close();
+});

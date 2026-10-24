@@ -19,17 +19,9 @@ export async function loadOfficeWorkPackageContext(target,attachmentId,{lock=fal
   return {workPackageId:Number(row.work_package_id),opportunityId:Number(row.opportunity_id),planKind:row.plan_kind,assigneeUserId:Number(row.assignee_user_id),deleted:Boolean(row.deleted_at),versionId:Number(row.version_id),versionStatus:row.version_status,latestVersionId:Number(row.latest_version_id),latestVersionStatus:row.latest_version_status};
 }
 export function assertOfficeWorkPackageEditable({context,attachment,opportunity,user,canUpload}) {
-  if(context.deleted||context.opportunityId!==Number(opportunity.id)||context.opportunityId!==Number(attachment.opportunityId))throw officeError('工作包不存在或已删除。',403);
-  if(context.versionId!==context.latestVersionId)throw officeError('这是工作包历史文件，请打开工作包最新版本。',403);
-  if(context.versionStatus==='submitted')throw officeError('该工作包已提交，正在等待审核。请先由有权限的人撤回提交，再修改。',403);
-  if(context.versionStatus==='accepted')throw officeError('该版本已批准，只能阅读。需要修改时，请按工作包的新修订流程办理。',403);
-  if(!['uploaded','returned','withdrawn'].includes(context.versionStatus))throw officeError('当前工作包状态不允许编辑。',403);
-  const expectedCategory=context.planKind==='technical_solution'?'technical_solution':context.planKind==='internal_quote'?'internal_quote':null;
-  const stages=context.planKind==='technical_solution'?['technical_solution_in_progress','technical_solution_rejected']:['technical_solution_in_progress','technical_solution_rejected','commercial_quote_in_progress','commercial_quote_rejected'];
-  const member=canManageOpportunityEngineeringTeam(user,opportunity)||(canContributeOpportunityEngineering(user,opportunity)&&Number(user.id)===context.assigneeUserId);
-  if(!expectedCategory||attachment.category!==expectedCategory||opportunity.archivedAt||!stages.includes(opportunity.status)||!canUpload||!member)throw officeError('当前人员或商机阶段无权编辑此工作包。',403);
-  return context;
+  throw officeError('工作包文件请下载后线下修改，再上传并提交。',403);
 }
+
 export async function saveOfficeWorkPackageRevision({client,context,attachment,stored,actorUserId}) {
   // Caller holds the opportunity and work package locks and has rechecked access.
   const repository=createAttachmentRepository(client);

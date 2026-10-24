@@ -13,7 +13,7 @@ function pgPool(query) {
   return {pool:{async connect(){acquired++;return client;}},statements,check(){assert.equal(acquired,1);assert.equal(released,1);assert.equal(reconnected,0);}};
 }
 
-for(const method of ['saveTechnicalTeam','reviewVersion','applyTechnicalLifecycle']) {
+for(const method of ['saveTechnicalTeam','fileDecision','applyTechnicalLifecycle']) {
   test(`${method} rolls back query failures without reconnecting a pg pooled client`,async()=>{
     const failure=new Error('Synthetic database failure');
     const pg=pgPool(()=>{throw failure;});
@@ -23,8 +23,8 @@ for(const method of ['saveTechnicalTeam','reviewVersion','applyTechnicalLifecycl
     assert.ok(!pg.statements.includes('COMMIT'));pg.check();
   });
 }
-test('reviewVersion commits and releases a pg pooled client without reconnecting',async()=>{
-  const pg=pgPool(()=>({rows:[]}));
-  assert.equal(await createOpportunityCollaborationRepository(pg.pool).reviewVersion({workPackageId:2,status:'accepted'}),null);
-  assert.equal(pg.statements.at(-1),'COMMIT');assert.ok(!pg.statements.includes('ROLLBACK'));pg.check();
+test('obsolete batch approval is rejected before connecting to the database',async()=>{
+ const pg=pgPool(()=>{throw Error('must not query');});
+ await assert.rejects(createOpportunityCollaborationRepository(pg.pool).reviewVersion({}),error=>error.statusCode===409);
+ assert.equal(pg.statements.length,0);
 });

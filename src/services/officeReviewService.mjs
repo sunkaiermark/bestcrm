@@ -11,6 +11,7 @@ import {canViewOpportunity} from './opportunityService.mjs';
 import {loadOfficeWorkPackageContext} from './officeWorkPackageService.mjs';
 import {extractOfficeReviewComments} from './officeReviewComments.mjs';
 export function assertOfficeReviewPermission({attachment,opportunity,context,user,write=false}){
+ if(write)throw officeError('审批仅支持同意或驳回；请由提交者线下修改后重新提交。',403);
  if(!attachment||(write&&attachment.retiredAt)||!user||user.isActive===false||!context||(write&&context.deleted)||!opportunity||(write&&opportunity.archivedAt)||Number(context.opportunityId)!==Number(attachment.opportunityId)||!canViewOpportunity(user,opportunity))throw officeError('无权查看此审核稿。',403);
  if(!['.docx','.xlsx'].includes(path.extname(attachment.originalName).toLowerCase()))throw officeError('仅支持 DOCX 和 XLSX 批注。',400);
  if(write&&(!user.roles?.includes('technical_manager')||Number(opportunity.technicalManagerId)!==Number(user.id)||context.versionId!==context.latestVersionId||context.versionStatus!=='submitted'))throw officeError('仅本商机批准人可对最新待审核文件添加批注；原文不可修改。',403);
