@@ -131,6 +131,9 @@ export function createSalesCommercialQuotationDraftRepository(queryTarget) {
           FOR UPDATE
         `, [input.opportunityId]);
         const opportunity = opportunityResult.rows[0];
+        const readiness=await createOpportunityCollaborationRepository(client,{inTransaction:true}).commercialReadiness(input.opportunityId);
+        if(readiness.technicalCount&&!readiness.ready){const error=new Error('Technical and cost calculation files must all be approved before formal quotation.');error.code='BESTCRM_COLLABORATION_NOT_READY';throw error;}
+
         const commercialManagerId = Number(input.commercialManagerId ?? opportunity?.commercial_manager_id);
         if (!Number.isSafeInteger(commercialManagerId) || commercialManagerId <= 0) {
           const error = new Error('An assigned Commercial Manager is required');

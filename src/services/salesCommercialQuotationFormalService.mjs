@@ -243,6 +243,7 @@ export async function submitSalesCommercialQuotation(repository, user, opportuni
     if (!version) fail('Draft changed before submission; reload');
     return version;
   } catch (error) {
+    if(error.code==='BESTCRM_COLLABORATION_NOT_READY')fail('技术方案和价格核算的有效文件须全部同意后，才能提交正式商务报价；目前可以保存报价草稿。');
     if (error.code === 'BESTCRM_COMMERCIAL_MANAGER_REQUIRED'
       || /active assigned Commercial Manager/.test(error.message || '')) {
       fail('Assign an active Commercial Manager before submitting the formal quotation');
