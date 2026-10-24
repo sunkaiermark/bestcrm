@@ -4,7 +4,7 @@ Each technical proposal and cost calculation file is now submitted and approved 
 
 The internal quotation display name is now 价格核算. Reviewer online editing/comments and work package online editing are disabled; existing review snapshots remain readable. Obsolete batch mutation requests return HTTP 409.
 
-Migration 133 adds individual file decision metadata and copies each existing batch decision without altering its original version record. Commercial readiness still requires every active technical package and paired cost calculation to be approved. Existing approved version snapshots are retained when creating a new revision.
+Migration 133 adds individual file decision metadata and copies each existing batch decision without altering its original version record. Commercial quotation draft preparation is available before approval, using a clearly unapproved technical source snapshot. Formal commercial quotation still requires every active technical package and paired cost calculation to be approved. Existing approved version snapshots are retained when creating a new revision.
 
 Validation: real PostgreSQL-compatible migration and repository regression, authenticated route/CSRF tests, technical/commercial stage gate tests, rejection interaction and output escaping tests. Deployment must verify current v2026.10.24-01-rc.1, create a complete verified backup, apply only migration 133, and preserve production, AI, Office and email configuration and permissions.
 

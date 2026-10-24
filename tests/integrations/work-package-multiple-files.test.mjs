@@ -23,6 +23,9 @@ test('multiple files upload together and submit independently without locking si
  const append=await agent.post(url).field('_csrf',token).attach('attachment',Buffer.from('third'),{filename:'calculation.pdf'});assert.equal(append.status,302,append.text);
  current=(await repo.listByOpportunity(opportunity.id))[0];assert.equal(current.latestVersion.files.length,3);assert.equal(current.latestVersion.id,versionId);assert.equal(current.versionHistory.length,1);
  const draftPage=await agent.get('/opportunities/'+opportunity.id);assert.equal(draftPage.status,200);for(const file of current.latestVersion.files)assert.match(draftPage.text,new RegExp('/attachments/'+file.id+'/preview'));
+ const earlyDraft=await agent.get('/opportunities/'+opportunity.id+'/commercial-quotation-draft');assert.equal(earlyDraft.status,200,earlyDraft.text);
+ const earlySources=await pool.query("SELECT status FROM opportunity_technical_drafts WHERE opportunity_id=$1 AND source_metadata->>'workPackageDraftSnapshot'='true'",[opportunity.id]);assert.equal(earlySources.rows.length,1);assert.equal(earlySources.rows[0].status,'ready');
+ assert.equal((await pool.query('SELECT status FROM opportunities WHERE id=$1',[opportunity.id])).rows[0].status,'technical_solution_in_progress');
  const submitFile=id=>agent.post('/opportunities/'+opportunity.id+'/collaboration-files/'+wp.id+'/'+id+'/submit').type('form').send({_csrf:token});
  const first=current.latestVersion.files[0],second=current.latestVersion.files[1];
  assert.equal((await submitFile(first.id)).status,302);

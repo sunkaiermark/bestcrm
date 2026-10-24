@@ -183,6 +183,7 @@ function customerContactFromInput(input, opportunity, existingDraft, availableCo
 
 export async function loadSalesCommercialQuotationDraft(repository, user, opportunity, language = 'en') {
   assertView(user, opportunity);
+  if(repository.prepareDraftSources)await repository.prepareDraftSources(opportunity.id,user.id);
   const [draft, sources] = await Promise.all([
     repository.getByOpportunity(opportunity.id),
     repository.listTechnicalSources(opportunity.id)

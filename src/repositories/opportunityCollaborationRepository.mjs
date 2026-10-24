@@ -59,23 +59,23 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
       `,[opportunityId]);
       return {technicalCount:Number(result.rows[0]?.technical_count||0),ready:result.rows[0]?.ready===true};
     },
-    async snapshotApprovedTechnicalPackages(opportunityId, actorUserId) {
+    async snapshotApprovedTechnicalPackages(opportunityId, actorUserId, draftOnly=false) {
       const result=await queryTarget.query(`
         SELECT t.id AS package_id,v.id AS version_id,v.approved_version_no,v.reviewed_by_user_id,v.reviewed_at,a.id AS attachment_id,a.sha256,a.original_name,a.stored_path,a.mime_type,a.file_size,a.uploaded_by
         FROM opportunity_collaboration_work_packages t
-        JOIN LATERAL (SELECT * FROM opportunity_collaboration_work_package_versions WHERE work_package_id=t.id ORDER BY version_no DESC,id DESC LIMIT 1) v ON v.status='accepted'
+        JOIN LATERAL (SELECT * FROM opportunity_collaboration_work_package_versions WHERE work_package_id=t.id ORDER BY version_no DESC,id DESC LIMIT 1) v ON ($2::boolean OR v.status='accepted')
         JOIN opportunity_collaboration_work_package_files f ON f.work_package_version_id=v.id
         JOIN attachments a ON a.id=f.attachment_id AND a.retired_at IS NULL
-        WHERE t.opportunity_id=$1 AND t.plan_kind='technical_solution' AND t.deleted_at IS NULL AND f.status='accepted' AND f.superseded_by_attachment_id IS NULL
+        WHERE t.opportunity_id=$1 AND t.plan_kind='technical_solution' AND t.deleted_at IS NULL AND (f.status='accepted' OR ($2::boolean AND f.status IN ('uploaded','submitted'))) AND f.superseded_by_attachment_id IS NULL
         ORDER BY t.id,a.id
-      `,[opportunityId]);
+      `,[opportunityId,draftOnly]);
       const approvals=result.rows;
-      if(!approvals.length)throw Error('Approved technical package files are required');
-      const metadata={workPackageApprovalSnapshot:true,approvals};
-      const previous=await queryTarget.query(`SELECT id FROM opportunity_technical_drafts WHERE opportunity_id=$1 AND status='approved' AND source_metadata=$2::jsonb`,[opportunityId,JSON.stringify(metadata)]);
+      if(!approvals.length){if(draftOnly)return null;throw Error('Approved technical package files are required');}
+      const metadata=draftOnly?{workPackageDraftSnapshot:true,approvals}:{workPackageApprovalSnapshot:true,approvals};
+      const previous=await queryTarget.query(`SELECT id FROM opportunity_technical_drafts WHERE opportunity_id=$1 AND status=$3 AND source_metadata=$2::jsonb`,[opportunityId,JSON.stringify(metadata),draftOnly?'ready':'approved']);
       if(previous.rows.length)return Number(previous.rows[0].id);
       const drafts=createOpportunityTechnicalDraftRepository(queryTarget);
-      const draft=await drafts.createDraft({opportunityId,templateRevisionId:null,language:'zh',templateCodeSnapshot:'WORK_PACKAGE_APPROVALS',templateNameSnapshot:'已批准技术工作包汇总',templateRevisionNoSnapshot:1,contentSchemaSnapshot:{},variableSchemaSnapshot:[],variableValues:{},selectedClauses:[],renderedContent:{},sourceMetadata:metadata,validationIssues:[],actorUserId,sourceKind:'uploaded_file',deliverableType:'technical_agreement'});
+      const draft=await drafts.createDraft({opportunityId,templateRevisionId:null,language:'zh',templateCodeSnapshot:draftOnly?'WORK_PACKAGE_DRAFT':'WORK_PACKAGE_APPROVALS',templateNameSnapshot:draftOnly?'工作包技术文件（未批准，仅供报价草稿）':'已批准技术工作包汇总',templateRevisionNoSnapshot:1,contentSchemaSnapshot:{},variableSchemaSnapshot:[],variableValues:{},selectedClauses:[],renderedContent:{},sourceMetadata:metadata,validationIssues:[],actorUserId,sourceKind:'uploaded_file',deliverableType:'technical_agreement'});
       const ids=[];const hashes=new Set();const names=new Set();
       const attachmentRepo=createAttachmentRepository(queryTarget);
       for(const row of approvals){
@@ -88,9 +88,18 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
         ids.push(copy.id);
       }
       await drafts.setUploadedFiles({draftId:draft.id,attachmentIds:ids,actorUserId});
+      if(draftOnly)return draft.id;
       await queryTarget.query(`UPDATE opportunity_technical_drafts SET status='approved',formal_version_no=(SELECT COALESCE(MAX(formal_version_no),0)+1 FROM opportunity_technical_drafts WHERE opportunity_id=$1),reviewed_by=$3,reviewed_at=now(),review_comment='由工作包批准记录自动汇总，无需重复审批',updated_by=$3 WHERE id=$2`,[opportunityId,draft.id,actorUserId]);
       await queryTarget.query(`INSERT INTO opportunity_technical_draft_events(technical_draft_id,event_type,actor_user_id,details) VALUES($1,'approved',$2,$3::jsonb)`,[draft.id,actorUserId,JSON.stringify(metadata)]);
       return draft.id;
+    },
+    async prepareCommercialDraftSources(opportunityId,actorUserId) {
+      if(!inTransaction&&typeof queryTarget.connect==='function'){
+        const client=await queryTarget.connect();try{await client.query('BEGIN');const result=await createOpportunityCollaborationRepository(client,{inTransaction:true}).prepareCommercialDraftSources(opportunityId,actorUserId);await client.query('COMMIT');return result;}catch(e){await client.query('ROLLBACK');throw e;}finally{client.release();}
+      }
+      const opportunity=(await queryTarget.query('SELECT id,status,archived_at FROM opportunities WHERE id=$1 FOR UPDATE',[opportunityId])).rows[0];
+      if(!opportunity||opportunity.archived_at||!['technical_solution_in_progress','technical_solution_pending','technical_solution_rejected'].includes(opportunity.status))return null;
+      return this.snapshotApprovedTechnicalPackages(opportunityId,actorUserId,true);
     },
     async advanceCommercialWhenReady(opportunityId, actorUserId) {
       const before=(await queryTarget.query('SELECT id,status,quotation_engineer_id FROM opportunities WHERE id=$1 FOR UPDATE',[opportunityId])).rows[0];

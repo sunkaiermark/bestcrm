@@ -696,7 +696,7 @@
             }) %>
           <% } %>
 
-          <% if (!opportunity.archivedAt && uploadedTechnicalDrafts.length && Number(signedInUserId) === Number(opportunity.salespersonId)) { %>
+          <% if (!opportunity.archivedAt && (uploadedTechnicalDrafts.length || (collaborationWorkPackagesEnabled && collaborationPackages.some(wp=>wp.planKind==='technical_solution'&&wp.latestVersion?.files?.some(f=>!f.supersededByAttachmentId&&['uploaded','submitted','accepted'].includes(f.status))))) && Number(signedInUserId) === Number(opportunity.salespersonId)) { %>
             <section class="content-section business-section business-section-quote">
               <h2><%= language === 'zh' ? '报价草稿' : 'Quotation Draft' %></h2>
               <div class="section-body"><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/commercial-quotation-draft"><%= language === 'zh' ? '进入报价草稿' : 'Open quotation draft' %></a></div>

@@ -1,3 +1,4 @@
+import {createOpportunityCollaborationRepository} from './opportunityCollaborationRepository.mjs';
 import { ACTIONS } from '../domain/workflow.mjs';
 import { STATUSES } from '../domain/statuses.mjs';
 import { createTodoRepository } from './todoRepository.mjs';
@@ -88,6 +89,7 @@ const sourceSelect = `
 
 export function createSalesCommercialQuotationDraftRepository(queryTarget) {
   return {
+    async prepareDraftSources(opportunityId,actorUserId){return createOpportunityCollaborationRepository(queryTarget).prepareCommercialDraftSources(opportunityId,actorUserId);},
     async listFormalVersions(opportunityId) {
       const result = await queryTarget.query(`
         SELECT version.*, submitter.display_name AS submitted_by_name,
