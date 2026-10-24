@@ -58,3 +58,17 @@ test('generated report remains unsaved and requires a fresh human review', async
     assert.equal(form.elements.reportReviewed.checked, false);
   } finally { dom.window.close(); }
 });
+
+test('browser timeout preserves the report and restores all editor controls',async()=>{
+ const dom=editor();try{
+  const form=dom.window.document.querySelector('form'),before=form.elements.customerAnalysisReport.value;
+  dom.window.fetch=async()=>{throw Object.assign(Error('The operation was aborted due to timeout'),{name:'TimeoutError'});};
+  dom.window.eval(fs.readFileSync('src/public/assets/lead-saved-report.js','utf8'));
+  form.querySelector('[data-report-generate]').click();await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(form.elements.customerAnalysisReport.value,before);
+  assert.match(form.querySelector('[data-report-status]').textContent,/超时.*原报告已保留/);
+  assert.equal(form.querySelector('[data-report-generate]').disabled,false);
+  assert.equal(form.querySelector('button[type="submit"]').disabled,false);
+  assert.equal(form.elements.customerAnalysisReport.readOnly,false);
+ }finally{dom.window.close();}
+});

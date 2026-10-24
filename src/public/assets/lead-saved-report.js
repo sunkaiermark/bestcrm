@@ -12,9 +12,9 @@ for (const form of document.querySelectorAll('[data-saved-customer-report]')) {
     submit.disabled = true;
     report.readOnly = true;
     reviewed.checked = false;
-    status.textContent = '正在调查客户及胜开尔产品匹配情况，通常需要30–90秒，请勿重复点击。';
+    status.textContent = '正在调查客户及胜开尔产品匹配情况，联网调查可能需要数分钟，请勿重复点击。';
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 110000);
+    const timer = setTimeout(() => controller.abort(), 270000);
     try {
       const response = await fetch(form.action + '/generate', {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, signal: controller.signal,
@@ -27,7 +27,7 @@ for (const form of document.querySelectorAll('[data-saved-customer-report]')) {
       form.elements.reportGenerationToken.value = data.token;
       status.textContent = '报告已生成，尚未保存。请核对内容及信息来源，确认后点击“保存报告”。';
     } catch (error) {
-      status.textContent = error.name === 'AbortError'
+      status.textContent = ['AbortError','TimeoutError'].includes(error.name)
         ? '报告生成超时，原报告已保留，请稍后重试。'
         : (error.message || '生成失败，原报告已保留。');
     } finally {
