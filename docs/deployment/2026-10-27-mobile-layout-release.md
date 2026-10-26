@@ -1,0 +1,7 @@
+# v2026.10.27-01-rc.1 — System-wide small-screen layout
+
+Shared layout and all five standalone authentication pages load phone-specific assets. Up to 860 CSS pixels, navigation opens from a menu, forms stack with 16px text, simple lists and independent file approvals use cards, and complex tables/documents/charts scroll inside their containers. Above this breakpoint the existing desktop layout is retained. Existing form nodes, values, CSRF fields, action URLs and permissions are preserved.
+
+Validation: 40 real rendered pages from an isolated test database, including synthetic file approval rows, passed 120 checks at widths 320, 390 and 844. All 40 desktop comparisons at width 1366 retained visible positions, dimensions, fonts and display values. Twelve regression tests passed for breakpoint restoration, navigation, dynamic content, form identity, independent rejection behavior, original workbook preview and public health. Real mobile browser/device acceptance remains required; see docs/mobile-layout.md for coverage limits.
+
+No migration, dependency, configuration or service change is required. Deploy only from confirmed v2026.10.26-01-rc.1 with healthy CRM, email intake and Office services, no active write maintenance, and enough space for a verified full backup. No automatic backup pruning. Preserve migrations 124–133, AI/Office configuration, secrets and file permissions. Verify the login page references the new mobile asset and desktop navigation remains normal after cutover.

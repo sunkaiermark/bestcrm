@@ -6126,6 +6126,7 @@
     <% if(typeof mainClass!=='undefined'&&mainClass==='opportunity-detail-page'){ %><link rel="stylesheet" href="/assets/opportunity-detail.css"><% } %>
     <% if(typeof mainClass!=='undefined'&&mainClass==='lead-create-page'){ %><link rel="stylesheet" href="/assets/lead-create.css"><% } %>
     <% if(typeof mainClass!=='undefined'&&mainClass==='lead-list-page'){ %><link rel="stylesheet" href="/assets/lead-list.css"><% } %>
+    <link rel="stylesheet" href="/assets/mobile-layout.css" media="screen and (max-width: 860px)">
   </head>
   <body>
     <% const navClass = (nav) => `nav-link${activeNav === nav ? ' active' : ''}`; %>
@@ -6172,7 +6173,7 @@
       <symbol id="nav-icon-logout" viewBox="0 0 24 24"><path d="M10 4H5a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h5M13 7l5 5-5 5m5-5H9"/></symbol>
     </svg>
     <div class="app-shell">
-      <aside class="left-nav" aria-label="<%= t('primaryNavigation') %>">
+      <aside class="left-nav" id="primary-navigation" aria-label="<%= t('primaryNavigation') %>">
         <a class="brand" href="/workbench" aria-label="Sunkaier workbench">
           <img class="brand-logo" src="/assets/sunkaier-logo.png" alt="SUNKAIER">
         </a>
@@ -6182,6 +6183,7 @@
             <div class="nav-account-name" title="<%= currentUser.displayName %>"><%= currentUser.displayName %></div>
           </div>
         <% } %>
+        <button class="mobile-nav-toggle" type="button" style="display:none" hidden aria-controls="primary-navigation" aria-expanded="false" aria-label="<%= language === 'zh' ? '打开或关闭导航' : 'Toggle navigation' %>" data-close-label="<%= language === 'zh' ? '关闭导航' : 'Close navigation' %>"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6h18M3 12h18M3 18h18"/></svg></button>
         <nav class="nav-group">
           <div class="nav-section-label"><%= language === 'zh' ? '业务导航' : 'Workspace' %></div>
           <a class="<%= navClass('workbench') %> notification-nav-link" href="/workbench">
