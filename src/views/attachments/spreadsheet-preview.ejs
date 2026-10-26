@@ -24,6 +24,7 @@
           <h2><%= attachment.originalName %></h2>
           <% if(typeof officeHistory !== 'undefined' && officeHistory.length) { %><details><summary>编辑版本记录（<%= officeHistory.length %>）</summary><% for(const version of officeHistory) { %><p>V<%= version.version_no %> · <%= version.saved_at %> · <a href="/opportunities/<%= opportunity.id %>/attachments/<%= version.attachment_id %>/preview">预览</a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= version.attachment_id %>/download">下载</a></p><% } %></details><% } %>
           <div class="section-body spreadsheet-preview-stack">
+            <p class="notice">当前为简化表格预览，字体、图表和分页可能与原文件不同。<% if(typeof originalPreviewUrl!=='undefined'&&originalPreviewUrl){ %> <a href="<%= originalPreviewUrl %>">返回工作簿只读预览</a><% } %></p>
             <% if (preview.truncated) { %>
               <p class="notice"><%= t('spreadsheetPreviewTruncated')
                 .replace('{maxSheets}', preview.maxSheets)

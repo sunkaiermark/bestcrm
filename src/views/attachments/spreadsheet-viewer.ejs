@@ -1,0 +1,12 @@
+<%- include('../partials/app-start',{title:attachment.originalName+' - Excel预览 - BESTCRM',activeNav}) %>
+<link rel="stylesheet" href="/assets/spreadsheet-viewer.css">
+<header class="page-header spreadsheet-viewer-header"><div><div class="eyebrow">商机 · Excel预览</div><h1><%= attachment.originalName %></h1><div class="muted"><%= opportunity.opportunityNo %> · <%= opportunity.title %></div></div><div class="page-actions"><a class="quick-action secondary-action" href="/opportunities/<%= opportunity.id %>">返回商机</a><a class="quick-action" href="<%= downloadUrl %>">下载原文件</a></div></header>
+<section class="spreadsheet-viewer-shell" id="spreadsheet-viewer-shell" data-office-api-url="<%= scriptUrl %>">
+ <div class="spreadsheet-viewer-toolbar"><strong>工作簿预览</strong><span class="spreadsheet-viewer-readonly">只读</span><span class="spreadsheet-viewer-hint">在工作簿内切换工作表、调整缩放</span><button type="button" id="spreadsheet-viewer-fullscreen">全屏预览</button></div>
+ <p id="spreadsheet-viewer-status" role="status" aria-live="polite">正在加载工作簿，请稍候…</p>
+ <div class="spreadsheet-viewer-frame"><div id="spreadsheet-viewer-editor"></div></div>
+ <div class="spreadsheet-viewer-fallback" id="spreadsheet-viewer-fallback" hidden><span>无法加载时：</span><a href="<%= downloadUrl %>">下载原文件</a><a href="<%= basicPreviewUrl %>">查看简化表格</a><span>简化表格不能完整还原原排版。</span></div>
+</section>
+<script id="spreadsheet-viewer-config" type="application/json"><%- JSON.stringify(settings).replaceAll('<','\u003c') %></script>
+<script src="/assets/spreadsheet-viewer.js" defer></script>
+<%- include('../partials/app-end') %>

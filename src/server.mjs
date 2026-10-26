@@ -1,3 +1,5 @@
+import {createOfficePreviewService} from './services/officePreviewService.mjs';
+import {officePreviewServiceRoutes} from './routes/officePreviewRoutes.mjs';
 import {createOfficeReviewService} from './services/officeReviewService.mjs';
 import {officeReviewRoutes,officeReviewServiceRoutes} from './routes/officeReviewRoutes.mjs';
 import { createOfficeAttachmentAuthorization } from './services/officeAttachmentAuthorizationService.mjs';
@@ -912,6 +914,8 @@ export function createApp(options = {}) {
   }));
   const officeConfig = options.officeConfig || loadOfficeConfig();
   const officeService = officeConfig.enabled && pool ? createOfficeEditingService({config:officeConfig,pool,uploadDir:config.uploadDir,authorize:createOfficeAttachmentAuthorization({pool,userRepository,canDeleteAttachment,canUploadAttachment})}) : null;
+  const officePreviewService=officeConfig.enabled?createOfficePreviewService({config:officeConfig,attachmentRepository,opportunityRepository,opportunityResponsibilityRepository,contractApprovalRepository,userRepository,uploadDir:config.uploadDir}):null;
+  if(officePreviewService)app.use(officePreviewServiceRoutes({service:officePreviewService}));
   const officeReviewService = officeService ? createOfficeReviewService({config:officeConfig,pool,uploadDir:config.uploadDir,userRepository}) : null;
   if(officeReviewService)app.use(officeReviewServiceRoutes({service:officeReviewService,uploadDir:config.uploadDir}));
   if(officeService)app.use(officeServiceRoutes({service:officeService,uploadDir:config.uploadDir}));
@@ -1156,6 +1160,7 @@ export function createApp(options = {}) {
   if(officeReviewService)app.use(officeReviewRoutes({service:officeReviewService,attachmentRepository,uploadDir:config.uploadDir}));
   if(officeService)app.use(officeEditorRoutes({service:officeService,attachmentRepository}));
   app.use(opportunityRoutes({
+    officePreviewService,
     officeEditingEnabled: Boolean(officeService),
     officeEditingService: officeService,
     officeReviewService,

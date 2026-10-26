@@ -1,3 +1,4 @@
+import {BASE_CONTENT_SECURITY_POLICY} from '../middleware/securityHeaders.mjs';
 import { canSendOpportunityEmail } from '../services/customerEmailService.mjs';
 import { Router } from 'express';
 import { loadOpportunitySource } from '../services/opportunitySourceService.mjs';
@@ -822,6 +823,7 @@ function redirectToOpportunity(opportunityId) {
 }
 
 export function opportunityRoutes({
+  officePreviewService = null,
   officeEditingEnabled = false,
   officeEditingService = null,
   officeReviewService = null,
@@ -1925,6 +1927,13 @@ export function opportunityRoutes({
       }
       const kind = attachmentPreviewKind(attachment);
       const downloadUrl = `/opportunities/${opportunity.id}/attachments/${attachment.id}/download`;
+        if(kind==='spreadsheet'&&officePreviewService&&attachment.originalName.toLowerCase().endsWith('.xlsx')&&req.query.previewMode!=='basic'){
+          const viewer=await officePreviewService.viewer(attachment,req.currentUser,{mobile:/Mobile|Android|iPhone|iPad/i.test(req.get('user-agent')||'')});
+          const origin=new URL(viewer.scriptUrl).origin;
+          res.set('Content-Security-Policy',BASE_CONTENT_SECURITY_POLICY.replace("script-src 'self' 'unsafe-inline'","script-src 'self' 'unsafe-inline' "+origin).replace("frame-src 'self'","frame-src 'self' "+origin)).set('Cache-Control','private, no-store').set('Referrer-Policy','no-referrer');
+          return res.status(200).render('attachments/spreadsheet-viewer',{activeNav:'opportunities',opportunity,attachment,downloadUrl,basicPreviewUrl:'/opportunities/'+opportunity.id+'/attachments/'+attachment.id+'/preview?previewMode=basic',...viewer});
+        }
+
       const officeReviewUrl = officeReviewService && await officeReviewService.access(attachment,req.currentUser) ? `/opportunities/${opportunity.id}/attachments/${attachment.id}/review` : null;
       const officeReviews = officeReviewService && ['docx','spreadsheet'].includes(kind) ? await officeReviewService.historyIfLinked(attachment,req.currentUser) : [];
       const officeAccess = officeEditingService && ['docx','spreadsheet'].includes(kind) ? await officeEditingService.access(attachment,req.currentUser) : null;
@@ -1977,6 +1986,7 @@ export function opportunityRoutes({
       if (kind === 'spreadsheet') {
         const spreadsheetBuffer = await readFile(filePath);
         res.status(200).render('attachments/spreadsheet-preview', {
+          originalPreviewUrl:officePreviewService&&attachment.originalName.toLowerCase().endsWith('.xlsx')?'/opportunities/'+opportunity.id+'/attachments/'+attachment.id+'/preview':null,
           activeNav: 'opportunities',
           opportunity,
           attachment,
