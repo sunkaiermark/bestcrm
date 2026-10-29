@@ -89,7 +89,6 @@
                   <th scope="col"><%= t('contactCode') %></th>
                   <th scope="col"><%= t('contactName') %></th>
                   <th scope="col"><%= t('status') %></th>
-                  <th scope="col"><%= t('estimatedAmount') %></th>
                 </tr>
               </thead>
               <tbody>
@@ -121,7 +120,6 @@
                     <td class="clickable-cell" data-label="<%= t('contactCode') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.primaryContactCode || '' %></a></td>
                     <td class="clickable-cell" data-label="<%= t('contactName') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>" title="<%= opportunity.primaryContactName || '' %>"><%= opportunity.primaryContactName || '' %></a></td>
                     <td class="clickable-cell" data-label="<%= t('status') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><span class="status"><%= statusLabel(opportunity.status) %></span></a></td>
-                    <td class="clickable-cell" data-label="<%= t('estimatedAmount') %>"><a class="cell-link" href="/opportunities/<%= opportunity.id %>"><%= opportunity.estimatedAmount ?? '' %></a></td>
                   </tr>
                 <% } %>
               </tbody>

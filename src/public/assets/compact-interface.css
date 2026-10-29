@@ -1,0 +1,61 @@
+/* Application chrome only: embedded documents retain their original typography. */
+html body .app-shell :is(.app-main.app-main, .left-nav.left-nav),
+html body .app-shell :is(.app-main.app-main, .left-nav.left-nav) *,
+html body .app-shell .app-main :is(#technical-proposal, #internal-quote) * {
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Segoe UI", Arial, sans-serif;
+  font-size: 16px !important;
+  font-weight: 400 !important;
+}
+html body .app-shell .app-main { padding-top: 12px; padding-bottom: 18px; }
+.app-shell .page-header,
+.app-shell .topbar { gap: 8px; margin-bottom: 10px; }
+.app-shell :is(h1,h2,h3) { line-height: 1.4; }
+.app-shell :is(th,td) { padding: 6px 8px; line-height: 1.4; }
+.app-shell label { gap: 4px; margin-bottom: 8px; }
+.app-shell :is(input:not([type=checkbox]):not([type=radio]):not([type=hidden]),select,textarea) {
+  padding: 5px 8px;
+  line-height: 1.4;
+}
+.app-shell :is(button,.quick-action,.secondary-action,.danger-action) { padding: 6px 10px; line-height: 1.4; }
+.app-shell :is(.page-actions,.inline-actions) { gap: 6px; }
+.app-shell .content-section { margin-bottom: 12px; }
+.app-shell .section-body { padding: 10px; }
+.app-shell :is(.content-section,.list-section) > h2 { padding: 8px 10px; margin: 0; }
+.app-shell .form-panel { padding: 12px; gap: 10px; }
+.app-shell .state-item { padding: 8px 10px; }
+.app-shell .email-folder-tab { padding: 6px 10px; }
+.app-shell .email-center-toolbar .page-header { margin-bottom: 6px; }
+.app-shell .email-center-toolbar :is(.email-mailbox-picker,.email-search-filter) { gap: 8px; }
+.app-shell .opportunity-list-table { width: 100%; min-width: 0; table-layout: fixed; }
+.app-shell .opportunity-list-table :is(th,td) { padding: 6px 5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-shell .opportunity-list-table .cell-link,
+.app-shell .opportunity-list-table .status { overflow: hidden; white-space: nowrap; text-overflow: ellipsis; max-width: 100%; }
+.app-shell .opportunity-list-table .cell-link { padding: 0; min-height: 0; }
+.app-shell .opportunity-list-table .status { display: inline-block; padding: 2px 5px; line-height: 1.4; vertical-align: middle; }
+.app-shell .opportunity-list-table :is(th,td):nth-child(1) { width: 7%; }
+.app-shell .opportunity-list-table :is(th,td):nth-child(2) { width: 28%; }
+.app-shell .opportunity-list-table :is(th,td):nth-child(3) { width: 8%; }
+.app-shell .opportunity-list-table :is(th,td):nth-child(4) { width: 17%; }
+.app-shell .opportunity-list-table :is(th,td):nth-child(5) { width: 8%; }
+.app-shell .opportunity-list-table :is(th,td):nth-child(6) { width: 8%; }
+.app-shell .opportunity-list-table :is(th,td):nth-child(7) { width: 8%; }
+.app-shell .opportunity-list-table :is(th,td):nth-child(8) { width: 16%; }
+.app-shell .opportunity-list-table .opportunity-name-cell { display: flex; align-items: center; gap: 4px; white-space: nowrap; }
+.app-shell .opportunity-name-cell > .cell-link { flex: 1 1 auto; min-width: 0; }
+.app-shell .opportunity-email-badges { flex-wrap: nowrap; min-width: 0; }
+.app-shell .opportunity-email-latest { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.app-shell .typical-terms-grid { grid-template-columns: minmax(0, 1fr); gap: 10px; }
+.app-shell .typical-term-section-header { padding: 8px 10px; gap: 8px; }
+.app-shell .typical-term-section-header h2 { min-width: 0; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.app-shell .typical-term-section-header > a { flex: none; white-space: nowrap; }
+.app-shell .typical-term-section .list-table { width: 100%; min-width: 0; max-width: 100%; table-layout: fixed; }
+.app-shell .typical-term-section .list-table :is(th,td) { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.app-shell .typical-term-section:not(.typical-term-catalog) .list-table :is(th,td):first-child { width: auto; }
+.app-shell .typical-term-section:not(.typical-term-catalog) .list-table :is(th,td):nth-child(2) { width: 110px; }
+.app-shell .typical-term-section:not(.typical-term-catalog) .list-table :is(th,td):nth-child(3) { width: 72px; }
+.app-shell .typical-term-section:not(.typical-term-catalog) .list-table :is(th,td):nth-child(4) { width: 72px; }
+.app-shell .typical-term-catalog .list-table :is(th,td):first-child { width: 64px; }
+.app-shell .typical-term-catalog .list-table :is(th,td):nth-child(2) { width: 23%; }
+.app-shell .typical-term-catalog .list-table :is(th,td):nth-child(3) { width: auto; }
+.app-shell .typical-term-summary { display: inline; white-space: nowrap; overflow-wrap: normal; -webkit-line-clamp: unset; }
+.app-shell .typical-term-summary::before { content: ' · '; }

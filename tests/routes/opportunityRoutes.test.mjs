@@ -639,14 +639,15 @@ test('logged in salesperson can view opportunity list and is redirected to lead 
   assert.match(list.text, /\.record-list-body\s*\{[\s\S]*max-height:\s*70vh;[\s\S]*overflow:\s*auto;/);
   assert.match(list.text, /\.record-list-table thead th\s*\{[\s\S]*font-weight:\s*500;[\s\S]*position:\s*sticky;[\s\S]*text-transform:\s*none;/);
   assert.match(list.text, /\.record-list-table th,\s*\.record-list-table td\s*\{[\s\S]*border-right:[^;]+;[\s\S]*text-align:\s*center;[\s\S]*white-space:\s*nowrap;/);
-  assert.match(list.text, /\.opportunity-list-table\s*\{[\s\S]*min-width:\s*1760px;/);
+  assert.match(list.text, /href="\/assets\/compact-interface\.css"/);
+  assert.doesNotMatch(list.text, /<th scope="col">Estimated Amount<\/th>/);
   assert.match(list.text, /\.opportunity-list-table th,\s*\.opportunity-list-table td\s*\{[^}]*border-right-color:\s*#b8c6d1;/);
   assert.match(list.text, /\.opportunity-list-table thead th\s*\{[^}]*border-right-color:\s*rgba\(255, 255, 255, 0\.42\);[^}]*text-align:\s*center;/);
   assert.match(list.text, /\.opportunity-list-table tbody td,\s*\.opportunity-list-table tbody td\.clickable-cell \.cell-link\s*\{[^}]*text-align:\s*left;/);
   assert.match(list.text, /\.opportunity-list-table th:last-child,\s*\.opportunity-list-table td:last-child\s*\{[^}]*border-right:\s*0;/);
   assert.match(list.text, /data-label="Opportunity Name"/);
   assert.match(list.text, /\.record-list-table tbody td::before\s*\{[\s\S]*content:\s*attr\(data-label\);/);
-  assert.equal((list.text.match(/class="cell-link" href="\/opportunities\/30"/g) || []).length, 9);
+  assert.equal((list.text.match(/class="cell-link" href="\/opportunities\/30"/g) || []).length, 8);
 
   const form = await agent.get('/opportunities/new');
   assert.equal(form.status, 302);
