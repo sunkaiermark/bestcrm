@@ -369,7 +369,7 @@ test('sales manager sees shared mailbox pending threads without a rule-category 
 
   const detail = await agent.get('/email-center/threads/1');
   assert.equal(detail.status, 200);
-  assert.match(detail.text, /<main class="app-main email-reader-page">/);
+  assert.match(detail.text, /<main class="app-main email-reader-page email-detail-compact">/);
   assert.match(detail.text, /class="email-reader-shell"[\s\S]*class="email-reader-head"[\s\S]*class="email-reader-scroll" tabindex="0"/);
   assert.match(detail.text, /\.app-main\.email-reader-page\s*\{[^}]*display:\s*flex;[^}]*height:\s*100vh;[^}]*overflow:\s*hidden;/);
   assert.match(detail.text, /\.email-reader-scroll\s*\{[^}]*overflow-y:\s*auto;/);
@@ -387,7 +387,7 @@ test('sales manager sees shared mailbox pending threads without a rule-category 
   assert.match(detail.text, /<details class="email-conversation-item email-message-inbound" open>/);
   assert.match(detail.text, /class="email-conversation-summary"/);
   assert.match(detail.text, /class="email-message-details"/);
-  assert.match(detail.text, /class="email-html-body" src="\/email-center\/messages\/11\/content" sandbox="allow-same-origin"/);
+  assert.ok(detail.text.includes("class=\"email-html-body\" src=\"/email-center/messages/11/content?layout=compact\" sandbox=\"allow-same-origin\""));
   assert.match(detail.text, /class="email-plain-body email-reading-body"/);
   assert.match(detail.text, /\.email-reading-body\s*\{[^}]*max-width:\s*none;/);
   assert.match(detail.text, /@media[\s\S]*\.email-conversation-body\s*\{[^}]*padding:\s*14px;/);
@@ -838,7 +838,7 @@ test('a sales manager links a converted historical inquiry to an existing visibl
   assert.equal(detail.status, 200);
   assert.match(detail.text, /关联已有商机/);
   assert.match(detail.text, /确认将此历史询价和完整邮件会话关联到所选商机/);
-  assert.match(detail.text, /不会新建商机；历史询价和完整邮件会话将关联到所选商机，并保留审计记录/);
+  assert.doesNotMatch(detail.text, /不会新建商机；历史询价和完整邮件会话将关联到所选商机，并保留审计记录/);
   assert.match(detail.text, /name="opportunityId"/);
   assert.match(detail.text, /800020 · Mixer Project/);
 
@@ -1263,4 +1263,21 @@ test('supporting engineer without send permission cannot see or invoke saved dra
   assert.equal(detail.status, 200);
   assert.equal(detail.text.includes('action="/email-center/messages/12/send"'), false);
   assert.equal((await agent.post('/email-center/messages/12/send').type('form').send({})).status, 403);
+});
+
+test('compact email reader removes explanatory notes but preserves destructive confirmations and isolated content security', async () => {
+  const agent = await createAgent({userId: 1, roles: [ROLES.ADMINISTRATOR], language: 'zh', linkableOpportunities: [{id: 20, opportunityNo: '800020', title: 'Mixer project'}]});
+  const page = await agent.get('/email-center/threads/1').expect(200);
+  assert.match(page.text, /email-detail-compact.css/);
+  assert.ok(!page.text.includes("<p class=\"muted email-html-safety-note\">"));
+  assert.ok(page.text.includes('/content?layout=compact'));
+  assert.ok(page.text.includes('pattern="DELETE"'));
+  assert.match(page.text, /onsubmit="return confirm/);
+  const compact = await agent.get('/email-center/messages/11/content?layout=compact').expect(200);
+  assert.ok(compact.text.includes('body,body *{font-size:16px!important'));
+  assert.match(compact.headers['content-security-policy'], /script-src 'none'/);
+  assert.match(compact.headers['content-security-policy'], /form-action 'none'/);
+  assert.match(compact.headers['content-security-policy'], /sandbox allow-same-origin/);
+  const original = await agent.get('/email-center/messages/11/content').expect(200);
+  assert.ok(!original.text.includes('body,body *{font-size:16px!important'));
 });

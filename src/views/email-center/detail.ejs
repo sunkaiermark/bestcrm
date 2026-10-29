@@ -1,4 +1,5 @@
-<%- include('../partials/app-start', { title: `${thread.subject || t('noSubject')} - BESTCRM`, activeNav: 'email-center', mainClass: 'email-reader-page' }) %>
+<%- include('../partials/app-start', { title: `${thread.subject || t('noSubject')} - BESTCRM`, activeNav: 'email-center', mainClass: 'email-reader-page email-detail-compact' }) %>
+      <link rel="stylesheet" href="/assets/email-detail-compact.css">
       <div class="email-reader-shell">
         <div class="email-reader-head">
         <p class="breadcrumb"><a class="secondary-action email-list-back" href="/email-center?mailbox=<%= encodeURIComponent(backMailbox) %>&folder=<%= backFolder %><%= backSearchTerm ? `&q=${encodeURIComponent(backSearchTerm)}` : '' %>">← <%= t('backToEmailList') %></a></p>
@@ -43,7 +44,6 @@
             <% } else { %>
               <p class="muted"><%= t('noLinkableOpportunities') %></p>
             <% } %>
-            <p class="muted"><%= t('linkExistingOpportunityHelp') %></p>
           </section>
         <% } %>
 
@@ -86,7 +86,6 @@
                 </form>
               <% } %>
             </div>
-            <p class="muted"><%= t('emailSpamSenderRuleHelp') %></p>
           </section>
         <% } %>
 
@@ -100,7 +99,6 @@
               <input type="hidden" name="action" value="spam">
               <button class="danger-action" type="submit"><%= t('emailSpamAction') %></button>
             </form>
-            <p class="muted"><%= t('emailSpamSenderRuleHelp') %></p>
           </section>
         <% } %>
 
@@ -150,7 +148,7 @@
                 <%- include('_response-status', { message, canAcknowledgeCustomerEmail, returnTo: '' }) %>
                 <div class="email-recipient-line"><%= t('emailTo') %>: <%= recipients(message.toRecipients) || '-' %><% if (message.ccRecipients.length) { %> · <%= t('emailCc') %>: <%= recipients(message.ccRecipients) %><% } %></div>
                 <details class="email-message-details"><summary><%= t('emailMessageDetails') %></summary><dl class="detail-grid"><div><dt><%= t('emailFrom') %></dt><dd><%= message.fromName ? `${message.fromName} <${message.fromAddress}>` : message.fromAddress %></dd></div><div><dt><%= t('emailDate') %></dt><dd><%= formatEmailListDate(messageDate) %></dd></div><div><dt><%= t('emailTo') %></dt><dd><%= recipients(message.toRecipients) || '-' %></dd></div><div><dt><%= t('emailCc') %></dt><dd><%= recipients(message.ccRecipients) || '-' %></dd></div><div><dt>Message-ID</dt><dd><%= message.messageId || '-' %></dd></div><div><dt>In-Reply-To</dt><dd><%= message.inReplyTo || '-' %></dd></div></dl></details>
-                <%- include('_message-content', { message, formatPlainEmailForReading }) %>
+                <%- include('_message-content', { message, formatPlainEmailForReading, compactContent: true }) %>
                 <%- include('_draft-actions', { message }) %>
               </div>
             </details>

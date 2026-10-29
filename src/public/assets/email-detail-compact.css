@@ -1,0 +1,85 @@
+/* Scoped to the email conversation page. */
+html body:has(.email-detail-compact) { font-size:16px; }
+html body:has(.email-detail-compact) .left-nav :is(a,button,span,div) { font-size:16px!important; }
+html body .app-shell .app-main.email-detail-compact { font-size:16px; line-height:1.45; padding:14px 18px 0; }
+html body .app-shell .app-main.email-detail-compact * { font-size:16px!important; }
+html body .app-shell .app-main.email-detail-compact .visually-hidden { width:1px!important; max-width:1px!important; min-width:0!important; height:1px!important; padding:0!important; }
+.email-detail-compact .breadcrumb { margin:0 0 6px; }
+.email-detail-compact .email-reader-head { padding-bottom:8px; }
+.email-detail-compact .page-header { gap:8px; margin:0 0 6px; align-items:center; }
+.email-detail-compact h1 { margin:0 0 3px; font-weight:700; line-height:1.4; }
+.email-detail-compact :is(h2,h3,p) { margin-top:0; margin-bottom:6px; }
+.email-detail-compact .email-thread-head-status { gap:6px; }
+.email-detail-compact .email-thread-context:empty { display:none; }
+.email-detail-compact .email-thread-context { margin:0; gap:6px; }
+.email-detail-compact :is(.status,.email-category-badge) { padding:2px 7px; line-height:1.4; }
+.email-detail-compact .email-reader-scroll { padding:8px 2px 12px 0; }
+.email-detail-compact .product-category-review { margin:0 0 8px; padding:0; }
+.email-detail-compact .product-category-review-row { gap:8px; padding:8px 10px; }
+.email-detail-compact .product-category-review h2 { margin:0; }
+.email-detail-compact .product-category-review-form { gap:8px; }
+.email-detail-compact .product-category-review-form select { min-height:34px; height:34px; padding:4px 8px; }
+.email-detail-compact .product-category-confirmed { gap:6px; }
+.email-detail-compact .email-triage-panel { padding:0; margin:0 0 8px; }
+.email-detail-compact .email-pending-actions-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+.email-detail-compact .email-pending-actions-row form { margin:0; }
+.email-detail-compact :is(.email-pending-link-form,.email-pending-delete-form) { display:flex; gap:6px; align-items:center; min-width:0; grid-column:auto; max-width:none; }
+.email-detail-compact .email-pending-link-form { flex:1 1 340px; }
+.email-detail-compact .email-pending-link-form select { flex:1; min-width:160px; width:auto; max-width:100%; text-align:left; }
+.email-detail-compact .email-pending-delete-form { flex:0 1 auto; }
+.email-detail-compact .email-pending-delete-form > input { width:112px; min-width:0; }
+.email-detail-compact :is(.email-pending-link-form,.email-pending-delete-form) > button,
+.email-detail-compact .email-pending-create-lead,
+.email-detail-compact .email-pending-spam-form > button { width:auto; flex:none; }
+.email-detail-compact :is(button,select,input:not([type=hidden]),.quick-action,.secondary-action,.danger-action) { min-height:34px; height:auto; padding:5px 10px; border-radius:5px; line-height:1.4; }
+.email-detail-compact .email-pending-actions-row :is(button,a) { white-space:nowrap; }
+.email-detail-compact .email-conversation-summary { min-height:52px; padding:7px 10px; gap:8px; grid-template-columns:32px minmax(0,1fr) auto; }
+.email-detail-compact .email-sender-avatar { width:32px; height:32px; }
+.email-detail-compact .email-conversation-meta { gap:2px; }
+.email-detail-compact .email-conversation-body { padding:8px 10px 10px; }
+.email-detail-compact .email-recipient-line { margin:0 0 5px; line-height:1.45; overflow-wrap:anywhere; }
+.email-detail-compact .email-message-details { margin:0 0 6px; }
+.email-detail-compact .email-message-details > summary { padding:2px 0; }
+.email-detail-compact .email-html-body { height:clamp(320px,55vh,700px); border-radius:4px; }
+.email-detail-compact .email-message-content { margin-top:6px; }
+.email-detail-compact .email-attachment-list { margin-top:8px; }
+.email-detail-compact .email-triage-history { margin-top:10px; }
+@media(min-width:861px) {
+  .email-detail-compact .email-reader-scroll { --email-action-columns:84px minmax(0,1fr) 90px 132px 182px; }
+  .email-detail-compact .product-category-review-row,
+  .email-detail-compact .email-pending-actions-row { display:grid; grid-template-columns:var(--email-action-columns); gap:8px; align-items:center; }
+  .email-detail-compact .product-category-review-row { padding:8px 10px; }
+  .email-detail-compact .email-pending-actions-row { padding:0 11px; }
+  .email-detail-compact .product-category-review-form,
+  .email-detail-compact .email-pending-actions-row > .email-pending-link-form { display:contents; }
+  .email-detail-compact .product-category-review-row > h2,
+  .email-detail-compact .email-pending-actions-row > .email-pending-link-form > button { grid-column:1; }
+  .email-detail-compact .product-category-review-form > label,
+  .email-detail-compact .email-pending-actions-row > .email-pending-link-form > select { grid-column:2; min-width:0; width:100%; }
+  .email-detail-compact .product-category-review-form > button,
+  .email-detail-compact .email-pending-create-lead { grid-column:3; min-width:0; width:100%; box-sizing:border-box; }
+  .email-detail-compact .product-category-confirmed { grid-column:4 / 6; }
+  .email-detail-compact .email-pending-spam-form { grid-column:4; }
+  .email-detail-compact .email-pending-delete-form { grid-column:5; width:100%; }
+  .email-detail-compact .email-pending-actions-row > .email-pending-link-form > button,
+  .email-detail-compact .email-pending-spam-form > button { width:100%; }
+  .email-detail-compact .email-pending-delete-form > input { flex:1; width:0; }
+  .email-detail-compact .email-pending-delete-form > button { flex:none; }
+}
+@media(min-width:861px) and (max-width:950px) {
+  .email-detail-compact .email-reader-scroll { --email-action-columns:84px minmax(0,1fr) 90px; }
+  .email-detail-compact .product-category-confirmed { grid-column:1 / -1; justify-content:flex-start; }
+  .email-detail-compact .email-pending-spam-form { grid-column:1 / -1; justify-self:start; }
+  .email-detail-compact .email-pending-delete-form { grid-column:1 / -1; max-width:280px; }
+}
+@media(max-width:860px) {
+  html body .app-shell .app-main.email-detail-compact { padding:10px; }
+  .email-detail-compact .email-pending-link-form { flex-basis:100%; flex-wrap:wrap; }
+  .email-detail-compact .email-pending-link-form select { min-width:0; width:100%; flex:1 1 160px; }
+  .email-detail-compact .email-pending-delete-form { flex:1 1 100%; }
+  .email-detail-compact .email-pending-delete-form > input { width:auto; flex:1; }
+  .email-detail-compact .email-conversation-summary { grid-template-columns:32px minmax(0,1fr); }
+  .email-detail-compact .email-conversation-meta { grid-column:2; display:flex; justify-content:space-between; flex-wrap:wrap; white-space:normal; }
+  .email-detail-compact .email-conversation-heading strong { white-space:normal; overflow-wrap:anywhere; }
+  .email-detail-compact .product-category-review-row { padding:8px; }
+}

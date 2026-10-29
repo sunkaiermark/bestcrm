@@ -10,8 +10,8 @@
 %>
 <div class="email-message-content">
   <% if (hasIsolatedContent) { %>
-    <p class="muted email-html-safety-note"><%= t('htmlEmailBlockedNotice') %></p>
-    <iframe class="email-html-body" src="/email-center/messages/<%= message.id %>/content" sandbox="allow-same-origin" referrerpolicy="no-referrer" loading="lazy" title="<%= t('emailHtmlContent') %>"></iframe>
+    <% if(typeof compactContent === 'undefined' || !compactContent) { %><p class="muted email-html-safety-note"><%= t('htmlEmailBlockedNotice') %></p><% } %>
+    <iframe class="email-html-body" src="/email-center/messages/<%= message.id %>/content<%= typeof compactContent !== 'undefined' && compactContent ? '?layout=compact' : '' %>" sandbox="allow-same-origin" referrerpolicy="no-referrer" loading="lazy" title="<%= t('emailHtmlContent') %>"></iframe>
     <% if (message.textBody) { %>
       <details class="email-plain-fallback"><summary><%= t('emailPlainTextVersion') %></summary><pre class="email-plain-body email-reading-body"><%= readablePlainBody %></pre></details>
     <% } %>

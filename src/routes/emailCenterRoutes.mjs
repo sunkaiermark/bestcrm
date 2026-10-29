@@ -185,7 +185,7 @@ async function completeArchivedBody(message, uploadDir) {
   }
 }
 
-function emailHtmlDocument(htmlBody, textBody) {
+function emailHtmlDocument(htmlBody, textBody, {compact = false} = {}) {
   const safeBody = htmlBody
     ? String(htmlBody)
       .replace(/<base\b[^>]*>/gi, '')
@@ -200,6 +200,7 @@ function emailHtmlDocument(htmlBody, textBody) {
     table{max-width:100%}
     pre{white-space:pre-wrap}
     pre.email-text-only{font:inherit;margin:0}
+    ${compact ? 'body,body *{font-size:16px!important;line-height:1.5!important}body{padding:12px}p{margin-top:0!important;margin-bottom:8px!important}' : ''}
     blockquote{border-left:3px solid #d7e0e8;margin-left:0;padding-left:12px}
   </style>`;
   if (/<head(?:\s[^>]*)?>/i.test(safeBody)) {
@@ -701,7 +702,7 @@ export function emailCenterRoutes({
         "sandbox allow-same-origin; default-src 'none'; img-src 'self' data:; style-src 'unsafe-inline'; script-src 'none'; font-src 'none'; media-src 'none'; object-src 'none'; frame-src 'none'; frame-ancestors 'self'; form-action 'none'; base-uri 'none'"
       );
       const htmlBody = resolveInlineEmailContent(completeBody.htmlBody, message.attachments);
-      res.send(emailHtmlDocument(htmlBody, completeBody.textBody));
+      res.send(emailHtmlDocument(htmlBody, completeBody.textBody, {compact: req.query.layout === 'compact'}));
     } catch (error) {
       handleError(error, res, next);
     }
