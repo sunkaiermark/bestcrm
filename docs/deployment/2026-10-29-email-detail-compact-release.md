@@ -1,0 +1,9 @@
+# v2026.10.29-01-rc.1 — Compact email detail and approved phone layout
+
+Email conversations use 16px text throughout the UI and the optional compact message-reading document. Category confirmation and new-lead buttons share a column and width; their selectors align. Reduced padding and shorter controls make the desktop page compact while phone controls retain their larger touch targets. Auxiliary linking/spam/HTML-reading explanations are omitted from the detail page. Existing actions, permission checks, typed DELETE confirmation, sandbox/CSP and content isolation are retained. Other message-reading contexts keep their original presentation.
+
+This release contains the approved system-wide phone layout from 3da9be9 and email detail changes from f850a03. The withdrawn Android logo/install metadata and Windows shortcut deliverables are excluded. No new database migration, dependency, environment or service configuration is required.
+
+Validation: 40 real-template pages passed 120 small-screen layout checks and 40 desktop comparisons for the phone changes. Email detail passed font/overflow checks at 1600, 1366 and 390 CSS pixels, and its aligned action columns matched at 1600, 1366, 1280, 985 and 900. Route/form/mobile regressions cover retained destructive confirmations, isolated content security and default reading mode. Actual mobile device acceptance remains necessary.
+
+Deployment accepts only v2026.10.26-01-rc.1 or v2026.10.27-01-rc.1 with healthy services, no active write maintenance and sufficient backup space. Historical migrations and dependency/deployment files must match. Create and verify a full backup before switching releases. Preserve Office/AI secrets, configuration and directory permissions. Do not prune backups automatically. After cutover verify public health, current version, email intake and Office health, and confirm the compact email stylesheet plus phone assets are served.
