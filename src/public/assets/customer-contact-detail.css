@@ -1,0 +1,93 @@
+/* Shared customer/contact detail layout, including the phone desktop viewport. */
+body:has(.customer-contact-detail) .left-nav *,
+.app-main.customer-contact-detail,
+.app-main.customer-contact-detail * {
+  font-size: 16px !important;
+}
+.customer-contact-detail { max-width: 100%; min-width: 0; }
+.customer-contact-detail .page-header { flex-wrap: wrap; gap: 8px; }
+.customer-contact-detail .page-header h1 { min-width: 0; overflow-wrap: anywhere; }
+.customer-contact-detail .page-actions { max-width: 100%; }
+.customer-contact-detail .page-actions form { display: flex; flex-wrap: wrap; gap: 6px; max-width: 100%; }
+.customer-contact-detail .page-actions input { flex: 1 1 180px; width: auto; min-width: 0; }
+.customer-contact-detail .content-section { min-width: 0; margin-bottom: 12px; }
+.customer-contact-detail .section-body { min-width: 0; padding: 10px; }
+.customer-contact-detail .basic-info-grid { min-width: 0; }
+.customer-contact-detail table { width: 100%; min-width: 0; max-width: 100%; table-layout: fixed; }
+.customer-contact-detail th,
+.customer-contact-detail td,
+.customer-contact-detail td a {
+  padding: 6px 8px;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.4;
+}
+.customer-contact-detail td a { padding: 0; }
+.customer-contact-detail .detail-table th { width: 130px; }
+.customer-contact-detail .customer-detail-table { table-layout: auto; }
+.customer-contact-detail .customer-detail-table th {
+  width: 1%;
+  white-space: nowrap;
+}
+.customer-contact-detail .customer-detail-label-column { width: 1%; }
+.customer-contact-detail .customer-detail-long-row td,
+.customer-contact-detail.contact-detail-page .detail-table td { white-space: pre-wrap; }
+.customer-contact-detail .customer-contact-table-wrap { overflow: visible; min-width: 0; }
+.customer-contact-detail .customer-contact-table th,
+.customer-contact-detail .customer-contact-table td {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.customer-contact-detail .customer-contact-table th:nth-child(1),
+.customer-contact-detail .customer-contact-table td:nth-child(1) { width: 11%; }
+.customer-contact-detail .customer-contact-table th:nth-child(2),
+.customer-contact-detail .customer-contact-table td:nth-child(2) { width: 13%; }
+.customer-contact-detail .customer-contact-table th:nth-child(3),
+.customer-contact-detail .customer-contact-table td:nth-child(3) { width: 15%; }
+.customer-contact-detail .customer-contact-table th:nth-child(4),
+.customer-contact-detail .customer-contact-table td:nth-child(4) { width: 25%; }
+.customer-contact-detail .customer-contact-table th:nth-child(5),
+.customer-contact-detail .customer-contact-table td:nth-child(5) { width: 36%; }
+.customer-contact-detail .status { white-space: normal; overflow-wrap: anywhere; }
+.customer-contact-detail .form-panel { min-width: 0; max-width: 100%; }
+.customer-contact-detail input,
+.customer-contact-detail select,
+.customer-contact-detail textarea { min-width: 0; max-width: 100%; }
+.customer-contact-detail .compact-form-panel { gap: 10px; }
+.customer-contact-detail .compact-form-panel label { min-width: 0; }
+.customer-contact-detail .breadcrumb { margin: 0 0 8px; }
+.customer-contact-detail .section-body > p { margin: 4px 0 8px; }
+.customer-contact-detail .list-table,
+.customer-contact-detail .list-table * {
+  font-family: "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Segoe UI", Arial, sans-serif;
+  font-weight: 400 !important;
+}
+.customer-contact-detail .list-table th,
+.customer-contact-detail .list-table td {
+  text-align: center;
+  vertical-align: middle;
+}
+.customer-contact-detail .customer-opportunity-table th:first-child,
+.customer-contact-detail .customer-opportunity-table td:first-child,
+.customer-contact-detail .customer-opportunity-table th:nth-child(3),
+.customer-contact-detail .customer-opportunity-table td:nth-child(3),
+.customer-contact-detail .customer-opportunity-table th:nth-child(4),
+.customer-contact-detail .customer-opportunity-table td:nth-child(4) {
+  white-space: nowrap;
+}
+.customer-contact-detail .customer-opportunity-table th:first-child,
+.customer-contact-detail .customer-opportunity-table td:first-child { width: 96px; }
+.customer-contact-detail .customer-opportunity-table th:nth-child(3),
+.customer-contact-detail .customer-opportunity-table td:nth-child(3) { width: 144px; }
+.customer-contact-detail .customer-opportunity-table th:nth-child(4),
+.customer-contact-detail .customer-opportunity-table td:nth-child(4) { width: 192px; }
+.customer-contact-detail .customer-opportunity-table .status { white-space: nowrap; }
+.customer-contact-detail .customer-opportunity-table th:nth-child(2),
+.customer-contact-detail .customer-opportunity-table td:nth-child(2) { width: auto; text-align: left; }
+@media (max-width: 900px) {
+  .customer-contact-detail .customer-detail-table tr { grid-template-columns: minmax(100px, 28%) minmax(0, 1fr); }
+}
