@@ -1,5 +1,6 @@
 /* Presentation only: never clones forms, submits data or changes permissions. */
 (() => {
+  if (window.bestcrmPhoneDesktopLayout) return;
   const media = window.matchMedia('(max-width: 860px)');
   const main = document.querySelector('.app-main');
   const nav = document.querySelector('.left-nav');

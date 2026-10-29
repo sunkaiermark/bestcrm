@@ -1,0 +1,12 @@
+/* Only phone browsers get these overrides. Desktop rendering is unchanged. */
+html.phone-desktop-layout { -webkit-text-size-adjust:100%; text-size-adjust:100%; }
+html.phone-desktop-layout.phone-portrait { overflow:hidden; }
+.phone-landscape-guide { display:none; }
+html.phone-desktop-layout .phone-landscape-guide:not([hidden]) { position:fixed; inset:0; z-index:10000; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:28px; padding:60px; background:#142350; color:#fff; text-align:center; font:48px/1.5 "Microsoft YaHei",Arial,sans-serif; }
+html.phone-desktop-layout .phone-landscape-guide strong { font-size:64px; }
+html.phone-desktop-layout .phone-landscape-guide span { font-size:40px; }
+html.phone-desktop-layout .opportunity-detail-page,
+html.phone-desktop-layout .opportunity-detail-page :is(.section-stack,.section-body,.record-list-body,.list-body,.correspondence-content,.technical-uploaded-files-scroll,.collaboration-work-package-scroll,.technical-team-history-scroll) { max-height:none!important; overscroll-behavior-y:auto!important; }
+html.phone-desktop-layout .opportunity-detail-page :is(.record-list-body,.list-body) { overflow-x:auto!important; overflow-y:visible!important; }
+html.phone-desktop-layout .opportunity-detail-page :is(.technical-uploaded-files-scroll,.collaboration-work-package-scroll,.technical-team-history-scroll) { overflow-x:auto!important; overflow-y:hidden!important; touch-action:pan-x pan-y pinch-zoom; }
+html.phone-desktop-layout .opportunity-detail-page iframe.email-html-body[data-phone-expanded] { min-height:0!important; max-height:none!important; }
