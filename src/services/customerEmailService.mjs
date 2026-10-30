@@ -8,7 +8,7 @@ import {
   getRepresentedCompany
 } from '../domain/representedCompanies.mjs';
 import { canAccessInquiryInbox } from './inquiryService.mjs';
-import { canViewOpportunity } from './opportunityService.mjs';
+import { canViewOpportunity, isSupportingEngineer } from './opportunityService.mjs';
 import { inspectStoredAttachmentFile, resolveStoredPath } from './attachmentFileService.mjs';
 import { readSignedSalesCommercialQuotationPdf } from './salesCommercialQuotationFormalService.mjs';
 import { storeEmailArchiveAttachments } from './emailArchiveService.mjs';
@@ -200,6 +200,7 @@ async function opportunityContext(dependencies, opportunityId) {
 }
 
 export function canSendOpportunityEmail(actor, opportunity) {
+  if (actor.isActive === false) return false;
   if (hasRole(actor, ROLES.ADMINISTRATOR)) return true;
   const actorId = Number(actor.id);
   if ([
@@ -209,6 +210,7 @@ export function canSendOpportunityEmail(actor, opportunity) {
     opportunity.technicalManagerId,
     opportunity.commercialManagerId
   ].some((id) => Number(id) === actorId)) return true;
+  if (isSupportingEngineer(actor, opportunity)) return true;
   return opportunity.teamMembers?.some((member) => Number(member.userId) === actorId
     && member.isActive !== false
     && member.canSendExternalEmail === true);

@@ -1149,7 +1149,7 @@ test('compose page shows send only to an authorized opportunity member and remai
     roles: [ROLES.QUOTATION_ENGINEER],
     language: 'zh',
     sendingEnabled: true,
-    teamMembers: [{ userId: 15, isActive: true, canSendExternalEmail: false }]
+    teamMembers: [{ userId: 15, roleCode: ROLES.QUOTATION_ENGINEER, isActive: true, canSendExternalEmail: false }]
   });
   const supportingCompose = await supporting.get('/email-center/compose?opportunityId=20');
   assert.equal(supportingCompose.status, 200);
@@ -1164,7 +1164,7 @@ test('compose page shows send only to an authorized opportunity member and remai
   assert.match(supportingCompose.text, /25 MB，全部附件合计/);
   assert.match(supportingCompose.text, />未选择任何文件</);
   assert.match(supportingCompose.text, /value="draft"/);
-  assert.doesNotMatch(supportingCompose.text, /value="send"/);
+  assert.match(supportingCompose.text, /value="send"/);
 });
 
 test('compose signature uses the company assigned to the current user', async () => {
@@ -1254,13 +1254,13 @@ test('saved opportunity drafts expose send only to authorized senders, never aft
 });
 
 
-test('supporting engineer without send permission cannot see or invoke saved draft send', async () => {
+test('removed supporting engineer cannot see or invoke saved draft send', async () => {
   const draft = { ...thread().messages[0], id: 12, threadId: 2, direction: 'outbound', deliveryStatus: 'draft' };
   const agent = await createAgent({ userId: 15, roles: [ROLES.QUOTATION_ENGINEER], sendingEnabled: true,
-    teamMembers: [{ userId: 15, isActive: true, canSendExternalEmail: false }],
+    teamMembers: [{ userId: 15, roleCode: ROLES.QUOTATION_ENGINEER, isActive: false, canSendExternalEmail: false }],
     linkedOverrides: { messages: [draft] } });
   const detail = await agent.get('/email-center/threads/2');
-  assert.equal(detail.status, 200);
+  assert.equal(detail.status, 403);
   assert.equal(detail.text.includes('action="/email-center/messages/12/send"'), false);
   assert.equal((await agent.post('/email-center/messages/12/send').type('form').send({})).status, 403);
 });
@@ -1280,4 +1280,13 @@ test('compact email reader removes explanatory notes but preserves destructive c
   assert.match(compact.headers['content-security-policy'], /sandbox allow-same-origin/);
   const original = await agent.get('/email-center/messages/11/content').expect(200);
   assert.ok(!original.text.includes('body,body *{font-size:16px!important'));
+});
+
+test('active supporting engineer sees saved-draft send without legacy email authorization',async()=>{
+  const draft={...thread().messages[0],id:12,threadId:2,direction:'outbound',deliveryStatus:'draft'};
+  const agent=await createAgent({userId:15,roles:[ROLES.QUOTATION_ENGINEER],sendingEnabled:true,
+    teamMembers:[{userId:15,roleCode:ROLES.QUOTATION_ENGINEER,isActive:true,canSendExternalEmail:false}],linkedOverrides:{messages:[draft]}});
+  const detail=await agent.get('/email-center/threads/2');
+  assert.equal(detail.status,200);
+  assert.ok(detail.text.includes('action="/email-center/messages/12/send"'));
 });

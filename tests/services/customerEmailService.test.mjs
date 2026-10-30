@@ -7,6 +7,7 @@ import path from 'node:path';
 import { simpleParser } from 'mailparser';
 import { ROLES } from '../../src/domain/roles.mjs';
 import {
+  canSendOpportunityEmail,
   buildPersonalEmailIdentity,
   createCustomerEmailDraft,
   getCustomerEmailComposeContext,
@@ -598,7 +599,7 @@ test('formal package, approved opportunity files, and local uploads share one to
   }
 });
 
-test('supporting engineer without per-opportunity permission can save but cannot send a draft', async () => {
+test('active assigned supporting engineer can send a saved draft without the legacy email flag', async () => {
   const uploadDir = await mkdtemp(path.join(tmpdir(), 'bestcrm-customer-email-'));
   try {
     const supporting = actor({
@@ -608,7 +609,8 @@ test('supporting engineer without per-opportunity permission can save but cannot
       emailSignatureTitle: 'Supporting Engineer'
     });
     const dependencies = createDependencies(uploadDir, {
-      teamMembers: [{ userId: 15, isActive: true, canSendExternalEmail: false }]
+      teamMembers: [{ userId: 15, roleCode: ROLES.QUOTATION_ENGINEER, isActive: true, canSendExternalEmail: false }],
+      transport: { async sendMail() { return { messageId: "<engineer-test@example.invalid>" }; } }
     });
     const draft = await createCustomerEmailDraft(dependencies, supporting, {
       threadId: 1,
@@ -618,8 +620,9 @@ test('supporting engineer without per-opportunity permission can save but cannot
       action: 'draft'
     });
     assert.equal(draft.deliveryStatus, 'draft');
-    await assert.rejects(() => sendCustomerEmail(dependencies, supporting, draft.id), /save a draft but cannot send/);
-    assert.equal(dependencies.state.attempts.length, 0);
+    const sent = await sendCustomerEmail(dependencies, supporting, draft.id);
+    assert.equal(sent.deliveryStatus, 'sent');
+    assert.equal(dependencies.state.attempts.length, 1);
   } finally {
     await rm(uploadDir, { recursive: true, force: true });
   }
@@ -783,4 +786,18 @@ test('saved draft preserves recipients and attachments and blocks sending again 
     releaseSend?.();
     await rm(uploadDir, { recursive: true, force: true });
   }
+});
+
+test('team engineer email authority stays scoped to active assignment and user', () => {
+  const engineer=actor({id:15,roles:[ROLES.QUOTATION_ENGINEER]});
+  const member={userId:15,roleCode:ROLES.QUOTATION_ENGINEER,isActive:true,canSendExternalEmail:false};
+  const op={id:20,teamMembers:[member]};
+  assert.equal(canSendOpportunityEmail(engineer,op),true);
+  assert.equal(!!canSendOpportunityEmail(engineer,{...op,teamMembers:[]}),false);
+  assert.equal(!!canSendOpportunityEmail(engineer,{...op,teamMembers:[{...member,isActive:false}]}),false);
+  assert.equal(!!canSendOpportunityEmail(engineer,{...op,teamMembers:[{...member,userId:99}]}),false);
+  assert.equal(!!canSendOpportunityEmail(engineer,{...op,teamMembers:[{...member,roleCode:'observer'}]}),false);
+  assert.equal(!!canSendOpportunityEmail({...engineer,isActive:false},op),false);
+  assert.equal(!!canSendOpportunityEmail({...engineer,roles:[ROLES.SALESPERSON]},op),false);
+  assert.equal(canSendOpportunityEmail(actor({id:99,roles:[ROLES.ADMINISTRATOR]}),op),true);
 });
