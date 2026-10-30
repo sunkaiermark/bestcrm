@@ -400,6 +400,7 @@ export function createOpportunityCollaborationRepository(queryTarget, { inTransa
       const wp=(await queryTarget.query("SELECT * FROM opportunity_collaboration_work_packages WHERE id=$1 AND opportunity_id=$2 AND plan_kind IN ('technical_solution','internal_quote') AND deleted_at IS NULL FOR UPDATE",[input.workPackageId,input.opportunityId])).rows[0];
       if(!wp)throw Error('Technical work package not found');
       const versions=(await queryTarget.query('SELECT * FROM opportunity_collaboration_work_package_versions WHERE work_package_id=$1 ORDER BY version_no DESC FOR UPDATE',[wp.id])).rows;
+      if(input.action==='delete_package' && input.emptyOnly && versions.length)throw Error('Locked: work package now contains file history; refresh before removing');
       const version=versions.find(row=>Number(row.id)===Number(input.versionId));
       if(input.action!=='delete_package'&&!version)throw Error('Submission not found');
       if(!input.isManager && Number(version?.submitted_by_user_id)!==Number(input.actorUserId))throw Error('Only the submitter can withdraw or remove this file');

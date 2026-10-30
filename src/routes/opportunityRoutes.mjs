@@ -1690,7 +1690,7 @@ export function opportunityRoutes({
       if(operation==='confirm'&&req.body.confirmSubmission!=='yes')return res.status(400).send('Confirm submission before submitting');
       const manager=canManageOpportunityEngineeringTeam(req.currentUser,opportunity);
       if(!manager&&(operation==='delete_package'||!canSubmitCollaborationWorkPackage(req.currentUser,opportunity,workPackage)))return res.status(403).send('Forbidden');
-      await opportunityCollaborationRepository.applyTechnicalLifecycle({action:operation,workPackageId:workPackage.id,opportunityId:opportunity.id,versionId:requiredPositiveInteger(req.body.versionId),attachmentId:requiredPositiveInteger(req.body.attachmentId),actorUserId:req.currentUser.id,isManager:manager});
+      await opportunityCollaborationRepository.applyTechnicalLifecycle({action:operation,workPackageId:workPackage.id,opportunityId:opportunity.id,versionId:requiredPositiveInteger(req.body.versionId),attachmentId:requiredPositiveInteger(req.body.attachmentId),actorUserId:req.currentUser.id,isManager:manager,emptyOnly:req.body.emptyOnly==='yes'});
       res.redirect('/opportunities/'+opportunity.id+'#technical-proposal');
     }catch(error){if(/Locked|Withdraw|pending|not found|Only/.test(error.message))return res.status(409).send('该记录已确认、审批或被引用，或当前状态不允许此操作。请先撤销待审核提交；历史记录会保留。');next(error);}
   });

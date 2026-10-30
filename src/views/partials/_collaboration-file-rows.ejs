@@ -3,8 +3,11 @@ const version=workPackage.latestVersion;
 const files=(version?.files||[]).filter(f=>!f.supersededByAttachmentId&&f.status!=='withdrawn');
 const reviewer=currentUser.roles?.includes('technical_manager')&&Number(currentUser.id)===Number(opportunity.technicalManagerId);
 const base='/opportunities/'+opportunity.id+'/collaboration-files/'+workPackage.id+'/';
+const canRemoveEmptyPackage=canManageCollaborationWorkPackages && !opportunity.archivedAt
+  && ['technical_solution_in_progress','technical_solution_rejected','commercial_quote_in_progress','commercial_quote_rejected'].includes(opportunity.status)
+  && !version && !(workPackage.versionHistory||[]).length;
 %>
-<% if(!files.length){ %><tr><td><strong><%= workPackage.title %></strong></td><td><%= workPackage.assigneeDisplayName %></td><td><%= dateValue(workPackage.plannedStartDate)||'—' %></td><td><%= dateValue(workPackage.plannedSubmitDate)||'—' %></td><td>—</td><td>—</td><td>—</td><td><%= language==='zh'?'未上传':'No file' %></td><td>—</td></tr><% } %>
+<% if(!files.length){ %><tr><td><strong><%= workPackage.title %></strong></td><td><%= workPackage.assigneeDisplayName %></td><td><%= dateValue(workPackage.plannedStartDate)||'—' %></td><td><%= dateValue(workPackage.plannedSubmitDate)||'—' %></td><td>—</td><td>—</td><td>—</td><td><%= language==='zh'?'未上传':'No file' %></td><td><% if(canRemoveEmptyPackage){ %><form method="post" action="/opportunities/<%= opportunity.id %>/technical-work-packages/<%= workPackage.id %>/delete" onsubmit="return confirm('<%= language==='zh'?'确认移除此未上传文件的工作包？':'Remove this empty work package?' %>')"><%- csrfField() %><input type="hidden" name="emptyOnly" value="yes"><button type="submit"><%= language==='zh'?'移除':'Remove' %></button></form><% }else{ %>—<% } %></td></tr><% } %>
 <% for(const file of files){const status=file.status||version.status;const url=base+file.id+'/';const canAct=canManageCollaborationWorkPackages||Number(file.addedByUserId||version.submittedByUserId)===Number(currentUser.id); %>
 <tr>
 <td title="<%= workPackage.title %>"><strong><%= workPackage.title %></strong></td><td><%= workPackage.assigneeDisplayName %></td>
