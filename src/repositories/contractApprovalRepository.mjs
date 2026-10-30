@@ -1,3 +1,4 @@
+const numberOrNull=value=>value==null?null:Number(value);
 function mapContractApprovalRow(row) {
   if (!row) {
     return null;
@@ -8,6 +9,10 @@ function mapContractApprovalRow(row) {
     quotationPackageVersionId: row.quotation_package_version_id === null || row.quotation_package_version_id === undefined
       ? null
       : Number(row.quotation_package_version_id),
+    revisionRoundId: numberOrNull(row.revision_round_id),
+    finalQuoteKind: row.final_quote_kind || null,
+    finalQuoteId: numberOrNull(row.final_quote_id),
+    finalQuoteSnapshot: row.final_quote_snapshot || null,
     versionNo: Number(row.version_no),
     currentStep: Number(row.current_step),
     status: row.status,
@@ -28,6 +33,7 @@ const contractApprovalSelect = `
     ca.id,
     ca.opportunity_id,
     ca.quotation_package_version_id,
+    ca.revision_round_id,ca.final_quote_kind,ca.final_quote_id,ca.final_quote_snapshot,
     ca.version_no,
     ca.current_step,
     ca.status,

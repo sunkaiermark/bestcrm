@@ -1,3 +1,5 @@
+import {buildOpportunityRevisionPresentation} from '../services/opportunityRevisionPresentation.mjs';
+import {canStartOpportunityRevision,canAcceptOpportunityQuotation} from '../repositories/opportunityRevisionRepository.mjs';
 import {BASE_CONTENT_SECURITY_POLICY} from '../middleware/securityHeaders.mjs';
 import { canSendOpportunityEmail } from '../services/customerEmailService.mjs';
 import { Router } from 'express';
@@ -1284,7 +1286,13 @@ export function opportunityRoutes({
       const opportunitySource=await loadOpportunitySource({opportunity,user:req.currentUser,inquiryRepository,aiSourceRepository,emailArchiveRepository,aiSourceEnabled,emailCenterEnabled});
       const technicalTeamForm = req.session.technicalTeamForm?.opportunityId === Number(opportunity.id) ? req.session.technicalTeamForm : null;
       if (technicalTeamForm) delete req.session.technicalTeamForm;
+      const revisionWorkspace=typeof opportunityCollaborationRepository?.loadRevisionWorkspace==='function' ? await opportunityCollaborationRepository.loadRevisionWorkspace(opportunity.id) : null;
+      const revisionPresentation=buildOpportunityRevisionPresentation({workspace:revisionWorkspace,opportunity,workPackages:collaborationWorkPackages,attachments,requestedRoundId:req.query.revisionRound});
       res.render('opportunities/detail', {
+        revisionPresentation,
+        revisionWorkspace,
+        canStartRevision:canStartOpportunityRevision(req.currentUser,opportunity),
+        canAcceptRevisionQuotation:canAcceptOpportunityQuotation(req.currentUser,opportunity),
         technicalPackageAdded: req.query.workPackageAdded === '1',
         technicalTeamForm,
         opportunitySource,
@@ -1297,7 +1305,7 @@ export function opportunityRoutes({
         canViewCustomerMaster: canViewOpportunityCustomerMaster(req.currentUser, opportunity),
         canViewContactMaster: canViewOpportunityCustomerMaster(req.currentUser, opportunity),
         selectedEmailMessageId: normalizeOpportunityListId(req.query.emailMessageId),
-        workflowForms,
+        workflowForms:revisionPresentation?.historical?[]:workflowForms,
         timelineEvents: activity.timelineEvents,
         attachments,
         requirementUpdates,
@@ -1308,31 +1316,32 @@ export function opportunityRoutes({
         materialVersions,
         teamMembers,
         technicalFileLimitMb: Math.min(maxUploadMb, 25),
-        technicalDrafts,
+        technicalDrafts:revisionPresentation?.historical?technicalDrafts.filter(d=>Number(d.id)===Number(revisionPresentation.basis?.legacyTechnicalDraftId)):technicalDrafts,
         technicalReviewAttachments,
-        collaborationWorkPackages,
+        collaborationWorkPackages:revisionPresentation?.workPackages||collaborationWorkPackages,
         collaborationWorkPackagesEnabled: opportunityCollaborationRepository?.supportsWorkPackages === true,
-        canManageCollaborationWorkPackages: canManageOpportunityEngineeringTeam(req.currentUser, opportunityWithTeam),
-        canAssignEngineeringTeam: canAssignOpportunityEngineeringTeam(req.currentUser, opportunityWithTeam),
-        canContributeCollaborationWorkPackages: canContributeOpportunityEngineering(req.currentUser, opportunityWithTeam),
+        canManageCollaborationWorkPackages: !revisionPresentation?.historical&&canManageOpportunityEngineeringTeam(req.currentUser, opportunityWithTeam),
+        canAssignEngineeringTeam: !revisionPresentation?.historical&&canAssignOpportunityEngineeringTeam(req.currentUser, opportunityWithTeam),
+        canContributeCollaborationWorkPackages: !revisionPresentation?.historical&&canContributeOpportunityEngineering(req.currentUser, opportunityWithTeam),
         developmentLinks,
-        activeTechnicalDraft,
-        canCreateUploadedTechnicalDraft: isTechnicalPreparationStage
+        allCollaborationAttachmentIds:collaborationWorkPackages.flatMap(w=>(w.versionHistory||[]).flatMap(v=>(v.files||[]).map(f=>Number(f.id)))),
+        activeTechnicalDraft:revisionPresentation?.historical?null:activeTechnicalDraft,
+        canCreateUploadedTechnicalDraft: !revisionPresentation?.historical&& isTechnicalPreparationStage
           && !activeTechnicalDraft
           && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
-        canManageUploadedTechnicalDraft: isTechnicalPreparationStage
+        canManageUploadedTechnicalDraft: !revisionPresentation?.historical&&isTechnicalPreparationStage
           && activeTechnicalDraft?.sourceKind === 'uploaded_file'
           && ['draft', 'ready'].includes(activeTechnicalDraft.status)
           && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
-        canSubmitUploadedTechnicalDraft: isTechnicalPreparationStage
+        canSubmitUploadedTechnicalDraft: !revisionPresentation?.historical&&isTechnicalPreparationStage
           && activeTechnicalDraft?.sourceKind === 'uploaded_file'
           && activeTechnicalDraft.status === 'ready'
           && activeTechnicalDraftFiles.some((file) => !file.materialVersionId)
           && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
-        canWithdrawTechnicalDraft: activeTechnicalDraft?.status === 'pending'
+        canWithdrawTechnicalDraft: !revisionPresentation?.historical&&activeTechnicalDraft?.status === 'pending'
           && opportunity.status === 'technical_solution_pending'
           && canCreateOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam),
-        canReviewTechnicalDraft: activeTechnicalDraft
+        canReviewTechnicalDraft: !revisionPresentation?.historical&&activeTechnicalDraft
           ? canReviewOpportunityTechnicalDraft(req.currentUser, opportunityWithTeam, activeTechnicalDraft, technicalAdminSelfApprovalTest)
           : false,
         isTestSelfApproval: isTechnicalAdminSelfApprovalTest(req.currentUser, activeTechnicalDraft, technicalAdminSelfApprovalTest),
@@ -1344,7 +1353,7 @@ export function opportunityRoutes({
         }),
         canCreateRequirementUpdate: canCreateRequirementUpdate(req.currentUser, opportunity),
         requirementSaveState: req.query.requirement === 'duplicate' ? 'duplicate' : '',
-        canUploadAttachments: uploadPermissionsFor(req.currentUser, opportunity),
+        canUploadAttachments: revisionPresentation?.historical?{}:uploadPermissionsFor(req.currentUser, opportunity),
         canEditOpportunity: canEditOpportunity(req.currentUser, opportunity),
         canReviewProductCategories: (
           hasRole(req.currentUser, ROLES.ADMINISTRATOR)
@@ -1533,6 +1542,15 @@ export function opportunityRoutes({
     }
   });
 
+  for(const revisionAction of ['start','accept'])router.post('/opportunities/:id/revision-rounds/'+revisionAction,async(req,res,next)=>{
+    try{
+      const opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});if(!opportunity)return;
+      if(revisionAction==='start')await opportunityCollaborationRepository.startRevisionRound(req.currentUser,opportunity.id,req.body);
+      else await opportunityCollaborationRepository.acceptRevisionQuotation(req.currentUser,opportunity.id,req.body);
+      res.redirect('/opportunities/'+opportunity.id+'#revision-rounds');
+    }catch(error){if(error.statusCode||error.code==='P0001')return res.status(error.statusCode||409).send(error.message);next(error);}
+  });
+
   router.post('/opportunities/:id/requirement-updates', async (req, res, next) => {
     try {
       const opportunity = await loadOpportunityOrSend({
@@ -1567,12 +1585,16 @@ export function opportunityRoutes({
         return;
       }
       if (preSubmissionRequirementUpdateStatuses.has(opportunity.status)) {
-        await requirementUpdateRepository.create({
+        if(typeof opportunityCollaborationRepository?.appendInitialRequirement==='function')await opportunityCollaborationRepository.appendInitialRequirement(req.currentUser,opportunity.id,{requirementText,reason});
+        else await requirementUpdateRepository.create({
           opportunityId: opportunity.id,
           requirementText,
           reason,
           createdBy: req.currentUser.id
         });
+      } else if(typeof opportunityCollaborationRepository?.startRevisionRound==='function'){
+        const workspace=await opportunityCollaborationRepository.loadRevisionWorkspace(opportunity.id);
+        await opportunityCollaborationRepository.startRevisionRound(req.currentUser,opportunity.id,{feedback:requirementText+'\n变更原因：'+reason,revisionKind:'technical',expectedRoundNo:workspace.rounds.find(r=>!r.closed_at)?.round_no||0,requirementText,reason});
       } else {
         await createSupplementalRequirementUpdate({
           actor: req.currentUser,
@@ -1588,6 +1610,7 @@ export function opportunityRoutes({
       }
       res.redirect(`/opportunities/${opportunity.id}`);
     } catch (error) {
+      if(error.code==='P0001')return res.status(409).send(error.message);
       if (error instanceof WorkflowValidationError) {
         res.status(error.statusCode).send(res.locals.messageLabel(error.message));
         return;
@@ -1670,7 +1693,7 @@ export function opportunityRoutes({
       if(review?!canReviewCollaborationWorkPackage(req.currentUser,opportunity,workPackage):!canSubmitCollaborationWorkPackage(req.currentUser,opportunity,workPackage))return res.sendStatus(403);
       const note=requiredText(req.body.note);
       if(action==='returned'&&(!note||note.length>2000||req.body.confirmRejection!=='yes'))return res.status(400).send('请保存驳回意见后确认。');
-      await opportunityCollaborationRepository.fileDecision({opportunityId:opportunity.id,workPackageId:workPackage.id,attachmentId:requiredPositiveInteger(req.params.attachmentId),action,note,actorUserId:req.currentUser.id,isManager:canManageOpportunityEngineeringTeam(req.currentUser,opportunity)});
+      await opportunityCollaborationRepository.fileDecision({opportunityId:opportunity.id,workPackageId:workPackage.id,attachmentId:requiredPositiveInteger(req.params.attachmentId),action,note,expectedRevisionRoundId:req.body.expectedRevisionRoundId,actorUserId:req.currentUser.id,isManager:canManageOpportunityEngineeringTeam(req.currentUser,opportunity)});
       res.redirect(redirectToOpportunity(opportunity.id)+(workPackage.planKind==='internal_quote'?'#internal-quote':'#technical-work-packages'));
     }catch(error){if(error.statusCode===409)return res.status(409).type('text/plain').send(error.message);next(error);}
   });
@@ -1759,7 +1782,7 @@ export function opportunityRoutes({
       if(req.quoteSource){req.workPackage=await opportunityCollaborationRepository.ensureInternalQuotePackage(req.quoteSource.id,req.opportunity.id,req.currentUser.id);if(!req.workPackage)return res.status(404).send('Work package not found');}
       const attachments=[];
       for(const file of req.files)attachments.push(await persistUploadedOpportunityAttachment({attachmentRepository:{createAttachment:async input=>input},uploadDir,file,opportunityId:req.opportunity.id,category,actorUserId:req.currentUser.id}));
-      await opportunityCollaborationRepository.stageFiles({workPackageId:req.workPackage.id,actorUserId:req.currentUser.id,attachments,revision:req.newWorkPackageRevision,replacementAttachmentId:requiredPositiveInteger(req.body.replacementAttachmentId)});
+      await opportunityCollaborationRepository.stageFiles({workPackageId:req.workPackage.id,actorUserId:req.currentUser.id,attachments,revision:req.newWorkPackageRevision,expectedRevisionRoundId:req.body.expectedRevisionRoundId,replacementAttachmentId:requiredPositiveInteger(req.body.replacementAttachmentId)});
       persisted=true;
       res.redirect(redirectToOpportunity(req.opportunity.id)+(category==='technical_solution'?'#technical-work-packages':'#internal-quote'));
     }catch(error){if(error.statusCode===409)res.status(409).type('text/plain').send(error.message);else next(error);}finally{if(!persisted)await Promise.all((req.files||[]).map(file=>rm(file.path,{force:true})));}
@@ -1839,7 +1862,7 @@ export function opportunityRoutes({
         return;
       }
       await persistUploadedOpportunityAttachment({
-        attachmentRepository,
+        attachmentRepository: ['requirement','commercial_quote'].includes(category)&&opportunityCollaborationRepository?.createRevisionAttachment ? {createAttachment:input=>opportunityCollaborationRepository.createRevisionAttachment(req.currentUser,req.opportunity.id,req.body.requirementRoundId,input)} : attachmentRepository,
         uploadDir,
         file: req.file,
         opportunityId: req.opportunity.id,
@@ -1848,6 +1871,7 @@ export function opportunityRoutes({
       });
       res.redirect('/opportunities/'+req.opportunity.id);
     } catch (error) {
+      if(error.statusCode||error.code==='P0001')return res.status(error.statusCode||409).send(error.message);
       next(error);
     }
   });

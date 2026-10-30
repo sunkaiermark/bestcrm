@@ -51,6 +51,8 @@ function mapDraft(row) {
 function mapFormalVersion(row) {
   if (!row) return null;
   return {
+    ...(row.revision_round_id!=null?{revisionRoundId:Number(row.revision_round_id),approvalBasis:row.approval_basis}:{}),
+    ...(row.is_current_revision!==undefined?{isCurrentRevision:row.is_current_revision}:{}),
     id: Number(row.id), opportunityId: Number(row.opportunity_id), draftId: Number(row.draft_id),
     draftRevisionNo: Number(row.draft_revision_no), versionNo: Number(row.version_no),
     quotationNo: row.quotation_no, snapshot: row.snapshot, status: row.status,
@@ -89,10 +91,11 @@ const sourceSelect = `
 
 export function createSalesCommercialQuotationDraftRepository(queryTarget) {
   return {
+    async isCurrentRevisionVersion(opportunityId,id){const r=await queryTarget.query('SELECT NOT EXISTS(SELECT 1 FROM opportunity_revision_rounds r WHERE r.opportunity_id=$1 AND r.closed_at IS NULL AND r.id IS DISTINCT FROM (SELECT revision_round_id FROM sales_commercial_quotation_versions WHERE id=$2 AND opportunity_id=$1)) AS current',[opportunityId,id]);return r.rows[0]?.current===true;},
     async prepareDraftSources(opportunityId,actorUserId){return createOpportunityCollaborationRepository(queryTarget).prepareCommercialDraftSources(opportunityId,actorUserId);},
     async listFormalVersions(opportunityId) {
       const result = await queryTarget.query(`
-        SELECT version.*, submitter.display_name AS submitted_by_name,
+        SELECT version.*, NOT EXISTS(SELECT 1 FROM opportunity_revision_rounds r WHERE r.opportunity_id=version.opportunity_id AND r.closed_at IS NULL AND r.id IS DISTINCT FROM version.revision_round_id) AS is_current_revision, submitter.display_name AS submitted_by_name,
           reviewer.display_name AS reviewed_by_name, signer.display_name AS signed_by_name
         FROM sales_commercial_quotation_versions version
         JOIN users submitter ON submitter.id = version.submitted_by
@@ -105,7 +108,7 @@ export function createSalesCommercialQuotationDraftRepository(queryTarget) {
 
     async getFormalVersion(id) {
       const result = await queryTarget.query(`
-        SELECT version.*, submitter.display_name AS submitted_by_name,
+        SELECT version.*, NOT EXISTS(SELECT 1 FROM opportunity_revision_rounds r WHERE r.opportunity_id=version.opportunity_id AND r.closed_at IS NULL AND r.id IS DISTINCT FROM version.revision_round_id) AS is_current_revision, submitter.display_name AS submitted_by_name,
           reviewer.display_name AS reviewed_by_name, signer.display_name AS signed_by_name
         FROM sales_commercial_quotation_versions version
         JOIN users submitter ON submitter.id = version.submitted_by

@@ -1929,3 +1929,38 @@ test('contract approval is explicitly linked to the accepted quotation package',
     && input.quotationPackageVersionId === 51
   )));
 });
+
+test('commercial submission and approval cannot bypass pending work-package approvals',async()=>{
+ for(const action of [ACTIONS.SUBMIT_COMMERCIAL_QUOTE,ACTIONS.APPROVE_COMMERCIAL_QUOTE]){
+  const before={id:10,status:action===ACTIONS.SUBMIT_COMMERCIAL_QUOTE?STATUSES.COMMERCIAL_QUOTE_IN_PROGRESS:STATUSES.COMMERCIAL_QUOTE_PENDING,quotationEngineerId:3,commercialManagerId:5};
+  const repositories=createRecordingRepositories(before);
+  repositories.opportunityCollaborationRepository={async commercialReadiness(){return {technicalCount:1,ready:false};}};
+  await assert.rejects(()=>applyWorkflowAction({actor:{id:action===ACTIONS.SUBMIT_COMMERCIAL_QUOTE?3:5,roles:[action===ACTIONS.SUBMIT_COMMERCIAL_QUOTE?ROLES.QUOTATION_ENGINEER:ROLES.COMMERCIAL_MANAGER]},opportunityId:10,action,payload:{},repositories}),e=>e.statusCode===409&&/全部同意/.test(e.message));
+  assert.ok(!repositories.calls.some(([name])=>['updateOpportunity','createEvent','createTodo'].includes(name)));
+ }
+});
+test('commercial approval remains available after all work-package approvals',async()=>{
+ const repositories=createMaterialRepositories({id:10,status:STATUSES.COMMERCIAL_QUOTE_PENDING,quotationEngineerId:3,commercialManagerId:5});
+ repositories.opportunityCollaborationRepository={async commercialReadiness(){return {technicalCount:1,ready:true};}};
+ const result=await applyWorkflowAction({actor:{id:5,roles:[ROLES.COMMERCIAL_MANAGER]},opportunityId:10,action:ACTIONS.APPROVE_COMMERCIAL_QUOTE,repositories});
+ assert.equal(result.status,STATUSES.CUSTOMER_NEGOTIATION);
+});
+
+
+test('customer acceptance is required before recording a win and does not mutate a missing confirmation',async()=>{
+ const repositories=createRecordingRepositories({id:10,status:STATUSES.CUSTOMER_NEGOTIATION,salespersonId:1,salesManagerId:2});
+ repositories.opportunityCollaborationRepository={async loadRevisionWorkspace(){return {rounds:[{round_no:2,closed_at:null,accepted_quote_id:null}]};}};
+ await assert.rejects(()=>applyWorkflowAction({actor:{id:1,roles:[ROLES.SALESPERSON]},opportunityId:10,action:ACTIONS.MARK_WON,payload:{wonDescription:'PO',finalDealAmount:100},repositories}),/最终接受/);
+ assert.ok(!repositories.calls.some(([name])=>name==='updateOpportunity'));
+});
+test('a confirmed current quote permits win while a changed technical basis blocks it',async()=>{
+ for(const changed of [false,true]){
+  const repositories=createRecordingRepositories({id:10,status:STATUSES.CUSTOMER_NEGOTIATION,salespersonId:1,salesManagerId:2});
+  const basis={technical:[{versionId:2}]};
+  repositories.opportunityCollaborationRepository={async lockRevisionOpportunity(){repositories.calls.push(['lockRevision']);},async loadRevisionWorkspace(){return {ready:true,basis,rounds:[{round_no:2,closed_at:null,accepted_quote_id:7,accepted_quote_kind:'legacy'}],quotes:[{kind:'legacy',id:7,approval_basis:changed?{technical:[{versionId:1}]}:basis}]};}};
+  const action=()=>applyWorkflowAction({actor:{id:1,roles:[ROLES.SALESPERSON]},opportunityId:10,action:ACTIONS.MARK_WON,payload:{wonDescription:'PO',finalDealAmount:100},repositories});
+  if(changed){await assert.rejects(action,/依据已变化/);assert.ok(!repositories.calls.some(([name])=>name==='updateOpportunity'));}
+  else assert.equal((await action()).status,STATUSES.WON_CONTRACT_PENDING);
+  assert.ok(repositories.calls.some(([name])=>name==='lockRevision'));
+ }
+});

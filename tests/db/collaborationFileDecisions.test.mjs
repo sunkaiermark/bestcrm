@@ -17,7 +17,11 @@ test('independent file decisions preserve siblings, returned originals and migra
  SELECT setval('attachments_id_seq',2);SELECT setval('opportunity_collaboration_work_package_versions_id_seq',1);
  INSERT INTO opportunity_collaboration_work_package_files(work_package_version_id,attachment_id,sort_order,added_by_user_id) VALUES(1,1,1,1),(1,2,2,1);`);
  await db.exec(await readFile(new URL('../../src/db/migrations/133_collaboration_file_decisions.sql',import.meta.url),'utf8'));
+ await db.exec('CREATE TABLE opportunity_revision_rounds(id bigint,opportunity_id bigint,closed_at timestamptz); ALTER TABLE opportunity_collaboration_work_package_versions ADD COLUMN revision_round_id bigint; ALTER TABLE opportunity_collaboration_work_package_files ADD COLUMN carried_from_attachment_id bigint');
  const repo=createOpportunityCollaborationRepository(db,{inTransaction:true});
+ // This deliberately pre-134 fixture checks historical file-decision migration only.
+ // Full revision readiness is exercised against all migrations in opportunity-revision-rounds.test.mjs.
+ repo.commercialReadiness=async()=>({technicalCount:1,ready:false});
  const state=async()=> (await db.query('SELECT attachment_id,status,superseded_by_attachment_id FROM opportunity_collaboration_work_package_files ORDER BY attachment_id')).rows;
  assert.deepEqual((await state()).map(f=>f.status),['submitted','submitted']);
  const decision=(attachmentId,action,actorUserId=2,note='')=>repo.fileDecision({opportunityId:1,workPackageId:1,attachmentId,action,actorUserId,note});

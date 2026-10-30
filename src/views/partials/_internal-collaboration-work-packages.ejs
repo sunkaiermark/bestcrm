@@ -26,9 +26,10 @@
 <% if(isTechnicalPlan){ %><div class="collaboration-plan-section collaboration-embedded"><% }else{ %><section class="content-section business-section opportunity-workflow-section business-section-quote collaboration-plan-section collaboration-embedded collaboration-quote-panel" id="internal-quote"><h2><%= displayTitle %></h2><% } %>
   <div class="section-body">
 
+    <% if(typeof revisionPresentation!=='undefined'&&revisionPresentation){ %><p class="work-package-requirement-meta">对应需求 <%= revisionPresentation.label %> · <%= revisionPresentation.historical?'历史文件，只读查看':'逐文件提交与审批' %></p><% } %>
     <div class="collaboration-work-package-scroll">
-      <table class="collaboration-work-package-table">
-        <colgroup><col class="collaboration-package-title"><col class="collaboration-package-owner"><col class="collaboration-package-date"><col class="collaboration-package-date"><col class="collaboration-package-file"><col class="collaboration-package-submit-time"><col class="collaboration-package-version"><col class="collaboration-package-status"><col class="collaboration-package-actions"></colgroup>
+      <table class="collaboration-work-package-table<%= typeof revisionPresentation!=='undefined'&&revisionPresentation?' revision-related-files':'' %>">
+<% if(typeof revisionPresentation!=='undefined'&&revisionPresentation){ %><colgroup><col style="width:9%"><col><col style="width:6%"><col style="width:6%"><col style="width:8%"><col style="width:14%"><col style="width:14%"><col style="width:18%"></colgroup><thead><tr><th>工作包</th><th>提交文件</th><th>需求</th><th>版本</th><th>负责人</th><th>版本来源</th><th>状态</th><th>操作</th></tr></thead><% }else{ %>        <colgroup><col class="collaboration-package-title"><col class="collaboration-package-owner"><col class="collaboration-package-date"><col class="collaboration-package-date"><col class="collaboration-package-file"><col class="collaboration-package-submit-time"><col class="collaboration-package-version"><col class="collaboration-package-status"><col class="collaboration-package-actions"></colgroup>
         <thead><tr>
           <th><%= language === 'zh' ? '工作包' : 'Work package' %></th>
           <th><%= language === 'zh' ? '负责人' : 'Owner' %></th>
@@ -40,6 +41,7 @@
           <th><%= language === 'zh' ? '状态' : 'Status' %></th>
           <th><%= language === 'zh' ? '操作' : 'Actions' %></th>
         </tr></thead>
+<% } %>
         <tbody>
           <% if (!planPackages.length) { %>
             <tr><td class="empty" colspan="9"><%= language === 'zh' ? '暂无工作包。' : 'No work packages yet.' %></td></tr>
@@ -55,10 +57,10 @@
     <% if (canContributeCollaborationWorkPackages && uploadPermissions[category] && planPackages.length) { %>
       <form class="collaboration-control-form" method="post" action="/opportunities/<%= opportunity.id %>/collaboration-work-packages/0/versions" enctype="multipart/form-data" data-work-package-upload-form>
         <p class="muted"><%= language==='zh'?'可多选或分次上传，每个文件独立提交和审批；驳回文件请线下修改后替换上传。':'Upload files and submit each file separately. Revise returned files offline.' %></p>
-        <%- csrfField() %><table class="collaboration-control-table"><colgroup><col style="width:30%"><col style="width:58%"><col style="width:12%"></colgroup>
+        <%- csrfField() %><% if(typeof revisionPresentation!=='undefined'&&revisionPresentation){ %><input type="hidden" name="expectedRevisionRoundId" value="<%= revisionPresentation.current?.id||0 %>"><% } %><table class="collaboration-control-table"><colgroup><col style="width:30%"><col style="width:58%"><col style="width:12%"></colgroup>
           <thead><tr><th><%= language==='zh'?'价格核算上传':'Cost calculation upload' %></th><th><%= language==='zh'?'核算文件':'Quotation file' %></th><th><%= language==='zh'?'操作':'Action' %></th></tr></thead>
           <tbody><tr><td><select name="workPackageId" required data-work-package-selector aria-label="<%= language==='zh'?'上传至工作包':'Work package' %>"><option value=""><%= language==='zh'?'选择工作包':'Select work package' %></option><% for(const workPackage of planPackages){ %><option value="<%= workPackage.latestVersion?.status==='accepted' ? 'revision-'+workPackage.id : (workPackage.sourceId ? 'quote-'+workPackage.sourceId : workPackage.id) %>"><%= workPackage.title %><%= workPackage.latestVersion?.status==='accepted'?(language==='zh'?'（新修订）':' (new revision)'):'' %></option><% } %></select></td>
-          <td><% if(planPackages.some(wp=>(wp.latestVersion?.files||[]).some(f=>f.status==='returned'&&!f.supersededByAttachmentId))){ %><select name="replacementAttachmentId" aria-label="替换已驳回文件"><option value="">新增文件</option><% for(const wp of planPackages){for(const file of (wp.latestVersion?.files||[]).filter(f=>f.status==='returned'&&!f.supersededByAttachmentId)){ %><option value="<%= file.id %>"><%= wp.title %> · 替换：<%= file.originalName %></option><% }} %></select><% } %><%- include('_localized-file-picker',{pickerId:`collaboration-${planKind}-file-${opportunity.id}`,inputName:'attachment',multiple:true,labelText:language==='zh'?'选择文件':'Select file'}) %></td><td><button type="submit"><%= language==='zh'?'上传':'Upload' %></button></td></tr></tbody></table>
+          <td><% if(planPackages.some(wp=>(wp.latestVersion?.files||[]).some(f=>(f.status==='returned'||((wp.latestVersion?.status==='accepted'||Number(wp.latestVersion?.versionNo)>1)&&f.status==='accepted'))&&!f.supersededByAttachmentId))){ %><select name="replacementAttachmentId" aria-label="替换文件"><option value="">新增文件</option><% for(const wp of planPackages){for(const file of (wp.latestVersion?.files||[]).filter(f=>(f.status==='returned'||((wp.latestVersion?.status==='accepted'||Number(wp.latestVersion?.versionNo)>1)&&f.status==='accepted'))&&!f.supersededByAttachmentId)){ %><option value="<%= file.id %>"><%= wp.title %> · <%= file.status==='accepted'?'新修订替换：':'替换驳回文件：' %><%= file.originalName %></option><% }} %></select><% } %><%- include('_localized-file-picker',{pickerId:`collaboration-${planKind}-file-${opportunity.id}`,inputName:'attachment',multiple:true,labelText:language==='zh'?'选择文件':'Select file'}) %></td><td><button type="submit"><%= language==='zh'?'上传':'Upload' %></button></td></tr></tbody></table>
       </form>
     <% } %>
 

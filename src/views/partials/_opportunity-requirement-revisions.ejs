@@ -1,0 +1,28 @@
+<% const rp=revisionPresentation;const current=rp.current; %>
+<div class="requirement-revision-toolbar">
+ <form method="get" action="/opportunities/<%= opportunity.id %>">
+  <label>查看需求 <select name="revisionRound" onchange="this.form.submit()">
+   <% if(!rp.rounds.length){ %><option value="0">R0 初始需求</option><% } %>
+   <% for(const r of rp.rounds){ %><option value="<%= r.id %>" <%= Number(r.id)===Number(rp.selected?.id)?'selected':'' %>><%= rp.requirementLabel(r) %> · <%= r.revision_kind==='initial'?'初始需求':r.revision_kind==='technical'?'技术变更':'商务变更' %><%= r.closed_at?'（历史）':'' %></option><% } %>
+  </select></label><noscript><button type="submit">查看</button></noscript>
+ </form>
+ <span><%= rp.historical?'历史需求，只读查看':'当前需求 '+rp.label %><% if(current){ %> · 第<%= current.round_no %>轮<% } %></span>
+</div>
+<% if(rp.rounds.length){ %>
+<table class="requirement-revision-table"><colgroup><col style="width:90px"><col><col style="width:148px"><col style="width:110px"><col style="width:130px"><col style="width:125px"></colgroup>
+ <thead><tr><th>需求编号</th><th>客户要求</th><th>录入日期</th><th>录入人</th><th>来源</th><th>处理状态</th></tr></thead><tbody>
+ <% for(const r of rp.rounds){const text=r.revision_kind==='initial'?(r.closed_at?(r.closed_basis?.requirementText||r.feedback||opportunity.requirement):opportunity.requirement):r.feedback; %>
+ <tr class="<%= Number(r.id)===Number(rp.selected?.id)?'selected-requirement':'' %>"><td><a href="/opportunities/<%= opportunity.id %>?revisionRound=<%= r.id %>#requirement-materials"><%= rp.requirementLabel(r) %></a></td><td title="<%= text %>"><%= text %></td><td><%= formatShortDate(r.created_at) %></td><td><%= r.creator_name %></td><td><% if(r.source_email_message_id){ %><a href="/opportunities/<%= opportunity.id %>?revisionRound=<%= r.id %>&emailMessageId=<%= r.source_email_message_id %>#opportunity-email-<%= r.source_email_message_id %>">客户邮件</a><% }else{ %>人工录入<% } %></td><td><%= r.accepted_quote_id?'客户已确认':r.closed_at?'已转后续需求':'处理中' %></td></tr>
+ <% } %></tbody></table>
+<% } %>
+<% if(canStartRevision&&!rp.historical){ %>
+<details class="new-requirement-details"><summary>新增修改需求</summary>
+ <form class="requirement-revision-form" method="post" action="/opportunities/<%= opportunity.id %>/revision-rounds/start">
+  <%- csrfField() %><input type="hidden" name="expectedRoundNo" value="<%= current?.round_no||0 %>">
+  <label>修改范围<select name="revisionKind" required><option value="technical">技术变更：修订技术方案与对应价格核算</option><option value="commercial">商务变更：沿用已批技术与核算</option></select></label>
+  <label>来源邮件<select name="sourceEmailMessageId"><option value="">人工录入／暂无来源邮件</option><% for(const m of correspondence){ %><option value="<%= m.id %>"><%= m.subject||m.threadSubject||t('noSubject') %></option><% } %></select></label>
+  <label class="requirement-revision-text">客户新增或修改要求<textarea name="feedback" required maxlength="4000" rows="2"></textarea></label>
+  <button type="submit">保存并发起新修订</button>
+ </form>
+</details>
+<% } %>

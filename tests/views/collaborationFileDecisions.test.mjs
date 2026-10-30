@@ -4,7 +4,7 @@ import {readFile} from 'node:fs/promises';
 import {JSDOM} from 'jsdom';
 import ejs from 'ejs';
 test('review actions stay on one row; rejection requires saved unchanged opinion and does not expose document editing',async()=>{
- const html=await ejs.renderFile('src/views/partials/_collaboration-file-rows.ejs',{language:'zh',workPackage:{id:1,title:'Mixer',assigneeDisplayName:'Engineer',versionHistory:[],latestVersion:{id:1,files:[{id:11,originalName:'<img onerror=alert(1)>',status:'submitted'},{id:12,originalName:'Second.xlsx',status:'submitted'}]}},currentUser:{id:2,roles:['technical_manager']},opportunity:{id:1,technicalManagerId:2},canManageCollaborationWorkPackages:false,dateValue:()=>'',formatShortDate:()=>'',packageStatusLabel:s=>s,csrfField:()=>'<input name="_csrf" value="synthetic">',t:s=>s});
+ const html=await ejs.renderFile('src/views/partials/_collaboration-file-rows.ejs',{language:'zh',workPackage:{id:1,title:'Mixer',assigneeDisplayName:'Engineer',versionHistory:[],latestVersion:{id:1,files:[{id:11,originalName:'<img onerror=alert(1)>',status:'submitted'},{id:12,originalName:'Second.xlsx',status:'submitted'}]}},currentUser:{id:2,roles:['technical_manager']},opportunity:{id:1,technicalManagerId:2,status:'technical_solution_pending'},canManageCollaborationWorkPackages:false,dateValue:()=>'',formatShortDate:()=>'',packageStatusLabel:s=>s,csrfField:()=>'<input name="_csrf" value="synthetic">',t:s=>s});
  const dom=new JSDOM('<table><tbody>'+html+'</tbody></table>',{runScripts:'outside-only'}),d=dom.window.document;
  dom.window.eval(await readFile('src/public/assets/collaboration-file-decisions.js','utf8'));
  assert.equal(d.querySelectorAll('.collaboration-file-actions').length,2);

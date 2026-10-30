@@ -330,6 +330,7 @@ async function signedSalesQuotation(dependencies, opportunity, versionId) {
   if (sources.some((item) => item.technicalDraftRevisionNo > source.technicalDraftRevisionNo)) {
     throw new CustomerEmailError('A newer technical source revision exists; refresh the quotation before sending', 409);
   }
+  if(typeof dependencies.salesCommercialQuotationDraftRepository.isCurrentRevisionVersion==='function' && !await dependencies.salesCommercialQuotationDraftRepository.isCurrentRevisionVersion(opportunity.id,version.id))throw new CustomerEmailError('这是历史轮次的报价，请选择当前轮次的已签发报价。',409);
   return version;
 }
 
@@ -431,6 +432,10 @@ export async function getCustomerEmailComposeContext(dependencies, actor, input)
     && typeof dependencies.salesCommercialQuotationDraftRepository?.listFormalVersions === 'function'
     ? (await dependencies.salesCommercialQuotationDraftRepository.listFormalVersions(context.opportunity.id))
       .filter((item) => item.status === 'signed') : [];
+  if(typeof dependencies.salesCommercialQuotationDraftRepository?.isCurrentRevisionVersion==='function'){
+    const current=await Promise.all(salesQuotationVersions.map(v=>dependencies.salesCommercialQuotationDraftRepository.isCurrentRevisionVersion(context.opportunity.id,v.id)));
+    salesQuotationVersions=salesQuotationVersions.filter((_,i)=>current[i]);
+  }
   if (salesQuotationVersions.length) {
     const sources = await dependencies.salesCommercialQuotationDraftRepository.listTechnicalSources(context.opportunity.id);
     const newestRevision = Math.max(...sources.map((source) => source.technicalDraftRevisionNo));

@@ -1,3 +1,4 @@
+import {isDeepStrictEqual} from 'node:util';
 import { STATUSES } from '../domain/statuses.mjs';
 import { startProjectAfterContractApproval } from './projectExecutionService.mjs';
 import { ACTIONS, transition } from '../domain/workflow.mjs';
@@ -566,6 +567,18 @@ async function payloadWithTechnicalDraft({ action, opportunityId, payload, repos
 }
 
 async function payloadWithAcceptedQuotationPackage({ action, opportunityId, payload, repositories }) {
+  if([ACTIONS.MARK_WON,ACTIONS.SUBMIT_CONTRACT_APPROVAL].includes(action) && typeof repositories.opportunityCollaborationRepository?.loadRevisionWorkspace==='function'){
+    await repositories.opportunityCollaborationRepository.lockRevisionOpportunity?.(opportunityId);
+    const workspace=await repositories.opportunityCollaborationRepository.loadRevisionWorkspace(opportunityId);
+    const round=workspace.rounds.find(r=>!r.closed_at);
+    if(round){
+      if(!round.accepted_quote_id)throw new WorkflowValidationError('请先确认客户最终接受的报价版本。',409);
+      const accepted=workspace.quotes.find(q=>q.kind===round.accepted_quote_kind&&Number(q.id)===Number(round.accepted_quote_id));
+      if(!workspace.ready||!accepted||!isDeepStrictEqual(accepted.approval_basis,workspace.basis))throw new WorkflowValidationError('最终报价的技术核算依据已变化，请发起修订并重新确认。',409);
+      return {...payload,acceptedQuotationPackageId:null};
+    }
+  }
+
   if (![ACTIONS.MARK_WON, ACTIONS.SUBMIT_CONTRACT_APPROVAL].includes(action)
       || repositories.quotationPackageRepository?.supportsQuotationPackages !== true) {
     return payload;
@@ -989,6 +1002,10 @@ export async function applyWorkflowAction({
     technicalAdminSelfApprovalTest: Boolean(selfApprovalContext),
     technicalDraftSubmittedBy: selfApprovalContext?.submittedBy
   }, action, effectivePayload);
+  if([ACTIONS.SUBMIT_COMMERCIAL_QUOTE,ACTIONS.APPROVE_COMMERCIAL_QUOTE].includes(action) && repositories.opportunityCollaborationRepository?.commercialReadiness){
+    const readiness=await repositories.opportunityCollaborationRepository.commercialReadiness(opportunityId);
+    if(readiness.technicalCount>0 && !readiness.ready)throw new WorkflowValidationError('技术方案及对应价格核算的有效文件须全部同意后，才能提交或批准正式商务报价。',409);
+  }
   await assertRequiredMaterials({ action, before, opportunityId, payload: effectivePayload, repositories });
   const changes = changedWorkflowFields(before, after);
   const updated = Object.keys(changes).length ? await repositories.opportunityRepository.updateWorkflowState(opportunityId, changes) : before;

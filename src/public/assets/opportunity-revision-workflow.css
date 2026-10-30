@@ -1,0 +1,30 @@
+.opportunity-detail-page .requirement-revision-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}
+.opportunity-detail-page .requirement-revision-toolbar form{margin:0}
+.opportunity-detail-page .requirement-revision-toolbar label{display:flex;align-items:center;gap:10px;margin:0;white-space:nowrap}
+.opportunity-detail-page .requirement-revision-toolbar select{min-width:210px}
+.opportunity-detail-page .requirement-revision-table,.opportunity-detail-page .revision-quotation-table,.opportunity-detail-page table.revision-related-files{table-layout:fixed;width:100%;min-width:0;max-width:100%}
+.opportunity-detail-page .requirement-revision-table th,.opportunity-detail-page .requirement-revision-table td,.opportunity-detail-page table.revision-related-files th,.opportunity-detail-page table.revision-related-files td{padding:7px 6px;font-size:16px;font-weight:400;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.opportunity-detail-page .selected-requirement{background:#edf7f4}
+.opportunity-detail-page .requirement-revision-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr) auto;gap:10px;align-items:end;margin:8px 0}
+.opportunity-detail-page .requirement-revision-form label,.opportunity-detail-page .revision-round-form label{min-width:0;margin:0}
+.opportunity-detail-page .requirement-revision-form .requirement-revision-text{grid-column:1/3}
+.opportunity-detail-page .requirement-revision-form textarea{min-height:62px}
+.opportunity-detail-page .revision-round-form{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,2fr) auto;gap:10px;align-items:end;margin:8px 0}
+.opportunity-detail-page .revision-commercial-workspace p,.opportunity-detail-page .work-package-requirement-meta{margin:6px 0}
+.opportunity-detail-page .revision-commercial-workspace .revision-quotation-table th,.opportunity-detail-page .revision-commercial-workspace .revision-quotation-table td{padding:7px 6px;font-weight:400;overflow-wrap:anywhere}
+.opportunity-detail-page .revision-related-files .collaboration-file-actions{display:flex;flex-wrap:nowrap;align-items:center;gap:9px;white-space:nowrap}
+.opportunity-detail-page .revision-related-files .collaboration-file-actions form{display:inline;margin:0}
+.opportunity-detail-page .revision-related-files .collaboration-file-actions a,.opportunity-detail-page .revision-related-files .collaboration-file-actions button{margin:0;padding:0;white-space:nowrap}
+.opportunity-detail-page .revision-related-files .collaboration-file-feedback td,.opportunity-detail-page .revision-related-files .collaboration-file-rejection td{white-space:normal;overflow-wrap:anywhere}
+.opportunity-detail-page .new-requirement-details{margin:10px 0}
+.opportunity-detail-page .final-quotation-binding{padding:8px 10px;background:#edf7f4;color:#126e65;border:1px solid #cce4de;border-radius:4px}
+.opportunity-detail-page .commercial-draft-entry{margin:6px 0 10px}
+.opportunity-detail-page .section-stack> *{order:8}
+.opportunity-detail-page .section-stack>.business-section-basic,.opportunity-detail-page .section-stack>.collaboration-assignment-section,.opportunity-detail-page .section-stack>.product-category-review{order:1}
+.opportunity-detail-page .section-stack>.business-section-requirement{order:2}
+.opportunity-detail-page .section-stack>.business-section-correspondence{order:3}
+.opportunity-detail-page .section-stack>.business-section-project-approval{order:4}
+.opportunity-detail-page .section-stack>.business-section-technical{order:5}
+.opportunity-detail-page .section-stack>.business-section-quote{order:6}
+.opportunity-detail-page .section-stack>.business-section-contract{order:7}
+.opportunity-detail-page .section-stack>.business-section-audit{order:9}

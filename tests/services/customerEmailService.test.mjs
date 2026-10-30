@@ -342,6 +342,16 @@ test('only a signed, integrity-checked quotation PDF is bound to its opportunity
       subject: 'Stale quotation', body: 'Do not send.', action: 'draft'
     }), /newer technical source revision/);
     newerSource = null;
+    salesQuotationRepository.isCurrentRevisionVersion=async()=>false;
+    const priorSends=sent.length;
+    const priorRoundCompose=await getCustomerEmailComposeContext(dependencies,chinaSender,{opportunityId:20});
+    assert.deepEqual(priorRoundCompose.salesQuotationVersions,[]);
+    await assert.rejects(()=>createCustomerEmailDraft(dependencies,chinaSender,{
+      opportunityId:20,salesQuotationVersionId:'81',to:'buyer@example.com',
+      subject:'Historical quote',body:'Do not send.',action:'send'
+    }),/历史轮次/);
+    assert.equal(sent.length,priorSends,'historical quote must never reach SMTP');
+    salesQuotationRepository.isCurrentRevisionVersion=async()=>true;
     version.status = 'approved';
     await assert.rejects(() => createCustomerEmailDraft(dependencies, chinaSender, {
       opportunityId: 20, salesQuotationVersionId: '81', to: 'buyer@example.com',

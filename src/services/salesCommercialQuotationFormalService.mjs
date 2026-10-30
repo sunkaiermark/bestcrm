@@ -48,7 +48,7 @@ function isActiveMarkYang(user) {
 export function canReviewSalesCommercialQuotation(user, opportunity, version) {
   const isAssigned = Number(opportunity.commercialManagerId) === Number(user?.id);
   const isMarkYangException = isAssigned && isActiveMarkYang(user);
-  return !opportunity.archivedAt && user?.isActive === true && version?.status === 'pending'
+  return !opportunity.archivedAt && version?.isCurrentRevision !== false && user?.isActive === true && version?.status === 'pending'
     && isAssigned
     && (isMarkYangException || (
       hasRole(user, ROLES.COMMERCIAL_MANAGER)
@@ -57,7 +57,7 @@ export function canReviewSalesCommercialQuotation(user, opportunity, version) {
 }
 
 export function canSignSalesCommercialQuotation(user, opportunity, version) {
-  return !opportunity.archivedAt && version?.status === 'approved'
+  return !opportunity.archivedAt && version?.isCurrentRevision !== false && version?.status === 'approved'
     && isActiveMarkYang(user)
     && Number.isSafeInteger(Number(user.id)) && Number(user.id) > 0
     && canViewOpportunity(user, opportunity);
@@ -243,6 +243,7 @@ export async function submitSalesCommercialQuotation(repository, user, opportuni
     if (!version) fail('Draft changed before submission; reload');
     return version;
   } catch (error) {
+    if(error.hint==='BESTCRM_REVISION_NOT_READY'||(error.code==='P0001'&&/修订|轮次|审批依据|客户已接受/.test(error.message)))fail(error.message);
     if(error.code==='BESTCRM_COLLABORATION_NOT_READY')fail('技术方案和价格核算的有效文件须全部同意后，才能提交正式商务报价；目前可以保存报价草稿。');
     if (error.code === 'BESTCRM_COMMERCIAL_MANAGER_REQUIRED'
       || /active assigned Commercial Manager/.test(error.message || '')) {
@@ -271,10 +272,11 @@ export async function reviewSalesCommercialQuotation(repository, user, opportuni
     validatePublishedSelections(version.snapshot, terms, settings.allowIncompleteFormal);
     validatedSeller(version.snapshot.seller, settings.allowIncompleteFormal);
   }
-  const result = await repository.reviewFormalVersion({
+  let result;
+  try { result = await repository.reviewFormalVersion({
     id: version.id, opportunityId: opportunity.id, decision, actorUserId: user.id,
     comment: String(comment || '').trim().slice(0, 2000)
-  });
+  }); } catch(error) { if(error.code==='P0001'&&/修订|轮次|审批依据/.test(error.message))fail(error.message);throw error; }
   if (!result) fail('Quotation review state changed; reload');
   return result;
 }
@@ -322,6 +324,7 @@ export async function signSalesCommercialQuotation(repository, user, opportunity
     return result;
   } catch (error) {
     await removeStoredAttachmentFile(file.absolutePath);
+    if(error.code==='P0001'&&/修订|轮次|审批依据/.test(error.message))fail(error.message);
     throw error;
   }
 }

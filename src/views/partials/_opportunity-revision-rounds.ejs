@@ -1,0 +1,24 @@
+<%
+const rw=revisionWorkspace, rp=typeof revisionPresentation==='undefined'?null:revisionPresentation;
+const currentRound=rw.rounds.find(r=>!r.closed_at), selectedRound=rp?.selected||currentRound;
+const currentChoices=rw.quotes.filter(q=>Number(q.revision_round_id)===Number(currentRound?.id)&&((q.kind==='formal'&&q.status==='signed')||(q.kind==='legacy'&&q.status==='approved')));
+const shownQuotes=rp?rp.selectedQuotes:rw.quotes;
+const quoteStatus=s=>({pending:'待审批',approved:'已批准',signed:'已签发',rejected:'已驳回'}[s]||s);
+%>
+<div class="revision-commercial-workspace" id="revision-rounds">
+ <p>对应需求 <%= rp?.label||'R'+Math.max(0,Number(selectedRound?.round_no||1)-1) %> · <%= rp?.historical?'历史版本，只读查看':rw.ready?'技术与核算均已同意，可提交正式商务报价':'技术与核算待完成，目前可保存商务报价草稿' %></p>
+ <% if(canAcceptRevisionQuotation&&currentRound&&!currentRound.accepted_quote_id&&!rp?.historical){ %>
+ <details><summary>确认客户最终接受的报价</summary><form method="post" action="/opportunities/<%= opportunity.id %>/revision-rounds/accept" class="revision-round-form">
+  <%- csrfField() %><input type="hidden" name="expectedRoundNo" value="<%= currentRound.round_no %>">
+  <label>最终报价<select name="quoteChoice" required><option value="">请选择本轮已批准／签发版本</option><% for(const q of currentChoices){ %><option value="<%= q.kind %>:<%= q.id %>"><%= q.label %> · <%= quoteStatus(q.status) %></option><% } %></select></label>
+  <label>客户确认依据<textarea name="note" required maxlength="2000" rows="2" placeholder="客户确认邮件、订单或沟通记录"></textarea></label>
+  <button type="submit"<%= currentChoices.length?'':' disabled' %>>确认最终版本</button>
+ </form></details><% } %>
+ <% if(selectedRound?.accepted_quote_id){ %><p class="final-quotation-binding">客户已确认最终报价：<%= rw.quotes.find(q=>q.kind===selectedRound.accepted_quote_kind&&Number(q.id)===Number(selectedRound.accepted_quote_id))?.label||'已确认' %> · <%= selectedRound.acceptance_note %></p><% } %>
+ <% if(shownQuotes.length){ %><table class="revision-quotation-table"><colgroup><col style="width:190px"><col style="width:120px"><col><col style="width:180px"></colgroup><thead><tr><th>报价版本</th><th>审批状态</th><th>技术与核算依据</th><th>最终确认</th></tr></thead><tbody>
+ <% for(const q of shownQuotes){ %><tr><td><% if(q.kind==='formal'){ %><a href="/opportunities/<%= opportunity.id %>/commercial-quotation-draft#quotation-version-<%= q.id %>"><%= q.label %></a><% }else{ %><%= q.label %><% } %></td><td><%= quoteStatus(q.status) %></td><td><% for(const f of q.approval_basis?.commercialFiles||[]){ %><span><%= f.name %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= f.attachmentId %>/preview">预览</a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= f.attachmentId %>/download">下载</a></span><% } %><% for(const t of q.approval_basis?.technical||[]){ %><span><%= t.title %>：技术V<%= t.versionNo %>／核算V<%= t.cost?.versionNo||'—' %></span><% } %><% if(!(q.approval_basis?.technical||[]).length){ %>已冻结的技术依据<% } %></td><td><%= selectedRound?.accepted_quote_kind===q.kind&&Number(selectedRound?.accepted_quote_id)===Number(q.id)?'客户最终接受':'—' %></td></tr><% } %>
+ </tbody></table><% } %>
+ <% const unassigned=rw.quotes.filter(q=>!q.revision_round_id);if(unassigned.length){ %><details><summary>历史未标需求的报价</summary><% for(const q of unassigned){ %><p><%= q.label %> · <%= quoteStatus(q.status) %></p><% } %></details><% } %>
+ <% if(rp?.unassignedAttachments.some(a=>a.category==='commercial_quote')){ %><details><summary>历史未标需求的商务文件</summary><% for(const a of rp.unassignedAttachments.filter(a=>a.category==='commercial_quote')){ %><p><%= a.originalName %> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= a.id %>/preview">预览</a> <a href="/opportunities/<%= opportunity.id %>/attachments/<%= a.id %>/download">下载</a></p><% } %></details><% } %>
+ <% for(const c of rw.contracts.filter(c=>c.final_quote_id)){ %><p>合同V<%= c.version_no %> · R<%= Number(c.final_quote_snapshot?.roundNo)-1 %> · 最终报价：<%= c.final_quote_snapshot?.quote?.quotation_no||('商务方案 V'+c.final_quote_snapshot?.quote?.version_no) %></p><% } %>
+</div>
