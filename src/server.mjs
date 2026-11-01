@@ -1,3 +1,4 @@
+import {createCadPreviewService} from './services/cadPreviewService.mjs';
 import {createOfficePreviewService} from './services/officePreviewService.mjs';
 import {officePreviewServiceRoutes} from './routes/officePreviewRoutes.mjs';
 import {createOfficeReviewService} from './services/officeReviewService.mjs';
@@ -878,6 +879,9 @@ export function createApp(options = {}) {
   app.get('/assets/email-purify.js', (req, res) => {
     res.type('application/javascript').sendFile(path.join(dirname, '..', 'node_modules', 'dompurify', 'dist', 'purify.min.js'));
   });
+  app.get('/assets/cad-preview-worker.js',(req,res)=>{
+    res.set('Content-Security-Policy',"default-src 'self'; script-src 'self'; connect-src 'self' blob:").type('application/javascript').sendFile(path.join(dirname,'public','assets','cad-preview-worker.js'));
+  });
   app.use('/assets', express.static(path.join(dirname, 'public', 'assets')));
   app.get('/favicon.ico', (req, res) => res.status(204).end());
   app.get('/service-worker.js', (req, res) => {
@@ -1160,6 +1164,7 @@ export function createApp(options = {}) {
   if(officeReviewService)app.use(officeReviewRoutes({service:officeReviewService,attachmentRepository,uploadDir:config.uploadDir}));
   if(officeService)app.use(officeEditorRoutes({service:officeService,attachmentRepository}));
   app.use(opportunityRoutes({
+    cadPreviewService: options.cadPreviewService || createCadPreviewService({uploadDir:config.uploadDir,converterCommand:process.env.CAD_DWG_CONVERTER || ''}),
     officePreviewService,
     officeEditingEnabled: Boolean(officeService),
     officeEditingService: officeService,

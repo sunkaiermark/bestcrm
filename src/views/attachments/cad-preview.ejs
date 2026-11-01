@@ -1,0 +1,36 @@
+<%- include('../partials/app-start', {title: `${attachment.originalName} - CAD - BESTCRM`,activeNav}) %>
+<link rel="stylesheet" href="/assets/cad-preview.css">
+<header class="page-header cad-header">
+ <div><h1>CAD 预览</h1><div class="muted"><%= opportunity.opportunityNo %> · <%= attachment.originalName %></div></div>
+ <div class="page-actions"><a class="quick-action secondary-action" href="/opportunities/<%= opportunity.id %>">返回商机</a><a class="quick-action" href="<%= downloadUrl %>">下载</a></div>
+</header>
+<section class="cad-workspace" id="cad-workspace" data-source="<%= cadDataUrl %>" aria-label="CAD只读预览">
+ <div class="cad-toolbar">
+  <label>布局 <select id="cad-layout" disabled aria-label="图纸布局"><option>模型</option></select></label>
+  <button type="button" id="cad-fit" disabled>全图</button>
+  <button type="button" id="cad-in" disabled>放大</button>
+  <button type="button" id="cad-out" disabled>缩小</button>
+  <button type="button" id="cad-layers-toggle" aria-expanded="true">图层</button>
+  <button type="button" id="cad-fullscreen">全屏</button>
+  <button type="button" id="cad-measure" disabled aria-pressed="false">测量</button>
+  <span class="cad-readonly">只读</span>
+ </div>
+ <div id="cad-measure-panel" class="cad-measure-panel" hidden>
+  <div class="cad-measure-settings">
+   <label>单位 <select id="cad-measure-unit" aria-label="测量显示单位"></select></label>
+   <label>校准比例 <input id="cad-measure-scale" type="number" min="0.000000001" max="1000000000" step="any" value="1" aria-label="测量校准比例"></label>
+   <label><input id="cad-measure-snap" type="checkbox" checked>捕捉端点／圆心</label>
+   <button id="cad-measure-clear" type="button">清除</button>
+  </div>
+  <output id="cad-measure-result" aria-live="polite">距离 —　水平 —　垂直 —</output>
+  <div id="cad-measure-hint" class="cad-measure-hint"></div>
+ </div>
+ <div id="cad-message" class="cad-message" role="status">正在读取图纸…</div>
+ <div id="cad-warnings" class="cad-warnings" role="status" hidden></div>
+ <div class="cad-body">
+  <aside id="cad-layers" aria-label="图层列表"><div class="cad-layer-heading">图层</div><div id="cad-layer-list"></div></aside>
+  <div id="cad-canvas" tabindex="0" aria-label="图纸区域，拖动平移，滚轮或双指缩放"></div>
+ </div>
+</section>
+<script type="module" src="/assets/cad-preview.js"></script>
+<%- include('../partials/app-end') %>

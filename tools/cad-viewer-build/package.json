@@ -1,0 +1,13 @@
+{
+  "name": "bestcrm-cad-viewer-build",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "bestcrm": "file:../..",
+    "dxf-viewer": "1.0.50",
+    "esbuild": "0.25.12"
+  }
+}

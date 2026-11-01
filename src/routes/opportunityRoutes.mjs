@@ -7,6 +7,7 @@ import { loadOpportunitySource } from '../services/opportunitySourceService.mjs'
 import { mkdirSync } from 'node:fs';
 import { readFile, rm } from 'node:fs/promises';
 import path from 'node:path';
+import {isCadAttachment} from '../services/cadPreviewService.mjs';
 import { randomUUID } from 'node:crypto';
 import multer from 'multer';
 import { CUSTOMER_COUNTRIES } from '../domain/customerCountries.mjs';
@@ -826,6 +827,7 @@ function redirectToOpportunity(opportunityId) {
 
 export function opportunityRoutes({
   officePreviewService = null,
+  cadPreviewService = null,
   officeEditingEnabled = false,
   officeEditingService = null,
   officeReviewService = null,
@@ -1949,6 +1951,15 @@ export function opportunityRoutes({
         res.sendFile(filePath);
         return;
       }
+      if (cadPreviewService && isCadAttachment(attachment)) {
+        if (attachment.retiredAt) return res.status(404).send('Attachment not found');
+        res.set('Cache-Control','private, no-store').set('Referrer-Policy','no-referrer');
+        return res.render('attachments/cad-preview', {
+          activeNav:'opportunities', opportunity, attachment,
+          downloadUrl:'/opportunities/'+opportunity.id+'/attachments/'+attachment.id+'/download',
+          cadDataUrl:'/opportunities/'+opportunity.id+'/attachments/'+attachment.id+'/cad-data'
+        });
+      }
       const kind = attachmentPreviewKind(attachment);
       const downloadUrl = `/opportunities/${opportunity.id}/attachments/${attachment.id}/download`;
         if(kind==='spreadsheet'&&officePreviewService&&attachment.originalName.toLowerCase().endsWith('.xlsx')&&req.query.previewMode!=='basic'){
@@ -2040,6 +2051,20 @@ export function opportunityRoutes({
       next(error);
     }
   }
+
+  router.get('/opportunities/:id/attachments/:attachmentId/cad-data', async(req,res,next)=>{
+    try {
+      if(!cadPreviewService)return res.sendStatus(404);
+      const opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});
+      if(!opportunity)return;
+      const attachment=await attachmentRepository.findById(req.params.attachmentId);
+      if(!attachment||Number(attachment.opportunityId)!==Number(opportunity.id)||attachment.retiredAt||!isCadAttachment(attachment))return res.sendStatus(404);
+      if(req.query.layout!==undefined&&(typeof req.query.layout!=='string'||req.query.layout.length>512))return res.status(400).json({error:'布局参数无效。'});
+      const preview=await cadPreviewService.preview(attachment,req.query.layout??null);
+      res.set('Cache-Control','private, no-store').set('X-Content-Type-Options','nosniff').set('Referrer-Policy','no-referrer');
+      return res.json({dxf:preview.buffer.toString('utf8'),layout:preview.layout,layouts:preview.layouts,warnings:preview.warnings,entityCount:preview.entityCount,measurement:preview.measurement});
+    }catch(error){if([400,404,409,413,422,429,502,503].includes(error.statusCode))return res.status(error.statusCode).set('Cache-Control','no-store').json({error:error.message});next(error);}
+  });
 
   router.get('/opportunities/:id/attachments/:attachmentId/download', (req, res, next) => {
     sendAttachment(req, res, next, 'download');
