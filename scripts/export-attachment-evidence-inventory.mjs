@@ -66,7 +66,28 @@ async function listAttachmentEvidenceRows(queryTarget) {
       attachment.sha256,
       attachment.source_inquiry_attachment_id,
       CASE WHEN attachment.retired_at IS NULL THEN 'active' ELSE 'retired' END AS lifecycle_state,
-      NULL::bigint AS topic_id, attachment.opportunity_id, attachment.original_name, attachment.retirement_reason
+      NULL::bigint AS topic_id, attachment.opportunity_id, attachment.original_name, attachment.retirement_reason,
+      ARRAY(
+        SELECT parent.id FROM attachments parent
+        WHERE parent.id <> attachment.id
+          AND parent.opportunity_id=attachment.opportunity_id
+          AND parent.stored_path=attachment.stored_path
+          AND parent.sha256=attachment.sha256 AND parent.file_size=attachment.file_size
+          AND (
+            EXISTS(SELECT 1 FROM opportunity_collaboration_work_package_files carried
+              WHERE carried.attachment_id=attachment.id AND carried.carried_from_attachment_id=parent.id)
+            OR EXISTS(SELECT 1 FROM opportunity_technical_draft_attachments link
+              JOIN opportunity_technical_drafts draft ON draft.id=link.technical_draft_id
+              CROSS JOIN LATERAL jsonb_array_elements(CASE WHEN jsonb_typeof(draft.source_metadata->'approvals')='array' THEN draft.source_metadata->'approvals' ELSE '[]'::jsonb END) source
+              WHERE link.attachment_id=attachment.id AND draft.opportunity_id=attachment.opportunity_id
+                AND draft.template_code_snapshot IN ('WORK_PACKAGE_DRAFT','WORK_PACKAGE_APPROVALS')
+                AND (draft.source_metadata->'workPackageDraftSnapshot'='true'::jsonb OR draft.source_metadata->'workPackageApprovalSnapshot'='true'::jsonb)
+                AND source->>'attachment_id'=parent.id::text
+                AND source->>'stored_path'=parent.stored_path
+                AND source->>'sha256'=parent.sha256
+                AND source->>'file_size'=parent.file_size::text)
+          )
+      ) AS shared_source_attachment_ids
     FROM attachments attachment
     UNION ALL
     SELECT
@@ -77,7 +98,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       attachment.sha256,
       NULL::bigint AS source_inquiry_attachment_id,
       'retained'::text AS lifecycle_state,
-      NULL::bigint AS topic_id, NULL::bigint AS opportunity_id, NULL::text AS original_name, NULL::text AS retirement_reason
+      NULL::bigint AS topic_id, NULL::bigint AS opportunity_id, NULL::text AS original_name, NULL::text AS retirement_reason, NULL::bigint[] AS shared_source_attachment_ids
     FROM inquiry_attachments attachment
     UNION ALL
     SELECT
@@ -88,7 +109,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       job.expected_sha256 AS sha256,
       NULL::bigint AS source_inquiry_attachment_id,
       job.status AS lifecycle_state,
-      NULL::bigint AS topic_id, NULL::bigint AS opportunity_id, NULL::text AS original_name, NULL::text AS retirement_reason
+      NULL::bigint AS topic_id, NULL::bigint AS opportunity_id, NULL::text AS original_name, NULL::text AS retirement_reason, NULL::bigint[] AS shared_source_attachment_ids
     FROM inquiry_attachment_purge_file_jobs job
     UNION ALL
     SELECT
@@ -99,7 +120,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       version.sha256,
       NULL::bigint AS source_inquiry_attachment_id,
       'active'::text AS lifecycle_state,
-      material.topic_id, NULL::bigint AS opportunity_id, NULL::text AS original_name, NULL::text AS retirement_reason
+      material.topic_id, NULL::bigint AS opportunity_id, NULL::text AS original_name, NULL::text AS retirement_reason, NULL::bigint[] AS shared_source_attachment_ids
     FROM development_material_file_activations activation
     JOIN development_material_versions version
       ON version.id = activation.material_version_id
@@ -183,6 +204,10 @@ export async function exportAttachmentEvidenceInventory({
       size: inspected.fileSize,
       sha256: inspected.sha256,
       lifecycleState: lifecycleState(row),
+      ...(model==='opportunity_attachment'&&row.shared_source_attachment_ids?.length?{
+        opportunityId:positiveInteger(row.opportunity_id,'opportunity id'),
+        sharedSourceAttachmentIds:row.shared_source_attachment_ids.map(id=>positiveInteger(id,'shared source id'))
+      }:model==='opportunity_attachment'&&row.opportunity_id?{opportunityId:positiveInteger(row.opportunity_id,'opportunity id')}:{}),
       verified,
       ...(sourceInquiryAttachmentId === null ? {} : { sourceInquiryAttachmentId })
     });

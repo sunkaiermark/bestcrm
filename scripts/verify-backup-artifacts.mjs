@@ -152,6 +152,8 @@ export function parseAttachmentEvidenceInventory(value) {
     if (typeof entry.verified !== 'boolean') {
       throw new Error(`Invalid attachment evidence verification state: ${entry.storedPath}`);
     }
+    if(entry.opportunityId!==undefined && (model!=='opportunity_attachment'||!Number.isSafeInteger(entry.opportunityId)||entry.opportunityId<=0))throw Error('Invalid shared attachment opportunity');
+    if(entry.sharedSourceAttachmentIds!==undefined && (model!=='opportunity_attachment'||!entry.opportunityId||!Array.isArray(entry.sharedSourceAttachmentIds)||!entry.sharedSourceAttachmentIds.length||entry.sharedSourceAttachmentIds.some(id=>!Number.isSafeInteger(id)||id<=0||id===entry.recordId)||new Set(entry.sharedSourceAttachmentIds).size!==entry.sharedSourceAttachmentIds.length))throw Error('Invalid shared attachment sources');
     const sourceInquiryAttachmentId = entry.sourceInquiryAttachmentId;
     if (sourceInquiryAttachmentId !== undefined
         && (model !== 'opportunity_attachment'
@@ -172,6 +174,8 @@ export function parseAttachmentEvidenceInventory(value) {
       size: entry.size,
       sha256: entry.sha256,
       lifecycleState: entry.lifecycleState,
+      ...(entry.opportunityId===undefined?{}:{opportunityId:entry.opportunityId}),
+      ...(entry.sharedSourceAttachmentIds===undefined?{}:{sharedSourceAttachmentIds:entry.sharedSourceAttachmentIds}),
       verified: entry.verified,
       ...(entry.lifecycleState==='purged'?{purgeEvidence:entry.purgeEvidence}:{}),
       ...(sourceInquiryAttachmentId === undefined ? {} : { sourceInquiryAttachmentId })
