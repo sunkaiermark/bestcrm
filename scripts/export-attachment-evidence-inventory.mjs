@@ -6,6 +6,7 @@ import { createPool } from '../src/db/pool.mjs';
 import { inspectStoredAttachmentFile } from '../src/services/attachmentFileService.mjs';
 import { unexpectedSharedAttachmentPaths } from '../src/services/attachmentSharedPathPolicy.mjs';
 import { openVerifiedDevelopmentPrivateFile } from '../src/services/developmentPrivateFileStore.mjs';
+import {loadAttachmentPurgeReceipts,purgedAttachmentEntry} from '../src/services/attachmentPurgeEvidence.mjs';
 import { isMainModule } from '../src/utils/moduleEntry.mjs';
 
 const shaPattern = /^[a-f0-9]{64}$/;
@@ -65,7 +66,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       attachment.sha256,
       attachment.source_inquiry_attachment_id,
       CASE WHEN attachment.retired_at IS NULL THEN 'active' ELSE 'retired' END AS lifecycle_state,
-      NULL::bigint AS topic_id
+      NULL::bigint AS topic_id, attachment.opportunity_id, attachment.original_name, attachment.retirement_reason
     FROM attachments attachment
     UNION ALL
     SELECT
@@ -76,7 +77,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       attachment.sha256,
       NULL::bigint AS source_inquiry_attachment_id,
       'retained'::text AS lifecycle_state,
-      NULL::bigint AS topic_id
+      NULL::bigint AS topic_id, NULL::bigint AS opportunity_id, NULL::text AS original_name, NULL::text AS retirement_reason
     FROM inquiry_attachments attachment
     UNION ALL
     SELECT
@@ -87,7 +88,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       job.expected_sha256 AS sha256,
       NULL::bigint AS source_inquiry_attachment_id,
       job.status AS lifecycle_state,
-      NULL::bigint AS topic_id
+      NULL::bigint AS topic_id, NULL::bigint AS opportunity_id, NULL::text AS original_name, NULL::text AS retirement_reason
     FROM inquiry_attachment_purge_file_jobs job
     UNION ALL
     SELECT
@@ -98,7 +99,7 @@ async function listAttachmentEvidenceRows(queryTarget) {
       version.sha256,
       NULL::bigint AS source_inquiry_attachment_id,
       'active'::text AS lifecycle_state,
-      material.topic_id
+      material.topic_id, NULL::bigint AS opportunity_id, NULL::text AS original_name, NULL::text AS retirement_reason
     FROM development_material_file_activations activation
     JOIN development_material_versions version
       ON version.id = activation.material_version_id
@@ -112,7 +113,8 @@ export async function exportAttachmentEvidenceInventory({
   queryTarget,
   uploadDir,
   outputPath,
-  strict = false
+  strict = false,
+  purgeReceipts = []
 }) {
   if (!queryTarget || typeof queryTarget.query !== 'function') {
     throw new Error('queryTarget is required');
@@ -156,7 +158,14 @@ export async function exportAttachmentEvidenceInventory({
       await handle.close();
       inspected = { fileSize: expectedSize, sha256: databaseSha256 };
     } else {
-      inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath });
+      try {inspected = await inspectStoredAttachmentFile({ uploadDir, storedPath });}
+      catch(error) {
+        if(error.code!=='ENOENT')throw error;
+        const purged=path.resolve(uploadDir)==='/var/bestcrm/uploads'?purgedAttachmentEntry(row,purgeReceipts):null;
+        if(!purged)throw error;
+        entries.push(purged);
+        continue;
+      }
     }
     if (inspected.fileSize !== expectedSize) {
       throw new Error(`Attachment evidence size mismatch: ${storedPath}`);
@@ -243,7 +252,8 @@ if (isMainModule(import.meta.url)) {
       queryTarget: pool,
       uploadDir: options.uploadDir || config.uploadDir,
       outputPath: options.outputPath,
-      strict: options.strict
+      strict: options.strict,
+      purgeReceipts: await loadAttachmentPurgeReceipts()
     });
     process.stdout.write(`${JSON.stringify(result)}\n`);
   } catch (error) {

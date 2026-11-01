@@ -554,3 +554,38 @@ test('backup verifier streams artifact hashing for multi-gigabyte archives', asy
   assert.match(verifierScript, /createReadStream\(filePath\)/);
   assert.doesNotMatch(verifierScript, /readFile\(filePath\)/);
 });
+
+
+test('backup preserves authorized purge receipts, excludes deleted bytes and rejects a reappearing file', async () => {
+ const {purgedAttachmentEntry}=await import('../../src/services/attachmentPurgeEvidence.mjs');
+ const root=await mkdtemp(path.join(tmpdir(),'bestcrm-purge-backup-'));
+ try {
+  const backupDir=path.join(root,'backup'),sourceDir=path.join(root,'source');
+  await mkdir(backupDir);await mkdir(path.join(sourceDir,'uploads'),{recursive:true});
+  const reason='800054：用户确认清理测试历史附件，原文件物理删除；保留版本与审计关联。';
+  const storedPath='2026/08/purged.dwg',originalSha=sha256('original drawing');
+  const receiptText=JSON.stringify({reason,files:[{id:150,name:'purged.dwg',path:'/var/bestcrm/uploads/'+storedPath,sha256:originalSha}]});
+  const entry=purgedAttachmentEntry({model:'opportunity_attachment',record_id:150,opportunity_id:55,stored_path:storedPath,original_name:'purged.dwg',file_size:16,sha256:originalSha,lifecycle_state:'retired',retirement_reason:reason},[{receiptFile:'800054-1793490062557.json',receiptText,receiptSha256:sha256(receiptText)}]);
+  const inventory=JSON.stringify(entry)+'\n';
+  const database='-- PostgreSQL database dump\nCREATE TABLE attachments(id bigint);\n';
+  await writeFile(path.join(backupDir,'database.sql'),database);
+  await writeFile(path.join(backupDir,'email-raw-files.sha256'),'');
+  await writeFile(path.join(backupDir,'attachment-evidence-files.jsonl'),inventory);
+  const uploadsPath=path.join(backupDir,'uploads.tar.gz');
+  async function archive(){
+   await createUploadsArchive({uploadsPath,sourceDir});
+   await writeFile(path.join(backupDir,'manifest.txt'),[
+    'upload_dir=/var/bestcrm/uploads','database_sha256='+sha256(database),'uploads_sha256='+sha256(await readFile(uploadsPath)),
+    'raw_email_inventory_sha256='+sha256(''),'raw_email_file_count=0','raw_email_size_bytes=0',
+    'attachment_evidence_inventory_sha256='+sha256(inventory),'attachment_evidence_file_count=1','attachment_evidence_size_bytes=0','attachment_evidence_unverified_count=0',''
+   ].join('\n'));
+  }
+  await archive();
+  const result=await verifyBackupArtifacts({backupDir,restoreDir:path.join(root,'restore')});
+  assert.equal(result.purgedAttachmentCount,1);assert.equal(result.attachmentEvidenceFilesVerified,0);assert.equal(result.attachmentEvidenceBytesVerified,0);
+  assert.equal(result.attachmentEvidenceEntries[0].purgeEvidence.receiptText,receiptText);
+  await mkdir(path.dirname(path.join(sourceDir,'uploads',storedPath)),{recursive:true});
+  await writeFile(path.join(sourceDir,'uploads',storedPath),'unexpected');await archive();
+  await assert.rejects(verifyBackupArtifacts({backupDir}),/Purged attachment unexpectedly present/);
+ }finally{await rm(root,{recursive:true,force:true});}
+});

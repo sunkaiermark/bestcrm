@@ -4,6 +4,7 @@ import { createReadStream } from 'node:fs';
 import { access, mkdir, readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { promisify } from 'node:util';
+import {validateAttachmentPurgeEvidence} from '../src/services/attachmentPurgeEvidence.mjs';
 import { isMainModule } from '../src/utils/moduleEntry.mjs';
 import { unexpectedSharedAttachmentPaths } from '../src/services/attachmentSharedPathPolicy.mjs';
 
@@ -102,7 +103,7 @@ function parseEmailEvidenceInventory(value, { legacyRawOnly = false } = {}) {
 }
 
 const attachmentEvidenceLifecycle = new Map([
-  ['opportunity_attachment', new Set(['active', 'retired'])],
+  ['opportunity_attachment', new Set(['active', 'retired', 'purged'])],
   ['inquiry_attachment', new Set(['retained'])],
   ['inquiry_attachment_purge_job', new Set(['pending', 'processing', 'failed'])],
   ['development_material_file', new Set(['active'])]
@@ -163,6 +164,7 @@ export function parseAttachmentEvidenceInventory(value) {
           || entry.size < 1 || entry.size > 104857600 || entry.verified !== true)) {
       throw new Error(`Invalid research evidence identity: ${entry.storedPath}`);
     }
+    if(entry.lifecycleState==='purged')validateAttachmentPurgeEvidence(entry);
     return [{
       model,
       recordId: entry.recordId,
@@ -171,6 +173,7 @@ export function parseAttachmentEvidenceInventory(value) {
       sha256: entry.sha256,
       lifecycleState: entry.lifecycleState,
       verified: entry.verified,
+      ...(entry.lifecycleState==='purged'?{purgeEvidence:entry.purgeEvidence}:{}),
       ...(sourceInquiryAttachmentId === undefined ? {} : { sourceInquiryAttachmentId })
     }];
   });
@@ -320,6 +323,10 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
     }
   }
   for (const entry of attachmentEvidenceEntries) {
+    if(entry.lifecycleState==='purged') {
+      if(archivedEntries.has(`${uploadDirectoryName}/${entry.storedPath}`))throw Error('Purged attachment unexpectedly present in upload archive: '+entry.storedPath);
+      continue;
+    }
     if (!archivedEntries.has(`${uploadDirectoryName}/${entry.storedPath}`)) {
       throw new Error(`Attachment evidence file is missing from upload archive: ${entry.storedPath}`);
     }
@@ -341,7 +348,7 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
       ...emailEvidenceEntries.map((entry) => (
         path.join(target, uploadDirectoryName, ...entry.storedPath.split('/'))
       )),
-      ...attachmentEvidenceEntries.map((entry) => (
+      ...attachmentEvidenceEntries.filter(entry=>entry.lifecycleState!=='purged').map((entry) => (
         path.join(target, uploadDirectoryName, ...entry.storedPath.split('/'))
       ))
     ];
@@ -378,6 +385,7 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
           throw new Error('Restored email evidence byte count differs from manifest');
         }
         for (const entry of attachmentEvidenceEntries) {
+          if(entry.lifecycleState==='purged')continue;
           const restoredPath = path.join(target, uploadDirectoryName, ...entry.storedPath.split('/'));
           const restoredSha256 = await sha256File(restoredPath);
           const restoredBytes = (await stat(restoredPath)).size;
@@ -424,6 +432,7 @@ export async function verifyBackupArtifacts({ backupDir, restoreDir = '' }) {
     attachmentEvidenceFilesVerified,
     attachmentEvidenceBytesVerified,
     attachmentEvidenceUnverifiedCount: expectedAttachmentEvidenceUnverifiedCount,
+    purgedAttachmentCount: attachmentEvidenceEntries.filter(entry=>entry.lifecycleState==='purged').length,
     uploadDirectoryName,
     uploadEntries: entries,
     restoredTo: restoreDir ? path.resolve(restoreDir) : null
