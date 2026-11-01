@@ -5,7 +5,7 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function createAgent({ userId = 7, username = `user${userId}`, roles = [ROLES.SALESPERSON], archivedAt = null, commercialManagerId = null, quotationEngineerId = 3, sourceAvailable = true, existingDraft = null, standardTerms = [], formalVersions = [], customerContacts, quotationPreviewPdfRenderer, quotationSigning, status = 'technical_solution_in_progress' } = {}) {
+async function createAgent({ loginLanguage = 'en', userId = 7, username = `user${userId}`, roles = [ROLES.SALESPERSON], archivedAt = null, commercialManagerId = null, quotationEngineerId = 3, sourceAvailable = true, existingDraft = null, standardTerms = [], formalVersions = [], customerContacts, quotationPreviewPdfRenderer, quotationSigning, status = 'technical_solution_in_progress' } = {}) {
   const user = {
     id: userId, username, displayName: 'Test User',
     passwordHash: await hashPassword('ChangeMe123!'), isActive: true, roles,
@@ -58,6 +58,7 @@ async function createAgent({ userId = 7, username = `user${userId}`, roles = [RO
     }
   });
   const agent = request.agent(app);
+  await agent.get(`/language?lang=${loginLanguage}&returnTo=/login`);
   await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
   return { agent, calls };
 }
@@ -234,9 +235,9 @@ test('internal A4 PDF preview requires a visible saved draft and never issues a 
   assert.equal((await unauthorized.agent.get('/opportunities/20/commercial-quotation-draft/preview.pdf')).status, 403);
 });
 
-test('Chinese quotation draft keeps QUOTATION as the title and aligns saved lines', async () => {
+test('Chinese quotation draft uses a single Chinese title and unit labels', async () => {
   const rendererCalls = [];
-  const { agent } = await createAgent({ quotationPreviewPdfRenderer: async (input) => {
+  const { agent } = await createAgent({ loginLanguage: 'zh', quotationPreviewPdfRenderer: async (input) => {
     rendererCalls.push(input);
     return Buffer.from('%PDF-1.7\npreview');
   }, existingDraft: {
@@ -246,10 +247,9 @@ test('Chinese quotation draft keeps QUOTATION as the title and aligns saved line
       { description: '配件', quantity: '2', unit: '件', unitPrice: '20', includeInTotal: 'excluded' }
     ]
   } });
-  await agent.get('/language?lang=zh&returnTo=/opportunities/20/commercial-quotation-draft');
   const page = await agent.get('/opportunities/20/commercial-quotation-draft');
   assert.equal(page.status, 200);
-  assert.match(page.text, /<h1>QUOTATION<\/h1><span class="draft-status-tag">草稿 · 未签发<\/span>/);
+  assert.match(page.text, /<h1>报价单<\/h1><span class="draft-status-tag">草稿 · 未签发<\/span>/);
   assert.doesNotMatch(page.text, /商务报价内部草稿/);
   assert.doesNotMatch(page.text, /仅供内部编制|保存不会提交审批/);
   assert.equal((page.text.match(/<tr class="draft-row">/g) || []).length, 2);
@@ -397,4 +397,16 @@ test('active assigned MarkYang can self-review a frozen version without a Commer
   assert.equal(page.status, 200);
   assert.match(page.text, /value="approved">Approve frozen version/);
   assert.match(page.text, /value="rejected"[^>]*>Return for changes/);
+});
+
+test('English login never displays saved Chinese term wording, and requires reconfirmation before PDF or submit',async()=>{
+ const {agent,calls}=await createAgent({status:'commercial_quote_in_progress',existingDraft:{language:'zh',draftRevisionNo:1,lineItems:[],termSelections:{payment:{id:'custom:payment',body:'不可自动改写的旧条款',language:'zh'}}}});
+ const page=await agent.get('/opportunities/20/commercial-quotation-draft');
+ assert.equal(page.status,200);assert.match(page.text,/name="confirmLanguageChange"/);assert.doesNotMatch(page.text,/不可自动改写的旧条款/);
+ assert.doesNotMatch(page.text,/name="unit"[^>]*>[\s\S]*?套 \(set\)/);
+ await agent.get('/opportunities/20/commercial-quotation-draft/preview.pdf').expect(409);
+ await agent.post('/opportunities/20/commercial-quotation-draft/submit').type('form').send({expectedRevisionNo:1}).expect(409);
+ await agent.get('/language?lang=zh&returnTo=/opportunities/20/commercial-quotation-draft');
+ const unchanged=await agent.get('/opportunities/20/commercial-quotation-draft');assert.match(unchanged.text,/<html lang="en">/);
+ assert.equal(calls.length,0);
 });

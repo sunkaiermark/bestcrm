@@ -150,6 +150,7 @@ export function salesCommercialQuotationDraftRoutes({
         salesCommercialQuotationDraftRepository, req.currentUser, opportunity, req.language
       );
       if (!context.draft) return res.status(404).send('Quotation draft not found');
+      if(context.draftLanguageMismatch)return res.status(409).send(req.language==='zh'?'请先按当前登录语言确认条款并保存草稿，再预览。':'Reconfirm the terms and save the draft in the login language before previewing.');
       const sellerProfiles = await loadSalesCommercialQuotationSellerProfiles(quotationSigning, opportunity);
       const pdf = await quotationPreviewPdfRenderer({
         draft: context.draft,
@@ -171,6 +172,8 @@ export function salesCommercialQuotationDraftRoutes({
       if (!canSubmitSalesCommercialQuotation(req.currentUser, opportunity)) {
         return res.status(403).send('Forbidden');
       }
+      const savedDraft = await salesCommercialQuotationDraftRepository.getByOpportunity(opportunity.id);
+      if(savedDraft && savedDraft.language!==req.language)return res.status(409).send(req.language==='zh'?'请先按当前登录语言确认条款并保存草稿，再提交。':'Reconfirm the terms and save the draft in the login language before submission.');
       const commercialApproval = typeof approvalSettingRepository?.findActiveByKey === 'function'
         ? await approvalSettingRepository.findActiveByKey('commercial_quote') : null;
       if (!commercialApproval?.userId) {

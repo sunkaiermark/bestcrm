@@ -211,7 +211,7 @@ export const BUILT_IN_CHINESE_QUOTATION_TYPICAL_TERMS = Object.freeze([
 ]);
 
 export function withBuiltInQuotationTypicalTerms(terms, language) {
-  const custom = Array.isArray(terms) ? terms : [];
+  const custom = (Array.isArray(terms) ? terms : []).filter(term=>term.language===language);
   if (language === 'en') return [...BUILT_IN_QUOTATION_TYPICAL_TERMS, ...custom];
   if (language === 'zh') return [...BUILT_IN_CHINESE_QUOTATION_TYPICAL_TERMS, ...custom];
   return custom;

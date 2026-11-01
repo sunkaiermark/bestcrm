@@ -1,4 +1,4 @@
-<%- include('../partials/app-start', { title: 'QUOTATION - BESTCRM', activeNav: 'opportunities' }) %>
+<%- include('../partials/app-start', { title: `${language === 'zh' ? '报价单' : 'QUOTATION'} - BESTCRM`, activeNav: 'opportunities' }) %>
 <style>
   .sales-quote-draft { container-type: inline-size; width: 100%; min-width: 0; }
   .sales-quote-draft .form-panel { box-sizing: border-box; max-width: none; width: 100%; }
@@ -107,20 +107,20 @@
     .sales-quote-draft .draft-parties, .sales-quote-draft .draft-signature { grid-template-columns: 1fr; }
   }
 </style>
-<% const zh = language === 'zh'; const selectedSourceId = draft?.sourceAttachmentId || sources[0]?.attachmentId; const rows = draft?.lineItems?.length ? draft.lineItems : [{ description: '', quantity: '', unit: '', unitPrice: '' }]; const pending = zh ? '待配置' : 'Pending setup'; const notIssued = zh ? '未签发' : 'Not issued'; const preferredCustomerContactId = draft?.customerContactId || opportunity.primaryContactId || customerContacts[0]?.id || null; const selectedCustomerContact = customerContacts.find((contact) => contact.id === preferredCustomerContactId); const selectedCustomerContactAvailable = Boolean(selectedCustomerContact); const selectedCustomerContactPhone = draft?.customerContactId ? (draft.customerContactPhone || '') : (selectedCustomerContact?.phone || ''); const selectedCustomerContactEmail = draft?.customerContactId ? (draft.customerContactEmail || '') : (selectedCustomerContact?.email || ''); const selectedSellerEntityCode = draft?.sellerEntityCode || defaultSellerEntityCode || ''; const selectedSellerProfile = sellerProfiles?.[selectedSellerEntityCode] || {}; const sellerContactName = opportunity.salespersonQuotationContactName || opportunity.salespersonDisplayName || ''; const selectedUnitValues = new Set(quotationUnitOptions.map((option) => option.value)); const missingFieldName = (key) => { const term = termSections.find((section) => `term.${section.key}` === key); if (term) return zh ? term.zh : term.en; return ({ 'seller.address': zh ? '卖方地址' : 'Seller address', 'seller.phone': zh ? '卖方电话' : 'Seller telephone', 'seller.website': zh ? '卖方网站' : 'Seller website' })[key] || key; }; %>
+<% const zh = language === 'zh'; const languageMismatch = typeof draftLanguageMismatch !== 'undefined' && draftLanguageMismatch; const displayedTermSelections = languageMismatch ? {} : draft?.termSelections; const selectedSourceId = draft?.sourceAttachmentId || sources[0]?.attachmentId; const rows = draft?.lineItems?.length ? draft.lineItems.map(row=>({...row,unit:quotationUnitOptions.find(option=>[option.value,option.zh,option.en].includes(row.unit))?.value || row.unit})) : [{ description: '', quantity: '', unit: '', unitPrice: '' }]; const pending = zh ? '待配置' : 'Pending setup'; const notIssued = zh ? '未签发' : 'Not issued'; const preferredCustomerContactId = draft?.customerContactId || opportunity.primaryContactId || customerContacts[0]?.id || null; const selectedCustomerContact = customerContacts.find((contact) => contact.id === preferredCustomerContactId); const selectedCustomerContactAvailable = Boolean(selectedCustomerContact); const selectedCustomerContactPhone = draft?.customerContactId ? (draft.customerContactPhone || '') : (selectedCustomerContact?.phone || ''); const selectedCustomerContactEmail = draft?.customerContactId ? (draft.customerContactEmail || '') : (selectedCustomerContact?.email || ''); const selectedSellerEntityCode = draft?.sellerEntityCode || defaultSellerEntityCode || ''; const selectedSellerProfile = sellerProfiles?.[selectedSellerEntityCode] || {}; const sellerContactName = opportunity.salespersonQuotationContactName || opportunity.salespersonDisplayName || ''; const selectedUnitValues = new Set(quotationUnitOptions.map((option) => option.value)); const missingFieldName = (key) => { const term = termSections.find((section) => `term.${section.key}` === key); if (term) return zh ? term.zh : term.en; return ({ 'seller.address': zh ? '卖方地址' : 'Seller address', 'seller.phone': zh ? '卖方电话' : 'Seller telephone', 'seller.website': zh ? '卖方网站' : 'Seller website' })[key] || key; }; %>
 <div class="sales-quote-draft">
   <p class="breadcrumb"><a href="/opportunities/<%= opportunity.id %>"><%= opportunity.opportunityNo %> · <%= opportunity.title %></a></p>
-  <header class="page-header"><div><h1>QUOTATION</h1><span class="draft-status-tag"><%= zh ? '草稿 · 未签发' : 'Draft · Not issued' %></span></div></header>
+  <header class="page-header"><div><h1><%= zh ? '报价单' : 'QUOTATION' %></h1><span class="draft-status-tag"><%= zh ? '草稿 · 未签发' : 'Draft · Not issued' %></span></div></header>
   <section class="form-panel">
     <% if (saved) { %><p role="status"><%= zh ? '草稿已保存。' : 'Draft saved.' %></p><% } %>
     <% if (sourceChanged) { %><p role="alert"><%= zh ? '技术依据文件已有更新或不可用；保存前请重新确认所选版本。' : 'The technical source has a newer revision or is unavailable; reconfirm the exact version before saving.' %></p><% } %>
     <div class="draft-document-header">
       <img class="draft-document-logo" src="/assets/sunkaier-logo-login.png" alt="SUNKAIER">
-      <div class="draft-document-title"><strong>QUOTATION</strong></div>
+      <div class="draft-document-title"><strong><%= zh ? '报价单' : 'QUOTATION' %></strong></div>
     </div>
     <div class="draft-identifiers">
       <div><span><%= zh ? '报价编号' : 'Quote No.' %></span><strong class="draft-pending"><%= notIssued %></strong></div>
-      <div><span>Ref.</span><strong><%= opportunity.opportunityNo %></strong></div>
+      <div><span><%= zh ? '商机编号' : 'Ref.' %></span><strong><%= opportunity.opportunityNo %></strong></div>
       <div><span><%= zh ? '报价版本' : 'Quote version' %></span><strong class="draft-pending"><%= notIssued %></strong></div>
       <div><span><%= zh ? '草稿修订' : 'Draft revision' %></span><strong>D<%= draft?.draftRevisionNo || 1 %></strong></div>
       <div><span><%= zh ? '报价日期' : 'Quote date' %></span><strong class="draft-pending"><%= notIssued %></strong></div>
@@ -134,7 +134,7 @@
           <tr><th scope="row"><%= zh ? '电话' : 'Telephone' %></th><td data-customer-contact-phone class="<%= selectedCustomerContactPhone ? '' : 'draft-pending' %>"><%= selectedCustomerContactPhone || '—' %></td></tr>
           <tr><th scope="row"><%= zh ? '邮箱' : 'Email' %></th><td data-customer-contact-email class="<%= selectedCustomerContactEmail ? '' : 'draft-pending' %>"><%= selectedCustomerContactEmail || '—' %></td></tr>
           <tr><th scope="row"><%= zh ? '币种' : 'Currency' %></th><td><% if (sources.length) { %><label><span class="visually-hidden"><%= zh ? '选择报价币种' : 'Select quotation currency' %></span><select name="currency" form="sales-quote-draft-form" required <%= canEdit ? '' : 'disabled' %>><option value=""><%= zh ? '请选择币种' : 'Select currency' %></option><% for (const code of currencyOptions) { %><option value="<%= code %>" <%= draft?.currency === code ? 'selected' : '' %>><%= code %></option><% } %></select></label><% } else { %><%= draft?.currency || '—' %><% } %></td></tr>
-          <tr><th scope="row"><%= zh ? '语言' : 'Language' %></th><td><%= draft ? (draft.language === 'zh' ? '中文' : 'English') : (zh ? '中文' : 'English') %></td></tr>
+          <tr><th scope="row"><%= zh ? '语言' : 'Language' %></th><td><%= zh ? '中文' : 'English' %></td></tr>
         </tbody></table>
       </div>
       <div>
@@ -156,6 +156,7 @@
     <form class="form-panel" id="sales-quote-draft-form" method="post" action="/opportunities/<%= opportunity.id %>/commercial-quotation-draft">
       <%- csrfField() %>
       <input type="hidden" name="expectedRevisionNo" value="<%= draft?.draftRevisionNo || 0 %>">
+      <% if (languageMismatch) { %><p role="alert"><%= zh ? '登录语言与原草稿不同。请重新选择并确认本次报价的商务条款；保存前原稿保持不变。' : 'The login language differs from this draft. Select and reconfirm the commercial terms. The original draft remains unchanged until saved.' %></p><label class="checkbox-row"><input type="checkbox" name="confirmLanguageChange" value="1" required><span><%= zh ? '我已重新确认商务条款，按当前登录语言保存草稿' : 'I reconfirmed the commercial terms and will save the draft in the login language' %></span></label><% } %>
       <div class="draft-project-info">
         <h2 class="draft-section-title"><%= zh ? '项目信息' : 'Project information' %></h2>
         <table class="draft-detail-table"><tbody>
@@ -179,7 +180,7 @@
                 <th scope="row"><span class="draft-row-number"><%= index + 1 %></span></th>
                 <td><label><span class="visually-hidden"><%= zh ? '产品说明' : 'Description' %></span><textarea name="description" maxlength="2000" wrap="off" <%= canEdit ? '' : 'readonly' %>><%= row.description %></textarea></label></td>
                 <td><label><span class="visually-hidden"><%= zh ? '数量' : 'Qty' %></span><input name="quantity" inputmode="decimal" value="<%= row.quantity %>" <%= canEdit ? '' : 'readonly' %>></label></td>
-                <td><label><span class="visually-hidden"><%= zh ? '单位' : 'Unit' %></span><select name="unit" <%= canEdit ? '' : 'disabled' %>><option value=""><%= zh ? '请选择' : 'Select' %></option><% if (row.unit && !selectedUnitValues.has(row.unit)) { %><option value="" selected><%= zh ? '原单位不在预设中，请重新选择' : 'Previous unit is not in the preset list; select again' %></option><% } %><% for (const option of quotationUnitOptions) { %><option value="<%= option.value %>" <%= row.unit === option.value ? 'selected' : '' %>><%= zh ? `${option.zh} (${option.value})` : option.en %></option><% } %></select></label></td>
+                <td><label><span class="visually-hidden"><%= zh ? '单位' : 'Unit' %></span><select name="unit" <%= canEdit ? '' : 'disabled' %>><option value=""><%= zh ? '请选择' : 'Select' %></option><% if (row.unit && !selectedUnitValues.has(row.unit)) { %><option value="" selected><%= zh ? '原单位不在预设中，请重新选择' : 'Previous unit is not in the preset list; select again' %></option><% } %><% for (const option of quotationUnitOptions) { %><option value="<%= option.value %>" <%= row.unit === option.value ? 'selected' : '' %>><%= zh ? option.zh : option.en %></option><% } %></select></label></td>
                 <td><label><span class="visually-hidden"><%= zh ? '单价' : 'Unit price' %></span><input name="unitPrice" inputmode="decimal" value="<%= row.unitPrice %>" <%= canEdit ? '' : 'readonly' %>></label></td>
                 <td><span class="draft-amount" data-line-amount>—</span></td>
                 <td><% if (canEdit) { %><button type="button" class="secondary-action draft-remove-row" data-remove-quote-row aria-label="<%= zh ? '移除此行' : 'Remove this row' %>" title="<%= zh ? '移除此行' : 'Remove this row' %>">&minus;</button><% } %></td>
@@ -200,7 +201,7 @@
   <section class="form-panel">
     <h2 class="draft-section-title"><%= zh ? '商务条件' : 'Commercial terms' %></h2>
     <div class="draft-terms-scroll"><table class="draft-detail-table draft-commercial-terms"><tbody>
-      <% for (const section of termSections) { const options = standardTerms.filter((term) => term.key === section.key); const selected = draft?.termSelections?.[section.key]; const customTermId = `custom:${section.key}`; const selectedCustom = selected?.id === customTermId; const useCustomByDefault = !selected && options.length === 0; const selectedTerm = options.find((term) => term.id === selected?.id); const selectedAvailable = Boolean(selectedTerm) || selectedCustom || useCustomByDefault; %>
+      <% for (const section of termSections) { const options = standardTerms.filter((term) => term.key === section.key); const selected = displayedTermSelections?.[section.key]; const customTermId = `custom:${section.key}`; const selectedCustom = selected?.id === customTermId; const useCustomByDefault = !selected && options.length === 0; const selectedTerm = options.find((term) => term.id === selected?.id); const selectedAvailable = Boolean(selectedTerm) || selectedCustom || useCustomByDefault; %>
         <tr><th scope="row"><%= zh ? section.zh : section.en %></th><td>
           <div class="draft-term-control" data-term-control data-term-invalid-message="<%= zh ? '请填写完整条款，并替换方括号中的内容。' : 'Complete the quotation wording and replace every bracketed placeholder.' %>">
             <div class="draft-term-row">
@@ -239,7 +240,7 @@
   </section>
   <section class="form-panel" aria-labelledby="formal-quotation-heading">
     <h2 id="formal-quotation-heading" class="draft-section-title"><%= zh ? '正式报价流程' : 'Formal quotation workflow' %></h2>
-    <% if (draft) { %>
+    <% if (draft && !languageMismatch) { %>
       <div class="draft-actions">
         <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/commercial-quotation-draft/preview.pdf" target="_blank" rel="noopener"><%= zh ? '预览报价版面' : 'Preview quotation layout' %></a>
         <% if (canSubmitFormal) { %>

@@ -5,7 +5,7 @@ import { ROLES } from '../../src/domain/roles.mjs';
 import { hashPassword } from '../../src/services/authService.mjs';
 import { createApp } from '../../src/server.mjs';
 
-async function session(userId, roles, repository) {
+async function session(userId, roles, repository, loginLanguage = 'en') {
   const user = { id: userId, username: `terms${userId}`, displayName: `User ${userId}`, passwordHash: await hashPassword('ChangeMe123!'), isActive: true, roles };
   const app = createApp({
     databaseUrl: '', sessionSecret: 'test-secret', csrfProtection: false,
@@ -17,6 +17,7 @@ async function session(userId, roles, repository) {
     salesQuotationStandardTermRepository: repository
   });
   const agent = request.agent(app);
+  await agent.get(`/language?lang=${loginLanguage}&returnTo=/login`);
   await agent.post('/login').type('form').send({ username: user.username, password: 'ChangeMe123!' });
   return agent;
 }
@@ -51,8 +52,8 @@ test('typical terms management blocks direct salesperson access and groups an em
     assert.match(sectionSelect, new RegExp(`value="${key}"`));
   }
   assert.match(sectionSelect, /value="payment" selected/);
-  await author.get('/language?lang=zh&returnTo=/quotation-standard-terms');
-  const zhPage = await author.get('/quotation-standard-terms');
+  const zhAuthor=await session(7,[ROLES.COMMERCIAL_MANAGER],repository,'zh');
+  const zhPage = await zhAuthor.get('/quotation-standard-terms?language=en');
   assert.equal(zhPage.status, 200);
   assert.match(zhPage.text, />常用条款</);
   assert.doesNotMatch(zhPage.text, /商务报价标准文案/);
@@ -74,4 +75,17 @@ test('reviewer sees complete text and publishes only the matching reviewed versi
   assert.equal((await reviewer.post('/quotation-standard-terms/91/publish').type('form').send({ expectedFingerprint: 'stale' })).status, 409);
   assert.equal((await reviewer.post('/quotation-standard-terms/91/publish').type('form').send({ expectedFingerprint: fingerprint })).status, 302);
   assert.equal(calls.length, 1);
+});
+
+test('term catalog and creation use login language despite query and submitted language overrides', async () => {
+  const lists=[],created=[];
+  const repository={async listAll(language){lists.push(language);return [];},async createDraft(input){created.push(input);return {id:99};}};
+  const author=await session(7,[ROLES.COMMERCIAL_MANAGER],repository,'en');
+  const page=await author.get('/quotation-standard-terms?language=zh');
+  assert.equal(page.status,200);assert.deepEqual(lists,['en']);
+  assert.doesNotMatch(page.text,/aria-current="[^"]*"[^>]*>中文/);
+  const form=await author.get('/quotation-standard-terms/new?language=zh');
+  assert.equal(form.status,200);assert.doesNotMatch(form.text,/<select name="language"/);
+  await author.post('/quotation-standard-terms').type('form').send({termKey:'payment',language:'zh',title:'Payment',body:'Payment before shipment.'}).expect(302);
+  assert.equal(created[0].language,'en');
 });

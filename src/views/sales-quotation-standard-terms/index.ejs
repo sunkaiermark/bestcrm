@@ -5,7 +5,6 @@
     <p class="muted"><%= zh ? '按类别维护多个常用选项。已发布且与报价同语种的条款会直接进入报价下拉。' : 'Maintain multiple typical options in each section. Published terms in the quotation language appear directly in quotation selectors.' %></p></div>
   <% if (canAuthor) { %><a class="quick-action" href="/quotation-standard-terms/new?language=<%= catalogLanguage %>"><%= zh ? '新建条款选项' : 'New typical term' %></a><% } %>
 </header>
-<p><a class="secondary-action" href="/quotation-standard-terms?language=en" aria-current="<%= catalogLanguage === 'en' ? 'page' : 'false' %>">English</a> <a class="secondary-action" href="/quotation-standard-terms?language=zh" aria-current="<%= catalogLanguage === 'zh' ? 'page' : 'false' %>">中文</a></p>
 <div class="typical-terms-grid">
   <% if (templateGroups.length) { %>
     <h2 class="typical-term-grid-heading"><%= zh ? '内置标准条款' : 'Built-in typical wording' %></h2>

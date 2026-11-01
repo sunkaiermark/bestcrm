@@ -1,3 +1,4 @@
+import { quotationUnitLabel } from '../domain/quotationUnits.mjs';
 import { fileURLToPath } from 'node:url';
 import PDFDocument from 'pdfkit';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
@@ -79,7 +80,7 @@ export async function renderSalesCommercialQuotationPreviewPdf({
     document.addPage();
     document.save();
     document.image(LOGO_PATH, x, 27, { fit: [152, 34] });
-    document.fillColor(TEXT).fontSize(14).text('QUOTATION', x + 315, 36, { width: 194, align: 'right' });
+    document.fillColor(TEXT).fontSize(14).text(zh ? '报价单' : 'QUOTATION', x + 315, 36, { width: 194, align: 'right' });
     document.moveTo(x, 68).lineTo(x + width, 68).strokeColor('#0D7A79').lineWidth(1).stroke();
     document.fillColor('#AD3434').fontSize(9).text(
       zh ? '内部草稿 · 未批准 · 未签署 · 不得对客发送' : 'INTERNAL DRAFT · NOT APPROVED · NOT SIGNED · DO NOT SEND',
@@ -221,7 +222,7 @@ export async function renderSalesCommercialQuotationPreviewPdf({
   function lineRow(row, index, widths, reserveAfter = 0) {
     const alignments = ['center', 'left', 'center', 'center', 'right', 'right'];
     const cells = [String(index + 1), printable(row.description), printable(row.quantity),
-      printable(row.unit), money(scaledDecimal(row.unitPrice, 2)), money(amountCents(row))];
+      printable(quotationUnitLabel(row.unit, draft.language)), money(scaledDecimal(row.unitPrice, 2)), money(amountCents(row))];
     const height = Math.max(26, ...cells.map((cell, column) => {
       textFont(cell).fontSize(8);
       return document.heightOfString(cell, { width: widths[column] - 8 }) + 10;

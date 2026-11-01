@@ -15,7 +15,7 @@ function safeReturnTo(value) {
 }
 
 function regenerateSession(req) {
-  const language = req.session.language;
+  const language = normalizeLanguage(req.session.language || req.language);
   return new Promise((resolve, reject) => {
     req.session.regenerate((error) => {
       if (error) {
@@ -186,6 +186,10 @@ export function authRoutes(userRepository, {
 
   router.get('/language', async (req, res, next) => {
     try {
+      if (req.session.userId) {
+        res.redirect(safeReturnTo(req.query.returnTo));
+        return;
+      }
       req.session.language = normalizeLanguage(req.query.lang);
       await saveSession(req);
       res.redirect(safeReturnTo(req.query.returnTo));

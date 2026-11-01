@@ -270,22 +270,22 @@ test('loading an old draft includes every row without mutating stored data', asy
   assert.equal(stored.lineItems[1].includeInTotal, 'excluded');
 });
 
-test('standard wording is selected in the saved draft language, not a later login language', async () => {
-  const calls = [];
-  const repository = {
-    async getTechnicalSource() { return source; },
-    async getByOpportunity() { return { language: 'zh' }; },
-    async listPublishedStandardTerms(language) {
-      calls.push(language);
-      return [{ id: 92, key: 'warranty', language, revisionNo: 1, title: '质保条款', body: '批准正文' }];
-    },
-    async saveDraft(input) { calls.push(input); return input; }
-  };
-  await saveSalesCommercialQuotationDraft(repository, owner, opportunity, 'en', {
-    sourceAttachmentId: '51', expectedRevisionNo: '1', confirmSourceVersion: 'on', term_warranty: '92'
-  });
-  assert.equal(calls[0], 'zh');
-  assert.equal(calls[1].language, 'zh');
+test('login language controls terms, while old draft language changes require explicit reconfirmation', async () => {
+  const stored={language:'zh',termSelections:{warranty:{id:92,language:'zh',body:'原批准正文'}}};
+  const before=JSON.stringify(stored),calls=[];
+  const repository={async getTechnicalSource(){return source;},async getByOpportunity(){return stored;},async listTechnicalSources(){return [source];},
+    async listPublishedStandardTerms(language){calls.push(language);return [{id:92,key:'warranty',language:'zh',revisionNo:1,title:'质保条款',body:'原批准正文'},{id:93,key:'warranty',language:'en',revisionNo:1,title:'Warranty',body:'Approved warranty wording'}];},
+    async saveDraft(input){calls.push(input);return input;}};
+  const context=await loadSalesCommercialQuotationDraft(repository,owner,opportunity,'en');
+  assert.ok(context.draftLanguageMismatch);
+  assert.ok(context.standardTerms.every(term=>term.language==='en'));
+  assert.equal(JSON.stringify(stored),before);
+  const input={sourceAttachmentId:'51',expectedRevisionNo:'1',confirmSourceVersion:'on',term_warranty:'93'};
+  await assert.rejects(()=>saveSalesCommercialQuotationDraft(repository,owner,opportunity,'en',input),{statusCode:409});
+  const saved=await saveSalesCommercialQuotationDraft(repository,owner,opportunity,'en',{...input,confirmLanguageChange:'1',language:'zh'});
+  assert.equal(saved.language,'en');assert.equal(saved.termSelections.warranty.language,'en');assert.equal(saved.termSelections.warranty.body,'Approved warranty wording');
+  assert.equal(JSON.stringify(stored),before);
+  await assert.rejects(()=>saveSalesCommercialQuotationDraft(repository,owner,opportunity,'en',{...input,term_warranty:'92',confirmLanguageChange:'1'}),{statusCode:409});
 });
 
 test('attention is snapshotted only from an active contact of the opportunity customer', async () => {

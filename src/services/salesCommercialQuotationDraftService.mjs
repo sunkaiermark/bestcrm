@@ -188,7 +188,7 @@ export async function loadSalesCommercialQuotationDraft(repository, user, opport
     repository.getByOpportunity(opportunity.id),
     repository.listTechnicalSources(opportunity.id)
   ]);
-  const draftLanguage = draft?.language || (language === 'zh' ? 'zh' : 'en');
+  const draftLanguage = language === 'zh' ? 'zh' : 'en';
   const standardTerms = withBuiltInQuotationTypicalTerms(
     await repository.listPublishedStandardTerms(draftLanguage), draftLanguage
   );
@@ -197,6 +197,7 @@ export async function loadSalesCommercialQuotationDraft(repository, user, opport
     draft: draft ? { ...draft, lineItems: includeAllQuotationDraftLines(draft.lineItems) } : null,
     sources,
     standardTerms,
+    draftLanguageMismatch: Boolean(draft && draft.language !== draftLanguage),
     sourceChanged: Boolean(draft && (!source || source.sha256 !== draft.sourceSha256
       || sources.some((item) => item.technicalDraftRevisionNo > source.technicalDraftRevisionNo)))
   };
@@ -236,12 +237,15 @@ export async function saveSalesCommercialQuotationDraft(
   const customerContact = customerContactFromInput(
     input, opportunity, existingDraft, customerContacts
   );
-  const draftLanguage = existingDraft?.language || (language === 'zh' ? 'zh' : 'en');
+  const draftLanguage = language === 'zh' ? 'zh' : 'en';
+  const languageChanged=Boolean(existingDraft && existingDraft.language!==draftLanguage);
+  if(languageChanged && input.confirmLanguageChange!=='1')throw new SalesCommercialQuotationDraftError(
+    draftLanguage==='zh'?'登录语言与原草稿不同，请重新确认商务条款后再保存。':'The login language differs from this draft. Reconfirm the commercial terms before saving.',409);
   const publishedTerms = withBuiltInQuotationTypicalTerms(
     await repository.listPublishedStandardTerms(draftLanguage), draftLanguage
   );
   const termSelections = termSelectionsFromInput(
-    input, publishedTerms, draftLanguage, existingDraft?.termSelections
+    input, publishedTerms, draftLanguage, languageChanged ? {} : existingDraft?.termSelections
   );
   const lineItems = lineItemsFromInput(input);
   const saved = await repository.saveDraft({

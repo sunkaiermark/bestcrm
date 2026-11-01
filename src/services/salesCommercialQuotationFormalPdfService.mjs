@@ -1,3 +1,4 @@
+import { quotationUnitLabel } from '../domain/quotationUnits.mjs';
 import { fileURLToPath } from 'node:url';
 import PDFDocument from 'pdfkit';
 import { QUOTATION_COMMERCIAL_TERM_SECTIONS } from '../domain/quotationCommercialTermSections.mjs';
@@ -76,7 +77,7 @@ export async function renderSalesCommercialQuotationFormalPdf({ version, signedA
   function page() {
     document.addPage();
     document.image(LOGO_PATH, x, 27, { fit: [152, 34] });
-    document.fillColor(TEXT).fontSize(14).text('QUOTATION', x + 315, 36, { width: 194, align: 'right' });
+    document.fillColor(TEXT).fontSize(14).text(zh ? '报价单' : 'QUOTATION', x + 315, 36, { width: 194, align: 'right' });
     document.moveTo(x, 68).lineTo(x + width, 68).strokeColor('#0D7A79').lineWidth(1).stroke();
     document.font('quotation').fontSize(9).fillColor(TEXT);
     document.x = x;
@@ -189,7 +190,7 @@ export async function renderSalesCommercialQuotationFormalPdf({ version, signedA
     document.y = y + 22;
   }
   function lineRow(row, index, reserveAfter = 0) {
-    const cells = [String(index + 1), row.description, row.quantity, row.unit,
+    const cells = [String(index + 1), row.description, row.quantity, quotationUnitLabel(row.unit, snapshot.language),
       money(unitPriceCents(row)), money(cents(row))];
     const height = Math.max(26, ...cells.map((cell, column) => {
       textFont(cell).fontSize(8);

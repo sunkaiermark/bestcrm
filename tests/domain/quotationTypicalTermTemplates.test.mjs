@@ -33,8 +33,8 @@ test('built-in English wording supplements but never replaces controlled custom 
   assert.equal(english.at(-1), custom[0]);
   assert.ok(english.some((term) => term.id === 'builtin:price:price_basis_incoterms_2020:11'));
   const chinese = withBuiltInQuotationTypicalTerms(custom, 'zh');
-  assert.equal(chinese.length, BUILT_IN_CHINESE_QUOTATION_TYPICAL_TERMS.length + 1);
-  assert.equal(chinese.at(-1), custom[0]);
+  assert.equal(chinese.length, BUILT_IN_CHINESE_QUOTATION_TYPICAL_TERMS.length);
+  assert.ok(chinese.every(term=>term.language==='zh'));
   assert.deepEqual(
     chinese.map((term) => term.key).filter((key, index, keys) => keys.indexOf(key) === index).sort(),
     ['delivery', 'delivery_period', 'packing', 'payment', 'price_tax', 'scope', 'validity', 'warranty']

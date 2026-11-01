@@ -18,3 +18,9 @@ export const QUOTATION_UNIT_OPTIONS = Object.freeze([
 ]);
 
 export const QUOTATION_UNIT_VALUES = new Set(QUOTATION_UNIT_OPTIONS.map((option) => option.value));
+
+export function quotationUnitLabel(value, language = 'en') {
+  const raw=String(value ?? '');
+  const option=QUOTATION_UNIT_OPTIONS.find(item=>item.value===raw||item.zh===raw||item.en===raw);
+  return option ? option[language==='zh'?'zh':'en'] : raw;
+}

@@ -34,8 +34,7 @@ export function salesQuotationStandardTermRoutes({ salesQuotationStandardTermRep
 
   router.get('/quotation-standard-terms', async (req, res, next) => {
     try {
-      const catalogLanguage = ['en', 'zh'].includes(String(req.query.language))
-        ? String(req.query.language) : req.language;
+      const catalogLanguage = req.language;
       const terms = await listSalesQuotationStandardTerms(
         salesQuotationStandardTermRepository, req.currentUser, catalogLanguage
       );
@@ -52,11 +51,9 @@ export function salesQuotationStandardTermRoutes({ salesQuotationStandardTermRep
   router.get('/quotation-standard-terms/new', (req, res) => {
     if (!canAuthorSalesQuotationStandardTerms(req.currentUser)) return forbidden(res);
     const requestedSection = String(req.query.section || '');
-    const requestedLanguage = String(req.query.language || '');
     const termKey = QUOTATION_COMMERCIAL_TERM_SECTIONS.some((item) => item.key === requestedSection)
       ? requestedSection : '';
-    const termLanguage = ['en', 'zh'].includes(requestedLanguage)
-      ? requestedLanguage : (req.language === 'zh' ? 'zh' : 'en');
+    const termLanguage = req.language === 'zh' ? 'zh' : 'en';
     res.render('sales-quotation-standard-terms/form', {
       term: { language: termLanguage, key: termKey, title: '', body: '', status: 'draft' },
       sections: QUOTATION_COMMERCIAL_TERM_SECTIONS, mode: 'new', canEdit: true, canApprove: false
@@ -66,7 +63,7 @@ export function salesQuotationStandardTermRoutes({ salesQuotationStandardTermRep
   router.post('/quotation-standard-terms', async (req, res, next) => {
     try {
       const created = await createSalesQuotationStandardTerm(
-        salesQuotationStandardTermRepository, req.currentUser, req.body
+        salesQuotationStandardTermRepository, req.currentUser, { ...req.body, language: req.language }
       );
       res.redirect(`/quotation-standard-terms/${created.id}`);
     } catch (error) { handleError(error, res, next); }
