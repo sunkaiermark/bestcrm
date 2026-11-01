@@ -60,6 +60,12 @@ export function csrfProtection({ enabled = true } = {}) {
     }
 
     if (!validateCsrfToken(req)) {
+      // A stale tab must not log out a newer session without fresh confirmation.
+      if (req.method === 'POST' && req.path === '/logout') {
+        res.set('Cache-Control', 'no-store');
+        res.redirect(303, '/logout');
+        return;
+      }
       res.status(403).send('Invalid CSRF token');
       return;
     }

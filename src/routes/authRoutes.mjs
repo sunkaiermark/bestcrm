@@ -845,6 +845,15 @@ export function authRoutes(userRepository, {
     }
   });
 
+  router.get('/logout', (req, res) => {
+    res.set('Cache-Control', 'no-store');
+    if (!req.session?.userId) {
+      res.redirect('/login');
+      return;
+    }
+    res.render('auth/logout');
+  });
+
   router.post('/logout', (req, res, next) => {
     req.session.destroy((error) => {
       if (error) {

@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="<%= language %>">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BESTCRM · <%= t('logout') %></title>
+  <style>
+    * { box-sizing: border-box; }
+    body { margin: 0; padding: 24px; min-height: 100vh; display: grid; place-items: center; background: #f4f7fa; color: #17212b; font: 400 16px/1.5 system-ui, "Microsoft YaHei", sans-serif; }
+    main { width: min(100%, 420px); padding: 24px; background: white; border: 1px solid #d8e1e8; border-radius: 8px; }
+    h1 { font-size: 16px; font-weight: 400; margin: 0 0 12px; }
+    form { display: flex; gap: 12px; align-items: center; }
+    button, a { font: inherit; padding: 8px 14px; border-radius: 4px; text-decoration: none; }
+    button { background: #0f766e; color: white; border: 0; cursor: pointer; }
+    a { color: #17212b; background: #e8eef2; }
+  </style>
+</head>
+<body><main>
+  <h1><%= language === 'zh' ? '页面已过期，请确认退出当前账号。' : 'This page has expired. Confirm signing out of the current account.' %></h1>
+  <form method="post" action="/logout">
+    <%- csrfField() %>
+    <button type="submit"><%= t('logout') %></button>
+    <a href="/workbench"><%= language === 'zh' ? '取消' : 'Cancel' %></a>
+  </form>
+</main></body>
+</html>
