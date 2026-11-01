@@ -1,0 +1,20 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import ejs from 'ejs';
+import {JSDOM} from 'jsdom';
+import {readFile} from 'node:fs/promises';
+const locals={language:'zh',workPackage:{id:1,title:'Cost',planKind:'internal_quote',versionHistory:[],latestVersion:{id:1,revisionRoundId:8,files:[{id:11,originalName:'Cost.xlsx',status:'accepted',reviewedByUserId:2}]}},currentUser:{id:2,roles:['technical_manager']},opportunity:{id:1,technicalManagerId:2,status:'commercial_quote_in_progress'},canManageCollaborationWorkPackages:false,dateValue:()=>'',formatShortDate:s=>String(s),packageStatusLabel:s=>s,csrfField:()=>'<input name="_csrf" value="token">',t:s=>s,revisionPresentation:{label:'R1',current:{id:8}}};
+test('original reviewer can reveal a reason form on the same row; historical and other users have no revocation control',async()=>{
+ const render=x=>ejs.renderFile('src/views/partials/_collaboration-file-rows.ejs',{...locals,...x});
+ const html=await render({});assert.ok(html.includes('撤销批准'));
+ const dom=new JSDOM('<table><tbody>'+html+'</tbody></table>',{runScripts:'outside-only'}),d=dom.window.document;
+ dom.window.eval(await readFile('src/public/assets/collaboration-file-decisions.js','utf8'));
+ const row=d.getElementById('revoke-approval-11'),form=row.querySelector('form');assert.equal(row.hidden,true);
+ d.querySelector('[data-file-reject]').click();assert.equal(row.hidden,false);
+ assert.equal(form.querySelector('[type=submit]').disabled,true);assert.ok(form.action.endsWith('/revoke_approval'));
+ form.elements.note.value='误批准，重新复核';form.querySelector('[data-save-rejection]').click();assert.equal(form.querySelector('[type=submit]').disabled,false);
+ form.elements.note.value='changed';form.elements.note.dispatchEvent(new dom.window.Event('input',{bubbles:true}));assert.equal(form.querySelector('[type=submit]').disabled,true);dom.window.close();
+ for(const x of [{currentUser:{id:3,roles:['technical_manager']}},{revisionPresentation:{...locals.revisionPresentation,historical:true}},{revisionPresentation:{label:'R2',current:{id:9}}},{opportunity:{...locals.opportunity,status:'commercial_quote_pending'}}])assert.ok(!(await render(x)).includes('data-file-reject="revoke-approval-11"'));
+ const logged=structuredClone(locals.workPackage);logged.latestVersion.files[0].approvalRevocations=[{actorName:'Manager',reason:'<script>bad()</script>',before:{reviewedAt:'2026-11-01'},createdAt:'2026-11-01'}];
+ const history=await render({workPackage:logged});assert.ok(history.includes('批准撤销记录'));assert.ok(!history.includes('<script>bad()'));
+});

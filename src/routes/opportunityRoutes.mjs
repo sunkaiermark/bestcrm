@@ -1690,14 +1690,19 @@ export function opportunityRoutes({
       const opportunity=await loadOpportunityOrSend({req,res,opportunityRepository,contractApprovalRepository,opportunityResponsibilityRepository});if(!opportunity)return;
       const workPackage=await opportunityCollaborationRepository.findWorkPackageById(req.params.workPackageId);
       if(!workPackage||Number(workPackage.opportunityId)!==Number(opportunity.id))return res.sendStatus(404);
-      const action=req.params.action,review=['accepted','returned'].includes(action);
-      if(!['accepted','returned','submit','withdraw'].includes(action))return res.sendStatus(404);
+      const action=req.params.action,review=['accepted','returned','revoke_approval'].includes(action);
+      if(!['accepted','returned','submit','withdraw','revoke_approval'].includes(action))return res.sendStatus(404);
       if(review?!canReviewCollaborationWorkPackage(req.currentUser,opportunity,workPackage):!canSubmitCollaborationWorkPackage(req.currentUser,opportunity,workPackage))return res.sendStatus(403);
       const note=requiredText(req.body.note);
       if(action==='returned'&&(!note||note.length>2000||req.body.confirmRejection!=='yes'))return res.status(400).send('请保存驳回意见后确认。');
+      if(action==='revoke_approval'){
+        if(!note||note.length>2000||req.body.confirmRejection!=='yes')return res.status(400).send('请保存撤销批准原因后确认。');
+        await opportunityCollaborationRepository.revokeFileApproval({opportunityId:opportunity.id,workPackageId:workPackage.id,attachmentId:requiredPositiveInteger(req.params.attachmentId),note,expectedRevisionRoundId:req.body.expectedRevisionRoundId,actorUserId:req.currentUser.id});
+      }else{
       await opportunityCollaborationRepository.fileDecision({opportunityId:opportunity.id,workPackageId:workPackage.id,attachmentId:requiredPositiveInteger(req.params.attachmentId),action,note,expectedRevisionRoundId:req.body.expectedRevisionRoundId,actorUserId:req.currentUser.id,isManager:canManageOpportunityEngineeringTeam(req.currentUser,opportunity)});
+      }
       res.redirect(redirectToOpportunity(opportunity.id)+(workPackage.planKind==='internal_quote'?'#internal-quote':'#technical-work-packages'));
-    }catch(error){if(error.statusCode===409)return res.status(409).type('text/plain').send(error.message);next(error);}
+    }catch(error){if([400,403,409].includes(error.statusCode))return res.status(error.statusCode).type('text/plain').send(error.message);next(error);}
   });
 
   router.post('/opportunities/:id/technical-work-packages/:workPackageId/:operation',async(req,res,next)=>{

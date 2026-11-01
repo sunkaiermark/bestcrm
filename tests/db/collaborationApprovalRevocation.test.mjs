@@ -1,0 +1,55 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFile} from 'node:fs/promises';
+import {PGlite} from '@electric-sql/pglite';
+import {createOpportunityCollaborationRepository} from '../../src/repositories/opportunityCollaborationRepository.mjs';
+
+test('approval revocation preserves original approval, is per file, and blocks unauthorized or frozen decisions',async()=>{
+ const db=new PGlite();
+ try {
+  await db.exec(`CREATE TABLE users(id bigserial PRIMARY KEY,display_name text,username text);INSERT INTO users VALUES(1,'Engineer','engineer'),(2,'Manager','manager'),(3,'Other','other');
+  CREATE TABLE opportunities(id bigint PRIMARY KEY,status text,archived_at timestamptz,technical_manager_id bigint,quotation_engineer_id bigint);INSERT INTO opportunities VALUES(1,'commercial_quote_in_progress',NULL,2,1);
+  CREATE TABLE attachments(id bigserial PRIMARY KEY,opportunity_id bigint,category text,original_name text,mime_type text,uploaded_at timestamptz DEFAULT now(),retired_at timestamptz);
+  INSERT INTO attachments(id,opportunity_id,original_name)VALUES(11,1,'a.xlsx'),(12,1,'b.xlsx');
+  CREATE TABLE notifications(id bigserial PRIMARY KEY,user_id bigint,event_type text,title text,body text,action_url text,source_type text,source_id bigint,actor_user_id bigint);
+  CREATE TABLE opportunity_revision_rounds(id bigint,opportunity_id bigint,closed_at timestamptz);INSERT INTO opportunity_revision_rounds VALUES(8,1,NULL);
+  CREATE TABLE commercial_quotes(id bigint,opportunity_id bigint,status text,approval_basis jsonb);
+  CREATE TABLE sales_commercial_quotation_versions(id bigint,opportunity_id bigint,status text,approval_basis jsonb);`);
+  for(const name of ['119_opportunity_collaboration_work_packages.sql','125_technical_collaboration_lifecycle.sql','126_technical_upload_before_submit.sql','128_collaboration_approved_versions.sql','133_collaboration_file_decisions.sql'])await db.exec(await readFile(new URL('../../src/db/migrations/'+name,import.meta.url),'utf8'));
+  await db.exec(`ALTER TABLE opportunity_collaboration_work_packages ADD COLUMN source_work_package_id bigint;
+  ALTER TABLE opportunity_collaboration_work_package_versions ADD COLUMN revision_round_id bigint;
+  ALTER TABLE opportunity_collaboration_work_package_files ADD COLUMN carried_from_attachment_id bigint;
+  INSERT INTO opportunity_collaboration_work_packages(id,opportunity_id,plan_kind,title,assignee_user_id,created_by_user_id,status)VALUES(1,1,'internal_quote','Cost',1,1,'accepted');
+  INSERT INTO opportunity_collaboration_work_package_versions(id,work_package_id,version_no,submitted_by_user_id,status,submitted_at,reviewed_by_user_id,reviewed_at,approved_version_no,revision_round_id)VALUES(1,1,1,1,'accepted',now(),2,now(),1,8);
+  INSERT INTO opportunity_collaboration_work_package_files(work_package_version_id,attachment_id,sort_order,added_by_user_id,status,submitted_at,reviewed_by_user_id,reviewed_at,review_note)VALUES(1,11,1,1,'accepted',now(),2,now(),'original approval'),(1,12,2,1,'accepted',now(),2,now(),'sibling approval');
+  INSERT INTO opportunity_collaboration_work_package_events(work_package_id,work_package_version_id,event_type,actor_user_id,note)VALUES(1,1,'accepted',2,'original event retained');`);
+  const repo=createOpportunityCollaborationRepository(db,{inTransaction:true});repo.commercialReadiness=async()=>({technicalCount:1,ready:false});
+  const input={opportunityId:1,workPackageId:1,attachmentId:11,actorUserId:2,expectedRevisionRoundId:8,note:'误点批准，需要复核'};
+  await assert.rejects(repo.revokeFileApproval({...input,note:' '}),/撤销批准原因/);
+  await assert.rejects(repo.revokeFileApproval({...input,actorUserId:3}),/指定审批人/);
+  await assert.rejects(repo.revokeFileApproval({...input,expectedRevisionRoundId:7}),/需求轮次/);
+  await db.exec('UPDATE opportunity_collaboration_work_package_versions SET revision_round_id=7 WHERE id=1');
+  await assert.rejects(repo.revokeFileApproval(input),/历史或沿用/);
+  await db.exec('UPDATE opportunity_collaboration_work_package_versions SET revision_round_id=8 WHERE id=1');
+  await db.query(`INSERT INTO commercial_quotes VALUES(1,1,'pending',$1)`,[JSON.stringify({technical:[{files:[],cost:{files:[{attachmentId:11}]}}]})]);
+  await assert.rejects(repo.revokeFileApproval(input),/正式报价/);
+  await db.exec("DELETE FROM commercial_quotes;UPDATE opportunities SET status='commercial_quote_pending'");
+  await assert.rejects(repo.revokeFileApproval(input),/当前阶段/);
+  await db.exec("UPDATE opportunities SET status='commercial_quote_in_progress';UPDATE opportunity_collaboration_work_package_files SET reviewed_by_user_id=3 WHERE attachment_id=11");
+  await assert.rejects(repo.revokeFileApproval(input),/本人/);
+  await db.exec('UPDATE opportunity_collaboration_work_package_files SET reviewed_by_user_id=2 WHERE attachment_id=11');
+  await repo.revokeFileApproval(input);
+  const states=(await db.query('SELECT attachment_id,status,reviewed_by_user_id,review_note FROM opportunity_collaboration_work_package_files ORDER BY attachment_id')).rows;
+  assert.equal(states[0].status,'submitted');assert.equal(states[0].reviewed_by_user_id,null);assert.equal(states[1].status,'accepted');assert.equal(states[1].review_note,'sibling approval');
+  assert.equal((await db.query('SELECT status FROM opportunity_collaboration_work_package_versions WHERE id=1')).rows[0].status,'submitted');
+  const event=JSON.parse((await db.query("SELECT note FROM opportunity_collaboration_work_package_events WHERE event_type='updated'")).rows[0].note);
+  assert.equal(event.before.reviewNote,'original approval');assert.equal(event.before.reviewedByUserId,2);assert.equal(event.reason,input.note);
+  assert.equal((await db.query("SELECT count(*)::int AS n FROM opportunity_collaboration_work_package_events WHERE event_type='accepted'")).rows[0].n,1);
+  assert.equal((await db.query('SELECT count(*)::int AS n FROM notifications')).rows[0].n,1);
+  await assert.rejects(repo.revokeFileApproval(input),/最新有效/);
+  await repo.fileDecision({...input,action:'accepted',note:'复核后批准'});
+  const listed=await repo.listByOpportunity(1);
+  assert.equal(listed[0].latestVersion.files[0].status,'accepted');assert.equal(listed[0].latestVersion.files[0].approvalRevocations.length,1);
+  assert.equal(listed[0].latestVersion.files[0].approvalRevocations[0].before.reviewNote,'original approval');
+ }finally{await db.close();}
+});
