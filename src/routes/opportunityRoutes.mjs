@@ -1,3 +1,4 @@
+import { opportunityQuotationEntry } from '../services/opportunityQuotationEntry.mjs';
 import {buildOpportunityRevisionPresentation} from '../services/opportunityRevisionPresentation.mjs';
 import {canStartOpportunityRevision,canAcceptOpportunityQuotation} from '../repositories/opportunityRevisionRepository.mjs';
 import {BASE_CONTENT_SECURITY_POLICY} from '../middleware/securityHeaders.mjs';
@@ -1291,6 +1292,7 @@ export function opportunityRoutes({
       const revisionWorkspace=typeof opportunityCollaborationRepository?.loadRevisionWorkspace==='function' ? await opportunityCollaborationRepository.loadRevisionWorkspace(opportunity.id) : null;
       const revisionPresentation=buildOpportunityRevisionPresentation({workspace:revisionWorkspace,opportunity,workPackages:collaborationWorkPackages,attachments,requestedRoundId:req.query.revisionRound});
       res.render('opportunities/detail', {
+        quotationEntry: opportunityQuotationEntry(req.currentUser, opportunity),
         revisionPresentation,
         revisionWorkspace,
         canStartRevision:canStartOpportunityRevision(req.currentUser,opportunity),

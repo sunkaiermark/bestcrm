@@ -186,7 +186,7 @@
   ]);
   const contractStartedStatuses = new Set(['customer_negotiation', 'won_contract_pending', 'contract_approval_in_progress', 'contract_rejected', 'contract_archived']);
   const technicalStarted = technicalStartedStatuses.has(opportunity.status);
-  const commercialStarted = commercialStartedStatuses.has(opportunity.status)||Boolean(revisionView);
+  const commercialStarted = commercialStartedStatuses.has(opportunity.status)||Boolean(revisionView)||(technicalStarted && typeof quotationEntry !== 'undefined' && quotationEntry.canView);
   const contractStarted = contractStartedStatuses.has(opportunity.status);
   const canDeleteTechnicalSolutionAttachments = technicalSolutionDeleteStatuses.includes(opportunity.status);
   const canDeleteCommercialQuoteAttachments = ['commercial_quote_in_progress', 'commercial_quote_rejected'].includes(opportunity.status);
@@ -705,12 +705,7 @@
           <section class="content-section business-section opportunity-workflow-section business-section-quote">
             <h2><%= t('commercialProposal') %></h2>
             <div class="section-body">
-          <% if (!revisionView?.historical && !opportunity.archivedAt && (uploadedTechnicalDrafts.length || (collaborationWorkPackagesEnabled && collaborationPackages.some(wp=>wp.planKind==='technical_solution'&&wp.latestVersion?.files?.some(f=>!f.supersededByAttachmentId&&['uploaded','submitted','accepted'].includes(f.status))))) && Number(signedInUserId) === Number(opportunity.salespersonId)) { %>
-            <div class="commercial-draft-entry">
-              <p><%= language === 'zh' ? '报价草稿' : 'Quotation Draft' %></p>
-              <div class="section-body"><a class="secondary-action" href="/opportunities/<%= opportunity.id %>/commercial-quotation-draft"><%= language === 'zh' ? '进入报价草稿' : 'Open quotation draft' %></a></div>
-            </div>
-          <% } %>
+          <%- include('../partials/_opportunity-quotation-entry', { entry: typeof quotationEntry === 'undefined' ? {canView:false,canEdit:false} : quotationEntry, historical: Boolean(revisionView?.historical) }) %>
 
               <% if(typeof revisionWorkspace!=='undefined'&&revisionWorkspace){ %><%- include('../partials/_opportunity-revision-rounds') %><% } %>
               <% if (uploadPermissions.commercial_quote) { %>

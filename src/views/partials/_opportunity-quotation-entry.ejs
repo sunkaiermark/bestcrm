@@ -1,0 +1,5 @@
+<% if (entry.canView && !historical) { %>
+  <div class="commercial-draft-entry">
+    <a class="secondary-action" href="/opportunities/<%= opportunity.id %>/commercial-quotation-draft"><%= language === 'zh' ? (entry.canEdit ? '编制商务报价' : '查看商务报价／审批') : (entry.canEdit ? 'Prepare commercial quotation' : 'View / review commercial quotation') %></a>
+  </div>
+<% } %>
